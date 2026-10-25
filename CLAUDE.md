@@ -3,7 +3,7 @@
 Goal: same quality and pace, fewer tokens. These rules remove reading that never changes a result.
 
 ## Layout
-- `app/index.html` (900 KB): 31 `<script>` blocks. Blocks 1–30 are inlined copies of `modules/*`. Only the last block (search `===================== Plan data`) is the shell: plan data, store, render, events.
+- `app/index.html` (900 KB): 33 `<script>` blocks. Blocks 1–32 are inlined copies of `modules/*`. Only the last block (search `===================== Plan data`) is the shell: plan data, store, render, events.
 - `modules/<name>/`: source of each feature. `README.md` has the API; `*.test.js` the tests. `preview*.html` and `*.png` are demo pages, never documentation.
 - `docs/APP-SHELL.md`: data model and the per-version list of what is inlined. `docs/nutrition-training-handoff.md`: the plan.
 - Screens → modules: Today = daily-dashboard, daily-score, supps-drinks, recovery-fatigue, budget-recovery, ramadan, steps. Train = workout-logger, exercise-swap, form-cues, effort-deload, cardio, strong-sync. Food = menu-import (picker-engine), saved-meals, protein-gap, barcode-scanner, photo-food. Progress = weekly-report, trend-tdee, goal-date, diet-break, coach, strength-analytics, progress-photos. Guide = app-targets, data-io, theme.
