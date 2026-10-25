@@ -1,0 +1,6 @@
+start_time,end_time,count,data_origin
+2026-10-24T05:10:00Z,2026-10-24T05:40:00Z,3200,com.google.android.apps.fitness
+2026-10-24T05:10:00Z,2026-10-24T05:40:00Z,3350,com.samsung.android.wear
+2026-10-24T14:00:00Z,2026-10-24T15:00:00Z,4100,com.google.android.apps.fitness
+2026-10-24T22:30:00Z,2026-10-24T22:50:00Z,900,com.google.android.apps.fitness
+2026-10-25T09:00:00Z,2026-10-25T09:30:00Z,2500,com.google.android.apps.fitness
