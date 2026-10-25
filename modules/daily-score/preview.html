@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Daily Score Preview</title>
+<link rel="stylesheet" href="../theme/theme.css">
+<style>body{background:var(--bg);color:var(--ink);font-family:var(--body);margin:0;padding:16px}.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r,14px);padding:16px;max-width:480px;margin:0 auto 16px}.spread{display:flex;justify-content:space-between;align-items:baseline;gap:8px}h3{margin:0;font-family:var(--display)}.muted{color:var(--muted)}</style>
+</head><body>
+<div id="out"></div>
+<script src="daily-score.js"></script>
+<script>
+// Sample data: three good days, then today half done (Oct 28, 2026).
+const full = { food: [{ kcal: 1980, p: 164, eaten: true }], water: 3600, supps: { creatine: 1, omega: 1, d3: 1, mag: 1 }, treadmill: true };
+const lift = { session: "Push A", sets: { "Bench Press (Barbell)": [{ w: 90, r: 8 }] } };
+const docs = { days: { "2026-10-25": full, "2026-10-26": full, "2026-10-27": full,
+  "2026-10-28": { food: [{ kcal: 1200, p: 98, eaten: true }], water: 1750, supps: { creatine: 1, d3: 1 }, treadmill: false, sleep: 6.5 } },
+  workouts: { "2026-10-25": lift, "2026-10-26": lift, "2026-10-27": lift } };
+document.head.insertAdjacentHTML("beforeend", "<style>" + DailyScore.css + "</style>");
+document.getElementById("out").innerHTML = DailyScore.html(docs, "2026-10-28", { today: "2026-10-28" }) + DailyScore.html(docs, "2026-10-27", { today: "2026-10-28" });
+</script></body></html>
