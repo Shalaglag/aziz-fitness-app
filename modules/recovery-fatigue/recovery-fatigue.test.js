@@ -28,31 +28,31 @@ test("no data -> no-checkin, low fatigue, notes explain what is missing", () => 
 });
 
 test("good night + fresh check-in -> green", () => {
-  const days = { [T]: { sleep: 8, recovery: { quality: 5, soreness: 4, energy: 5 } }, [add(T, -1)]: { sleep: 8 } };
+  const days = { [T]: { sleep: 8, readiness: { quality: 5, soreness: 4, energy: 5 } }, [add(T, -1)]: { sleep: 8 } };
   const rd = R.readiness({ days }, { date: T });
   assert.equal(rd.verdict, "green");
   assert.ok(rd.score >= 85, rd.score);
 });
 
 test("sleep under 5.5 h forces red even with good check-in", () => {
-  const rd = R.readiness({ days: { [T]: { sleep: 5, recovery: { quality: 5, soreness: 5, energy: 5 } } } }, { date: T });
+  const rd = R.readiness({ days: { [T]: { sleep: 5, readiness: { quality: 5, soreness: 5, energy: 5 } } } }, { date: T });
   assert.equal(rd.verdict, "red");
 });
 
 test("sleep below minimum caps green at amber", () => {
-  const rd = R.readiness({ days: { [T]: { sleep: 6.8, recovery: { quality: 5, soreness: 5, energy: 5 } } } }, { date: T, sleepTarget: 7 });
+  const rd = R.readiness({ days: { [T]: { sleep: 6.8, readiness: { quality: 5, soreness: 5, energy: 5 } } } }, { date: T, sleepTarget: 7 });
   assert.equal(rd.verdict, "amber");
 });
 
 test("sharp joint -> red and swap/physio advice", () => {
-  const rd = R.readiness({ days: { [T]: { sleep: 8, recovery: { quality: 5, soreness: 5, energy: 5, joints: { knee: 3 } } } } }, { date: T });
+  const rd = R.readiness({ days: { [T]: { sleep: 8, readiness: { quality: 5, soreness: 5, energy: 5, joints: { knee: 3 } } } } }, { date: T });
   assert.equal(rd.verdict, "red");
   assert.match(rd.advice, /knee/);
   assert.match(rd.advice, /physio/);
 });
 
 test("score uses only parts that were logged", () => {
-  const rd = R.readiness({ days: { [T]: { recovery: { energy: 1 } } } }, { date: T });
+  const rd = R.readiness({ days: { [T]: { readiness: { energy: 1 } } } }, { date: T });
   assert.equal(rd.parts.length, 2); // energy + joints (none)
   assert.equal(rd.verdict, "red");
 });
@@ -93,7 +93,7 @@ test("short sleep + rising effort -> combined fatigue warning first", () => {
 
 test("joint logged 3 times in 10 days -> watch warning", () => {
   const days = {};
-  [0, 3, 6].forEach(i => { days[add(T, -i)] = { recovery: { joints: { shoulder: 1 } } }; });
+  [0, 3, 6].forEach(i => { days[add(T, -i)] = { readiness: { joints: { shoulder: 1 } } }; });
   const fa = R.fatigue({ days }, { today: T });
   const w = fa.warnings.find(x => x.id === "joint-shoulder");
   assert.ok(w);
@@ -104,22 +104,22 @@ test("handle: scale set, tap again clears, joint cycles", () => {
   const btn = ds => ({ closest: () => ({ dataset: ds }) });
   let docs = { days: { [T]: { date: T, sleep: 7, food: [] } } };
   let out = R.handle(btn({ rf: "energy", rfV: "4", rfDate: T }), docs, T);
-  assert.equal(out.doc.recovery.energy, 4);
+  assert.equal(out.doc.readiness.energy, 4);
   assert.equal(out.doc.sleep, 7);
   docs = { days: { [T]: out.doc } };
   out = R.handle(btn({ rf: "energy", rfV: "4", rfDate: T }), docs, T);
-  assert.equal(out.doc.recovery.energy, undefined);
+  assert.equal(out.doc.readiness.energy, undefined);
   for (let i = 1; i <= 4; i++) {
     out = R.handle(btn({ rf: "joint", rfV: "knee", rfDate: T }), docs, T);
     docs = { days: { [T]: out.doc } };
-    assert.equal((out.doc.recovery.joints || {}).knee, i < 4 ? i : undefined);
+    assert.equal((out.doc.readiness.joints || {}).knee, i < 4 ? i : undefined);
   }
   assert.equal(R.handle(btn({ rf: "joint", rfV: "<x>", rfDate: T }), docs, T), null);
   assert.equal(R.handle({ closest: () => null }, docs, T), null);
 });
 
 test("HTML renders and escapes", () => {
-  const days = { [T]: { sleep: 7.5, recovery: { quality: 4, energy: 3, joints: { knee: 2 } } } };
+  const days = { [T]: { sleep: 7.5, readiness: { quality: 4, energy: 3, joints: { knee: 2 } } } };
   const c = R.checkinHtml({ days }, { date: T });
   assert.match(c, /Recovery check-in/);
   assert.match(c, /data-rf="joint" data-rf-v="knee"/);

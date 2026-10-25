@@ -25,7 +25,7 @@ It builds on what the app already has: hours slept come from the existing Today 
 Defaults: `sleepMin` 7 h, `sleepTarget` 8 h (from the sleep guide), overridable per call (e.g. from `prefs/main.profile`). AppTargets has no sleep fields yet; no calorie, protein or weight targets are used here.
 
 ## Data
-New field only: `days/{date}.recovery = {quality, soreness, energy, joints:{shoulder|elbow|wrist|neck|lowerBack|hip|knee|ankle: 1|2|3}, at}`. Existing docs are copied, never overwritten field-by-field, so no migration is needed.
+New field only: `days/{date}.readiness = {quality, soreness, energy, joints:{shoulder|elbow|wrist|neck|lowerBack|hip|knee|ankle: 1|2|3}, at}`. Not `.recovery`: BudgetRecovery owns `days/{date}.recovery` for its "Went over?" card. The whole day doc is copied and only `readiness` changes, so no migration is needed.
 
 ## For the app thread
 ```js

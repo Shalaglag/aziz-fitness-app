@@ -17,7 +17,7 @@ const docs = { days: {}, workouts: {}, prefs: { main: {} } };
 for (let i = 13; i >= 1; i--) {
   const d = add(TODAY, -i), late = i <= 6;
   docs.days[d] = { date: d, sleep: late ? [6, 6.5, 5.5, 7, 6, 6.5][i - 1] : [7.5, 8, 7, 8, 7.5, 7, 8][i - 7],
-    recovery: { quality: late ? 3 : 4, soreness: late ? 2 : 4, energy: late ? 2 : 4, ...(i === 2 || i === 5 ? { joints: { shoulder: 1 } } : {}) } };
+    readiness: { quality: late ? 3 : 4, soreness: late ? 2 : 4, energy: late ? 2 : 4, ...(i === 2 || i === 5 ? { joints: { shoulder: 1 } } : {}) } };
 }
 docs.days[TODAY] = { date: TODAY, sleep: 6 };
 for (let i = 40; i >= 0; i -= 4) {
