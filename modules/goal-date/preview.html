@@ -1,0 +1,92 @@
+<title>Goal Date Preview</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: preview of the goal date module (Progress card + Today line), using the Aziz Cut Tracker's own tokens and card classes. */
+:root{
+  --bg:#EDF0EE; --surface:#FFFFFF; --sunk:#E3E8E5; --line:#CBD3CF;
+  --ink:#15201C; --muted:#5A6862; --accent:#1F56C9; --accent-ink:#FFFFFF;
+  --good:#1E7A4C; --warn:#B4610B; --bad:#C8372D;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1513; --surface:#18201D; --sunk:#111816; --line:#2C3833;
+  --ink:#E6ECE9; --muted:#93A29B; --accent:#6E9BFF; --accent-ink:#0B1020;
+  --good:#4CC488; --warn:#F0A04B; --bad:#F07468; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1513; --surface:#18201D; --sunk:#111816; --line:#2C3833;
+  --ink:#E6ECE9; --muted:#93A29B; --accent:#6E9BFF; --accent-ink:#0B1020;
+  --good:#4CC488; --warn:#F0A04B; --bad:#F07468; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45}
+.wrap{max-width:980px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 40px;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:.01em;margin:0;text-wrap:balance;line-height:1.1}
+h1{font-size:2rem} h2{font-size:1.55rem} h3{font-size:1.2rem}
+p{margin:0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card.hero{border-color:var(--ink)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spread{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.small{padding:5px 10px;font-size:.88rem}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:36px;height:36px;cursor:pointer;display:grid;place-items:center}
+.prog{height:10px;background:var(--sunk);border-radius:5px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.banner{border:1px dashed var(--warn);border-radius:var(--r);padding:10px 14px;background:var(--surface);font-size:.95rem}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs .btn[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+</style>
+<div class="wrap">
+  <div>
+    <p class="label">Preview · Progress and Today modules for Aziz Cut Tracker</p>
+    <h1>Goal date to 80 kg</h1>
+  </div>
+  <p class="banner"><b>Example data.</b> Pick a stage to see how the card reads. In the app it uses the weights you log.</p>
+  <div class="tabs" id="tabs"></div>
+  <div class="grid">
+    <div class="card"><p class="label">Today tab</p><div id="today"></div></div>
+    <div class="card"><h3>Road to 80 kg</h3><div id="progress"></div></div>
+  </div>
+</div>
+<script src="goal-date.js"></script>
+<script>
+const DAY = 864e5, add = (d, n) => new Date(Date.parse(d + "T00:00:00Z") + n * DAY).toISOString().slice(0, 10);
+function series(n, perWeek, start = 91.9) {
+  const out = {}, wob = [0, 0.3, -0.2, 0.4, -0.4, 0.1, -0.2];
+  for (let i = 0; i < n; i++) { const date = add("2026-10-25", i); out[date] = { date, kg: Math.round((start - perWeek * i / 7 + wob[i % 7]) * 10) / 10 }; }
+  return out;
+}
+const STAGES = [
+  ["Day 1", { "2026-10-25": { date: "2026-10-25", kg: 91.9 } }, "2026-10-25"],
+  ["Week 3, fast start", series(17, 1.4), add("2026-10-25", 16)],
+  ["Week 6, on pace", series(42, 0.7), add("2026-10-25", 41)],
+  ["Stalled", Object.assign(series(28, 0.8), Object.fromEntries([...Array(21)].map((_, i) => { const d = add("2026-10-25", 28 + i); return [d, { date: d, kg: 88.7 + [0, .2, -.1, .3, -.2, .1, 0][i % 7] }]; }))), add("2026-10-25", 48)],
+];
+document.head.insertAdjacentHTML("beforeend", "<style>" + GoalDate.css + "</style>");
+let cur = 2;
+function render() {
+  const [, w, today] = STAGES[cur];
+  document.getElementById("tabs").innerHTML = STAGES.map((s, i) => '<button class="btn ghost small" aria-pressed="' + (i === cur) + '" data-i="' + i + '">' + s[0] + "</button>").join("");
+  document.getElementById("today").innerHTML = GoalDate.compact(w, { today });
+  document.getElementById("progress").innerHTML = GoalDate.html(w, { today });
+}
+document.getElementById("tabs").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) { cur = +b.dataset.i; render(); } });
+render();
+</script>
