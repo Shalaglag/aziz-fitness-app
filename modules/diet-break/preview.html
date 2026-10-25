@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diet breaks preview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: one-column app shell, sticky date header, tabs on top (desktop) or a bottom bar (phone).
+   Colours, type and motion come from the shared "Plate" theme kit (theme.css + motion.css). */
+/* ==========================================================================
+   Fitness app theme  ·  "Plate" system
+   Neutrals: cool chalk (light) and gunmetal (dark).
+   Accents: named after Olympic bumper plates (25 kg red, 20 kg blue,
+   15 kg yellow, 10 kg green). Pick one with <html data-accent="blue">.
+   Mode: <html data-theme="light|dark">, or no attribute to follow the system.
+   Fonts (Google Fonts):
+   https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap
+   ========================================================================== */
+
+:root {
+  /* ---- Neutrals (light) ---- */
+  --bg: #F2F4F6;
+  --surface: #FFFFFF;
+  --surface-2: #E7EBEF;
+  --surface-3: #DAE0E6;
+  --fg: #12161B;
+  --fg-muted: #586370;
+  --fg-faint: #8A949F;
+  --line: #D3DAE1;
+  --overlay: rgba(18, 22, 27, .45);
+
+  /* ---- Accent palettes (each has a light and dark value) ---- */
+  --accent-light: #1F5FD1;  --accent-dark: #6B9BF5;      /* default: 20 kg blue */
+  --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222;
+  --accent: var(--accent-light);
+  --on-accent: var(--on-accent-light);
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--surface));
+
+  /* ---- Macros (fixed across accents so charts stay readable) ---- */
+  --protein: #6E52D4;
+  --carbs: #D07F12;
+  --fat: #158C8C;
+  --kcal: var(--fg);
+
+  /* ---- Status ---- */
+  --good: #1E8A4C;
+  --warn: #B86E00;
+  --bad: #C8352E;
+
+  /* ---- Type ---- */
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-xs: .75rem;    /* 12  captions, units */
+  --text-sm: .875rem;   /* 14  secondary */
+  --text-md: 1rem;      /* 16  body */
+  --text-lg: 1.25rem;   /* 20  card titles */
+  --text-xl: 1.75rem;   /* 28  screen titles (display) */
+  --text-2xl: 2.5rem;   /* 40  hero numbers (display) */
+  --text-3xl: 3.5rem;   /* 56  ring centre, PR number */
+
+  /* ---- Space (4px grid) ---- */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px;
+
+  /* ---- Shape & depth ---- */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(18, 22, 27, .06), 0 1px 1px rgba(18, 22, 27, .04);
+  --shadow-2: 0 6px 20px rgba(18, 22, 27, .10), 0 2px 6px rgba(18, 22, 27, .06);
+  --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+
+  --tap: 44px; /* minimum touch target */
+
+  color-scheme: light;
+}
+
+/* ---- Accent choices ---- */
+[data-accent="red"]    { --accent-light: #D0302A; --accent-dark: #F2665D; --on-accent-light: #FFFFFF; --on-accent-dark: #220B0A; }
+[data-accent="blue"]   { --accent-light: #1F5FD1; --accent-dark: #6B9BF5; --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222; }
+[data-accent="yellow"] { --accent-light: #A87300; --accent-dark: #F2C230; --on-accent-light: #FFFFFF; --on-accent-dark: #221A02; }
+[data-accent="green"]  { --accent-light: #1B8048; --accent-dark: #43C47E; --on-accent-light: #FFFFFF; --on-accent-dark: #06200F; }
+
+/* ---- Dark (system setting, unless light was chosen) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1013; --surface: #161A1F; --surface-2: #1F252C; --surface-3: #29303A;
+    --fg: #EDF0F3; --fg-muted: #9AA4AF; --fg-faint: #6B7580; --line: #2A323B;
+    --overlay: rgba(0, 0, 0, .6);
+    --accent: var(--accent-dark); --on-accent: var(--on-accent-dark);
+    --protein: #A08BF2; --carbs: #F0AE4A; --fat: #3CC4C4;
+    --good: #43C47E; --warn: #F2A93B; --bad: #F2665D;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-2: 0 8px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+/* ---- Dark (chosen explicitly) ---- */
+:root[data-theme="dark"] {
+  --bg: #0D1013; --surface: #161A1F; --surface-2: #1F252C; --surface-3: #29303A;
+  --fg: #EDF0F3; --fg-muted: #9AA4AF; --fg-faint: #6B7580; --line: #2A323B;
+  --overlay: rgba(0, 0, 0, .6);
+  --accent: var(--accent-dark); --on-accent: var(--on-accent-dark);
+  --protein: #A08BF2; --carbs: #F0AE4A; --fat: #3CC4C4;
+  --good: #43C47E; --warn: #F2A93B; --bad: #F2665D;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Aliases for the app shell's existing token names (APP-SHELL.md).
+   Inline this file in place of the app's own color/font token blocks;
+   these follow mode and accent changes automatically.
+   ========================================================================== */
+:root {
+  --sunk: var(--surface-2);
+  --ink: var(--fg);
+  --muted: var(--fg-muted);
+  --accent-ink: var(--on-accent);
+  --display: var(--font-display);
+  --body: var(--font-body);
+  --mono: var(--font-mono);
+  --r: var(--radius-md);
+}
+
+/* ==========================================================================
+   Fitness app motion
+   Rule of thumb: motion confirms an action (a set logged, a meal eaten)
+   or shows progress (rings, bars). It never delays reading.
+   Everything collapses to instant under prefers-reduced-motion.
+   ========================================================================== */
+
+:root {
+  --dur-tap: 120ms;     /* press feedback */
+  --dur-ui: 220ms;      /* toggles, tabs, sheets */
+  --dur-enter: 420ms;   /* cards entering a screen */
+  --dur-fill: 900ms;    /* rings and bars filling */
+  --dur-celebrate: 1200ms;
+
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+
+  --stagger: 50ms;      /* per item, via style="--i: 2" */
+}
+
+/* ---- Press feedback: any button or tappable card ---- */
+.tap { transition: transform var(--dur-tap) var(--ease-out), background-color var(--dur-ui) var(--ease-out); }
+.tap:active { transform: scale(.97); }
+
+/* ---- Screen entry: cards rise in, staggered by --i ---- */
+@keyframes fit-rise { from { opacity: 0; transform: translateY(12px); } }
+.anim-rise {
+  animation: fit-rise var(--dur-enter) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* ---- Pop: checking off a set, marking a meal as eaten ---- */
+@keyframes fit-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.anim-pop { animation: fit-pop 320ms var(--ease-spring); }
+
+/* ---- Check mark draws itself (SVG path with pathLength="1") ---- */
+@keyframes fit-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.anim-draw { stroke-dasharray: 1; animation: fit-draw 260ms var(--ease-out) both; }
+
+/* ---- Progress ring: SVG circle with pathLength="100".
+        Set style="--value: 82" (0-100) and the ring animates to it. ---- */
+.ring-track { stroke: var(--surface-2); }
+.ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - min(var(--value, 0), 100));
+  transition: stroke-dashoffset var(--dur-fill) var(--ease-out);
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+.ring-fill.is-over { stroke: var(--warn); }
+
+/* ---- Bars (macros, volume): width set via --value (0-100) ---- */
+.bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.bar > span {
+  display: block; height: 100%; border-radius: inherit;
+  width: calc(min(var(--value, 0), 100) * 1%);
+  background: var(--bar-color, var(--accent));
+  transition: width var(--dur-fill) var(--ease-out);
+}
+
+/* ---- Tab / screen switch fallback (when View Transitions aren't supported) ---- */
+@keyframes fit-slide-in-r { from { opacity: 0; transform: translateX(24px); } }
+@keyframes fit-slide-in-l { from { opacity: 0; transform: translateX(-24px); } }
+.anim-in-right { animation: fit-slide-in-r var(--dur-ui) var(--ease-out) backwards; }
+.anim-in-left  { animation: fit-slide-in-l var(--dur-ui) var(--ease-out) backwards; }
+
+/* ---- View Transitions (Chrome, Safari 18+): used by FitMotion.switchView ---- */
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: var(--dur-ui); animation-timing-function: var(--ease-out); }
+::view-transition-old(fit-screen) { animation: var(--dur-ui) var(--ease-out) both fit-out; }
+::view-transition-new(fit-screen) { animation: var(--dur-ui) var(--ease-out) both fit-slide-in-r; }
+:root[data-nav="back"]::view-transition-new(fit-screen) { animation-name: fit-slide-in-l; }
+@keyframes fit-out { to { opacity: 0; } }
+
+/* ---- Bottom sheet (add food, log weight) ---- */
+.sheet {
+  transform: translateY(100%);
+  transition: transform var(--dur-ui) var(--ease-out);
+}
+.sheet.is-open { transform: translateY(0); }
+
+/* ---- Rest timer: soft pulse in the last 10 seconds ---- */
+@keyframes fit-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.anim-pulse { animation: fit-pulse 1s var(--ease-in-out) infinite; }
+
+/* ---- Loading placeholder ---- */
+@keyframes fit-shimmer { to { background-position: -200% 0; } }
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: fit-shimmer 1.4s linear infinite;
+}
+
+/* ---- New PR: number lifts and a burst of plate-colored pieces (FitMotion.celebrate) ---- */
+@keyframes fit-lift {
+  0%   { transform: translateY(0) scale(1); }
+  35%  { transform: translateY(-6px) scale(1.12); }
+  100% { transform: translateY(0) scale(1); }
+}
+.anim-pr { animation: fit-lift 600ms var(--ease-spring); color: var(--accent); }
+.fit-burst-piece {
+  position: absolute; width: 8px; height: 4px; border-radius: 1px;
+  pointer-events: none;
+  animation: fit-burst var(--dur-celebrate) var(--ease-out) forwards;
+}
+@keyframes fit-burst {
+  from { transform: translate(0, 0) rotate(0); opacity: 1; }
+  to   { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 0; }
+}
+
+/* ---- Theme switch: colors cross-fade instead of snapping ---- */
+:root.is-theming, :root.is-theming * {
+  transition: background-color var(--dur-ui) var(--ease-out),
+              color var(--dur-ui) var(--ease-out),
+              border-color var(--dur-ui) var(--ease-out),
+              fill var(--dur-ui) var(--ease-out),
+              stroke var(--dur-ui) var(--ease-out) !important;
+}
+
+/* ---- Reduced motion: keep state changes, drop movement ---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .fit-burst-piece { display: none; }
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:980px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:.01em;margin:0;text-wrap:balance;line-height:1.1}
+h2{font-size:1.55rem} h3{font-size:1.2rem}
+p{margin:0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header */
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg);border-bottom:1px solid var(--line)}
+.toprow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:12px 10px;flex-wrap:wrap}
+.brand{font-family:var(--display);font-weight:700;font-size:1.35rem;letter-spacing:.02em;text-transform:uppercase}
+.brand span{color:var(--accent)}
+.datepick{display:flex;align-items:center;gap:6px}
+.datepick .d{min-width:9.5em;text-align:center;font-weight:600}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:36px;height:36px;cursor:pointer;display:grid;place-items:center}
+.today-link{border:0;background:none;color:var(--accent);cursor:pointer;font-weight:600;padding:4px}
+nav.tabs{display:flex;gap:4px;padding-bottom:8px}
+nav.tabs button{border:0;background:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-family:var(--display);font-size:1.1rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+nav.tabs button[aria-current="page"]{background:var(--ink);color:var(--bg)}
+.sync{font-size:.75rem;color:var(--muted)}
+@media (max-width:720px){
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:9;background:var(--surface);border-top:1px solid var(--line);justify-content:space-around;padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+  nav.tabs button{padding:8px 6px;font-size:1rem;flex:1}
+  main{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  .datepick .d{min-width:8em}
+}
+
+#lbHost{padding-block:0 40px}
+@media (max-width:720px){#lbHost{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
+main{padding-block:18px 40px;display:flex;flex-direction:column;gap:18px}
+.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card.hero{border-color:var(--ink)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spread{display:flex;gap:10px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+.btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.small{padding:5px 10px;font-size:.88rem}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;cursor:pointer;font-size:.9rem}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip.rest{border-style:dashed}
+.pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:600;border:1px solid currentColor}
+.pill.good{color:var(--good)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)} .pill.info{color:var(--accent)}
+input[type=number],input[type=text],input[type=search],select{border:1px solid var(--line);background:var(--sunk);border-radius:8px;padding:7px 9px;min-width:0}
+input[type=number]{width:5.2em}
+.field{display:flex;flex-direction:column;gap:4px}
+.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--sunk);border-radius:0 8px 8px 0;font-size:.92rem}
+.note.info{border-color:var(--accent)}
+.note.bad{border-color:var(--bad)}
+
+/* macro bars */
+.macros{display:flex;flex-direction:column;gap:10px}
+.mrow{display:grid;grid-template-columns:5.5em 1fr auto;gap:10px;align-items:center}
+.mbar{position:relative;height:12px;background:var(--sunk);border-radius:6px;overflow:hidden}
+.mbar .planned{position:absolute;inset:0 auto 0 0;opacity:.28}
+.mbar .eaten{position:absolute;inset:0 auto 0 0}
+.mbar .zone{position:absolute;top:0;bottom:0;border-left:2px solid var(--ink);border-right:2px solid var(--ink);opacity:.5}
+.mval{font-family:var(--mono);font-size:.85rem;white-space:nowrap;text-align:right}
+.kcal{background:var(--ink)} .p{background:var(--protein)} .c{background:var(--carbs)} .f{background:var(--fat)}
+.bigk{font-family:var(--display);font-size:2.6rem;font-weight:700;line-height:1}
+
+/* timeline */
+.tl{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
+.tl li{display:grid;grid-template-columns:5.6em 1fr;gap:10px;padding:7px 0;border-top:1px dashed var(--line)}
+.tl li:first-child{border-top:0}
+.tl .t{font-family:var(--mono);font-size:.85rem;color:var(--muted);padding-top:1px}
+
+/* list items */
+.items{display:flex;flex-direction:column}
+.item{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.item .nm{min-width:0}
+.item .nm small{display:block;color:var(--muted);font-size:.78rem}
+.item .mac{font-family:var(--mono);font-size:.8rem;color:var(--muted);text-align:right;white-space:nowrap}
+.item.planned .nm b{font-weight:500;color:var(--muted)}
+.x{border:0;background:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:2px 6px}
+input[type=checkbox]{width:20px;height:20px;accent-color:var(--good)}
+
+/* exercises */
+.ex{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.ex:first-of-type{border-top:0;padding-top:0}
+.sets{display:flex;flex-wrap:wrap;gap:8px}
+.set{display:flex;align-items:center;gap:4px;background:var(--sunk);border-radius:8px;padding:4px 6px}
+.set .i{font-family:var(--mono);font-size:.75rem;color:var(--muted);width:1.2em}
+.set input{width:4.2em;background:var(--surface)}
+details summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:.9rem}
+details ul{margin:6px 0 0;padding-left:1.1em}
+.timer{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:8;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.timer .num{font-size:1.4rem}
+.timer button{background:transparent;border:1px solid var(--bg);color:var(--bg);border-radius:6px;padding:3px 8px;cursor:pointer}
+@media (max-width:720px){.timer{bottom:calc(80px + env(safe-area-inset-bottom,0px))}}
+
+/* tables */
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+tr.banned td{color:var(--muted);text-decoration:line-through}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.stat .v{font-family:var(--display);font-size:1.9rem;font-weight:700;line-height:1.05}
+.prog{height:10px;background:var(--sunk);border-radius:5px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent)}
+.days14{display:grid;grid-template-columns:repeat(14,1fr);gap:3px}
+.days14 span{height:26px;border-radius:4px;background:var(--sunk);font-family:var(--mono);font-size:.62rem;display:grid;place-items:center;color:var(--muted)}
+.days14 span.has{background:var(--accent);color:var(--accent-ink)}
+.days14 span.today{outline:2px solid var(--ink)}
+.chart svg{width:100%;height:auto;display:block}
+.guide p+p{margin-top:8px}
+.guide ul{margin:0;padding-left:1.15em;display:flex;flex-direction:column;gap:5px}
+.lib{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr))}
+.lib .card{gap:6px}
+.lib .card ul{font-size:.92rem}
+.toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;z-index:20;font-size:.9rem}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
+</style>
+<style id="dbcss"></style>
+<style>.pv{max-width:560px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:16px}.pv h2{margin:0}.pv label{font-size:.85rem;color:var(--muted)}</style>
+</head>
+<body>
+<main class="pv">
+  <h2>Diet breaks</h2>
+  <label>Pretend today is <input type="date" id="today" value="2026-10-25"></label>
+  <div id="host"></div>
+  <p class="db-small">Preview with no logged data. Buttons change a local state object, the way the app will save it to <code>prefs/main.dietBreak</code>.</p>
+</main>
+<script src="diet-break.js"></script>
+<script>
+  document.getElementById("dbcss").textContent = DietBreak.css;
+  let state = {};
+  const host = document.getElementById("host"), day = document.getElementById("today");
+  const render = () => { host.innerHTML = DietBreak.html({}, state, { today: day.value }); };
+  day.addEventListener("change", render);
+  host.addEventListener("click", e => {
+    const b = e.target.closest("[data-db-action]");
+    if (!b) return;
+    state = DietBreak.apply(state, b.dataset.dbAction, day.value);
+    render();
+  });
+  render();
+</script>
+</body>
+</html>
