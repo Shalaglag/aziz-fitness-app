@@ -49,3 +49,7 @@ Aziz can edit any value and toggle `banned` on the page before saving, so the sa
 - Adonis (192 / 22 / 11.4 / 6.2) and Gatorade 1 L (~240 / 0 / ~60 / 0) are fixed items and are not part of this record.
 - The fixed snack menu (plan section 7) still applies when no snack items were read for a date.
 - Skip any item with `banned: true`, and warn when picking an item with `needsCheck: true`.
+
+## Menus imported in the app (`menus/{date}`)
+
+The app's "Plan my day from a menu" card (`modules/menu-import/`) saves any uploaded menu (PDF, screenshots or pasted text, from any restaurant) in this same shape in the app's synced `menus` collection, one document per date. It adds three fields: `source` (`pdf`, `pdf-image`, `image` or `text`) on the record, and `confirmed` (Aziz tapped OK, so the numbers match the menu) and `skip` (left out by hand) on each item.

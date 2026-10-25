@@ -28,7 +28,7 @@ const DataIO = (() => {
   // Collections the shell and its mounted modules keep. Unknown collections found in a snapshot are backed up too.
   const COLLECTIONS = {
     days: "Days (food, water, steps, sleep)", weights: "Weigh-ins", workouts: "Workouts", prefs: "Settings",
-    meals: "Saved meals", barcodes: "Scanned foods", photos: "Progress photo records",
+    meals: "Saved meals", barcodes: "Scanned foods", photos: "Progress photo records", menus: "Imported menus",
     lb_workouts: "Full-logger workouts", lb_templates: "Workout templates", lb_exercises: "Custom exercises",
     lb_measures: "Body measurements", lb_meta: "Logger settings", cardio: "Cardio sessions",
   };
