@@ -1,0 +1,101 @@
+<title>Progress Photos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Preview of the Progress photos module on the Progress tab, using the Aziz Cut Tracker's tokens. */
+:root{
+  --bg:#EDF0EE; --surface:#FFFFFF; --sunk:#E3E8E5; --line:#CBD3CF;
+  --ink:#15201C; --muted:#5A6862; --accent:#1F56C9; --accent-ink:#FFFFFF;
+  --good:#1E7A4C; --warn:#B4610B; --bad:#C8372D;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1513; --surface:#18201D; --sunk:#111816; --line:#2C3833;
+  --ink:#E6ECE9; --muted:#93A29B; --accent:#6E9BFF; --accent-ink:#0B1020;
+  --good:#4CC488; --warn:#F0A04B; --bad:#F07468; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1513; --surface:#18201D; --sunk:#111816; --line:#2C3833;
+  --ink:#E6ECE9; --muted:#93A29B; --accent:#6E9BFF; --accent-ink:#0B1020;
+  --good:#4CC488; --warn:#F0A04B; --bad:#F07468; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);margin:0}
+body{color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45}
+.wrap{max-width:640px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+h1{font-family:var(--display);font-size:2rem;margin:0;line-height:1.1}
+.lede{margin:0;color:var(--muted)}
+.mode{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;gap:2px;align-self:flex-start;background:var(--surface)}
+.mode button{border:0;background:transparent;color:var(--ink);border-radius:999px;padding:6px 14px;font:inherit;font-weight:600;cursor:pointer}
+.mode button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+</style>
+
+<div class="wrap">
+  <h1>Progress photos</h1>
+  <p class="lede">Preview of the card going onto the app's Progress tab. Demo shows six made-up weeks so you can try the slider, line-up and timelapse. “Try mine” keeps your photos in this browser only.</p>
+  <div class="mode" role="group" aria-label="Data">
+    <button type="button" data-mode="demo" aria-pressed="true">Demo</button>
+    <button type="button" data-mode="mine" aria-pressed="false">Try mine</button>
+  </div>
+  <div id="pp"></div>
+</div>
+
+<script src="progress-photos.js"></script>
+<script>
+(function () {
+  const START = "2026-10-25", DAY = 864e5;
+  const add = n => new Date(Date.parse(START) + n * DAY).toISOString().slice(0, 10);
+
+  // a plain figure on a wall; it slims a little each week and sits slightly off each time, like real phone photos
+  function figure(pose, week, dx, dy, k) {
+    const c = document.createElement("canvas"); c.width = 600; c.height = 800;
+    const g = c.getContext("2d");
+    const bg = g.createLinearGradient(0, 0, 0, 800); bg.addColorStop(0, "#d9d4cc"); bg.addColorStop(1, "#b9b2a6");
+    g.fillStyle = bg; g.fillRect(0, 0, 600, 800);
+    g.fillStyle = "#9c9488"; g.fillRect(0, 640, 600, 160);
+    g.save(); g.translate(300 + dx, 400 + dy); g.scale(k, k); g.translate(-300, -400);
+    const slim = 1 - week * 0.035, side = pose === "side";
+    const tw = (side ? 70 : 120) * slim, ww = (side ? 82 : 112) * slim, sh = side ? 60 : 150;
+    g.fillStyle = "#6b4f3f";
+    g.beginPath(); g.arc(300, 150, 42, 0, Math.PI * 2); g.fill();
+    g.beginPath();
+    g.moveTo(300 - sh, 220); g.lineTo(300 + sh, 220);
+    g.quadraticCurveTo(300 + tw + 10, 330, 300 + ww, 430);
+    g.lineTo(300 + (side ? 55 : 95), 470); g.lineTo(300 - (side ? 55 : 95), 470);
+    g.lineTo(300 - ww, 430);
+    g.quadraticCurveTo(300 - tw - 10, 330, 300 - sh, 220); g.fill();
+    g.fillRect(300 - (side ? 40 : 85), 470, side ? 80 : 75, 200);
+    if (!side) g.fillRect(310, 470, 75, 200);
+    if (!side) { g.fillRect(300 - sh - 28, 225, 30, 210); g.fillRect(300 + sh - 2, 225, 30, 210); }
+    else g.fillRect(285, 230, 32, 200);
+    g.fillStyle = "#2c3e50"; g.fillRect(300 - (side ? 58 : 98), 455, side ? 116 : 196, 70);
+    g.restore();
+    g.fillStyle = "rgba(0,0,0,.45)"; g.font = "600 22px system-ui"; g.fillText("DEMO · week " + (week + 1), 18, 34);
+    return c.toDataURL("image/jpeg", 0.8);
+  }
+
+  function demo() {
+    const docs = {}, weights = [], offs = [[0, 0, 1], [14, -8, 1.04], [-10, 6, .97], [8, 12, 1.06], [-16, -4, .95], [6, -10, 1.02]];
+    const kg = [91.9, 91.0, 90.4, 89.8, 89.1, 88.6], waist = [104, 103, 102, 101, 100, 98.5];
+    offs.forEach(([dx, dy, k], w) => {
+      const date = add(w * 7);
+      docs[date] = { date, front: figure("front", w, dx, dy, k), side: figure("side", w, dx, dy, k), back: figure("back", w, dx, dy, k), waist: waist[w] };
+      if (w) docs[date].align = { front: { x: -dx / 6, y: -dy / 8, s: Math.round(100 / k) / 100 } };
+      weights.push({ date, kg: kg[w] });
+    });
+    const mem = { list: async () => Object.values(docs), put: async (c, id, d) => { docs[id] = d; }, remove: async (c, id) => { delete docs[id]; } };
+    return { storage: mem, weights: { list: async () => weights }, today: add(35) };
+  }
+
+  let inst = null;
+  function show(mode) {
+    if (inst) inst.destroy();
+    document.querySelectorAll("[data-mode]").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === mode));
+    inst = ProgressPhotos.mount(document.getElementById("pp"), mode === "demo" ? demo() : {});
+  }
+  document.querySelector(".mode").addEventListener("click", e => { const b = e.target.closest("[data-mode]"); if (b) show(b.dataset.mode); });
+  show("demo");
+})();
+</script>
