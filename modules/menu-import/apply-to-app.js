@@ -53,6 +53,8 @@ swap('initStore();\n</script>', `try{
   })().catch(()=>{ pdfP=null; return null; }));
   const menuTargets=d=>{
     const k=typeof kcalTarget==="function"?kcalTarget(d):null;
+    // The shell's resolved targets (APPT, v16+) when present; otherwise resolve from the profile here.
+    if(typeof APPT!=="undefined" && APPT && window.AppTargets) return k?AppTargets.forKcal(APPT,k):APPT;
     if(window.AppTargets && AppTargets.resolve){
       const E=NutreezePicker.TARGETS;
       const t=AppTargets.resolve((S.docs.prefs.main||{}).profile,{kcal:E.kcal,proteinMin:E.proteinMin,proteinMax:E.proteinMax,fatLo:E.fat[0],fatHi:E.fat[1],carbsLo:E.carbs[0],carbsHi:E.carbs[1]});

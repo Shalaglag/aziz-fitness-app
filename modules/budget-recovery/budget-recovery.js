@@ -9,6 +9,7 @@
  *   BudgetRecovery.apply(plan, choice, at)      -> [{date, patch}] to merge into days/{date}
  *                                                   (choice: "spread" | "walk" | "skip")
  *   BudgetRecovery.targetFor(date, days)        -> that day's kcal target after any recovery cuts
+ *   BudgetRecovery.setTargets(targets)          -> use an AppTargets object (kcal, kcalLo, proteinMin); null = plan numbers
  *   BudgetRecovery.cardHtml(plan)               -> "Went over today?" card ("" when nothing to do);
  *                                                   buttons carry data-recover="spread|walk|skip"
  *                                                   and data-recover-date="<source date>"
@@ -25,9 +26,19 @@
  *   Cuts come from carbs or fat; protein stays at 160 g+.
  */
 const BudgetRecovery = (() => {
-  const TARGET = 2000;
-  const FLOOR = 1850;          // lowest a recovery day may go
-  const MAX_CUT = TARGET - FLOOR;
+  // Plan numbers; setTargets(AppTargets object) replaces them: kcal -> TARGET, kcalLo -> FLOOR, proteinMin -> note.
+  let TARGET = 2000;
+  let FLOOR = 1850;            // lowest a recovery day may go
+  let MAX_CUT = TARGET - FLOOR;
+  let PRO = 160;
+  function setTargets(t) {
+    t = t || {};
+    const n = v => { const x = typeof v === "string" && v.trim() ? +v : v; return typeof x === "number" && isFinite(x) && x > 0 ? x : null; };
+    TARGET = n(t.kcal) || 2000;
+    FLOOR = n(t.kcalLo) && n(t.kcalLo) < TARGET ? n(t.kcalLo) : TARGET - 150;
+    MAX_CUT = TARGET - FLOOR;
+    PRO = n(t.proteinMin) || 160;
+  }
   const DAYS = 3;
   const IGNORE = 100;          // within this, the day is on target
   const WALK = { minutes: 30, kcal: [150, 200], credit: 175 };
@@ -89,7 +100,7 @@ const BudgetRecovery = (() => {
     const base = { date, eaten, target, surplus, options: null, recommended: null };
     if (doc && doc.recovery && doc.recovery.choice) return { ...base, reason: "handled", choice: doc.recovery.choice, text: handledText(doc.recovery) };
     if (surplus <= IGNORE) return { ...base, reason: surplus > 0 ? "small" : "under", text: "" };
-    if (isFriday(date)) return { ...base, reason: "friday", text: "Friday is a free day. Nothing to make up, and Saturday stays at 2,000." };
+    if (isFriday(date)) return { ...base, reason: "friday", text: `Friday is a free day. Nothing to make up, and Saturday stays at ${fmt(TARGET)}.` };
 
     const spread = spreadFrom(date, surplus, days, date);
     spread.letGo = Math.max(0, surplus - spread.covered);
@@ -130,7 +141,7 @@ const BudgetRecovery = (() => {
       `<button class="br-btn" data-recover="${key}" data-recover-date="${p.date}">${key === "walk" ? "I'll walk" : "Spread it"}</button></div>`;
     return `<div class="card br-card"><h3>Went over today?</h3><p class="br-sum">${esc(p.text)}</p>` +
       opt("walk", "Walk it off", walkLine) + opt("spread", "Spread it", spreadLine) +
-      `<p class="br-note">Cuts come from carbs or fat. Protein stays at 160 g+. No day goes below ${fmt(FLOOR)}, and Fridays are never touched.</p>` +
+      `<p class="br-note">Cuts come from carbs or fat. Protein stays at ${PRO} g+. No day goes below ${fmt(FLOOR)}, and Fridays are never touched.</p>` +
       `<button class="br-btn ghost" data-recover="skip" data-recover-date="${p.date}">Let it go</button></div>`;
   }
 
@@ -146,7 +157,7 @@ const BudgetRecovery = (() => {
 .br-btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
 `;
 
-  return { css, TARGET, FLOOR, WALK, eatenKcal, targetFor, plan, apply, cardHtml };
+  return { css, get TARGET() { return TARGET; }, get FLOOR() { return FLOOR; }, WALK, setTargets, eatenKcal, targetFor, plan, apply, cardHtml };
 })();
 
 if (typeof module !== "undefined") module.exports = { BudgetRecovery };

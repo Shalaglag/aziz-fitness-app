@@ -6,13 +6,26 @@
  *   WeeklyReport.build(docs, {week, today})  -> report object (numbers + verdict lines)
  *   WeeklyReport.html(docs, {week, today})   -> HTML string for the Progress tab
  *   WeeklyReport.summary(docs, {week, today})-> plain-text summary to paste into a chat
- *   WeeklyReport.weekOf(isoDate)             -> week index (0 = Oct 25–31, 2026)
+ *   WeeklyReport.weekOf(isoDate)             -> week index (0 = the first 7 days from the start date)
+ *   WeeklyReport.setTargets(targets)         -> use an AppTargets object (+ optional startKg); opts.targets on build/html/summary does the same
  * Week navigation buttons carry data-wr-week="<n>"; the host handles the click and re-renders.
  * Calories and protein count only food marked eaten (planned food is not counted).
  */
 const WeeklyReport = (() => {
-  const START = "2026-10-25", START_KG = 91.9, GOAL = 80;
-  const KCAL = 2000, KCAL_LO = 1850, KCAL_HI = 2150, PRO = 160, REVIEW = "2026-11-07";
+  // Plan numbers; setTargets / opts.targets (an AppTargets object, plus optional startKg) replace them.
+  const PLAN = { START: "2026-10-25", START_KG: 91.9, GOAL: 80, KCAL: 2000, KCAL_LO: 1850, KCAL_HI: 2150, PRO: 160, PRO_MAX: 170, REVIEW: "2026-11-07" };
+  let START, START_KG, GOAL, KCAL, KCAL_LO, KCAL_HI, PRO, PRO_MAX, REVIEW;
+  function setTargets(t) {
+    t = t || {};
+    const n = v => typeof v === "number" && isFinite(v) && v > 0 ? v : typeof v === "string" && v.trim() && isFinite(+v) && +v > 0 ? +v : null;
+    const d = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : null;
+    START = d(t.start) || PLAN.START; START_KG = n(t.startKg) || PLAN.START_KG; GOAL = n(t.goalKg) || PLAN.GOAL;
+    KCAL = n(t.kcal) || PLAN.KCAL;
+    const lo = n(t.kcalLo), hi = n(t.kcalHi);
+    KCAL_LO = lo && hi ? lo : n(t.kcal) ? KCAL - 150 : PLAN.KCAL_LO; KCAL_HI = lo && hi ? hi : n(t.kcal) ? KCAL + 150 : PLAN.KCAL_HI;
+    PRO = n(t.proteinMin) || PLAN.PRO; PRO_MAX = n(t.proteinMax) || (n(t.proteinMin) ? PRO + 10 : PLAN.PRO_MAX);
+    REVIEW = d(t.reviewDate) || (d(t.start) ? add(START, 13) : PLAN.REVIEW);
+  }
   // [app exercise name, short label, unit, baseline weight, baseline reps]
   const LIFTS = [
     ["Bench Press (Barbell)", "Bench Press", "kg", 90, 8],
@@ -36,6 +49,9 @@ const WeeklyReport = (() => {
   const short = s => { const d = new Date(ms(s)); return MON[d.getUTCMonth()] + " " + d.getUTCDate(); };
   const longDate = t => { const d = new Date(t); return MON[d.getUTCMonth()] + " " + d.getUTCDate() + ", " + d.getUTCFullYear(); };
   const weekOf = s => Math.floor((ms(s) - ms(START)) / (7 * DAY));
+  const kc = n => Math.round(n).toLocaleString("en-US");
+  const reviewLabel = () => new Date(ms(REVIEW)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  setTargets(null);
   const localToday = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
   const num = v => { const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v; return typeof n === "number" && isFinite(n) ? n : null; };
   const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
@@ -116,6 +132,7 @@ const WeeklyReport = (() => {
   }
 
   function build(docs, opts = {}) {
+    if (opts.targets) setTargets(opts.targets);
     docs = docs || {};
     const today = opts.today || localToday();
     const lastW = lastWeek(docs, today);
@@ -169,18 +186,18 @@ const WeeklyReport = (() => {
       if (s.tooLow) t += " " + s.tooLow + " under 1,700, which the plan says to avoid.";
       v.push([s.onTarget >= s.targetDays * 0.7 ? "good" : "warn", "Calories", t]);
     } else v.push(["none", "Calories", "No eaten food ticked this week yet."]);
-    if (s.proDays) v.push([s.proHit >= s.proDays * 0.7 ? "good" : "warn", "Protein", "Hit 160 g on " + s.proHit + " of " + s.proDays + " logged days (average " + fint(s.proAvg) + " g)."]);
+    if (s.proDays) v.push([s.proHit >= s.proDays * 0.7 ? "good" : "warn", "Protein", "Hit " + PRO + " g on " + s.proHit + " of " + s.proDays + " logged days (average " + fint(s.proAvg) + " g)."]);
     const two = lifts.filter(l => l.status.level === 3), one = lifts.filter(l => l.status.level === 2), logged = lifts.filter(l => l.status.level > 0);
     if (two.length) v.push(["bad", "Strength", two.map(l => l.label).join(", ") + " dropped 2 sessions in a row. Check sleep, pre-workout food and volume before touching calories."]);
     else if (one.length) v.push(["warn", "Strength", one.map(l => l.label).join(", ") + " dipped last session. One dip is normal on a cut; act only if it drops again."]);
     else if (logged.length) v.push(["good", "Strength", "All " + logged.length + " logged main lifts are holding or up."]);
-    if (end < REVIEW) v.push(["neutral", "Plan", "Keep 2,000 kcal. The calorie review comes after Nov 7, based on the 2-week average."]);
+    if (end < REVIEW) v.push(["neutral", "Plan", "Keep " + kc(KCAL) + " kcal. The calorie review comes after " + reviewLabel() + ", based on the 2-week average."]);
     else if (end === REVIEW) {
       const a = weeks[0].avg, b = weeks[1] && weeks[1].avg;
       let t = "Log both weeks to get the review.";
       if (a != null && b != null) {
         const p = (b - a) / a * 100;
-        t = "Week 2 average is " + sgn(p, 2) + "% vs week 1, " + (-p > 1 ? "faster than target. Keep 2,000 kcal; don't go lower." : -p >= 0.5 ? "inside target. Keep 2,000 kcal." : "slower than target. Worth a calorie review.");
+        t = "Week 2 average is " + sgn(p, 2) + "% vs week 1, " + (-p > 1 ? "faster than target. Keep " + kc(KCAL) + " kcal; don't go lower." : -p >= 0.5 ? "inside target. Keep " + kc(KCAL) + " kcal." : "slower than target. Worth a calorie review.");
       }
       v.push(["neutral", "Review", "14-day tracking ends this week. " + t]);
     }
@@ -228,7 +245,7 @@ const WeeklyReport = (() => {
     g += '<rect x="' + L + '" y="' + y(KCAL_HI) + '" width="' + (W - L - R) + '" height="' + (y(KCAL_LO) - y(KCAL_HI)) + '" fill="var(--sunk)"/>';
     for (let v = 0; v <= hi; v += 500) g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--line)"/><text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + fint(v) + '</text>';
     g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(KCAL) + '" y2="' + y(KCAL) + '" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="5 4"/>';
-    g += '<text class="lab" x="' + (W - R - 4) + '" y="' + (y(KCAL_HI) - 5) + '" text-anchor="end">Target 2,000</text>';
+    g += '<text class="lab" x="' + (W - R - 4) + '" y="' + (y(KCAL_HI) - 5) + '" text-anchor="end">Target ' + kc(KCAL) + '</text>';
     s.rows.forEach((r, i) => {
       g += '<text x="' + x(i) + '" y="' + (H - 10) + '" text-anchor="middle">' + WD[wday(r.date)] + (r.type === "free" ? "*" : "") + '</text>';
       if (r.kcal == null) { g += '<text x="' + x(i) + '" y="' + (y(0) - 6) + '" text-anchor="middle">—</text>'; return; }
@@ -236,7 +253,7 @@ const WeeklyReport = (() => {
       const fill = r.type === "free" ? "url(#wr-hatch)" : r.kcal > KCAL_HI || r.kcal < 1700 ? "var(--warn)" : "var(--accent)";
       g += '<path d="M' + x0 + ' ' + y(0) + 'V' + (top + rx) + 'Q' + x0 + ' ' + top + ' ' + (x0 + rx) + ' ' + top + 'H' + (x1 - rx) + 'Q' + x1 + ' ' + top + ' ' + x1 + ' ' + (top + rx) + 'V' + y(0) + 'Z" fill="' + fill + '"' + (r.type === "free" ? ' stroke="var(--muted)"' : "") + '><title>' + WD[wday(r.date)] + " " + short(r.date) + ": " + fint(r.kcal) + " kcal" + (r.protein != null ? ", " + fint(r.protein) + " g protein" : "") + (r.est ? " (includes estimates)" : "") + '</title></path>';
     });
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Calories eaten each day against the 2,000 kcal target">' + g + '</svg>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Calories eaten each day against the ' + kc(KCAL) + ' kcal target">' + g + '</svg>';
   }
 
   function html(docs, opts) {
@@ -259,7 +276,7 @@ const WeeklyReport = (() => {
     const food = '<div class="wr-stats">' +
       stat("Average eaten", s.kcalAvg != null ? fint(s.kcalAvg) + ' <small>kcal</small>' : "—", s.kcalDays + " of 7 days logged") +
       stat("On target", s.targetDays ? s.onTarget + '<small> / ' + s.targetDays + '</small>' : "—", "1,850–2,150, free day excluded") +
-      stat("Protein ≥ 160 g", s.proDays ? s.proHit + '<small> / ' + s.proDays + '</small>' : "—", s.proAvg != null ? "average " + fint(s.proAvg) + " g" : "nothing logged") +
+      stat("Protein ≥ " + PRO + " g", s.proDays ? s.proHit + '<small> / ' + s.proDays + '</small>' : "—", s.proAvg != null ? "average " + fint(s.proAvg) + " g" : "nothing logged") +
       stat("Free day", s.freeKcal.length ? s.freeKcal.map(fint).join(", ") + ' <small>kcal</small>' : "—", "Friday, usually under maintenance") + '</div>' +
       '<div class="wr-chart">' + kcalSvg(s) + '</div>' +
       '<div class="wr-pro">' + s.rows.map(r => '<div class="' + (r.protein == null ? "" : r.protein >= PRO ? "ok" : "low") + '"><span>' + WD[wday(r.date)] + '</span><b class="num">' + (r.protein == null ? "—" : fint(r.protein)) + '</b></div>').join("") + '</div>' +
@@ -268,13 +285,13 @@ const WeeklyReport = (() => {
     const lifts = '<div class="tablewrap"><table><thead><tr><th>Lift</th><th>Baseline</th><th>Best this week</th><th class="n">vs baseline</th><th>Trend</th></tr></thead><tbody>' +
       R.lifts.map(l => '<tr><td>' + esc(l.label) + '</td><td class="num">' + set(l, l.base) + '</td><td class="num">' + (l.best ? set(l, l.best) + ' <span class="muted">' + short(l.best.date) + '</span>' : '<span class="muted">—</span>') + '</td><td class="n">' + (l.vsBase == null ? "—" : sgn(l.vsBase) + "%") + '</td><td>' + pill(l.status.cls, l.status.label) + '</td></tr>').join("") +
       '</tbody></table></div><p class="wr-small muted">Best set compared by estimated 1-rep max. A drop means more than 1% below the session before.</p>';
-    const hist = '<div class="tablewrap"><table><thead><tr><th>Week</th><th class="n">Avg weight</th><th class="n">Change</th><th class="n">Avg kcal</th><th class="n">On target</th><th class="n">Protein ≥160</th></tr></thead><tbody>' +
+    const hist = '<div class="tablewrap"><table><thead><tr><th>Week</th><th class="n">Avg weight</th><th class="n">Change</th><th class="n">Avg kcal</th><th class="n">On target</th><th class="n">Protein ≥' + PRO + '</th></tr></thead><tbody>' +
       R.weeks.map(w => '<tr><td><button class="wr-link" data-wr-week="' + w.w + '">Week ' + (w.w + 1) + '</button> <span class="muted">' + short(w.dates[0]) + '</span></td><td class="n">' + (w.avg != null ? f1(w.avg) : "—") + '</td><td class="n">' + (w.rate ? sgn(w.rate.ch) + " kg" : "—") + '</td><td class="n">' + (w.kcalAvg != null ? fint(w.kcalAvg) : "—") + '</td><td class="n">' + (w.targetDays ? w.onTarget + "/" + w.targetDays : "—") + '</td><td class="n">' + (w.proDays ? w.proHit + "/" + w.proDays : "—") + '</td></tr>').join("") +
       '</tbody></table></div>';
     return '<div class="wr">' +
       '<div class="card hero"><div class="spread"><h2>Weekly report</h2>' + nav + '</div>' + verdict + '<div class="row"><button class="btn ghost small" data-wr-copy>Copy summary</button></div></div>' +
       '<section class="grid"><div class="card"><h3>Weight</h3>' + weight + '</div><div class="card"><h3>Road to 80 kg</h3>' + roadHtml + '</div></section>' +
-      '<div class="card"><div class="spread"><h3>Calories and protein</h3><span class="muted wr-small">Target 2,000 kcal and 160–170 g protein</span></div>' + food + '</div>' +
+      '<div class="card"><div class="spread"><h3>Calories and protein</h3><span class="muted wr-small">Target ' + kc(KCAL) + ' kcal and ' + PRO + '–' + PRO_MAX + ' g protein</span></div>' + food + '</div>' +
       '<div class="card"><h3>Main lifts</h3>' + lifts + '</div>' +
       '<div class="card"><h3>All weeks</h3>' + hist + '</div>' +
       '</div>';
@@ -313,5 +330,5 @@ const WeeklyReport = (() => {
     ".wr-link{border:0;background:none;padding:0;color:var(--accent);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}",
   ].join("\n");
 
-  return { css, build, html, summary, weekOf, START, LIFTS };
+  return { css, build, html, summary, weekOf, setTargets, get START() { return START; }, LIFTS };
 })();

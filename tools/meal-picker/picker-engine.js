@@ -13,7 +13,20 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const TARGETS = { kcal: 2000, proteinMin: 160, proteinMax: 170, fat: [55, 70], carbs: [180, 220] };
+  const PLAN = { kcal: 2000, proteinMin: 160, proteinMax: 170, fat: [55, 70], carbs: [180, 220] };
+  const TARGETS = JSON.parse(JSON.stringify(PLAN));
+  // setTargets(AppTargets object) updates TARGETS in place (same reference); null restores the plan numbers.
+  function setTargets(t) {
+    t = t || {};
+    const n = v => { const x = typeof v === 'string' && v.trim() ? +v : v; return typeof x === 'number' && isFinite(x) && x > 0 ? x : null; };
+    const pair = (lo, hi, d) => n(lo) != null && n(hi) != null && n(lo) <= n(hi) ? [n(lo), n(hi)] : d.slice();
+    TARGETS.kcal = n(t.kcal) || PLAN.kcal;
+    TARGETS.proteinMin = n(t.proteinMin) || PLAN.proteinMin;
+    TARGETS.proteinMax = n(t.proteinMax) || (n(t.proteinMin) ? TARGETS.proteinMin + 10 : PLAN.proteinMax);
+    TARGETS.fat = pair(t.fatLo, t.fatHi, PLAN.fat);
+    TARGETS.carbs = pair(t.carbsLo, t.carbsHi, PLAN.carbs);
+    return TARGETS;
+  }
 
   // Fixed "Sweet" tab snack menu. Banned snacks are kept so they can be shown as removed.
   const SNACKS = [
@@ -327,5 +340,5 @@
     return items;
   }
 
-  return { toFoodItems, TARGETS, targetsFrom, snackCat, SNACKS, ADONIS, GATORADE, SATURDAY_EGGS, NEVER, bannedReason, likeOf, parseMenu, pick, formatPlan, slotLabels };
+  return { toFoodItems, TARGETS, setTargets, targetsFrom, snackCat, SNACKS, ADONIS, GATORADE, SATURDAY_EGGS, NEVER, bannedReason, likeOf, parseMenu, pick, formatPlan, slotLabels };
 });

@@ -12,6 +12,7 @@
  * so an unfinished today never breaks it.
  * API:
  *   DailyScore.css                                -> string, inject once (uses the app's tokens)
+ * opts.targets (optional, every call): an AppTargets object or date => targets; replaces 160 g / 1,850–2,150.
  *   DailyScore.score(docs, date, {session})       -> {date, score, good, logged, parts:[{key,label,got,max,ok,detail}]}
  *   DailyScore.streak(docs, today, {sessionFor})  -> {current, best, todayGood, last7:[{date,score,good}]}
  *   DailyScore.html(docs, date, {today, sessionFor}) -> HTML string for a card on the Today tab
@@ -34,6 +35,12 @@ const DailyScore = (() => {
   const clamp01 = x => Math.max(0, Math.min(1, x));
   const ramp = (v, lo, hi) => clamp01((v - lo) / (hi - lo));
   const fint = n => Math.round(n).toLocaleString("en-US");
+  // opts.targets: an AppTargets object, or date => targets (diet-break days differ). Plan numbers otherwise.
+  function limits(opts, date) {
+    const t = typeof opts.targets === "function" ? opts.targets(date) : opts.targets;
+    const pro = t && num(t.proteinMin), lo = t && num(t.kcalLo), hi = t && num(t.kcalHi);
+    return { pro: pro || PRO, proFloor: pro ? Math.round(pro * 0.75) : PRO_FLOOR, lo: lo && hi ? lo : KCAL_LO, hi: lo && hi ? hi : KCAL_HI };
+  }
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   function score(docs, date, opts = {}) {
@@ -51,13 +58,14 @@ const DailyScore = (() => {
     const tread = !!(day.treadmill || wk.treadmill);
     const supps = SUPPS.filter(k => day.supps && day.supps[k]).length;
     const sleep = num(day.sleep);
+    const L = limits(opts, date);
     const parts = [];
     const part = (key, label, max, frac, detail) => parts.push({ key, label, max, got: Math.round(max * frac * 10) / 10, ok: frac >= 1, detail });
 
-    part("protein", "Protein", 25, food.length ? ramp(p, PRO_FLOOR, PRO) : 0, food.length ? Math.round(p) + " / " + PRO + " g" : "No food ticked as eaten");
+    part("protein", "Protein", 25, food.length ? ramp(p, L.proFloor, L.pro) : 0, food.length ? Math.round(p) + " / " + L.pro + " g" : "No food ticked as eaten");
     if (!friday) {
-      const off = kcal < KCAL_LO ? KCAL_LO - kcal : kcal > KCAL_HI ? kcal - KCAL_HI : 0;
-      part("kcal", "Calories", 20, food.length ? clamp01(1 - off / KCAL_SLACK) : 0, food.length ? fint(kcal) + " kcal (1,850–2,150)" : "No food ticked as eaten");
+      const off = kcal < L.lo ? L.lo - kcal : kcal > L.hi ? kcal - L.hi : 0;
+      part("kcal", "Calories", 20, food.length ? clamp01(1 - off / KCAL_SLACK) : 0, food.length ? fint(kcal) + " kcal (" + fint(L.lo) + "–" + fint(L.hi) + ")" : "No food ticked as eaten");
     }
     part("water", "Water", 15, clamp01(water / waterGoal), (water / 1000).toFixed(1) + " / " + waterGoal / 1000 + " L");
     if (training) part("training", "Training + treadmill", 15, (lifted ? 10 : 0) / 15 + (tread ? 5 : 0) / 15,
@@ -74,7 +82,7 @@ const DailyScore = (() => {
 
   function streak(docs, today, opts = {}) {
     today = today || localToday();
-    const sc = d => score(docs, d, { session: opts.sessionFor ? opts.sessionFor(d) : undefined });
+    const sc = d => score(docs, d, { session: opts.sessionFor ? opts.sessionFor(d) : undefined, targets: opts.targets });
     const todayGood = today >= START && sc(today).good;
     let current = 0;
     for (let d = todayGood ? today : add(today, -1); d >= START && sc(d).good; d = add(d, -1)) current++;
@@ -87,7 +95,7 @@ const DailyScore = (() => {
 
   function html(docs, date, opts = {}) {
     const today = opts.today || localToday();
-    const s = score(docs, date, { session: opts.sessionFor ? opts.sessionFor(date) : undefined });
+    const s = score(docs, date, { session: opts.sessionFor ? opts.sessionFor(date) : undefined, targets: opts.targets });
     const st = streak(docs, date < today ? date : today, opts);
     const tone = s.good ? "good" : s.score >= 60 ? "warn" : "bad";
     const ring = (() => {
