@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trend weight preview</title>
+<link rel="stylesheet" href="../theme/theme.css">
+<style>
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);padding:16px;max-width:560px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0;margin-bottom:16px}
+.spread{display:flex;justify-content:space-between;align-items:baseline;gap:8px}h2{margin:0;font-family:var(--display);font-size:1.2rem}
+.label{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.muted{color:var(--muted)}
+</style></head><body>
+<div id="out"></div>
+<script src="trend-tdee.js"></script>
+<script>
+// Example data: 22 days of a cut with noisy weigh-ins and unlogged Fridays. Wiring: inject css once, render into the Progress tab.
+const docs = { weights: {}, days: {} };
+for (let i = 0; i < 22; i++) {
+  const d = new Date(Date.UTC(2026, 9, 25 + i)).toISOString().slice(0, 10);
+  if (i % 3 !== 1) docs.weights[d] = { date: d, kg: +(91.9 - 0.1 * i + 0.5 * Math.sin(i * 2.3)).toFixed(1) };
+  if (new Date(d).getUTCDay() !== 5) docs.days[d] = { date: d, food: [{ kcal: 2000, eaten: true }] };
+}
+document.head.insertAdjacentHTML("beforeend", "<style>" + TrendTDEE.css + "</style>");
+document.getElementById("out").innerHTML =
+  TrendTDEE.html(docs, { today: "2026-11-16" }) + TrendTDEE.html(docs, { today: "2026-10-31" }) +
+  "<pre class='card' style='white-space:pre-wrap;font-size:.8rem'>" + TrendTDEE.summary(docs, { today: "2026-11-16" }) + "</pre>";
+</script></body></html>
