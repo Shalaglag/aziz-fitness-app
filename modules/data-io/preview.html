@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your data preview</title>
+<style>
+:root{--bg:#f6f5f2;--surface:#fff;--sunk:#efede8;--line:#dedad2;--ink:#1d1b18;--muted:#6b665d;--accent:#2f6f4f;--accent-ink:#fff;--good:#2f7d4a;--warn:#a5650a;--bad:#b3261e;--body:system-ui,sans-serif;--mono:ui-monospace,monospace;--r:14px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141311;--surface:#1d1c19;--sunk:#262420;--line:#34312b;--ink:#f1eee7;--muted:#a49e92;--accent:#7fc59d;--accent-ink:#0d1a12;--good:#7fc59d;--warn:#e0a84a;--bad:#f08a80}}
+:root[data-theme="dark"]{--bg:#141311;--surface:#1d1c19;--sunk:#262420;--line:#34312b;--ink:#f1eee7;--muted:#a49e92;--accent:#7fc59d;--accent-ink:#0d1a12;--good:#7fc59d;--warn:#e0a84a;--bad:#f08a80}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body)}
+main{max-width:640px;margin:0 auto;padding:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+pre{font-size:.75rem;white-space:pre-wrap;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <p style="color:var(--muted);font-size:.85rem">Preview of the "Your data" card with sample data held in memory. Try the sample files below, or pick your own export.</p>
+  <div id="host"></div>
+  <div class="card" style="margin-top:14px">
+    <b>Sample files to try</b>
+    <div class="dio-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+      <button class="dio-btn" data-s="mfp">MyFitnessPal</button>
+      <button class="dio-btn" data-s="hevy">Hevy</button>
+      <button class="dio-btn" data-s="weights">Scale (lb)</button>
+      <button class="dio-btn" data-s="measure">Measurements</button>
+    </div>
+    <pre id="store"></pre>
+  </div>
+</main>
+<script src="../strong-sync/strong-csv.js"></script>
+<script src="data-io.js"></script>
+<script>
+const PROGRAM = { "Push A": [["Bench Press (Barbell)", 60, "8-10", 3, "kg"], ["Incline DB Press", 50, "8-10", 3, "lb"]], "Pull A": [["Lat Pulldown, Wide", 55, "8-10", 3, "kg"]] };
+const ROTATION = ["Push A", "Pull A", "Rest"];
+const store = {
+  days: { "2026-10-24": { date: "2026-10-24", food: [{ id: "a", name: "Chicken bowl", slot: "Meal 1", kcal: 650, p: 55, c: 60, f: 18, eaten: true }], water: 1500, supps: {}, treadmill: false } },
+  weights: { "2026-10-24": { date: "2026-10-24", kg: 92.4 } }, workouts: {}, prefs: { main: {} }, lb_measures: {}, cardio: {},
+};
+const SAMPLES = {
+  mfp: "Date,Meal,Time,Calories,Fat (g),Saturated Fat,Carbohydrates (g),Protein (g),Sodium (mg)\n2026-10-22,Lunch,,700,20,5,60,60,900\n2026-10-22,Snacks,,192,6,2,11,22,100\n2026-10-23,Dinner,,650,18,4,55,58,800\n",
+  hevy: '"title","start_time","end_time","exercise_title","set_index","set_type","weight_kg","reps"\n"Push A","23 Oct 2026, 18:00","23 Oct 2026, 19:05","Bench Press (Barbell)",0,"warmup",40,10\n"Push A","23 Oct 2026, 18:00","23 Oct 2026, 19:05","Bench Press (Barbell)",1,"normal",62.5,8\n"Push A","23 Oct 2026, 18:00","23 Oct 2026, 19:05","Cable Fly",2,"normal",15,12\n',
+  weights: "Date,Weight (lb)\n2026-10-20 06:40,204\n2026-10-21 06:50,203.4\n2026-10-24 07:00,203\n",
+  measure: "Date,Waist (cm),Chest (cm),Body Fat %\n2026-10-20,97,106,24.5\n",
+};
+const show = () => { document.getElementById("store").textContent = JSON.stringify(store, null, 1).slice(0, 2500); };
+const card = DataIO.mount(document.getElementById("host"), {
+  snapshot: () => JSON.parse(JSON.stringify(store)),
+  put: async (c, id, doc) => { (store[c] = store[c] || {})[id] = doc; show(); },
+  remove: async (c, id) => { delete (store[c] || {})[id]; show(); },
+  program: PROGRAM, rotation: ROTATION, deps: { StrongCSV },
+  today: () => "2026-10-25", kcalTarget: () => 2000, proteinMin: 160,
+});
+document.querySelectorAll("[data-s]").forEach(b => b.onclick = () => {
+  const ta = document.querySelector("#dio-paste"); ta.closest("details").open = true; ta.value = SAMPLES[b.dataset.s];
+  document.querySelector('[data-dio="paste"]').click();
+  document.getElementById("host").scrollIntoView({ behavior: "smooth" });
+});
+show();
+</script>
+</body>
+</html>
