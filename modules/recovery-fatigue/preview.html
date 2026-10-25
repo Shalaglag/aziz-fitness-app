@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Recovery preview</title>
+<link rel="stylesheet" href="../theme/theme.css">
+<style>
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);padding:16px;max-width:560px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0;margin-bottom:16px}
+h3{font-family:var(--display);margin:18px 0 8px;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+</style></head><body>
+<div id="out"></div>
+<script src="recovery-fatigue.js"></script>
+<script>
+// Example data: two weeks where sleep slips, effort rises and two lifts drop. Tap the check-in buttons; they save in memory only.
+const TODAY = "2026-11-20", DAY = 864e5;
+const add = (s, n) => new Date(Date.parse(s + "T00:00:00Z") + n * DAY).toISOString().slice(0, 10);
+const docs = { days: {}, workouts: {}, prefs: { main: {} } };
+for (let i = 13; i >= 1; i--) {
+  const d = add(TODAY, -i), late = i <= 6;
+  docs.days[d] = { date: d, sleep: late ? [6, 6.5, 5.5, 7, 6, 6.5][i - 1] : [7.5, 8, 7, 8, 7.5, 7, 8][i - 7],
+    recovery: { quality: late ? 3 : 4, soreness: late ? 2 : 4, energy: late ? 2 : 4, ...(i === 2 || i === 5 ? { joints: { shoulder: 1 } } : {}) } };
+}
+docs.days[TODAY] = { date: TODAY, sleep: 6 };
+for (let i = 40; i >= 0; i -= 4) {
+  const d = add(TODAY, -i), k = i <= 4 ? 0.94 : 1;
+  docs.workouts[d] = { date: d, session: "Push A", effort: i <= 6 ? 9 : 7,
+    sets: { "Bench Press (Barbell)": [{ w: 80 * k, r: 8 }], "Squat (Barbell)": [{ w: 100 * k, r: 6 }], "Lat Pulldown": [{ w: 60, r: 10 }] } };
+}
+docs.workouts[add(TODAY, -2)] = { date: add(TODAY, -2), session: "Pull A", effort: 9, sets: {} };
+document.head.insertAdjacentHTML("beforeend", "<style>" + RecoveryFatigue.css + "</style>");
+const out = document.getElementById("out");
+function render() {
+  out.innerHTML = "<h3>Today tab</h3>" + RecoveryFatigue.checkinHtml(docs, { date: TODAY }) +
+    "<h3>Train tab (top)</h3>" + RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(docs, { today: TODAY })) +
+    "<h3>Progress tab</h3>" + RecoveryFatigue.html(docs, { today: TODAY }) +
+    "<h3>Summary for the coach</h3><pre class='card' style='white-space:pre-wrap;font-size:.8rem'>" + RecoveryFatigue.summary(docs, { today: TODAY }) + "</pre>";
+}
+out.addEventListener("click", e => { const w = RecoveryFatigue.handle(e.target, docs, TODAY); if (w) { docs[w.collection][w.id] = w.doc; render(); } });
+render();
+</script></body></html>
