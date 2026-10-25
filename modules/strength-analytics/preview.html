@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Strength analytics preview</title>
+<link rel="stylesheet" href="../theme/theme.css">
+<style>
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);padding:16px;max-width:620px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0;margin-bottom:16px}
+.spread{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}.muted{color:var(--muted)}
+.pill{font-size:.75rem;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:2px 8px}
+.pill.good{color:var(--good)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}.pill.info{color:var(--accent)}
+.note{font-size:.85rem;color:var(--muted);margin:0 0 12px}
+pre{white-space:pre-wrap;font-size:.8rem}
+</style></head><body>
+<p class="note">Example data only (made up to show the card): 6 weeks of the Push/Pull/Lower rotation, cut starting Oct 25, bench slipping, legs climbing.</p>
+<div id="out"></div>
+<script src="strength-analytics.js"></script>
+<script>
+// Wiring in the app: inject css once, then render into the Progress tab with the app's own docs.
+const PROGRAM = {
+  "Push A": [["Bench Press (Barbell)", 90, 8, 2, "kg"], ["Lateral Raise (Cable)", 7.5, 10, 3, "kg"], ["Incline DB Press", 65, 10, 2, "lb"], ["Cable Crossover", 16.5, 10, 3, "kg"], ["Triceps Extension (Cable)", 15, 10, 3, "kg"]],
+  "Pull A": [["Lat Pulldown, Wide", 80, 8, 3, "kg"], ["Seated Row (Cable)", 95, 8, 2, "kg"], ["DB Curl", 30, 10, 3, "lb"], ["Reverse Fly (Machine)", 61, 10, 1, "kg"]],
+  "Lower A": [["Leg Extension", 122, 8, 3, "kg"], ["Hack Squat", 70, 8, 2, "kg"], ["Lying Leg Curl", 63, 8, 2, "kg"], ["Standing Calf Raise", 60, 10, 3, "kg"]],
+  "Push B": [["Gundam (Chest Machine)", 60, 8, 3, "kg"], ["Seated DB Overhead Press", 60, 8, 3, "lb"], ["Side Delts", 7.5, 10, 3, "kg"], ["Triceps Rope", 15, 10, 2, "kg"]],
+  "Pull B": [["T-Bar Row", 50, 8, 3, "kg"], ["Seated Row (Cable)", 90, 8, 2, "kg"], ["Traps Machine", 80, 10, 2, "kg"], ["Cable Standing Biceps", 16, 10, 3, "kg"]],
+  "Lower B": [["Lying Leg Curl", 63, 8, 3, "kg"], ["Leg Extension", 122, 8, 2, "kg"], ["Hack Squat", 70, 8, 2, "kg"], ["Hip Abductor", 135, 20, 3, "kg"]]
+};
+const ROT = ["Push A", "Pull A", "Lower A", "Rest", "Push B", "Pull B", "Lower B", "Rest"];
+const drift = { "Bench Press (Barbell)": -0.004, "Hack Squat": 0.006, "Leg Extension": 0.004, "Lat Pulldown, Wide": 0.002 };
+const iso = t => new Date(t).toISOString().slice(0, 10);
+const START = "2026-10-25", T0 = Date.parse("2026-10-11T00:00:00Z"), TODAY = "2026-11-21";
+const docs = { workouts: {}, weights: {} };
+for (let i = 0, k = 0; iso(T0 + i * 864e5) <= TODAY; i++, k++) {
+  const d = iso(T0 + i * 864e5), s = ROT[k % ROT.length];
+  docs.weights[d] = { date: d, kg: +(93.2 - Math.max(0, i - 14) * 0.09 + 0.3 * Math.sin(i * 2.1)).toFixed(1) };
+  if (s === "Rest" || new Date(d).getUTCDay() === 5) continue;
+  const sets = {};
+  PROGRAM[s].forEach(([n, w, r, nSets, unit]) => {
+    const wk = Math.max(0, i - 14), w1 = Math.round(w * (1 + (drift[n] || 0.001) * wk) * 2) / 2;
+    sets[n] = Array.from({ length: nSets }, (_, j) => ({ w: w1, r: Math.max(5, r - j + (i % 3 === 0 ? 1 : 0)), unit }));
+  });
+  docs.workouts[d] = { date: d, session: s, sets };
+}
+const opts = {
+  today: TODAY, cutStart: START, units: StrengthAnalytics.unitsFrom(PROGRAM),
+  mainLifts: ["Bench Press (Barbell)", "Incline DB Press", "Gundam (Chest Machine)", "Seated DB Overhead Press", "Lat Pulldown, Wide", "Seated Row (Cable)", "T-Bar Row", "Hack Squat", "Leg Extension", "Lying Leg Curl"]
+};
+document.head.insertAdjacentHTML("beforeend", "<style>" + StrengthAnalytics.css + "</style>");
+document.getElementById("out").innerHTML = StrengthAnalytics.html(docs, opts) +
+  "<details class='card'><summary class='label'>Plain-text summary (for the coach)</summary><pre>" + StrengthAnalytics.summary(docs, opts).replace(/</g, "&lt;") + "</pre></details>";
+</script></body></html>
