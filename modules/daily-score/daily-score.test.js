@@ -101,4 +101,16 @@ t("html renders and escapes", () => {
   assert.ok(typeof DS.css === "string" && DS.css.includes(".ds-ring"));
 });
 
+t("targets option moves the protein and calorie bands", () => {
+  const docs = { days: { "2026-10-26": fullDay() }, workouts: { "2026-10-26": lifted } };
+  const base = DS.score(docs, "2026-10-26");
+  const hi = DS.score(docs, "2026-10-26", { targets: { proteinMin: 200, kcalLo: 2650, kcalHi: 2950 } });
+  assert.ok(hi.score < base.score);
+  assert.ok(hi.parts.find(x => x.key === "protein").detail.includes("/ 200 g"));
+  assert.ok(hi.parts.find(x => x.key === "kcal").detail.includes("2,650–2,950"));
+  const fn = DS.score(docs, "2026-10-26", { targets: d => ({ proteinMin: 200, kcalLo: 2650, kcalHi: 2950 }) });
+  assert.strictEqual(fn.score, hi.score);
+  assert.strictEqual(DS.score(docs, "2026-10-26", { targets: {} }).score, base.score);
+});
+
 console.log(n + " tests passed");

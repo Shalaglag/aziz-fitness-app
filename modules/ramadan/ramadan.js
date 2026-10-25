@@ -6,7 +6,7 @@
  *   Ramadan.dayOf(isoDate, cfg)               -> 1..30 during Ramadan, else 0
  *   Ramadan.range(cfg)                        -> {start, end, eid} ISO dates
  *   Ramadan.times(isoDate, cfg)               -> {imsak, fajr, sunrise, dhuhr, asr, maghrib, isha} as "HH:MM" (24 h)
- *   Ramadan.plan(isoDate, {dayType, train, cfg}) -> the day's slots, water window and notes
+ *   Ramadan.plan(isoDate, {dayType, train, cfg, targets}) -> the day's slots, water window and notes
  *       dayType: "training" | "rest" | "saturday" | "friday" (same values the app's picker uses)
  *       train:   "after-iftar" (default) | "before-iftar"
  *   Ramadan.css                               -> string, inject once (uses the app's tokens)
@@ -148,9 +148,12 @@ const Ramadan = (() => {
       { time: hhmm(m.maghrib + 300), name: "Magnesium", note: "Before sleep." },
     ];
 
+    // opts.targets: an AppTargets object; only used for the wording, the meals stay the same.
+    const T = o.targets || {}, pos = v => typeof v === "number" && isFinite(v) && v > 0 ? v : null;
+    const tk = { kcal: pos(T.kcal) || 2000, pMin: pos(T.proteinMin) || 160, pMax: pos(T.proteinMax) || (pos(T.proteinMin) ? pos(T.proteinMin) + 10 : 170) };
     const fastMin = m.maghrib - m.fajr;
     const notes = [
-      "Calories stay at 2,000 and protein at 160–170 g. Ramadan moves the meals, it doesn't change the targets.",
+      "Calories stay at " + tk.kcal.toLocaleString("en-US") + " and protein at " + tk.pMin + "–" + tk.pMax + " g. Ramadan moves the meals, it doesn't change the targets.",
       "Expect the scale to bounce in week 1 from water and meal timing. Judge by the 7-day average.",
     ];
     if (dayType === "friday") notes.push("Friday is still the free day, but it's one iftar meal now, not a whole day of eating.");

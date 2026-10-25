@@ -13,7 +13,20 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const TARGETS = { kcal: 2000, proteinMin: 160, proteinMax: 170, fat: [55, 70], carbs: [180, 220] };
+  const PLAN = { kcal: 2000, proteinMin: 160, proteinMax: 170, fat: [55, 70], carbs: [180, 220] };
+  const TARGETS = JSON.parse(JSON.stringify(PLAN));
+  // setTargets(AppTargets object) updates TARGETS in place (same reference); null restores the plan numbers.
+  function setTargets(t) {
+    t = t || {};
+    const n = v => { const x = typeof v === 'string' && v.trim() ? +v : v; return typeof x === 'number' && isFinite(x) && x > 0 ? x : null; };
+    const pair = (lo, hi, d) => n(lo) != null && n(hi) != null && n(lo) <= n(hi) ? [n(lo), n(hi)] : d.slice();
+    TARGETS.kcal = n(t.kcal) || PLAN.kcal;
+    TARGETS.proteinMin = n(t.proteinMin) || PLAN.proteinMin;
+    TARGETS.proteinMax = n(t.proteinMax) || (n(t.proteinMin) ? TARGETS.proteinMin + 10 : PLAN.proteinMax);
+    TARGETS.fat = pair(t.fatLo, t.fatHi, PLAN.fat);
+    TARGETS.carbs = pair(t.carbsLo, t.carbsHi, PLAN.carbs);
+    return TARGETS;
+  }
 
   // Fixed "Sweet" tab snack menu. Banned snacks are kept so they can be shown as removed.
   const SNACKS = [
@@ -241,10 +254,10 @@
     const dk = Math.round(t.kcal - TARGETS.kcal);
     const kcalOk = Math.abs(dk) <= 100;
     const proteinOk = t.p >= TARGETS.proteinMin;
-    if (!kcalOk) notes.push(`${Math.abs(dk)} kcal ${dk > 0 ? 'over' : 'under'} 2,000`);
-    if (!proteinOk) notes.push(`${Math.round(TARGETS.proteinMin - t.p)} g protein short of 160 g (snacks can't close this; flag it rather than assume a shake)`);
-    if (outside(t.f, TARGETS.fat)) notes.push(`fat ${Math.round(t.f)} g is outside 55–70 g`);
-    if (outside(t.c, TARGETS.carbs) > 15) notes.push(`carbs ${Math.round(t.c)} g are outside 180–220 g`);
+    if (!kcalOk) notes.push(`${Math.abs(dk)} kcal ${dk > 0 ? 'over' : 'under'} ${TARGETS.kcal.toLocaleString('en-US')}`);
+    if (!proteinOk) notes.push(`${Math.round(TARGETS.proteinMin - t.p)} g protein short of ${TARGETS.proteinMin} g (snacks can't close this; flag it rather than assume a shake)`);
+    if (outside(t.f, TARGETS.fat)) notes.push(`fat ${Math.round(t.f)} g is outside ${TARGETS.fat[0]}–${TARGETS.fat[1]} g`);
+    if (outside(t.c, TARGETS.carbs) > 15) notes.push(`carbs ${Math.round(t.c)} g are outside ${TARGETS.carbs[0]}–${TARGETS.carbs[1]} g`);
     for (const m of [c.meal1, c.meal2]) if (m.needsCheck) notes.push(`check the numbers for ${m.name} (the Menu Reader flagged them)`);
     if (c.meal1.kcal >= 700) notes.push('Meal 1 is 700+ kcal, so the sweet moves to the evening');
     const fits = kcalOk && proteinOk;
@@ -294,5 +307,5 @@
     return items;
   }
 
-  return { toFoodItems, TARGETS, SNACKS, ADONIS, GATORADE, SATURDAY_EGGS, NEVER, bannedReason, likeOf, parseMenu, pick, formatPlan, slotLabels };
+  return { toFoodItems, TARGETS, setTargets, SNACKS, ADONIS, GATORADE, SATURDAY_EGGS, NEVER, bannedReason, likeOf, parseMenu, pick, formatPlan, slotLabels };
 });

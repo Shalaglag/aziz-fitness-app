@@ -91,3 +91,15 @@ test("card has the three buttons", () => {
   const html = B.cardHtml(B.plan("2026-10-26", docs(day("2026-10-26", 2300))));
   ["walk", "spread", "skip"].forEach(k => assert.match(html, new RegExp(`data-recover="${k}" data-recover-date="2026-10-26"`)));
 });
+
+test("setTargets moves the target, floor and card text", () => {
+  B.setTargets({ kcal: 2200, kcalLo: 2050, proteinMin: 170 });
+  assert.equal(B.TARGET, 2200); assert.equal(B.FLOOR, 2050);
+  assert.equal(B.targetFor("2026-10-26", {}), 2200);
+  const p = B.plan("2026-10-26", { "2026-10-26": { food: [{ kcal: 2600, eaten: true }] } });
+  assert.equal(p.surplus, 400);
+  assert.ok(p.options.spread.days.every(d => d.target >= 2050));
+  assert.ok(B.cardHtml(p).includes("Protein stays at 170 g+") && B.cardHtml(p).includes("below 2,050"));
+  B.setTargets(null);
+  assert.equal(B.TARGET, 2000); assert.equal(B.FLOOR, 1850);
+});
