@@ -1,0 +1,37 @@
+--- a/workout-logger.js	2026-10-25 16:33:31.930739184 +0000
++++ b/workout-logger.js	2026-10-25 16:33:31.943515112 +0000
+@@ -681,6 +681,8 @@
+   });
+ 
+   let exTab = 'about';
++  // Form cues (optional FormCues instance passed as opts.formCues).
++  const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
+   on('exOpen', t => {
+     const id = t.dataset.id; exTab = 'about';
+     openSheet({
+@@ -698,7 +700,8 @@
+         (ex.avoided ? '<p class="lb-warnbox">Your plan avoids this lift (no deadlifts, RDLs, hip thrusts, back extensions, glute-ham raises, reverse hypers or cable pull-throughs). Pick a machine-based option instead.</p>' : '') +
+         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
+         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
+-        (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '');
++        (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '') +
++        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '');
+     }
+     if (!ss.length) return '<div class="lb-empty">No sets logged for this exercise yet.</div>';
+     if (exTab === 'history') {
+@@ -1061,6 +1064,7 @@
+       html += '<article class="lb-exblock' + (e.ss ? ' ss ss' + (ssIdx % 4) : '') + '" data-ei="' + i + '">' +
+         (e.ss ? '<div class="lb-sslabel">Superset ' + String.fromCharCode(65 + ssIdx) + '</div>' : '') +
+         '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
++        (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') +
+         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
+         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
+         (ex.memo ? '<p class="lb-memo small">' + esc(ex.memo) + '</p>' : '') +
+@@ -1520,6 +1524,7 @@
+     opts = opts || {};
+     S.opts = opts; S.storage = opts.storage || localStorageAdapter('lb:');
+     if (!document.getElementById('lb-style')) { const st = document.createElement('style'); st.id = 'lb-style'; st.textContent = CSS; document.head.appendChild(st); }
++    if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
+     root = el; root.classList.add('lb');
+     overlay = document.querySelector('.lb-overlay') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'lb-overlay' }));
+     if (!root.dataset.lbBound) { delegate(root); root.dataset.lbBound = '1'; }
