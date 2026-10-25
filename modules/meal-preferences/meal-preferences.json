@@ -1,0 +1,234 @@
+[
+  {
+    "id": "french-tacos-chicken",
+    "name": "French Tacos Chicken",
+    "list": "like",
+    "level": "favorite",
+    "kind": "meal",
+    "terms": [
+      "French Tacos Chicken",
+      "Chicken French Tacos"
+    ],
+    "except": [],
+    "note": "Favorite. Prioritize when it fits."
+  },
+  {
+    "id": "buffalo-chicken-sweet-potato",
+    "name": "Buffalo Chicken with Sweet Potato",
+    "list": "like",
+    "level": "like",
+    "kind": "meal",
+    "terms": [
+      "Buffalo Chicken"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "chicken-majboos",
+    "name": "Chicken Majboos",
+    "list": "like",
+    "level": "like",
+    "kind": "meal",
+    "terms": [
+      "Chicken Majboos",
+      "Chicken Machboos",
+      "Chicken Machbous"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "chicken-biryani",
+    "name": "Chicken Biryani",
+    "list": "like",
+    "level": "like",
+    "kind": "meal",
+    "terms": [
+      "Chicken Biryani"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "beef-machboos",
+    "name": "Beef Machboos",
+    "list": "like",
+    "level": "like",
+    "kind": "meal",
+    "terms": [
+      "Beef Machboos",
+      "Beef Majboos",
+      "Beef Machbous"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "grilled-steak-potato",
+    "name": "Grilled Steak with Potato",
+    "list": "like",
+    "level": "like",
+    "kind": "meal",
+    "terms": [
+      "Grilled Steak"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "general-chicken-rice-steak-pasta",
+    "name": "Chicken, rice, steak and pasta dishes",
+    "list": "like",
+    "level": "general",
+    "kind": "rule",
+    "terms": [
+      "chicken",
+      "rice",
+      "steak",
+      "pasta"
+    ],
+    "except": [],
+    "note": "Liked in general."
+  },
+  {
+    "id": "creamy-garlic-cheesy-chicken",
+    "name": "Creamy Garlic Cheesy Chicken & Potato",
+    "list": "never",
+    "kind": "meal",
+    "terms": [
+      "Creamy Garlic Cheesy Chicken"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "chicken-mushroom-sourdough",
+    "name": "Chicken Mushroom with Sourdough",
+    "list": "never",
+    "kind": "meal",
+    "terms": [
+      "Chicken Mushroom with Sourdough",
+      "Chicken Mushroom Sourdough"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "chicken-shawarma",
+    "name": "Chicken Shawarma",
+    "list": "never",
+    "kind": "meal",
+    "terms": [
+      "Chicken Shawarma",
+      "Shawarma"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "champion-chicken",
+    "name": "Champion Chicken",
+    "list": "never",
+    "kind": "meal",
+    "terms": [
+      "Champion Chicken"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "minced-beef-rice",
+    "name": "Minced Beef with Rice",
+    "list": "never",
+    "kind": "meal",
+    "terms": [
+      "Minced Beef with Rice",
+      "Minced Beef Rice"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "tandoori-chicken-tomato-jam",
+    "name": "Tandoori Chicken with Grilled Tomato Jam",
+    "list": "never",
+    "kind": "meal",
+    "terms": [
+      "Tandoori Chicken with Grilled Tomato Jam",
+      "Tomato Jam"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "fish-seafood",
+    "name": "Tuna, fish or shrimp dishes",
+    "list": "never",
+    "kind": "rule",
+    "terms": [
+      "tuna",
+      "fish",
+      "shrimp",
+      "prawn",
+      "salmon",
+      "hammour",
+      "seafood",
+      "cod",
+      "sea bass",
+      "calamari"
+    ],
+    "except": [],
+    "note": "Any fish or seafood."
+  },
+  {
+    "id": "sandwiches",
+    "name": "Sandwiches (except French Tacos Chicken)",
+    "list": "never",
+    "kind": "rule",
+    "terms": [
+      "sandwich",
+      "panini",
+      "sub"
+    ],
+    "except": [
+      "French Tacos"
+    ],
+    "note": ""
+  },
+  {
+    "id": "protein-balls",
+    "name": "Protein balls (incl. Kinder Protein Ball)",
+    "list": "never",
+    "kind": "snack",
+    "terms": [
+      "protein ball",
+      "Kinder"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "popcorn",
+    "name": "Popcorn",
+    "list": "never",
+    "kind": "snack",
+    "terms": [
+      "Popcorn"
+    ],
+    "except": [],
+    "note": ""
+  },
+  {
+    "id": "blueberry-vanilla-muffin",
+    "name": "Blueberry Vanilla Muffin",
+    "list": "never",
+    "kind": "snack",
+    "terms": [
+      "Blueberry Vanilla Muffin",
+      "Blueberry Muffin"
+    ],
+    "except": [],
+    "note": ""
+  }
+]

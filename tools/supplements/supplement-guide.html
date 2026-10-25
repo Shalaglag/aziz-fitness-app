@@ -1,0 +1,301 @@
+<title>Aziz's Supplement Box</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a daily pill organizer. Three compartments for today on top, then one card per supplement. */
+:root {
+  --bg: #eef3f2;
+  --surface: #ffffff;
+  --ink: #15211f;
+  --muted: #56655f;
+  --line: #d3dedb;
+  --accent: #0d7a6b;
+  --accent-soft: #d8eee9;
+  --cap-creatine: #6d7f8c;
+  --cap-d3: #d99a1e;
+  --cap-omega: #2f6fb0;
+  --cap-mag: #8a5bb5;
+  --cap-c4: #c4473a;
+  --done: #1d8a4f;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1716; --surface: #18221f; --ink: #e5eeeb; --muted: #9db0aa; --line: #2b3a36;
+  --accent: #4cc3ad; --accent-soft: #1d3632; --cap-creatine: #9fb1bd; --cap-d3: #f0b443;
+  --cap-omega: #6ea8e6; --cap-mag: #b892dd; --cap-c4: #ea7a6d; --done: #4fc584; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1716; --surface: #18221f; --ink: #e5eeeb; --muted: #9db0aa; --line: #2b3a36;
+  --accent: #4cc3ad; --accent-soft: #1d3632; --cap-creatine: #9fb1bd; --cap-d3: #f0b443;
+  --cap-omega: #6ea8e6; --cap-mag: #b892dd; --cap-c4: #ea7a6d; --done: #4fc584; color-scheme: dark; }
+
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--font-body); }
+.wrap { max-width: 860px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 36px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 700; }
+h2 { font-size: 1.35rem; font-weight: 700; }
+h3 { font-size: 1.15rem; font-weight: 700; }
+p { margin: 0; }
+.eyebrow { font: 500 .75rem/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+header { display: grid; gap: 10px; }
+header p { color: var(--muted); max-width: 60ch; }
+
+/* Today */
+.today-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.daytabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.daytabs button { font: 500 .85rem var(--font-body); border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.daytabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.daynote { color: var(--muted); font-size: .95rem; }
+.box { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 2px solid var(--ink);
+  border-radius: 14px; overflow: hidden; background: var(--surface); }
+.slot { padding: 14px; display: grid; gap: 10px; align-content: start; border-left: 2px solid var(--ink); min-width: 0; }
+.slot:first-child { border-left: 0; }
+.slot-time { font: 500 .8rem var(--font-mono); color: var(--muted); }
+.slot-name { font: 700 1.05rem var(--font-display); }
+.pill { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; padding: 6px 0; }
+.pill input { appearance: none; width: 22px; height: 22px; flex: none; border: 2px solid var(--line); border-radius: 50%;
+  margin: 1px 0 0; cursor: pointer; display: grid; place-items: center; background: var(--surface); }
+.pill input:checked { background: var(--done); border-color: var(--done); }
+.pill input:checked::after { content: ""; width: 6px; height: 11px; border: solid var(--surface); border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg); }
+.pill input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.pill .lbl { display: grid; gap: 1px; }
+.pill .lbl b { font-weight: 700; }
+.pill .lbl small { color: var(--muted); font-size: .85rem; }
+.pill input:checked + .lbl b { text-decoration: line-through; color: var(--muted); }
+.cap { width: 10px; height: 20px; border-radius: 5px; flex: none; margin-top: 2px; }
+.optional { opacity: .75; }
+.progress { display: flex; align-items: center; gap: 12px; font-size: .95rem; color: var(--muted); }
+.bar { flex: 1; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; max-width: 260px; }
+.bar i { display: block; height: 100%; background: var(--done); width: 0; transition: width .25s; }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+
+/* Guide */
+.cards { display: grid; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 12px; }
+.card-top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.card-top .cap { width: 12px; height: 26px; border-radius: 6px; margin: 0; }
+.dose { font: 500 .85rem var(--font-mono); color: var(--muted); }
+.tag { font: 500 .72rem var(--font-mono); text-transform: uppercase; letter-spacing: .06em; border-radius: 999px; padding: 3px 8px;
+  background: var(--accent-soft); color: var(--accent); }
+.tag.warn { background: transparent; border: 1px dashed var(--cap-c4); color: var(--cap-c4); }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin: 0; }
+.facts div { min-width: 0; }
+.facts dt { font: 500 .72rem var(--font-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 2px; }
+.facts dd { margin: 0; }
+.note { border-top: 1px solid var(--line); padding-top: 10px; font-size: .95rem; }
+
+.rules { display: grid; gap: 10px; padding: 0; margin: 0; list-style: none; }
+.rules li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.rules b { display: block; }
+.foot { color: var(--muted); font-size: .85rem; max-width: 65ch; }
+
+@media (max-width: 640px) {
+  .box { grid-template-columns: 1fr; }
+  .slot { border-left: 0; border-top: 2px solid var(--ink); }
+  .slot:first-child { border-top: 0; }
+  .facts { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Cut to 80 kg · started Oct 25, 2026</span>
+    <h1>Supplement box</h1>
+    <p>Your four daily supplements, placed around your Nutreeze meals and training times. Tick them off as you take them. Below that is a short, plain guide to each one.</p>
+  </header>
+
+  <section aria-labelledby="today-h" style="display:grid;gap:14px">
+    <div class="today-head">
+      <h2 id="today-h">Today</h2>
+      <div class="daytabs" role="group" aria-label="Day type">
+        <button type="button" id="d-train" data-day="train">Sun–Thu</button>
+        <button type="button" id="d-sat" data-day="sat">Saturday</button>
+        <button type="button" id="d-fri" data-day="fri">Friday</button>
+      </div>
+    </div>
+    <p class="daynote" id="daynote"></p>
+    <div class="box" id="box"></div>
+    <div class="progress"><div class="bar"><i id="bar"></i></div><span id="count"></span></div>
+  </section>
+
+  <section aria-labelledby="guide-h" style="display:grid;gap:14px">
+    <h2 id="guide-h">What each one does</h2>
+    <div class="cards">
+
+      <article class="card">
+        <div class="card-top"><span class="cap" style="background:var(--cap-creatine)"></span><h3>Creatine monohydrate</h3><span class="dose">5 g / day</span><span class="tag">Most useful on a cut</span></div>
+        <dl class="facts">
+          <div><dt>What it does</dt><dd>Helps your muscles refill quick energy between reps, so you keep strength and a rep or two more while eating 2,000 kcal.</dd></div>
+          <div><dt>Will you feel it?</dt><dd>No. The effect builds over weeks and shows up in the logbook, not as a buzz.</dd></div>
+          <div><dt>Side effects</dt><dd>Rarely a bloated stomach if taken as one big dose. At 5 g this is uncommon. No need to load or cycle it.</dd></div>
+          <div><dt>When</dt><dd>Any time. Pinned to Meal 1 so it becomes a habit. Mixing it into the Gatorade is fine.</dd></div>
+        </dl>
+        <p class="note">It holds about 1–2 kg of water inside the muscle. That water is stable, so it doesn't distort your 7-day averages. Don't stop it because of the scale. If you get a blood test, tell the doctor you take it, since it can nudge creatinine up a little.</p>
+      </article>
+
+      <article class="card">
+        <div class="card-top"><span class="cap" style="background:var(--cap-d3)"></span><h3>Vitamin D3</h3><span class="dose">2 × 2,000 IU = 4,000 IU / day</span><span class="tag">At the upper limit</span></div>
+        <dl class="facts">
+          <div><dt>What it does</dt><dd>Supports bones, muscle function and the immune system. Low vitamin D is common in Kuwait because most days are spent indoors.</dd></div>
+          <div><dt>Will you feel it?</dt><dd>Usually not, unless you were low to begin with. Then some people notice better energy over a few weeks.</dd></div>
+          <div><dt>Side effects</dt><dd>None expected at 4,000 IU. Problems only come from long-term doses well above this.</dd></div>
+          <div><dt>When</dt><dd>With a meal that has some fat, so Meal 2 in the evening. On Saturday the egg breakfast works too.</dd></div>
+        </dl>
+        <p class="note">4,000 IU is the daily upper limit for adults. Don't go higher without a 25-OH vitamin D blood test.</p>
+      </article>
+
+      <article class="card">
+        <div class="card-top"><span class="cap" style="background:var(--cap-omega)"></span><h3>Omega-3 (fish oil)</h3><span class="dose">1 capsule · 180 mg EPA</span><span class="tag">Optional upgrade: 2–3</span></div>
+        <dl class="facts">
+          <div><dt>What it does</dt><dd>Supports heart health and lowers blood triglycerides. It may help joints a little. Since you never eat fish, this is your only source.</dd></div>
+          <div><dt>Will you feel it?</dt><dd>No. It works quietly over months.</dd></div>
+          <div><dt>Side effects</dt><dd>Fishy burps. Taking it with a meal helps, and so does keeping the bottle in the fridge.</dd></div>
+          <div><dt>When</dt><dd>With Meal 2, together with the D3.</dd></div>
+        </dl>
+        <p class="note">One capsule is a low dose. A common target is about 250–500 mg EPA + DHA a day. So 2–3 capsules is a sensible upgrade for someone who doesn't eat fish. Check the label for DHA per capsule to see where you land.</p>
+      </article>
+
+      <article class="card">
+        <div class="card-top"><span class="cap" style="background:var(--cap-mag)"></span><h3>Magnesium bisglycinate</h3><span class="dose">~100 mg elemental per capsule</span><span class="tag">Evening</span></div>
+        <dl class="facts">
+          <div><dt>What it does</dt><dd>Supports muscle and nerve function. You lose some in sweat from lifting and the treadmill. It may help sleep a little if you run low.</dd></div>
+          <div><dt>Will you feel it?</dt><dd>Some people feel slightly more relaxed at night. Many feel nothing.</dd></div>
+          <div><dt>Side effects</dt><dd>Large doses can loosen stools. The bisglycinate form is the gentlest on the stomach.</dd></div>
+          <div><dt>When</dt><dd>30–60 minutes before bed.</dd></div>
+        </dl>
+        <p class="note">Keep total supplement magnesium at 350 mg a day or less (about 3 capsules of yours) unless a doctor says otherwise.</p>
+      </article>
+
+      <article class="card optional">
+        <div class="card-top"><span class="cap" style="background:var(--cap-c4)"></span><h3>C4 pre-workout</h3><span class="dose">1 scoop, training days</span><span class="tag warn">Not confirmed</span></div>
+        <dl class="facts">
+          <div><dt>What it does</dt><dd>Mostly caffeine, plus beta-alanine and citrulline. It improves focus and effort for a session. It doesn't build muscle by itself.</dd></div>
+          <div><dt>Will you feel it?</dt><dd>Yes. You'll feel more alert within 20–30 minutes, and beta-alanine causes a harmless tingle in the face and hands.</dd></div>
+          <div><dt>Side effects</dt><dd>Jitters, a faster heart rate, and worse sleep if taken late. Caffeine per scoop differs by C4 version, so read your tub's label.</dd></div>
+          <div><dt>When</dt><dd>About 3:00 pm Sun–Thu or 9:30 am Saturday. Never on Friday.</dd></div>
+        </dl>
+        <p class="note">You haven't confirmed whether you still use it, so it's off the checklist by default. Turn it on in the Today box if you do.</p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="rules-h" style="display:grid;gap:14px">
+    <h2 id="rules-h">Simple rules</h2>
+    <ul class="rules">
+      <li><b>Missed a dose?</b> Take it when you remember that day. If the day is over, skip it and carry on. Don't double up on D3.</li>
+      <li><b>Supplements don't change your calories.</b> None of these count toward the 2,000 kcal.</li>
+      <li><b>Don't judge them by the scale.</b> Creatine water is stable, and the weekly average is what counts.</li>
+      <li><b>Consistency beats timing.</b> Same times every day matter more than the perfect minute.</li>
+    </ul>
+    <p class="foot">Reminders: add the calendar file from the chat to your phone's calendar for alerts at 2:00 pm, 8:30 pm and 10:30 pm (Kuwait time). Your ticks are saved in this browser only. This page is general information, not medical advice. Ask a doctor before changing doses, especially if you start any medication.</p>
+  </section>
+</div>
+
+<script>
+(function () {
+  var SUPPS = {
+    creatine: { name: "Creatine", dose: "5 g", color: "var(--cap-creatine)" },
+    d3: { name: "Vitamin D3", dose: "2 capsules", color: "var(--cap-d3)" },
+    omega: { name: "Omega-3", dose: "1 capsule", color: "var(--cap-omega)" },
+    mag: { name: "Magnesium", dose: "before bed", color: "var(--cap-mag)" },
+    c4: { name: "C4 pre-workout", dose: "if you use it", color: "var(--cap-c4)", optional: true }
+  };
+  var DAYS = {
+    train: {
+      note: "Meal 1 + snacks at 2 pm, train 3:30 pm, Adonis 5 pm, Meal 2 at 8–9 pm.",
+      slots: [
+        { time: "2:00 pm", name: "With Meal 1", items: ["creatine", "c4"], hint: { c4: "at ~3:00 pm" } },
+        { time: "8:30 pm", name: "With Meal 2", items: ["d3", "omega"] },
+        { time: "Bedtime", name: "Before sleep", items: ["mag"] }
+      ]
+    },
+    sat: {
+      note: "Egg breakfast 8–8:30 am, train 10 am, then your usual Nutreeze meals.",
+      slots: [
+        { time: "8:15 am", name: "With the eggs", items: ["creatine", "d3", "omega", "c4"], hint: { c4: "at ~9:30 am" } },
+        { time: "Evening", name: "With Meal 2", items: [] , empty: "Nothing here today. D3 and omega-3 went with the eggs." },
+        { time: "Bedtime", name: "Before sleep", items: ["mag"] }
+      ]
+    },
+    fri: {
+      note: "Free day: egg breakfast and one big meal, often the Cajun shrimp. No training.",
+      slots: [
+        { time: "Morning", name: "With the eggs", items: ["creatine"] },
+        { time: "Big meal", name: "With the main meal", items: ["d3", "omega"] },
+        { time: "Bedtime", name: "Before sleep", items: ["mag"] }
+      ]
+    }
+  };
+
+  function store(key, val) {
+    try {
+      if (val === undefined) return JSON.parse(localStorage.getItem(key) || "null");
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch (e) { return null; }
+  }
+
+  var now = new Date();
+  var dateKey = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
+  var dow = now.getDay(); // 0 Sun ... 5 Fri, 6 Sat
+  var day = dow === 5 ? "fri" : dow === 6 ? "sat" : "train";
+  var ticks = store("supp-ticks-" + dateKey) || {};
+  var useC4 = store("supp-use-c4") === true;
+
+  var box = document.getElementById("box");
+
+  function render() {
+    var d = DAYS[day];
+    document.getElementById("daynote").textContent = d.note;
+    document.querySelectorAll(".daytabs button").forEach(function (b) {
+      b.setAttribute("aria-pressed", b.dataset.day === day ? "true" : "false");
+    });
+    box.innerHTML = "";
+    var total = 0, done = 0;
+    d.slots.forEach(function (s, si) {
+      var el = document.createElement("div");
+      el.className = "slot";
+      el.innerHTML = '<span class="slot-time"></span><span class="slot-name"></span>';
+      el.children[0].textContent = s.time;
+      el.children[1].textContent = s.name;
+      var shown = s.items.filter(function (k) { return k !== "c4" || useC4; });
+      if (!shown.length && s.empty) {
+        var p = document.createElement("small"); p.className = "daynote"; p.textContent = s.empty; el.appendChild(p);
+      }
+      shown.forEach(function (k) {
+        var sp = SUPPS[k], id = "t-" + day + "-" + k;
+        var row = document.createElement("label");
+        row.className = "pill"; row.htmlFor = id;
+        row.innerHTML = '<span class="cap"></span><input type="checkbox"><span class="lbl"><b></b><small></small></span>';
+        row.querySelector(".cap").style.background = sp.color;
+        var cb = row.querySelector("input"); cb.id = id; cb.checked = !!ticks[k];
+        row.querySelector("b").textContent = sp.name;
+        row.querySelector("small").textContent = (s.hint && s.hint[k]) || sp.dose;
+        cb.addEventListener("change", function () { ticks[k] = cb.checked; store("supp-ticks-" + dateKey, ticks); render(); });
+        el.appendChild(row);
+        total++; if (ticks[k]) done++;
+      });
+      if (si === 0 && day !== "fri") {
+        var t = document.createElement("label");
+        t.className = "pill"; t.htmlFor = "use-c4";
+        t.innerHTML = '<input type="checkbox" id="use-c4"><span class="lbl"><small>I still use C4</small></span>';
+        var c = t.querySelector("input"); c.checked = useC4;
+        c.addEventListener("change", function () { useC4 = c.checked; store("supp-use-c4", useC4); render(); });
+        el.appendChild(t);
+      }
+      box.appendChild(el);
+    });
+    document.getElementById("bar").style.width = (total ? done / total * 100 : 0) + "%";
+    document.getElementById("count").textContent = done === total ? "All " + total + " taken today" : done + " of " + total + " taken today";
+  }
+
+  document.querySelectorAll(".daytabs button").forEach(function (b) {
+    b.addEventListener("click", function () { day = b.dataset.day; render(); });
+  });
+  render();
+})();
+</script>

@@ -1,0 +1,172 @@
+/* ==========================================================================
+   Fitness app theme  ·  "Plate" system
+   Neutrals: cool chalk (light) and gunmetal (dark).
+   Accents: named after Olympic bumper plates (25 kg red, 20 kg blue,
+   15 kg yellow, 10 kg green). Pick one with <html data-accent="blue">.
+   Mode: <html data-theme="light|dark">, or no attribute to follow the system.
+   Fonts (Google Fonts):
+   https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap
+   ========================================================================== */
+
+:root {
+  /* ---- Neutrals (light) ---- */
+  --bg: #F2F4F6;
+  --surface: #FFFFFF;
+  --surface-2: #E7EBEF;
+  --surface-3: #DAE0E6;
+  --fg: #12161B;
+  --fg-muted: #586370;
+  --fg-faint: #8A949F;
+  --line: #D3DAE1;
+  --overlay: rgba(18, 22, 27, .45);
+
+  /* ---- Accent palettes (each has a light and dark value) ---- */
+  --accent-light: #1F5FD1;  --accent-dark: #6B9BF5;      /* default: 20 kg blue */
+  --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222;
+  --accent: var(--accent-light);
+  --on-accent: var(--on-accent-light);
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--surface));
+
+  /* ---- Macros (fixed across accents so charts stay readable) ---- */
+  --protein: #6E52D4;
+  --carbs: #D07F12;
+  --fat: #158C8C;
+  --kcal: var(--fg);
+
+  /* ---- Status ---- */
+  --good: #1E8A4C;
+  --warn: #B86E00;
+  --bad: #C8352E;
+
+  /* ---- Type ---- */
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-xs: .75rem;    /* 12  captions, units */
+  --text-sm: .875rem;   /* 14  secondary */
+  --text-md: 1rem;      /* 16  body */
+  --text-lg: 1.25rem;   /* 20  card titles */
+  --text-xl: 1.75rem;   /* 28  screen titles (display) */
+  --text-2xl: 2.5rem;   /* 40  hero numbers (display) */
+  --text-3xl: 3.5rem;   /* 56  ring centre, PR number */
+
+  /* ---- Space (4px grid) ---- */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px;
+
+  /* ---- Shape & depth ---- */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(18, 22, 27, .06), 0 1px 1px rgba(18, 22, 27, .04);
+  --shadow-2: 0 6px 20px rgba(18, 22, 27, .10), 0 2px 6px rgba(18, 22, 27, .06);
+  --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+
+  --tap: 44px; /* minimum touch target */
+
+  color-scheme: light;
+}
+
+/* ---- Accent choices ---- */
+[data-accent="red"]    { --accent-light: #D0302A; --accent-dark: #F2665D; --on-accent-light: #FFFFFF; --on-accent-dark: #220B0A; }
+[data-accent="blue"]   { --accent-light: #1F5FD1; --accent-dark: #6B9BF5; --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222; }
+[data-accent="yellow"] { --accent-light: #A87300; --accent-dark: #F2C230; --on-accent-light: #FFFFFF; --on-accent-dark: #221A02; }
+[data-accent="green"]  { --accent-light: #1B8048; --accent-dark: #43C47E; --on-accent-light: #FFFFFF; --on-accent-dark: #06200F; }
+
+/* ---- Dark (system setting, unless light was chosen) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1013; --surface: #161A1F; --surface-2: #1F252C; --surface-3: #29303A;
+    --fg: #EDF0F3; --fg-muted: #9AA4AF; --fg-faint: #6B7580; --line: #2A323B;
+    --overlay: rgba(0, 0, 0, .6);
+    --accent: var(--accent-dark); --on-accent: var(--on-accent-dark);
+    --protein: #A08BF2; --carbs: #F0AE4A; --fat: #3CC4C4;
+    --good: #43C47E; --warn: #F2A93B; --bad: #F2665D;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-2: 0 8px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+/* ---- Dark (chosen explicitly) ---- */
+:root[data-theme="dark"] {
+  --bg: #0D1013; --surface: #161A1F; --surface-2: #1F252C; --surface-3: #29303A;
+  --fg: #EDF0F3; --fg-muted: #9AA4AF; --fg-faint: #6B7580; --line: #2A323B;
+  --overlay: rgba(0, 0, 0, .6);
+  --accent: var(--accent-dark); --on-accent: var(--on-accent-dark);
+  --protein: #A08BF2; --carbs: #F0AE4A; --fat: #3CC4C4;
+  --good: #43C47E; --warn: #F2A93B; --bad: #F2665D;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Base + a few shared primitives (optional; safe to override)
+   ========================================================================== */
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, .t-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: .01em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+.t-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.t-label {
+  font-size: var(--text-xs); font-weight: 600; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--fg-muted);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+}
+.btn {
+  min-height: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font: 600 var(--text-sm)/1 var(--font-body);
+  cursor: pointer;
+  background: var(--accent); color: var(--on-accent);
+}
+.btn--ghost { background: transparent; color: var(--fg); border-color: var(--line); }
+.chip {
+  display: inline-flex; align-items: center; gap: var(--sp-1);
+  padding: 2px 10px; border-radius: var(--radius-pill);
+  font-size: var(--text-xs); font-weight: 600;
+  background: var(--surface-2); color: var(--fg-muted);
+}
+.chip--good { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+.chip--warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.chip--bad  { background: color-mix(in srgb, var(--bad) 16%, transparent);  color: var(--bad); }
+
+:focus-visible { outline: none; box-shadow: var(--focus); border-radius: var(--radius-sm); }
+
+/* ==========================================================================
+   Aliases for the app shell's existing token names (APP-SHELL.md).
+   Inline this file in place of the app's own color/font token blocks;
+   these follow mode and accent changes automatically.
+   ========================================================================== */
+:root {
+  --sunk: var(--surface-2);
+  --ink: var(--fg);
+  --muted: var(--fg-muted);
+  --accent-ink: var(--on-accent);
+  --display: var(--font-display);
+  --body: var(--font-body);
+  --mono: var(--font-mono);
+  --r: var(--radius-md);
+}

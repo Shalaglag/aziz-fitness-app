@@ -1,0 +1,465 @@
+<title>Road to 80 kg</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow instrument column; summary readout, chart, log form, then the ledger. */
+:root {
+  --bg: #f3f5f7;
+  --panel: #ffffff;
+  --ink: #16212b;
+  --muted: #5d6b78;
+  --line: #d9e0e6;
+  --accent: #1d5e8c;
+  --accent-soft: #d6e6f2;
+  --goal: #2f7d4f;
+  --warn: #a5620f;
+  --dot: #7d8c99;
+  --band: rgba(47,125,79,.10);
+  --f-display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-data: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f151b; --panel: #172029; --ink: #e6edf3; --muted: #93a3b1; --line: #2a3742;
+  --accent: #6fb0e0; --accent-soft: #1e3446; --goal: #6cc792; --warn: #e3a04f; --dot: #8797a5;
+  --band: rgba(108,199,146,.12); color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0f151b; --panel: #172029; --ink: #e6edf3; --muted: #93a3b1; --line: #2a3742;
+  --accent: #6fb0e0; --accent-soft: #1e3446; --goal: #6cc792; --warn: #e3a04f; --dot: #8797a5;
+  --band: rgba(108,199,146,.12); color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 22px; }
+header { display: grid; gap: 4px; }
+.eyebrow { font: 500 12px/1.2 var(--f-data); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 30px/1.1 var(--f-display); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font: 600 17px/1.2 var(--f-display); margin: 0; }
+.sub { color: var(--muted); margin: 0; }
+.num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
+
+.readout { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.cell { background: var(--panel); padding: 14px 14px 12px; display: grid; gap: 2px; min-width: 0; }
+.cell .k { font: 500 11px/1.3 var(--f-data); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.cell .v { font: 500 24px/1.15 var(--f-data); font-variant-numeric: tabular-nums; }
+.cell .v small { font-size: 13px; color: var(--muted); margin-left: 2px; }
+.cell .n { font-size: 12.5px; color: var(--muted); }
+@media (max-width: 620px) { .readout { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+.progress { display: grid; gap: 6px; }
+.bar { height: 10px; border-radius: 5px; background: var(--accent-soft); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--goal); width: 0; transition: width .4s; }
+.progress .row { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { font: 500 12.5px var(--f-body); background: transparent; color: var(--muted); border: 0; padding: 6px 11px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
+.seg button:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#chart { width: 100%; height: auto; display: block; }
+#chart text { font-family: var(--f-data); font-size: 10.5px; fill: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+
+form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+label { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+input { font: 500 16px var(--f-data); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; min-width: 0; }
+input[type="number"] { width: 110px; }
+input[type="text"] { width: 100%; }
+.note-field { flex: 1 1 200px; }
+.btn { font: 600 14px var(--f-body); background: var(--accent); color: var(--panel); border: 0; border-radius: 7px; padding: 10px 16px; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.btn:disabled { opacity: .5; cursor: default; }
+.status { font-size: 13px; color: var(--muted); min-height: 1.2em; margin: 0; }
+.status.err { color: var(--warn); }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { font: 500 11px var(--f-data); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+td { padding: 9px 6px; border-bottom: 1px solid var(--line); text-align: right; font-family: var(--f-data); font-variant-numeric: tabular-nums; white-space: nowrap; vertical-align: top; }
+td.day { font-family: var(--f-body); }
+td.day .d { font-weight: 600; }
+td.day .meta { display: block; font-size: 12px; color: var(--muted); white-space: normal; max-width: 260px; }
+tr.edit { cursor: pointer; }
+@media (max-width: 480px) { th:last-child, td:last-child { display: none; } table { font-size: 13px; } .chip { margin-left: 4px; } }
+tr.edit:hover td { background: var(--bg); }
+.down { color: var(--goal); }
+.up { color: var(--warn); }
+.chip { display: inline-block; font: 500 10.5px var(--f-data); letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--ink); margin-left: 6px; vertical-align: 1px; }
+.chip.salt { background: transparent; border: 1px solid var(--warn); color: var(--warn); }
+.empty { color: var(--muted); padding: 18px 4px; text-align: center; }
+
+.notes { display: grid; gap: 8px; font-size: 14px; color: var(--muted); }
+.notes p { margin: 0; max-width: 65ch; }
+.notes strong { color: var(--ink); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Aziz · 172 cm · morning weigh-ins</div>
+    <h1>Road to 80 kg</h1>
+    <p class="sub">Judge the trend, not the day. Started at <span class="num">91.9 kg</span> on Sun, Oct 25, 2026.</p>
+  </header>
+
+  <section class="readout" aria-label="Summary">
+    <div class="cell"><span class="k">Latest</span><span class="v" id="r-latest">–</span><span class="n" id="r-latest-n">No weigh-ins yet</span></div>
+    <div class="cell"><span class="k">7-day average</span><span class="v" id="r-avg">–</span><span class="n" id="r-avg-n">First one on Oct 31</span></div>
+    <div class="cell"><span class="k">Weekly rate</span><span class="v" id="r-rate">–</span><span class="n" id="r-rate-n">Target 0.5–0.8 kg/wk</span></div>
+    <div class="cell"><span class="k">80 kg by</span><span class="v" id="r-eta">–</span><span class="n" id="r-eta-n">Needs a few weigh-ins</span></div>
+  </section>
+
+  <section class="progress" aria-label="Progress to goal">
+    <div class="bar"><i id="p-bar"></i></div>
+    <div class="row"><span id="p-done">0.0 kg lost</span><span id="p-left">11.9 kg to go</span></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Trend</h2>
+      <div class="seg" role="group" aria-label="Chart range">
+        <button type="button" id="v-zoom" aria-pressed="true">Recent</button>
+        <button type="button" id="v-full" aria-pressed="false">Whole cut</button>
+      </div>
+    </div>
+    <svg id="chart" viewBox="0 0 700 300" role="img" aria-label="Weight chart"></svg>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--dot);height:6px;width:6px;border-radius:50%"></i>Daily weigh-in</span>
+      <span><i class="sw" style="background:var(--accent)"></i>7-day average</span>
+      <span><i class="sw" style="background:var(--band);height:10px"></i>Plan: 0.5–0.8 kg/wk</span>
+      <span><i class="sw" style="background:var(--goal)"></i>80 kg goal</span>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Log a weigh-in">
+    <h2 id="form-title">Log a weigh-in</h2>
+    <form id="f">
+      <label for="f-date">Date<input type="date" id="f-date" required min="2026-10-25"></label>
+      <label for="f-kg">Weight (kg)<input type="number" id="f-kg" step="0.1" min="50" max="150" inputmode="decimal" required placeholder="91.4"></label>
+      <label for="f-note" class="note-field">Note (optional)<input type="text" id="f-note" maxlength="120" placeholder="Salty dinner, hard leg day…"></label>
+      <button class="btn" id="f-save" type="submit">Save</button>
+      <button class="btn ghost" id="f-del" type="button" hidden>Delete</button>
+    </form>
+    <p class="status" id="f-status">Loading your weigh-ins…</p>
+  </section>
+
+  <section class="panel">
+    <h2>Log</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Day</th><th>Weight</th><th>Change</th><th>7-day avg</th><th>To 80 kg</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="5" class="empty">Your weigh-ins will appear here once they load.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="notes">
+    <h2 style="color:var(--ink)">Reading the numbers</h2>
+    <p><strong>14-day strict window, Oct 25 to Nov 7.</strong> Keep calories near 2,000. The first 7-day average lands Oct 31; review calories only after Nov 7, from the average trend. Don't cut to 1,800 or 1,700 because of one weigh-in.</p>
+    <p><strong>Week 1 drops fast.</strong> Water and glycogen leave first, so the early rate will look better than the real fat loss. The weekly rate switches from an early estimate to average-vs-average once there are two full weeks.</p>
+    <p><strong>Saturday may read high</strong> after Friday's salty Cajun shrimp. Sodium, carbs, creatine, hard workouts and digestion all move the scale day to day.</p>
+  </section>
+</div>
+
+<script>
+(() => {
+  const START = "2026-10-25", START_KG = 91.9, GOAL = 80;
+  const STRICT_END = "2026-11-07", FIRST_AVG = "2026-10-31";
+  const $ = id => document.getElementById(id);
+  const DAY = 864e5;
+  const toT = s => Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10));
+  const toS = t => new Date(t).toISOString().slice(0,10);
+  const addDays = (s, n) => toS(toT(s) + n*DAY);
+  const diffDays = (a, b) => Math.round((toT(b) - toT(a)) / DAY);
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const dow = s => new Date(toT(s)).getUTCDay();
+  const fmtD = s => `${WD[dow(s)]}, ${MON[+s.slice(5,7)-1]} ${+s.slice(8,10)}`;
+  const fmtShort = s => `${MON[+s.slice(5,7)-1]} ${+s.slice(8,10)}`;
+  const f1 = x => x.toFixed(1);
+  const sgn = x => (x > 0 ? "+" : x < 0 ? "−" : "±") + Math.abs(x).toFixed(1);
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+
+  let entries = [];   // [{date, kg, note}] sorted by date
+  let view = "zoom";
+  let db = null, canWrite = true;
+
+  // Trailing 7-calendar-day mean; shown from Oct 31 on, needs at least 4 weigh-ins in the window.
+  function avg7(date) {
+    if (date < FIRST_AVG) return null;
+    const lo = addDays(date, -6);
+    const w = entries.filter(e => e.date >= lo && e.date <= date);
+    return w.length >= 4 ? w.reduce((a, e) => a + e.kg, 0) / w.length : null;
+  }
+  function slopePerDay(list) {
+    if (list.length < 3) return null;
+    const xs = list.map(e => diffDays(START, e.date)), ys = list.map(e => e.kg);
+    const mx = xs.reduce((a,b)=>a+b,0)/xs.length, my = ys.reduce((a,b)=>a+b,0)/ys.length;
+    let num = 0, den = 0;
+    xs.forEach((x,i) => { num += (x-mx)*(ys[i]-my); den += (x-mx)**2; });
+    return den ? num/den : null;
+  }
+  // Weekly rate: avg vs avg 7 days earlier once possible, else a regression over everything logged.
+  function weeklyRate() {
+    if (!entries.length) return null;
+    const last = entries[entries.length-1].date;
+    const a = avg7(last), b = avg7(addDays(last, -7));
+    if (a != null && b != null) return { kgwk: b - a, early: false, basis: a };
+    const s = slopePerDay(entries);
+    if (s == null || diffDays(entries[0].date, last) < 3) return null;
+    return { kgwk: -s*7, early: true, basis: entries[last ? entries.length-1 : 0].kg };
+  }
+
+  function render() {
+    const n = entries.length;
+    const last = n ? entries[n-1] : null;
+    const ref = last ? (avg7(last.date) ?? last.kg) : START_KG;
+
+    $("r-latest").innerHTML = last ? `${f1(last.kg)}<small>kg</small>` : "–";
+    $("r-latest-n").textContent = last ? `${fmtD(last.date)} · day ${diffDays(START, last.date)+1}` : "No weigh-ins yet";
+
+    const a = last ? avg7(last.date) : null;
+    $("r-avg").innerHTML = a != null ? `${f1(a)}<small>kg</small>` : "–";
+    const lo = last ? addDays(last.date, -6) : null;
+    const have = last ? entries.filter(e => e.date >= lo).length : 0;
+    $("r-avg-n").textContent = a != null ? `${sgn(a - START_KG)} kg vs start`
+      : (last && last.date >= FIRST_AVG ? `Needs 4 weigh-ins in 7 days (has ${have})` : "First one on Oct 31");
+
+    const r = weeklyRate();
+    if (r) {
+      const pct = r.kgwk / ref * 100;
+      $("r-rate").innerHTML = `${r.kgwk >= 0 ? "−" : "+"}${Math.abs(r.kgwk).toFixed(2)}<small>kg/wk</small>`;
+      const tag = r.kgwk < 0.5 ? "below plan" : r.kgwk > 0.8 ? "above plan" : "on plan";
+      $("r-rate-n").textContent = `${pct.toFixed(1)}%/wk · ${tag}${r.early ? " · early, includes water" : ""}`;
+    } else {
+      $("r-rate").textContent = "–";
+      $("r-rate-n").textContent = "Target 0.5–0.8 kg/wk";
+    }
+
+    const toGo = ref - GOAL;
+    if (r && r.kgwk > 0.05 && toGo > 0) {
+      const days = Math.round(toGo / r.kgwk * 7);
+      const eta = addDays(last.date, days);
+      $("r-eta").textContent = fmtShort(eta) + (eta.slice(0,4) !== "2026" ? ` '${eta.slice(2,4)}` : "");
+      $("r-eta-n").textContent = `~${Math.round(days/7)} weeks at this rate`;
+    } else if (toGo <= 0) {
+      $("r-eta").textContent = "Done"; $("r-eta-n").textContent = "Goal reached";
+    } else {
+      // Plan midpoint from start, shown until the trend has enough data.
+      const days = Math.round((START_KG - GOAL) / 0.65 * 7);
+      $("r-eta").textContent = fmtShort(addDays(START, days)) + ` '${addDays(START, days).slice(2,4)}`;
+      $("r-eta-n").textContent = "Plan estimate at 0.65 kg/wk";
+    }
+
+    const lost = Math.max(0, START_KG - ref);
+    $("p-bar").style.width = Math.min(100, lost / (START_KG - GOAL) * 100) + "%";
+    $("p-done").textContent = `${f1(lost)} kg lost${a != null ? " (7-day avg)" : ""}`;
+    $("p-left").textContent = `${f1(Math.max(0, toGo))} kg to go`;
+
+    renderTable();
+    renderChart();
+  }
+
+  function renderTable() {
+    const tb = $("rows");
+    tb.textContent = "";
+    if (!entries.length) {
+      tb.innerHTML = `<tr><td colspan="5" class="empty">${db ? "No weigh-ins yet. Log this morning's weight above." : "Your weigh-ins will appear here once they load."}</td></tr>`;
+      return;
+    }
+    [...entries].reverse().forEach((e, iRev) => {
+      const i = entries.length - 1 - iRev;
+      const prev = i > 0 ? entries[i-1] : null;
+      const ch = prev ? e.kg - prev.kg : null;
+      const a = avg7(e.date);
+      const tr = document.createElement("tr");
+      if (db && canWrite) { tr.className = "edit"; tr.tabIndex = 0; tr.title = "Edit this weigh-in"; }
+      const day = document.createElement("td"); day.className = "day";
+      const d = document.createElement("span"); d.className = "d"; d.textContent = fmtD(e.date);
+      day.append(d);
+      const dn = diffDays(START, e.date) + 1;
+      if (e.date <= STRICT_END) { const c = document.createElement("span"); c.className = "chip"; c.textContent = `Day ${dn}`; day.append(c); }
+      if (dow(e.date) === 6) { const c = document.createElement("span"); c.className = "chip salt"; c.textContent = "After Friday"; c.title = "Saturday weigh-ins may run high after Friday's salty Cajun shrimp"; day.append(c); }
+      if (e.note) { const m = document.createElement("span"); m.className = "meta"; m.textContent = e.note; day.append(m); }
+      const cells = [
+        `${f1(e.kg)}`,
+        ch == null ? "—" : `<span class="${ch < 0 ? "down" : ch > 0 ? "up" : ""}">${sgn(ch)}</span>`,
+        a == null ? "—" : f1(a),
+        f1(Math.max(0, e.kg - GOAL)),
+      ];
+      tr.append(day);
+      cells.forEach(h => { const td = document.createElement("td"); td.innerHTML = h; tr.append(td); });
+      const pick = () => loadIntoForm(e);
+      tr.addEventListener("click", () => { if (db && canWrite) pick(); });
+      tr.addEventListener("keydown", ev => { if ((ev.key === "Enter" || ev.key === " ") && db && canWrite) { ev.preventDefault(); pick(); } });
+      tb.append(tr);
+    });
+  }
+
+  function renderChart() {
+    const svg = $("chart");
+    const cw = svg.clientWidth || 700;
+    const W = Math.max(340, Math.min(700, Math.round(cw))), H = Math.round(W * (W < 500 ? 0.62 : 0.43)), L = 40, R = 12, T = 14, B = 28;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const last = entries.length ? entries[entries.length-1].date : START;
+    let x0 = START, x1, y0, y1;
+    if (view === "full") {
+      x1 = addDays(START, Math.ceil((START_KG - GOAL) / 0.5 * 7));
+      if (last > x1) x1 = addDays(last, 7);
+      y0 = GOAL - 1; y1 = START_KG + 1;
+      entries.forEach(e => { y0 = Math.min(y0, e.kg - .5); y1 = Math.max(y1, e.kg + .5); });
+    } else {
+      x1 = last < STRICT_END ? STRICT_END : addDays(last, 3);
+      if (diffDays(START, last) > 42) x0 = addDays(last, -42);
+      const vis = entries.filter(e => e.date >= x0);
+      const ks = vis.map(e => e.kg).concat([vis.length ? vis[0].kg : START_KG]);
+      // include the plan band over the window so "on plan" is visible
+      const span = diffDays(START, x1);
+      ks.push(START_KG - 0.8 * span / 7, x0 === START ? START_KG : ks[0]);
+      y0 = Math.floor(Math.min(...ks) - 0.5); y1 = Math.ceil(Math.max(...ks) + 0.5);
+    }
+    const xd = diffDays(x0, x1) || 1;
+    const X = s => L + diffDays(x0, s) / xd * (W - L - R);
+    const Y = k => T + (y1 - k) / (y1 - y0) * (H - T - B);
+    const ns = "http://www.w3.org/2000/svg";
+    svg.textContent = "";
+    const el = (tag, attrs, text) => { const n = document.createElementNS(ns, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (text != null) n.textContent = text; svg.append(n); return n; };
+
+    // y grid
+    const range = y1 - y0;
+    const step = range > 8 ? 2 : range > 4 ? 1 : 0.5;
+    for (let k = Math.ceil(y0 / step) * step; k <= y1 + 1e-9; k += step) {
+      el("line", { x1: L, x2: W - R, y1: Y(k), y2: Y(k), stroke: "var(--line)", "stroke-width": 1 });
+      el("text", { x: L - 6, y: Y(k) + 3.5, "text-anchor": "end" }, step < 1 ? k.toFixed(1) : k.toFixed(0));
+    }
+    // x ticks
+    const narrow = W < 500;
+    const xStep = xd > 120 ? (narrow ? 42 : 28) : xd > 50 ? 14 : xd > 20 ? 7 : (narrow ? 4 : 2);
+    for (let i = 0; i <= xd; i += xStep) {
+      const s = addDays(x0, i);
+      el("text", { x: X(s), y: H - 10, "text-anchor": i === 0 ? "start" : "middle" }, fmtShort(s));
+    }
+    // strict window shading
+    if (STRICT_END >= x0) {
+      const xa = X(START < x0 ? x0 : START), xb = X(STRICT_END < x1 ? STRICT_END : x1);
+      el("rect", { x: xa, y: T, width: Math.max(0, xb - xa), height: H - T - B, fill: "var(--accent-soft)", opacity: .35 });
+      if (xb - xa > 60) el("text", { x: xa + 5, y: T + 12 }, "14-day strict");
+    }
+    // plan band from start
+    const endT = x1;
+    const dEnd = diffDays(START, endT);
+    const hi = k => Math.max(GOAL, START_KG - 0.5 * k / 7), loK = k => Math.max(GOAL, START_KG - 0.8 * k / 7);
+    const pts = [];
+    for (let i = Math.max(0, diffDays(START, x0)); i <= dEnd; i += Math.max(1, Math.round(dEnd / 60))) pts.push(i);
+    if (pts[pts.length-1] !== dEnd) pts.push(dEnd);
+    const up = pts.map(i => `${X(addDays(START, i))},${Y(hi(i))}`), dn = pts.slice().reverse().map(i => `${X(addDays(START, i))},${Y(loK(i))}`);
+    el("polygon", { points: up.concat(dn).join(" "), fill: "var(--band)", stroke: "none" });
+    // goal line
+    if (GOAL >= y0 && GOAL <= y1) {
+      el("line", { x1: L, x2: W - R, y1: Y(GOAL), y2: Y(GOAL), stroke: "var(--goal)", "stroke-width": 1.5, "stroke-dasharray": "5 4" });
+      el("text", { x: W - R, y: Y(GOAL) - 5, "text-anchor": "end", style: "fill:var(--goal)" }, "80 kg");
+    }
+    const vis = entries.filter(e => e.date >= x0 && e.date <= x1);
+    // 7-day average line
+    const avgPts = vis.map(e => [e.date, avg7(e.date)]).filter(p => p[1] != null);
+    if (avgPts.length > 1) el("polyline", { points: avgPts.map(p => `${X(p[0])},${Y(p[1])}`).join(" "), fill: "none", stroke: "var(--accent)", "stroke-width": 2.5, "stroke-linejoin": "round", "stroke-linecap": "round" });
+    else if (avgPts.length === 1) el("circle", { cx: X(avgPts[0][0]), cy: Y(avgPts[0][1]), r: 4, fill: "var(--accent)" });
+    // daily dots
+    vis.forEach((e, i) => {
+      const isLast = i === vis.length - 1;
+      el("circle", { cx: X(e.date), cy: Y(e.kg), r: isLast ? 4.5 : 3.2, fill: isLast ? "var(--ink)" : "var(--dot)", stroke: "var(--panel)", "stroke-width": 1.2 })
+        .append(Object.assign(document.createElementNS(ns, "title"), { textContent: `${fmtD(e.date)}: ${f1(e.kg)} kg` }));
+      if (isLast) el("text", { x: X(e.date) + (X(e.date) > W - 70 ? -8 : 8), y: Y(e.kg) - 8, "text-anchor": X(e.date) > W - 70 ? "end" : "start", style: "fill:var(--ink)" }, `${f1(e.kg)}`);
+    });
+    if (!vis.length) el("text", { x: (L + W - R) / 2, y: H / 2, "text-anchor": "middle" }, "Weigh-ins will plot here");
+    svg.setAttribute("aria-label", `Weight chart, ${vis.length} weigh-ins shown, goal 80 kg`);
+  }
+
+  // Form
+  const status = (msg, err) => { const s = $("f-status"); s.textContent = msg; s.classList.toggle("err", !!err); };
+  function resetForm() {
+    $("f-date").value = today() < START ? START : today();
+    $("f-kg").value = ""; $("f-note").value = "";
+    $("form-title").textContent = "Log a weigh-in";
+    $("f-del").hidden = true;
+  }
+  function loadIntoForm(e) {
+    $("f-date").value = e.date; $("f-kg").value = f1(e.kg); $("f-note").value = e.note || "";
+    $("form-title").textContent = `Edit ${fmtD(e.date)}`;
+    $("f-del").hidden = false;
+    $("f-kg").focus();
+    status("Change the weight or note and save, or delete this weigh-in.");
+  }
+  $("f-date").addEventListener("change", () => {
+    const e = entries.find(x => x.date === $("f-date").value);
+    $("f-del").hidden = !e;
+    $("form-title").textContent = e ? `Edit ${fmtD(e.date)}` : "Log a weigh-in";
+    if (e) { $("f-kg").value = f1(e.kg); $("f-note").value = e.note || ""; }
+  });
+  let busy = false;
+  $("f").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    if (!db || busy) return;
+    const date = $("f-date").value, kg = Math.round(parseFloat($("f-kg").value) * 10) / 10, note = $("f-note").value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < START) return status("Pick a date on or after Oct 25, 2026.", true);
+    if (!(kg >= 50 && kg <= 150)) return status("Enter a weight between 50 and 150 kg.", true);
+    busy = true; $("f-save").disabled = true;
+    try {
+      const body = { date, kg, updatedAt: new Date().toISOString() };
+      if (note) body.note = note;
+      await db.collection("weighins").doc(date).set(body);
+      status(`Saved ${f1(kg)} kg for ${fmtD(date)}.`);
+      resetForm();
+    } catch (e) {
+      if (e && e.code === "invalid_argument") { canWrite = false; status("You can view this tracker but not change it.", true); }
+      else status("Couldn't save. Check your connection and try again.", true);
+    } finally { busy = false; $("f-save").disabled = !canWrite; }
+  });
+  $("f-del").addEventListener("click", async () => {
+    if (!db || busy) return;
+    const date = $("f-date").value;
+    if ($("f-del").dataset.confirm !== date) {
+      $("f-del").dataset.confirm = date; $("f-del").textContent = "Tap again to delete";
+      return;
+    }
+    busy = true;
+    try { await db.collection("weighins").doc(date).delete(); status(`Deleted ${fmtD(date)}.`); resetForm(); }
+    catch { status("Couldn't delete. Try again.", true); }
+    finally { busy = false; delete $("f-del").dataset.confirm; $("f-del").textContent = "Delete"; }
+  });
+
+  $("v-zoom").addEventListener("click", () => { view = "zoom"; $("v-zoom").setAttribute("aria-pressed","true"); $("v-full").setAttribute("aria-pressed","false"); renderChart(); });
+  $("v-full").addEventListener("click", () => { view = "full"; $("v-full").setAttribute("aria-pressed","true"); $("v-zoom").setAttribute("aria-pressed","false"); renderChart(); });
+
+  resetForm();
+  render();
+  let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(renderChart, 150); });
+
+  (async () => {
+    try { db = window.claude ? await window.claude.use("db") : null; } catch { db = null; }
+    if (!db) {
+      $("f-save").disabled = true;
+      status("Open this page in Claude while signed in to load and log weigh-ins.", true);
+      return;
+    }
+    try {
+      const user = await window.claude.use("user");
+      const w = user && await user.can("data.write");
+      if (w === false) { canWrite = false; $("f-save").disabled = true; status("You can view this tracker but not change it."); }
+    } catch {}
+    db.collection("weighins").orderBy("date").onSnapshot(snap => {
+      entries = snap.docs.map(d => d.data()).filter(d => d && typeof d.kg === "number" && typeof d.date === "string")
+        .map(d => ({ date: d.date, kg: d.kg, note: d.note || "" })).sort((a, b) => a.date < b.date ? -1 : 1);
+      if (canWrite && $("f-status").textContent.startsWith("Loading")) status(entries.length ? `${entries.length} weigh-in${entries.length > 1 ? "s" : ""} loaded.` : "Log this morning's weight to start.");
+      render();
+    }, () => status("Lost the connection to your weigh-ins. Reload the page.", true));
+  })();
+})();
+</script>

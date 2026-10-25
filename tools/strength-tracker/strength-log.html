@@ -1,0 +1,572 @@
+<title>Aziz Strength Log</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: gym whiteboard. Status strip, main-lift cards like plate racks, then the log form and history. */
+:root {
+  --bg: #f1f2ef;
+  --surface: #ffffff;
+  --sunk: #e7e9e5;
+  --ink: #15181c;
+  --muted: #5b626a;
+  --line: #d6d9d4;
+  --accent: #1d4cb8;
+  --accent-soft: #e3eafa;
+  --good: #2b7a4b;
+  --good-soft: #e1f1e7;
+  --warn: #a8670f;
+  --warn-soft: #faefd9;
+  --bad: #bb3127;
+  --bad-soft: #f9e2df;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111316; --surface: #1a1d21; --sunk: #23272c; --ink: #e8eae6; --muted: #9ba2a9; --line: #2e333a;
+    --accent: #7398ff; --accent-soft: #1f2a45; --good: #5cc58a; --good-soft: #17301f; --warn: #e5ab4c; --warn-soft: #34290f;
+    --bad: #ff6e61; --bad-soft: #3a1a17; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111316; --surface: #1a1d21; --sunk: #23272c; --ink: #e8eae6; --muted: #9ba2a9; --line: #2e333a;
+  --accent: #7398ff; --accent-soft: #1f2a45; --good: #5cc58a; --good-soft: #17301f; --warn: #e5ab4c; --warn-soft: #34290f;
+  --bad: #ff6e61; --bad-soft: #3a1a17; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: 0.01em; text-wrap: balance; margin: 0; }
+h1 { font-size: 2.4rem; line-height: 1; text-transform: uppercase; }
+h2 { font-size: 1.5rem; text-transform: uppercase; }
+h3 { font-size: 1.2rem; }
+.num { font-family: var(--display); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.eyebrow { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+header.top p { margin: 6px 0 0; max-width: 60ch; }
+.btn {
+  font: 600 0.95rem var(--body); border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  padding: 8px 14px; cursor: pointer; min-height: 38px;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn.small { font-size: 0.85rem; padding: 4px 10px; min-height: 30px; }
+.btn.danger { color: var(--bad); }
+.btn.danger.armed { background: var(--bad); border-color: var(--bad); color: var(--surface); }
+.btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* status strip */
+.strip { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-weight: 600; font-size: 0.85rem; background: var(--sunk); color: var(--ink); white-space: nowrap; }
+.pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.s-flag { background: var(--bad-soft); color: var(--bad); }
+.s-watch { background: var(--warn-soft); color: var(--warn); }
+.s-holding, .s-up { background: var(--good-soft); color: var(--good); }
+.s-base { background: var(--sunk); color: var(--muted); }
+
+.alert { border: 1px solid var(--bad); background: var(--bad-soft); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.alert h3 { color: var(--bad); }
+.alert ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.alert .checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 16px; }
+.alert .checks div { min-width: 0; }
+.alert .checks b { display: block; font-family: var(--display); font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.notice { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 12px 14px; }
+
+/* main lift cards */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card.is-flag { border-color: var(--bad); }
+.card.is-watch { border-color: var(--warn); }
+.card .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.card .head > div { min-width: 0; }
+.card .big { font-size: 1.9rem; line-height: 1; font-weight: 600; }
+.card .big small { font-size: 1rem; color: var(--muted); font-weight: 500; }
+.card .meta { display: flex; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: var(--muted); flex-wrap: wrap; }
+.spark { width: 100%; height: 52px; display: block; }
+.delta-up { color: var(--good); }
+.delta-down { color: var(--bad); }
+
+/* log form */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.fields { display: flex; flex-wrap: wrap; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+input, select, textarea {
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; min-height: 38px; min-width: 0;
+}
+textarea { min-height: 60px; resize: vertical; width: 100%; }
+.field.grow { flex: 1 1 260px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.logt input { width: 76px; }
+.logt input.reps, .logt input.sets { width: 58px; }
+.logt td.ex { min-width: 150px; }
+.tag { display: inline-block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); background: var(--accent-soft); padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.msg { font-weight: 600; }
+.msg.ok { color: var(--good); }
+.msg.err { color: var(--bad); }
+
+details.day { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+details.day summary { cursor: pointer; padding: 12px 14px; display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+details.day summary h3 { display: inline; }
+details.day .scroll { padding: 0 8px 8px; }
+
+.hist { display: flex; flex-direction: column; gap: 8px; }
+.hrow { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; justify-content: space-between; }
+.hrow .info { min-width: 0; flex: 1 1 260px; }
+.hrow .sets { font-size: 0.88rem; color: var(--muted); overflow-wrap: anywhere; }
+.rule { font-size: 0.88rem; color: var(--muted); max-width: 75ch; }
+@media (prefers-reduced-motion: no-preference) { .card, .btn { transition: border-color 0.15s, background 0.15s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Cut · Oct 25 → 80 kg · keep loads heavy</div>
+      <h1>Strength Log</h1>
+      <p class="muted">Log your top working set per exercise. The 10 main lifts get flagged when they drop two sessions in a row.</p>
+    </div>
+    <a class="btn primary" href="#log" id="jump-log">Log a workout</a>
+  </header>
+
+  <section aria-labelledby="sum-h" style="display:flex;flex-direction:column;gap:12px">
+    <h2 id="sum-h" hidden>Status</h2>
+    <div class="strip" id="strip"></div>
+    <div id="alerts"></div>
+    <div id="dbnote"></div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:12px" aria-labelledby="main-h">
+    <h2 id="main-h">Main lifts</h2>
+    <div class="grid" id="cards"></div>
+    <p class="rule">How a drop is judged: each top set becomes an estimated 1-rep max (weight × (1 + reps ÷ 30)). A session counts as down when it is more than 1% below your best from the previous three sessions of that workout, baseline included. One down session is <b>Watch</b>. Two in a row is <b>Flag</b>. Lifts that appear on both A and B days are tracked separately, because their place in the workout differs.</p>
+  </section>
+
+  <section class="panel" id="log" aria-labelledby="log-h">
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline">
+      <h2 id="log-h">Log a workout</h2>
+      <span class="muted" id="edit-note"></span>
+    </div>
+    <form id="logform" novalidate style="display:flex;flex-direction:column;gap:14px">
+      <div class="fields">
+        <div class="field"><label for="f-date">Date</label><input type="date" id="f-date" required></div>
+        <div class="field"><label for="f-day">Workout</label><select id="f-day"></select></div>
+        <div class="field"><label for="f-sleep">Sleep (hours)</label><input type="number" id="f-sleep" min="0" max="14" step="0.25" placeholder="7.5" style="width:100px"></div>
+        <div class="field grow"><label for="f-note">Notes (pre-workout food, how it felt)</label><input type="text" id="f-note" placeholder="Meal 1 at 2 pm, felt strong"></div>
+      </div>
+      <div class="scroll">
+        <table class="logt">
+          <thead><tr><th>Exercise</th><th>Last time</th><th>Weight</th><th>Reps</th><th>Sets</th></tr></thead>
+          <tbody id="f-rows"></tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn primary" id="f-save">Save workout</button>
+        <button type="button" class="btn" id="f-fill">Fill from last time</button>
+        <button type="button" class="btn" id="f-clear">Clear</button>
+        <span class="msg" id="f-msg" role="status"></span>
+      </div>
+      <p class="rule" style="margin:0">Leave a row blank to skip it. Weight is per side as the machine or dumbbell reads, in the unit shown. Saving the same date and workout again replaces that session.</p>
+    </form>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:12px" aria-labelledby="all-h">
+    <h2 id="all-h">Every exercise</h2>
+    <div id="days" style="display:flex;flex-direction:column;gap:8px"></div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:12px" aria-labelledby="hist-h">
+    <h2 id="hist-h">Sessions</h2>
+    <div class="hist" id="hist"></div>
+  </section>
+</div>
+
+<script>
+// Program and Oct 2026 baselines (working sets from Strong templates).
+// [id, name, weight, unit, reps, sets, main, note]
+const DAYS = [
+  { id: "pushA", name: "Push A", ex: [
+    ["bench", "Bench Press (Barbell)", 90, "kg", 8, 2, true, "35 kg/side"],
+    ["latraise", "Lateral Raise (Cable)", 7.5, "kg", 10, 3],
+    ["incdb", "Incline DB Press", 65, "lb", 10, 2, true],
+    ["xover", "Cable Crossover", 16.5, "kg", 10, 3],
+    ["triext", "Triceps Extension (Cable)", 15, "kg", 10, 3],
+    ["pushdown", "Triceps Pushdown (Straight bar)", 32.5, "kg", 10, 2],
+    ["sidedelt", "Standing Side Delts (machine)", 66, "kg", 10, 3] ] },
+  { id: "pullA", name: "Pull A", ex: [
+    ["widepd", "Lat Pulldown, Wide", 80, "kg", 8, 3, true],
+    ["sapd", "Lat Pulldown, Single Arm", 60, "kg", 10, 3],
+    ["row", "Seated Row (Cable)", 95, "kg", 8, 2, true],
+    ["pullover", "Pullover (Machine)", 61, "kg", 8, 2],
+    ["dbcurl", "DB Curl", 30, "lb", 10, 3],
+    ["seatcurl", "Seated Bicep Curl", 25, "kg", 10, 3],
+    ["revfly", "Reverse Fly (Machine)", 61, "kg", 10, 1] ] },
+  { id: "lowerA", name: "Lower A", ex: [
+    ["legext", "Leg Extension", 122, "kg", 8, 3, true],
+    ["hack", "Hack Squat", 70, "kg", 8, 2, true],
+    ["smith", "Smith Squat", 40, "kg", 7, 1],
+    ["legcurl", "Lying Leg Curl", 63, "kg", 8, 2, true],
+    ["adductor", "Hip Adductor", 85, "kg", 10, 3],
+    ["calf", "Standing Calf Raise", 60, "kg", 10, 3],
+    ["abs", "Seated Abs", 5, "kg", 100, 1, false, "5 kg × 100 as logged; check"] ] },
+  { id: "pushB", name: "Push B", ex: [
+    ["gundam", "Gundam (chest machine)", 60, "kg", 8, 3, true],
+    ["dbohp", "Seated DB Overhead Press", 60, "lb", 8, 3, true],
+    ["sidedelt", "Side Delts", 7.5, "kg", 10, 3],
+    ["revfly", "Reverse Fly (Machine)", 61, "kg", 10, 2],
+    ["frontraise", "Front Raise (DB)", 30, "lb", 10, 1],
+    ["rope", "Triceps Rope", 15, "kg", 10, 2],
+    ["pushdown", "Triceps Pushdown", 32.5, "kg", 10, 2] ] },
+  { id: "pullB", name: "Pull B", ex: [
+    ["tbar", "T-Bar Row", 50, "kg", 8, 3, true],
+    ["sapd", "Lat Pulldown, Single Arm", 60, "kg", 8, 3, false, "8–10 reps"],
+    ["isorow", "Iso-Lateral Low Row (plate)", 70, "kg", 10, 2],
+    ["row", "Seated Row (Cable)", 90, "kg", 8, 2, true],
+    ["traps", "Traps Machine", 80, "kg", 10, 2],
+    ["cablecurl", "Cable Standing Biceps", 16, "kg", 10, 3] ] },
+  { id: "lowerB", name: "Lower B", ex: [
+    ["legcurl", "Lying Leg Curl", 63, "kg", 8, 3, true],
+    ["legext", "Leg Extension", 122, "kg", 8, 2, true],
+    ["hack", "Hack Squat", 70, "kg", 8, 2, true],
+    ["smith", "Smith Squat", 40, "kg", 10, 2],
+    ["abductor", "Hip Abductor", 135, "kg", 20, 3],
+    ["calfpress", "Calf Press on Seated Leg Press", 65, "kg", 10, 2],
+    ["abs", "Seated Abs", 5, "kg", 100, 1, false, "5 kg × 100 as logged; check"] ] },
+];
+const DAY_ORDER = Object.fromEntries(DAYS.map((d, i) => [d.id, i]));
+const DAY_NAME = Object.fromEntries(DAYS.map(d => [d.id, d.name]));
+const LIFTS = DAYS.flatMap(d => d.ex.map(([ex, name, w, unit, r, s, main, note]) => (
+  { key: d.id + "." + ex, day: d.id, ex, name, unit, main: !!main, note: note || "", base: { w, r, s } }
+)));
+const STATUS_LABEL = { flag: "Flag: down 2 in a row", watch: "Watch: down once", up: "New best", holding: "Holding", base: "Baseline only" };
+const STATUS_SHORT = { flag: "Flag", watch: "Watch", up: "New best", holding: "Holding", base: "Baseline" };
+
+let sessions = [];       // [{id, date, day, entries:{ex:{w,r,s}}, sleep, note}]
+let loaded = false;
+let db = null;
+let col = null;
+let editingId = null;
+let readOnly = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtW = w => (Math.round(w * 100) / 100).toString();
+const e1 = (w, r) => w * (1 + r / 30);
+const setStr = (x, unit) => `${fmtW(x.w)} ${unit} × ${x.r}${x.s ? " ×" + x.s : ""}`;
+function fmtDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+function todayISO() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
+const validEntry = x => x && Number(x.w) > 0 && Number(x.r) > 0;
+
+function sortedSessions() {
+  return sessions.slice().sort((a, b) => a.date === b.date ? DAY_ORDER[a.day] - DAY_ORDER[b.day] : (a.date < b.date ? -1 : 1));
+}
+
+// Series for one lift: baseline first, then each logged session of that workout.
+function analyze(lift) {
+  const pts = [{ label: "Baseline", w: lift.base.w, r: lift.base.r, s: lift.base.s, base: true }];
+  for (const s of sortedSessions()) {
+    if (s.day !== lift.day) continue;
+    const x = s.entries && s.entries[lift.ex];
+    if (!validEntry(x)) continue;
+    pts.push({ label: fmtDate(s.date), date: s.date, w: Number(x.w), r: Number(x.r), s: Number(x.s) || null, sleep: s.sleep, note: s.note });
+  }
+  pts.forEach((p, i) => {
+    p.e = e1(p.w, p.r);
+    if (i === 0) { p.down = false; return; }
+    const prev = pts.slice(Math.max(0, i - 3), i);
+    const ref = Math.max(...prev.map(q => q.e));
+    p.down = p.e < ref * 0.99;
+    p.best = p.e > Math.max(...pts.slice(0, i).map(q => q.e)) * 1.0001;
+  });
+  const n = pts.length;
+  const last = pts[n - 1];
+  let status = "base";
+  if (n > 1) {
+    if (n > 2 && last.down && pts[n - 2].down) status = "flag";
+    else if (last.down) status = "watch";
+    else if (last.best) status = "up";
+    else status = "holding";
+  }
+  let streak = 0;
+  for (let i = n - 1; i > 0 && pts[i].down; i--) streak++;
+  const delta = (last.e / pts[0].e - 1) * 100;
+  return { lift, pts, last, status, streak, delta };
+}
+
+function spark(a) {
+  const W = 240, H = 52, P = 6;
+  const es = a.pts.map(p => p.e);
+  let lo = Math.min(...es), hi = Math.max(...es);
+  if (hi - lo < hi * 0.04) { const mid = (hi + lo) / 2; lo = mid - hi * 0.02; hi = mid + hi * 0.02; }
+  const x = i => a.pts.length === 1 ? W / 2 : P + i * (W - 2 * P) / (a.pts.length - 1);
+  const y = v => H - P - (v - lo) / (hi - lo) * (H - 2 * P);
+  const by = y(es[0]).toFixed(1);
+  const line = a.pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p.e).toFixed(1)}`).join(" ");
+  const dots = a.pts.map((p, i) => {
+    const last = i === a.pts.length - 1;
+    const fill = p.down ? "var(--bad)" : (p.base ? "var(--muted)" : "var(--accent)");
+    return `<circle cx="${x(i).toFixed(1)}" cy="${y(p.e).toFixed(1)}" r="${last ? 4 : 2.6}" fill="${fill}"><title>${esc(p.label)}: ${esc(setStr(p, a.lift.unit))}, est. 1RM ${p.e.toFixed(1)}</title></circle>`;
+  }).join("");
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Estimated 1-rep max trend for ${esc(a.lift.name)}">
+    <line x1="0" x2="${W}" y1="${by}" y2="${by}" stroke="var(--line)" stroke-width="1" stroke-dasharray="4 4" fill="none"/>
+    ${a.pts.length > 1 ? `<path d="${line}" stroke="var(--accent)" stroke-width="2" fill="none" vector-effect="non-scaling-stroke"/>` : ""}
+    ${dots}</svg>`;
+}
+
+function renderSummary(all) {
+  const main = all.filter(a => a.lift.main);
+  const c = { flag: 0, watch: 0, ok: 0, base: 0 };
+  main.forEach(a => { if (a.status === "flag") c.flag++; else if (a.status === "watch") c.watch++; else if (a.status === "base") c.base++; else c.ok++; });
+  $("strip").innerHTML = [
+    `<span class="pill s-flag">${c.flag} flagged</span>`,
+    `<span class="pill s-watch">${c.watch} watch</span>`,
+    `<span class="pill s-holding">${c.ok} holding or up</span>`,
+    `<span class="pill s-base">${c.base} not logged yet</span>`,
+    `<span class="pill s-base">${sessions.length} session${sessions.length === 1 ? "" : "s"} logged</span>`,
+  ].join("");
+
+  const flagged = main.filter(a => a.status === "flag");
+  if (!flagged.length) { $("alerts").innerHTML = ""; return; }
+  const items = flagged.map(a => {
+    const recent = a.pts.slice(-a.streak);
+    const sleeps = recent.map(p => p.sleep ? p.sleep + " h" : "not logged").join(", ");
+    const sets = recent.map(p => p.s || "?").join(", ");
+    return `<li><b>${esc(a.lift.name)}</b> (${DAY_NAME[a.lift.day]}): down ${a.streak} sessions in a row, now ${esc(setStr(a.last, a.lift.unit))}. Sleep those nights: ${esc(sleeps)}. Working sets: ${esc(sets)} vs ${a.lift.base.s} at baseline.</li>`;
+  }).join("");
+  $("alerts").innerHTML = `<div class="alert" role="alert">
+    <h3>${flagged.length === 1 ? "A main lift is" : flagged.length + " main lifts are"} dropping</h3>
+    <ul>${items}</ul>
+    <div class="checks">
+      <div><b>1. Sleep</b>Were the last few nights short? Aim for a steady 7–9 hours before changing anything else.</div>
+      <div><b>2. Pre-workout food</b>Was Meal 1 eaten about 1.5 h before, carb-forward and lower in fat? Was the Gatorade in?</div>
+      <div><b>3. Volume</b>Did you add sets, change exercise order, or push past 1–2 reps short of failure?</div>
+      <div><b>Then calories</b>Keep 2,000 kcal until these three are checked. Review calories only on the weekly trend.</div>
+    </div>
+  </div>`;
+}
+
+function renderCards(all) {
+  $("cards").innerHTML = all.filter(a => a.lift.main).sort((a, b) => {
+    const rank = { flag: 0, watch: 1, up: 2, holding: 3, base: 4 };
+    return rank[a.status] - rank[b.status] || DAY_ORDER[a.lift.day] - DAY_ORDER[b.lift.day];
+  }).map(a => {
+    const l = a.lift, logged = a.pts.length > 1;
+    const d = a.delta;
+    const deltaHtml = logged ? `<span class="${d >= 0.5 ? "delta-up" : d <= -0.5 ? "delta-down" : ""}">${d >= 0 ? "+" : ""}${d.toFixed(1)}% vs baseline</span>` : `<span>No sessions logged yet</span>`;
+    return `<article class="card is-${a.status}">
+      <div class="head">
+        <div><div class="eyebrow">${DAY_NAME[l.day]}</div><h3>${esc(l.name)}</h3></div>
+        <span class="pill s-${a.status}" title="${STATUS_LABEL[a.status]}">${STATUS_SHORT[a.status]}</span>
+      </div>
+      <div class="big num">${fmtW(a.last.w)}<small> ${l.unit}</small> × ${a.last.r}${a.last.s ? `<small> ×${a.last.s}</small>` : ""}</div>
+      ${spark(a)}
+      <div class="meta"><span>${logged ? "Last: " + esc(a.last.label) : "Baseline: " + esc(setStr(l.base, l.unit)) + (l.note ? " (" + esc(l.note) + ")" : "")}</span>${deltaHtml}</div>
+      <div class="meta"><span>Est. 1RM <span class="num">${a.last.e.toFixed(1)} ${l.unit}</span></span>${logged ? `<span>Baseline ${esc(setStr(l.base, l.unit))}</span>` : ""}</div>
+    </article>`;
+  }).join("");
+}
+
+function renderDays(all) {
+  const open = new Set([...document.querySelectorAll("details.day[open]")].map(d => d.dataset.day));
+  $("days").innerHTML = DAYS.map(d => {
+    const rows = all.filter(a => a.lift.day === d.id);
+    const nFlag = rows.filter(a => a.status === "flag").length, nWatch = rows.filter(a => a.status === "watch").length;
+    const sum = nFlag || nWatch ? `${nFlag ? `<span class="pill s-flag">${nFlag} flag</span>` : ""} ${nWatch ? `<span class="pill s-watch">${nWatch} watch</span>` : ""}` : "";
+    return `<details class="day" data-day="${d.id}" ${open.has(d.id) ? "open" : ""}>
+      <summary><h3>${d.name}</h3><span>${sum}</span></summary>
+      <div class="scroll"><table>
+        <thead><tr><th>Exercise</th><th>Baseline</th><th>Last</th><th>Best est. 1RM</th><th>vs baseline</th><th>Status</th></tr></thead>
+        <tbody>${rows.map(a => {
+          const l = a.lift, logged = a.pts.length > 1, best = Math.max(...a.pts.map(p => p.e));
+          return `<tr><td>${esc(l.name)}${l.main ? '<span class="tag">Main</span>' : ""}${l.note ? `<div class="muted" style="font-size:.8rem">${esc(l.note)}</div>` : ""}</td>
+            <td>${esc(setStr(l.base, l.unit))}</td>
+            <td>${logged ? esc(setStr(a.last, l.unit)) + `<div class="muted" style="font-size:.8rem">${esc(a.last.label)}</div>` : '<span class="muted">—</span>'}</td>
+            <td class="num">${best.toFixed(1)} ${l.unit}</td>
+            <td>${logged ? `<span class="${a.delta >= 0.5 ? "delta-up" : a.delta <= -0.5 ? "delta-down" : ""}">${a.delta >= 0 ? "+" : ""}${a.delta.toFixed(1)}%</span>` : '<span class="muted">—</span>'}</td>
+            <td><span class="pill s-${a.status}">${STATUS_SHORT[a.status]}</span></td></tr>`;
+        }).join("")}</tbody></table></div>
+    </details>`;
+  }).join("");
+}
+
+function renderHistory() {
+  if (!loaded) { $("hist").innerHTML = `<div class="notice muted">Loading your sessions…</div>`; return; }
+  if (!sessions.length) {
+    $("hist").innerHTML = `<div class="notice">No sessions yet. Your Oct 2026 baselines are loaded above. Log your next workout with the form, or send me a Strong screenshot and I'll log it for you.</div>`;
+    return;
+  }
+  const list = sortedSessions().reverse();
+  $("hist").innerHTML = list.map(s => {
+    const day = DAYS.find(d => d.id === s.day);
+    const parts = day ? day.ex.filter(([ex]) => validEntry(s.entries && s.entries[ex])).map(([ex, name, , unit]) => `${name} ${setStr(s.entries[ex], unit)}`) : [];
+    return `<div class="hrow">
+      <div class="info"><b>${esc(fmtDate(s.date))}</b> · ${esc(DAY_NAME[s.day] || s.day)}${s.sleep ? ` · <span class="muted">${esc(s.sleep)} h sleep</span>` : ""}
+        <div class="sets">${esc(parts.join(" · ")) || "No sets"}</div>
+        ${s.note ? `<div class="sets"><i>${esc(s.note)}</i></div>` : ""}</div>
+      <div class="actions">
+        <button type="button" class="btn small" data-edit="${esc(s.id)}" ${readOnly || !col ? "disabled" : ""}>Edit</button>
+        <button type="button" class="btn small danger" data-del="${esc(s.id)}" ${readOnly || !col ? "disabled" : ""}>Delete</button>
+      </div></div>`;
+  }).join("");
+}
+
+function render() {
+  const all = LIFTS.map(analyze);
+  renderSummary(all);
+  renderCards(all);
+  renderDays(all);
+  renderHistory();
+  renderRowsLast();
+}
+
+// ---------- form ----------
+function buildRows(prefill) {
+  const day = DAYS.find(d => d.id === $("f-day").value);
+  $("f-rows").innerHTML = day.ex.map(([ex, name, , unit, , , main]) => {
+    const v = prefill && prefill[ex] || {};
+    return `<tr data-ex="${ex}">
+      <td class="ex">${esc(name)}${main ? '<span class="tag">Main</span>' : ""}</td>
+      <td class="muted last" data-last="${ex}"></td>
+      <td><input type="number" class="w" id="w-${ex}" min="0" step="0.5" inputmode="decimal" aria-label="${esc(name)} weight in ${unit}" value="${v.w ?? ""}"> <span class="muted">${unit}</span></td>
+      <td><input type="number" class="reps" id="r-${ex}" min="0" step="1" inputmode="numeric" aria-label="${esc(name)} reps" value="${v.r ?? ""}"></td>
+      <td><input type="number" class="sets" id="s-${ex}" min="0" step="1" inputmode="numeric" aria-label="${esc(name)} working sets" value="${v.s ?? ""}"></td></tr>`;
+  }).join("");
+  renderRowsLast();
+}
+function lastFor(dayId, ex, beforeDate) {
+  const list = sortedSessions().filter(s => s.day === dayId && validEntry(s.entries && s.entries[ex]) && s.id !== editingId && (!beforeDate || s.date <= beforeDate));
+  if (list.length) return { ...list[list.length - 1].entries[ex], label: fmtDate(list[list.length - 1].date) };
+  const l = LIFTS.find(x => x.key === dayId + "." + ex);
+  return { ...l.base, label: "baseline" };
+}
+function renderRowsLast() {
+  const dayId = $("f-day").value;
+  document.querySelectorAll("#f-rows td[data-last]").forEach(td => {
+    const ex = td.dataset.last, l = LIFTS.find(x => x.key === dayId + "." + ex), last = lastFor(dayId, ex);
+    td.textContent = `${setStr(last, l.unit)} (${last.label})`;
+  });
+}
+function readForm() {
+  const entries = {};
+  document.querySelectorAll("#f-rows tr").forEach(tr => {
+    const ex = tr.dataset.ex;
+    const w = parseFloat($("w-" + ex).value), r = parseInt($("r-" + ex).value, 10), s = parseInt($("s-" + ex).value, 10);
+    if (w > 0 && r > 0) entries[ex] = { w, r, ...(s > 0 ? { s } : {}) };
+  });
+  return entries;
+}
+function msg(text, kind) { const m = $("f-msg"); m.textContent = text; m.className = "msg " + (kind || ""); }
+function resetForm(keepDay) {
+  editingId = null;
+  $("edit-note").textContent = "";
+  $("f-save").textContent = "Save workout";
+  $("f-date").value = todayISO();
+  if (!keepDay) $("f-day").value = guessDay();
+  $("f-sleep").value = ""; $("f-note").value = "";
+  buildRows();
+}
+// Next workout in the rotation after the most recent session.
+function guessDay() {
+  const s = sortedSessions();
+  if (!s.length) return "pushA";
+  return DAYS[(DAY_ORDER[s[s.length - 1].day] + 1) % DAYS.length].id;
+}
+
+$("f-day").innerHTML = DAYS.map(d => `<option value="${d.id}">${d.name}</option>`).join("");
+$("f-day").addEventListener("change", () => buildRows());
+$("f-fill").addEventListener("click", () => {
+  const dayId = $("f-day").value, day = DAYS.find(d => d.id === dayId), pre = {};
+  day.ex.forEach(([ex]) => { const l = lastFor(dayId, ex); pre[ex] = { w: l.w, r: l.r, s: l.s }; });
+  buildRows(pre);
+  msg("Filled from your last session. Change what was different, then save.", "");
+});
+$("f-clear").addEventListener("click", () => { resetForm(true); msg(""); });
+
+$("logform").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  if (!col || readOnly) { msg("Saving isn't available in this view.", "err"); return; }
+  const date = $("f-date").value, day = $("f-day").value;
+  if (!date) { msg("Pick the date of the workout.", "err"); return; }
+  const entries = readForm();
+  if (!Object.keys(entries).length) { msg("Enter weight and reps for at least one exercise.", "err"); return; }
+  const sleep = parseFloat($("f-sleep").value);
+  const id = `${date}_${day}`;
+  const body = { date, day, entries, sleep: sleep > 0 ? sleep : null, note: $("f-note").value.trim(), updatedAt: new Date().toISOString() };
+  $("f-save").disabled = true;
+  try {
+    await col.doc(id).set(body);
+    if (editingId && editingId !== id) await col.doc(editingId).delete();
+    msg(`Saved ${DAY_NAME[day]} for ${fmtDate(date)}.`, "ok");
+    resetForm();
+  } catch (e) {
+    if (e && e.code === "invalid_argument") { readOnly = true; msg("You can view this log but not change it.", "err"); render(); }
+    else if (e && e.code === "quota_exceeded") msg("The log is full. Delete some old sessions, then save again.", "err");
+    else msg("Couldn't save. Check your connection and try again.", "err");
+  } finally { $("f-save").disabled = false; }
+});
+
+$("hist").addEventListener("click", async ev => {
+  const ed = ev.target.closest("[data-edit]"), del = ev.target.closest("[data-del]");
+  if (ed) {
+    const s = sessions.find(x => x.id === ed.dataset.edit); if (!s) return;
+    editingId = s.id;
+    $("f-date").value = s.date; $("f-day").value = s.day;
+    $("f-sleep").value = s.sleep || ""; $("f-note").value = s.note || "";
+    buildRows(s.entries);
+    $("edit-note").textContent = `Editing ${fmtDate(s.date)} · ${DAY_NAME[s.day]}`;
+    $("f-save").textContent = "Save changes";
+    msg("");
+    $("log").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+  if (del) {
+    if (!del.classList.contains("armed")) {
+      del.classList.add("armed"); del.textContent = "Confirm delete";
+      setTimeout(() => { if (del.isConnected) { del.classList.remove("armed"); del.textContent = "Delete"; } }, 4000);
+      return;
+    }
+    try { await col.doc(del.dataset.del).delete(); if (editingId === del.dataset.del) resetForm(); }
+    catch (e) { msg("Couldn't delete that session. Try again.", "err"); }
+  }
+});
+
+resetForm();
+render();
+
+// ---------- storage ----------
+(async () => {
+  try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch { db = null; }
+  if (!db) {
+    loaded = true;
+    $("dbnote").innerHTML = `<div class="notice">Saving isn't available in this view. Open the page on claude.ai while signed in to log workouts. Your baselines are shown below.</div>`;
+    readOnly = true; render(); return;
+  }
+  col = db.collection("sessions");
+  col.onSnapshot(snap => {
+    sessions = snap.docs.filter(d => d.exists).map(d => ({ id: d.id, ...d.data() })).filter(s => s.date && s.day && DAY_NAME[s.day]);
+    const firstLoad = !loaded;
+    loaded = true;
+    if (firstLoad && !editingId) { $("f-day").value = guessDay(); buildRows(); }
+    render();
+  }, err => {
+    loaded = true;
+    $("dbnote").innerHTML = `<div class="notice">Your sessions couldn't be loaded. Reload the page to try again.</div>`;
+    render();
+  });
+})();
+</script>

@@ -1,0 +1,207 @@
+{
+  "id": "sleep-recovery-guide",
+  "version": 1,
+  "updated": "2026-10-25",
+  "title": "Sleep and recovery",
+  "summary": "How to sleep and recover so the 2,000 kcal cut takes fat, not muscle or strength.",
+  "userSettings": {
+    "bedtime": {
+      "perDay": true,
+      "sun": null,
+      "mon": null,
+      "tue": null,
+      "wed": null,
+      "thu": null,
+      "fri": null,
+      "sat": null
+    },
+    "wakeTime": null,
+    "usesC4": null,
+    "defaultsIfUnknown": {
+      "bedtime": "23:30",
+      "sleepTargetHours": 8
+    },
+    "note": "Aziz's bedtime varies by day (Oct 25). Store one bedtime per weekday; fall back to 23:30. Wake time and C4 use still unconfirmed."
+  },
+  "targets": {
+    "sleepHours": {
+      "min": 7,
+      "ideal": [
+        7.5,
+        9
+      ]
+    },
+    "bedtimeConsistencyMinutes": 60,
+    "bedroomTempC": [
+      18,
+      21
+    ]
+  },
+  "scheduleRules": [
+    {
+      "id": "caffeine",
+      "label": "Last caffeine (C4, coffee, tea, energy drinks)",
+      "offsetMinutesBeforeBed": 480,
+      "why": "Caffeine has a half-life of about 5 hours, so a 3:00 pm C4 still leaves around half the dose at 8 pm."
+    },
+    {
+      "id": "lastMeal",
+      "label": "Finish Meal 2",
+      "offsetMinutesBeforeBed": 120,
+      "why": "A big meal right before bed can cause reflux and lighter sleep. Two hours is enough for most people."
+    },
+    {
+      "id": "fluids",
+      "label": "Taper fluids (small sips only)",
+      "offsetMinutesBeforeBed": 90,
+      "why": "Drink most of your 3–4 L before evening so you don't wake up to pee."
+    },
+    {
+      "id": "magnesium",
+      "label": "Magnesium bisglycinate",
+      "offsetMinutesBeforeBed": 60,
+      "why": "Fine in the evening. It may help a little; it won't knock you out."
+    },
+    {
+      "id": "windDown",
+      "label": "Dim lights, phone away, AC down",
+      "offsetMinutesBeforeBed": 45,
+      "why": "Bright light and scrolling push sleep later."
+    },
+    {
+      "id": "bed",
+      "label": "Lights out",
+      "offsetMinutesBeforeBed": 0
+    },
+    {
+      "id": "wake",
+      "label": "Wake up, toilet, weigh in",
+      "offsetMinutesAfterBed": 480,
+      "why": "Same conditions every morning keeps the weigh-ins comparable."
+    }
+  ],
+  "sections": [
+    {
+      "id": "why",
+      "title": "Why sleep matters on a cut",
+      "points": [
+        "In a well-known study, dieters on the same calorie deficit who slept 5.5 hours instead of 8.5 lost about the same weight, but far less of it was fat and more of it was muscle.",
+        "Short sleep raises hunger and cravings, which makes 2,000 kcal feel harder.",
+        "Poor sleep lowers training performance, so the heavy loads you're trying to keep slip first.",
+        "Aim for 7.5–9 hours in bed most nights. 7 is the floor."
+      ]
+    },
+    {
+      "id": "day",
+      "title": "Your day, set up for sleep",
+      "points": [
+        "Training at 3:30 pm is a good time for sleep. Just keep pre-workout caffeine before the cutoff in the schedule.",
+        "If you take C4, check the label for caffeine per scoop. If your bedtime is before midnight, a half scoop or a caffeine-free pre-workout is safer.",
+        "Meal 2 at 8–9 pm is fine. Finish it about 2 hours before bed. The nuts or Pro Mud Cake with Meal 2 are fine too.",
+        "Front-load water: most of your 3–4 L by early evening, then sips.",
+        "Take magnesium in the evening as you do now."
+      ]
+    },
+    {
+      "id": "room",
+      "title": "Bedroom",
+      "points": [
+        "Cool: set the AC to about 18–21 °C. A cool room helps you fall and stay asleep, and Kuwait nights rarely give you that without it.",
+        "Dark: blackout curtains or an eye mask. Cover LEDs.",
+        "Quiet: earplugs or steady fan/AC noise if the street is loud.",
+        "Phone charging away from the bed if you tend to scroll."
+      ]
+    },
+    {
+      "id": "weekend",
+      "title": "Friday and Saturday",
+      "points": [
+        "Keep wake time within an hour of your weekday wake time, even on Friday.",
+        "Saturday you train at 10 am after the 8:00–8:30 egg breakfast, so Friday night is the one that matters most. Avoid a late Friday night after the Cajun shrimp meal.",
+        "Friday's salty meal can raise Saturday's weigh-in. A short night can add to that. Neither is fat."
+      ]
+    },
+    {
+      "id": "training",
+      "title": "Recovery in training",
+      "points": [
+        "Rest days in the rotation are part of the plan. Take them, and walk if you want to move.",
+        "The 30 min treadmill at 4.0 km/h, incline 3, is easy on recovery. Keep it easy; don't turn it into a hard cardio session.",
+        "Push sets to 1–2 reps short of failure, not past it. Grinding to failure every set costs more recovery than it's worth on a cut.",
+        "Your cut rule: if a main lift drops for 2+ sessions in a row, check sleep first, then pre-workout food, then volume. Don't cut calories for it.",
+        "If several main lifts drop at once, or you've gone 6–8 weeks of hard training, take a deload week: same loads, about half the sets."
+      ]
+    },
+    {
+      "id": "scale",
+      "title": "Sleep and the scale",
+      "points": [
+        "Weigh in after waking and using the toilet, before food or water.",
+        "A bad night can bump the scale up through water retention. Judge by the 7-day average, as always."
+      ]
+    },
+    {
+      "id": "naps",
+      "title": "Naps",
+      "points": [
+        "A 15–20 minute nap before about 1:30 pm is fine and can lift the afternoon session.",
+        "Skip long or late naps if you have trouble falling asleep at night."
+      ]
+    },
+    {
+      "id": "flags",
+      "title": "When to see a doctor",
+      "points": [
+        "Loud snoring, choking or gasping at night, morning headaches, or feeling sleepy during the day despite 7–8 hours can be signs of sleep apnea. It's common at higher body weight and worth getting checked. Losing weight often helps."
+      ]
+    }
+  ],
+  "dailyCheck": {
+    "description": "Optional morning check. Score each 1–5 (5 = best). Use it to decide how hard to push today.",
+    "inputs": [
+      {
+        "id": "sleepHours",
+        "label": "Hours slept",
+        "type": "number"
+      },
+      {
+        "id": "quality",
+        "label": "Sleep quality",
+        "type": "scale",
+        "min": 1,
+        "max": 5
+      },
+      {
+        "id": "soreness",
+        "label": "Soreness (5 = none)",
+        "type": "scale",
+        "min": 1,
+        "max": 5
+      },
+      {
+        "id": "energy",
+        "label": "Energy",
+        "type": "scale",
+        "min": 1,
+        "max": 5
+      }
+    ],
+    "rules": [
+      {
+        "when": "sleepHours >= 7 && quality + soreness + energy >= 10",
+        "verdict": "green",
+        "advice": "Train as planned and try to beat last session."
+      },
+      {
+        "when": "sleepHours < 5.5 || quality + soreness + energy <= 6",
+        "verdict": "red",
+        "advice": "Train, but keep the same loads and drop the last set of each exercise. If you feel awful in warm-ups, make it a rest day."
+      },
+      {
+        "when": "otherwise",
+        "verdict": "amber",
+        "advice": "Train as planned. Aim to match last session's numbers; don't chase PRs."
+      }
+    ]
+  }
+}

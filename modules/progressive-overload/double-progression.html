@@ -1,0 +1,319 @@
+<title>Aziz's Double Progression</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one reading column; the rule up top, a live "next session" checker, then the program day by day like a Strong template. */
+:root {
+  --bg: #F2F4F6; --surface: #FFFFFF; --fg: #15202A; --muted: #586674; --line: #D3DAE1;
+  --accent: #1D5C9E; --accent-soft: #E1ECF7;
+  --go: #23704A; --go-soft: #DDF0E5; --hold: #9A5B00; --hold-soft: #F6EAD3; --stop: #A5302A; --stop-soft: #F6DEDC;
+  --display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0E141A; --surface: #161E26; --fg: #E4EAF0; --muted: #98A6B4; --line: #2A3540;
+  --accent: #82B4EC; --accent-soft: #1A2B3D;
+  --go: #6FCF9A; --go-soft: #15301F; --hold: #E8B35E; --hold-soft: #33270F; --stop: #F08A82; --stop-soft: #3A1A18;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0E141A; --surface: #161E26; --fg: #E4EAF0; --muted: #98A6B4; --line: #2A3540;
+  --accent: #82B4EC; --accent-soft: #1A2B3D;
+  --go: #6FCF9A; --go-soft: #15301F; --hold: #E8B35E; --hold-soft: #33270F; --stop: #F08A82; --stop-soft: #3A1A18;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 17px; line-height: 1.55; }
+.wrap { max-width: 880px; margin: 0 auto; padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.05; margin: 0; text-wrap: balance; letter-spacing: .01em; }
+h1 { font-size: clamp(44px, 9vw, 76px); text-transform: uppercase; }
+h2 { font-size: 32px; text-transform: uppercase; }
+h3 { font-size: 22px; text-transform: uppercase; letter-spacing: .03em; }
+p { margin: 0; max-width: 66ch; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: .9em; }
+section { display: grid; gap: 18px; min-width: 0; }
+.muted { color: var(--muted); }
+
+header { display: grid; gap: 14px; }
+.lede { font-size: 21px; max-width: 34ch; }
+.lede strong { color: var(--accent); }
+
+.loop { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; counter-reset: step; }
+.loop li { counter-increment: step; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 6px; align-content: start; }
+.loop li::before { content: "Step " counter(step); font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.loop b { font-family: var(--display); font-size: 21px; text-transform: uppercase; letter-spacing: .02em; }
+
+.sessions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sess { border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; display: grid; gap: 2px; min-width: 104px; background: var(--surface); }
+.sess span:first-child { font-size: 12px; color: var(--muted); }
+.sess .num { font-size: 15px; }
+.sess.top { border-color: var(--go); background: var(--go-soft); }
+.sess.jump { border-color: var(--accent); background: var(--accent-soft); }
+
+.checker { background: var(--surface); border: 2px solid var(--accent); border-radius: 8px; padding: 20px; display: grid; gap: 16px; }
+.field { display: grid; gap: 6px; }
+label, .lbl { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+select, input[type="number"] { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; max-width: 100%; }
+select { width: 100%; }
+input[type="number"] { width: 84px; font-family: var(--mono); text-align: center; }
+select:focus-visible, input:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 15px; }
+.facts b { font-weight: 600; }
+.sets { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.sets .field { gap: 4px; }
+.check { display: flex; gap: 10px; align-items: center; font-size: 16px; text-transform: none; letter-spacing: 0; color: var(--fg); font-weight: 400; }
+.check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.result { border-radius: 6px; padding: 14px 16px; display: grid; gap: 4px; background: var(--accent-soft); }
+.result .verdict { font-family: var(--display); font-size: 24px; text-transform: uppercase; letter-spacing: .02em; }
+.result[data-a="add-load"] { background: var(--go-soft); } .result[data-a="add-load"] .verdict { color: var(--go); }
+.result[data-a="add-reps"] .verdict { color: var(--accent); }
+.result[data-a="hold"], .result[data-a="confirm"] { background: var(--hold-soft); } .result[data-a="hold"] .verdict, .result[data-a="confirm"] .verdict { color: var(--hold); }
+.result[data-a="below-range"] { background: var(--stop-soft); } .result[data-a="below-range"] .verdict { color: var(--stop); }
+
+.days { display: flex; flex-wrap: wrap; gap: 6px; }
+.days button { font: 600 15px var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.days button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+td.num, td .num { white-space: nowrap; }
+.tag { display: inline-block; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: 2px; background: var(--accent-soft); color: var(--accent); }
+.pill { display: inline-block; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.go { background: var(--go-soft); color: var(--go); } .pill.reps { background: var(--accent-soft); color: var(--accent); }
+.pill.hold { background: var(--hold-soft); color: var(--hold); } .pill.stop { background: var(--stop-soft); color: var(--stop); }
+.note { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
+
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px 32px; }
+.rules div { display: grid; gap: 6px; align-content: start; border-top: 2px solid var(--fg); padding-top: 12px; }
+.alert { border-left: 4px solid var(--stop); background: var(--surface); padding: 14px 16px; border-radius: 0 6px 6px 0; display: grid; gap: 6px; }
+ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 66ch; }
+footer { font-size: 14px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+@media (max-width: 520px) { body { font-size: 16px; } .lede { font-size: 19px; } .checker { padding: 16px; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Training · cut from 91.9 to 80 kg · updated Oct 25, 2026</span>
+    <h1>Double progression</h1>
+    <p class="lede">Keep the <strong>same weight</strong> until every set reaches the top of the rep range. Then add the <strong>smallest jump</strong> and build the reps back up.</p>
+    <p class="muted">Built on your program as it is in Strong (section 10 of your plan). Nothing in the exercise list changes. This page only tells you what to load and how many reps to chase next time.</p>
+  </header>
+
+  <section aria-labelledby="loop-h">
+    <h2 id="loop-h">The loop</h2>
+    <ol class="loop">
+      <li><b>Pick the range</b><span>8–12 for most lifts. 10–15 for small cable and dumbbell lifts, 12–20 for hip machines.</span></li>
+      <li><b>Add reps</b><span>Same weight. Beat last time by 1 rep on at least one set, stopping 1–2 reps short of failure.</span></li>
+      <li><b>Hit the top</b><span>When every working set reaches the top of the range with clean form, the lift is ready.</span></li>
+      <li><b>Add load</b><span>Next session, add the smallest jump. Reps drop back near the bottom. Start again at step 2.</span></li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="ex-h">
+    <h2 id="ex-h">What it looks like on bench</h2>
+    <p>Your bench today is <span class="num">90 kg × 8, 8</span> (35 kg per side). This is a realistic run over several Push A days. On a cut, some sessions will repeat the last one, and that's fine.</p>
+    <div class="sessions" id="sessions"></div>
+    <p class="muted">Green: both sets at 12, so the lift is ready. Blue: first day at the new weight, 92.5 kg (36.25 kg per side).</p>
+  </section>
+
+  <section aria-labelledby="chk-h">
+    <h2 id="chk-h">Next session checker</h2>
+    <p>Pick a lift, type the reps you got on each working set, and it tells you what to do next time. It starts with your current Strong numbers.</p>
+    <div class="checker">
+      <div class="field">
+        <label for="ex-select">Exercise</label>
+        <select id="ex-select"></select>
+      </div>
+      <div class="facts" id="facts"></div>
+      <div class="sets" id="sets"></div>
+      <label class="check" for="rir"><input type="checkbox" id="rir" checked> Every set ended with 1–2 reps left and clean form</label>
+      <div class="result" id="result" aria-live="polite"><span class="verdict" id="verdict"></span><span id="result-text"></span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="prog-h">
+    <h2 id="prog-h">Your program, lift by lift</h2>
+    <p>Where each lift stands right now and what to chase. <span class="tag" style="margin-left:0">Main</span> marks the lifts you watch for drops.</p>
+    <div class="days" id="days" role="group" aria-label="Training day"></div>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>Exercise</th><th>Now</th><th>Range</th><th>Next step</th><th>Next weight</th></tr></thead>
+        <tbody id="prog-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="jump-h">
+    <h2 id="jump-h">Jump sizes</h2>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>Equipment</th><th>Smallest jump</th><th>Your lifts</th></tr></thead>
+        <tbody id="jump-body"></tbody>
+      </table>
+    </div>
+    <p class="muted">Small lifts get a wider range because their jumps are huge in percentage terms. Going from 7.5 to 10 kg on cable laterals is a 33% jump, so you need 15 reps at 7.5 kg before 10 kg will hold 10 reps.</p>
+  </section>
+
+  <section aria-labelledby="rules-h">
+    <h2 id="rules-h">How to run it</h2>
+    <div class="rules">
+      <div><h3>Effort</h3><p>Stop each working set 1–2 reps short of failure. On the last set of a small isolation lift you can go to failure. Warm-up sets never count.</p></div>
+      <div><h3>Same reps, same rules</h3><p>A rep only counts with the same depth, range and control as last time. Bouncing or cutting range to add a rep isn't progress.</p></div>
+      <div><h3>Rest</h3><p>2.5–3 min on bench, presses, rows, pulldowns and hack squat. 1–2 min on isolation lifts. Keep rest the same each session so reps compare fairly.</p></div>
+      <div><h3>Logging in Strong</h3><p>Use the Previous column as the target. Log every working set. Track Lower A and Lower B separately, because the lift order is different and the numbers will be too.</p></div>
+      <div><h3>One 8-day cycle</h3><p>Each workout comes around once per cycle, so a lift gets one chance to progress every 8 days. Expect about one rep per lift per cycle at best.</p></div>
+      <div><h3>Treadmill after</h3><p>Keep the 30 min walk after lifting, never before. At 4 km/h and incline 3 it won't hurt your next session.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="cut-h">
+    <h2 id="cut-h">While cutting</h2>
+    <p>At 2,000 kcal, holding your current weights and reps is a win. Rep gains will be small and uneven, and some weeks nothing will move. Strength that holds while the scale drops means you're keeping muscle.</p>
+    <div class="alert">
+      <h3>When a main lift drops</h3>
+      <ul class="plain">
+        <li><b>One bad session:</b> ignore it and repeat the same targets.</li>
+        <li><b>Drops 2+ sessions in a row:</b> check sleep, Meal 1 at 2 pm plus the Gatorade, and total volume before you touch calories.</li>
+        <li><b>No new reps for 3 sessions at the same weight:</b> take 5–10% off, rebuild to the top of the range, then try the jump again.</li>
+        <li><b>Several main lifts stall together:</b> deload for one cycle with the same weights, half the sets, and 3–4 reps left in the tank.</li>
+      </ul>
+    </div>
+    <p>Plan a deload every 6–8 weeks even if nothing stalls. The first one would land around mid-December 2026.</p>
+  </section>
+
+  <section aria-labelledby="open-h">
+    <h2 id="open-h">Still to check</h2>
+    <ul class="plain">
+      <li><b>Seated Abs</b> is logged as 5 kg × 100. Send the real numbers and it gets a range.</li>
+      <li><b>Smith Squat on Lower A</b> was 40 kg × 7, one rep under the range. Stay at 40 kg until you get 8.</li>
+      <li><b>Hip Abductor</b> is already at 135 kg × 20. If all 3 sets were 20 with reps left, move up a pin next Lower B.</li>
+      <li><b>Hip Adductor</b> at 85 kg × 10 sits under its 12–20 range. Keep the weight and build to 12.</li>
+    </ul>
+  </section>
+
+  <footer>Source: your Strong templates from Oct 2026. These rules come from the suggestions already in your plan: 8–12 reps, double progression, 1–2 reps short of failure, and longer rest on big compounds.</footer>
+</div>
+
+<script>
+const PROGRAM = {"version":1,"updated":"2026-10-25","source":"nutrition-training-handoff.md, section 10 (Strong templates, Oct 2026)","method":"double-progression","rules":{"effort":"Stop every working set 1-2 reps short of failure (RIR 1-2). The last set of a small isolation lift may go to failure.","addReps":"Keep the same weight. Each session, try to add at least 1 rep to one set (usually the lowest one) with the same form and full range of motion.","addLoad":"When every working set reaches the top of the rep range at RIR 1-2, add the smallest jump for that equipment next session.","afterJump":"Reps fall back toward the bottom of the range. That is expected. Build back up to the top again.","jumpTooBig":"If the first set at the new weight falls below the bottom of the range, go back to the old weight and add 1-2 more reps above the top first, or use a smaller jump if one exists.","badSession":"One bad session means nothing. Repeat the same targets next time.","dropRule":"If a main lift drops for 2+ sessions in a row: check sleep, pre-workout food (Meal 1 at 2 pm + Gatorade) and total volume before touching calories.","stallRule":"If a lift gets no extra reps for 3 sessions in a row at the same weight: take 5-10% off, rebuild to the top of the range, then try the jump again.","deload":"Every 6-8 weeks, or when several main lifts stall together: one 8-day cycle with the same weights, half the sets, stopping 3-4 reps short of failure.","rest":{"compound":"2.5-3 min","isolation":"1-2 min"},"cutExpectation":"While cutting at 2,000 kcal, holding weights and reps is a win. Expect small, uneven rep gains; big load jumps will be rare."},"repRanges":{"compound":{"min":8,"max":12},"smallIsolation":{"min":10,"max":15,"why":"The smallest jump on light cables and dumbbells is 15-35% of the load, so a wider range is needed before each jump."},"hip":{"min":12,"max":20},"calves":{"min":10,"max":15}},"increments":{"barbell":{"amount":2.5,"unit":"kg","label":"+2.5 kg total (1.25 kg per side)"},"plate":{"amount":5,"unit":"kg","label":"+5 kg total (2.5 kg per side)"},"dumbbell":{"amount":5,"unit":"lb","label":"next dumbbell, +5 lb each"},"cable":{"amount":2.5,"unit":"kg","label":"next plate on the stack (usually +2.5 kg)"},"machine":{"amount":5,"unit":"kg","label":"next pin (usually +5 kg; depends on the stack)"}},"days":["Push A","Pull A","Lower A","Push B","Pull B","Lower B"],"exercises":[{"id":"pushA-bench","day":"Push A","name":"Bench Press (Barbell)","equipment":"barbell","load":90,"unit":"kg","reps":8,"sets":2,"min":8,"max":12,"main":true,"note":"35 kg per side on a 20 kg bar. Next jump: 92.5 kg (36.25 kg per side). Warm-ups: bar, 40, 60, 70 kg."},{"id":"pushA-cable-lateral","day":"Push A","name":"Lateral Raise (Cable)","equipment":"cable","load":7.5,"unit":"kg","reps":10,"sets":3,"min":10,"max":15,"main":false},{"id":"pushA-incline-db","day":"Push A","name":"Incline DB Press","equipment":"dumbbell","load":65,"unit":"lb","reps":10,"sets":2,"min":8,"max":12,"main":true},{"id":"pushA-crossover","day":"Push A","name":"Cable Crossover","equipment":"cable","load":16.5,"unit":"kg","reps":10,"sets":3,"min":10,"max":15,"main":false},{"id":"pushA-triceps-ext","day":"Push A","name":"Triceps Extension (Cable)","equipment":"cable","load":15,"unit":"kg","reps":10,"sets":3,"min":10,"max":15,"main":false},{"id":"pushA-pushdown","day":"Push A","name":"Triceps Pushdown (Straight bar)","equipment":"cable","load":32.5,"unit":"kg","reps":10,"sets":2,"min":8,"max":12,"main":false},{"id":"pushA-side-delt-machine","day":"Push A","name":"Standing Side Delts (Machine)","equipment":"machine","load":66,"unit":"kg","reps":10,"sets":3,"min":10,"max":15,"main":false},{"id":"pullA-pulldown-wide","day":"Pull A","name":"Lat Pulldown, Wide","equipment":"machine","load":80,"unit":"kg","reps":8,"sets":3,"min":8,"max":12,"main":true},{"id":"pullA-pulldown-single","day":"Pull A","name":"Lat Pulldown, Single Arm","equipment":"machine","load":60,"unit":"kg","reps":10,"sets":3,"min":8,"max":12,"main":false},{"id":"pullA-seated-row","day":"Pull A","name":"Seated Row (Cable)","equipment":"machine","load":95,"unit":"kg","reps":8,"sets":2,"min":8,"max":12,"main":true},{"id":"pullA-pullover","day":"Pull A","name":"Pullover (Machine)","equipment":"machine","load":61,"unit":"kg","reps":8,"sets":2,"min":8,"max":12,"main":false},{"id":"pullA-db-curl","day":"Pull A","name":"DB Curl","equipment":"dumbbell","load":30,"unit":"lb","reps":10,"sets":3,"min":10,"max":15,"main":false},{"id":"pullA-seated-curl","day":"Pull A","name":"Seated Bicep Curl","equipment":"machine","load":25,"unit":"kg","reps":10,"sets":3,"min":10,"max":15,"main":false},{"id":"pullA-reverse-fly","day":"Pull A","name":"Reverse Fly (Machine)","equipment":"machine","load":61,"unit":"kg","reps":10,"sets":1,"min":10,"max":15,"main":false},{"id":"lowerA-leg-ext","day":"Lower A","name":"Leg Extension","equipment":"machine","load":122,"unit":"kg","reps":8,"sets":3,"min":8,"max":12,"main":true},{"id":"lowerA-hack","day":"Lower A","name":"Hack Squat","equipment":"plate","load":70,"unit":"kg","reps":8,"sets":2,"min":8,"max":12,"main":true},{"id":"lowerA-smith","day":"Lower A","name":"Smith Squat","equipment":"plate","load":40,"unit":"kg","reps":7,"sets":1,"min":8,"max":12,"main":false,"note":"Below the range (7 reps). Keep 40 kg and get to 8 first."},{"id":"lowerA-leg-curl","day":"Lower A","name":"Lying Leg Curl","equipment":"machine","load":63,"unit":"kg","reps":8,"sets":2,"min":8,"max":12,"main":true},{"id":"lowerA-adductor","day":"Lower A","name":"Hip Adductor","equipment":"machine","load":85,"unit":"kg","reps":10,"sets":3,"min":12,"max":20,"main":false,"note":"Below the 12-20 range. Keep 85 kg and build to 12."},{"id":"lowerA-calf","day":"Lower A","name":"Standing Calf Raise","equipment":"machine","load":60,"unit":"kg","reps":10,"sets":3,"min":10,"max":15,"main":false},{"id":"lowerA-abs","day":"Lower A","name":"Seated Abs","equipment":"machine","load":5,"unit":"kg","reps":100,"sets":1,"min":null,"max":null,"main":false,"excluded":true,"note":"Logged as 5 kg x 100. Confirm the real numbers before progressing it."},{"id":"pushB-gundam","day":"Push B","name":"Gundam (Chest Machine)","equipment":"machine","load":60,"unit":"kg","reps":8,"sets":3,"min":8,"max":12,"main":true},{"id":"pushB-db-ohp","day":"Push B","name":"Seated DB Overhead Press","equipment":"dumbbell","load":60,"unit":"lb","reps":8,"sets":3,"min":8,"max":12,"main":true},{"id":"pushB-side-delts","day":"Push B","name":"Side Delts","equipment":"cable","load":7.5,"unit":"kg","reps":10,"sets":3,"min":10,"max":15,"main":false},{"id":"pushB-reverse-fly","day":"Push B","name":"Reverse Fly (Machine)","equipment":"machine","load":61,"unit":"kg","reps":10,"sets":3,"min":10,"max":15,"main":false,"note":"Logged as 2-3 sets."},{"id":"pushB-front-raise","day":"Push B","name":"Front Raise (DB)","equipment":"dumbbell","load":30,"unit":"lb","reps":10,"sets":1,"min":10,"max":15,"main":false},{"id":"pushB-rope","day":"Push B","name":"Triceps Rope","equipment":"cable","load":15,"unit":"kg","reps":10,"sets":2,"min":10,"max":15,"main":false},{"id":"pushB-pushdown","day":"Push B","name":"Triceps Pushdown","equipment":"cable","load":32.5,"unit":"kg","reps":10,"sets":2,"min":8,"max":12,"main":false},{"id":"pullB-tbar","day":"Pull B","name":"T-Bar Row","equipment":"plate","load":50,"unit":"kg","reps":8,"sets":3,"min":8,"max":12,"main":true},{"id":"pullB-pulldown-single","day":"Pull B","name":"Lat Pulldown, Single Arm","equipment":"machine","load":60,"unit":"kg","reps":8,"sets":3,"min":8,"max":12,"main":false,"note":"Logged as 8-10 reps; counted from 8."},{"id":"pullB-iso-row","day":"Pull B","name":"Iso-Lateral Low Row (Plate)","equipment":"plate","load":70,"unit":"kg","reps":10,"sets":2,"min":8,"max":12,"main":false},{"id":"pullB-seated-row","day":"Pull B","name":"Seated Row (Cable)","equipment":"machine","load":90,"unit":"kg","reps":8,"sets":2,"min":8,"max":12,"main":true},{"id":"pullB-traps","day":"Pull B","name":"Traps Machine","equipment":"machine","load":80,"unit":"kg","reps":10,"sets":2,"min":10,"max":15,"main":false},{"id":"pullB-cable-curl","day":"Pull B","name":"Cable Standing Biceps","equipment":"cable","load":16,"unit":"kg","reps":10,"sets":3,"min":10,"max":15,"main":false},{"id":"lowerB-leg-curl","day":"Lower B","name":"Lying Leg Curl","equipment":"machine","load":63,"unit":"kg","reps":8,"sets":3,"min":8,"max":12,"main":true},{"id":"lowerB-leg-ext","day":"Lower B","name":"Leg Extension","equipment":"machine","load":122,"unit":"kg","reps":8,"sets":2,"min":8,"max":12,"main":true},{"id":"lowerB-hack","day":"Lower B","name":"Hack Squat","equipment":"plate","load":70,"unit":"kg","reps":8,"sets":2,"min":8,"max":12,"main":true},{"id":"lowerB-smith","day":"Lower B","name":"Smith Squat","equipment":"plate","load":40,"unit":"kg","reps":10,"sets":2,"min":8,"max":12,"main":false},{"id":"lowerB-abductor","day":"Lower B","name":"Hip Abductor","equipment":"machine","load":135,"unit":"kg","reps":20,"sets":3,"min":12,"max":20,"main":false,"note":"Already at the top of 12-20. If all 3 sets were 20 with 1-2 reps left, move up a pin."},{"id":"lowerB-calf-press","day":"Lower B","name":"Calf Press on Seated Leg Press","equipment":"machine","load":65,"unit":"kg","reps":10,"sets":2,"min":10,"max":15,"main":false},{"id":"lowerB-abs","day":"Lower B","name":"Seated Abs","equipment":"machine","load":5,"unit":"kg","reps":100,"sets":1,"min":null,"max":null,"main":false,"excluded":true,"note":"Logged as 5 kg x 100. Confirm the real numbers before progressing it."}]};
+// Double progression for Aziz's program. Pairs with overload-program.json.
+// nextStep(exercise, increments, setReps, rirOk) -> what to do next session.
+//   exercise:   one entry of overload-program.json "exercises"
+//   increments: overload-program.json "increments"
+//   setReps:    reps done on each working set at exercise.load, e.g. [10, 9]
+//   rirOk:      true if the sets ended 1-2 reps short of failure with clean form
+
+function nextStep(exercise, increments, setReps, rirOk = true) {
+  const { load, unit, min, max } = exercise;
+  if (exercise.excluded || min == null) {
+    return { action: "confirm", load, text: exercise.note || "Confirm this exercise's numbers first." };
+  }
+  const reps = setReps.filter((r) => Number.isFinite(r) && r > 0);
+  if (!reps.length) return { action: "none", load, text: "Enter the reps for each working set." };
+
+  const inc = increments[exercise.equipment];
+  const lowest = Math.min(...reps);
+
+  if (lowest >= max && rirOk) {
+    const next = Math.round((load + inc.amount) * 100) / 100;
+    return {
+      action: "add-load",
+      load: next,
+      text: `Every set hit ${max}. Next session use ${next} ${unit}, which is ${inc.label}, and aim for ${min}+ reps on every set.`,
+    };
+  }
+  if (lowest >= max && !rirOk) {
+    return { action: "hold", load, text: `You reached ${max} but it was a grind. Repeat ${load} ${unit} until ${max} feels like 1-2 reps left.` };
+  }
+  if (Math.max(...reps) < min) {
+    return {
+      action: "below-range",
+      load,
+      text: `Every set was under ${min}. Keep ${load} ${unit}. If this happens 2 sessions in a row, take 5-10% off and rebuild.`,
+    };
+  }
+  const targets = reps.map((r) => (r === lowest ? Math.min(r + 1, max) : r));
+  return {
+    action: "add-reps",
+    load,
+    targets,
+    text: `Keep ${load} ${unit}. Aim for ${targets.join(", ")} reps.`,
+  };
+}
+
+
+
+
+const fmt = (n) => (Math.round(n * 100) / 100).toString();
+const exs = PROGRAM.exercises;
+
+const SESS = [["Day 1","90 × 8, 8"],["Day 2","90 × 9, 8"],["Day 3","90 × 10, 9"],["Day 4","90 × 10, 9"],["Day 5","90 × 11, 10"],["Day 6","90 × 12, 11"],["Day 7","90 × 12, 12","top"],["Day 8","92.5 × 9, 8","jump"]];
+document.getElementById("sessions").innerHTML = SESS.map(([d, s, c]) => `<div class="sess ${c || ""}"><span>${d}</span><span class="num">${s}</span></div>`).join("");
+
+// Checker
+const sel = document.getElementById("ex-select");
+sel.innerHTML = PROGRAM.days.map((d) => `<optgroup label="${d}">${exs.filter((e) => e.day === d).map((e) => `<option value="${e.id}">${e.name}</option>`).join("")}</optgroup>`).join("");
+const VERDICT = { "add-load": "Add weight", "add-reps": "Add reps", "hold": "Repeat", "below-range": "Hold the weight", "confirm": "Confirm first", "none": "" };
+function setsFor(e) {
+  const box = document.getElementById("sets");
+  box.innerHTML = Array.from({ length: e.sets }, (_, i) =>
+    `<div class="field"><label for="set-${i}">Set ${i + 1}</label><input type="number" id="set-${i}" min="0" max="200" inputmode="numeric" value="${e.reps}"></div>`).join("");
+  box.querySelectorAll("input").forEach((inp) => inp.addEventListener("input", run));
+}
+function showFacts(e) {
+  const range = e.min == null ? "not set" : `${e.min}–${e.max} reps`;
+  document.getElementById("facts").innerHTML =
+    `<span><b>Weight:</b> <span class="num">${fmt(e.load)} ${e.unit}</span></span><span><b>Range:</b> ${range}</span><span><b>Jump:</b> ${PROGRAM.increments[e.equipment].label}</span>`;
+}
+function run() {
+  const e = exs.find((x) => x.id === sel.value);
+  const reps = [...document.querySelectorAll("#sets input")].map((i) => parseInt(i.value, 10));
+  const r = nextStep(e, PROGRAM.increments, reps, document.getElementById("rir").checked);
+  const box = document.getElementById("result");
+  box.dataset.a = r.action;
+  document.getElementById("verdict").textContent = VERDICT[r.action];
+  document.getElementById("result-text").textContent = r.text;
+}
+function pick() { const e = exs.find((x) => x.id === sel.value); showFacts(e); setsFor(e); run(); }
+sel.addEventListener("change", pick);
+document.getElementById("rir").addEventListener("change", run);
+pick();
+
+// Program table
+function status(e) {
+  if (e.excluded) return ["hold", "Confirm first"];
+  if (e.reps < e.min) return ["stop", `Build to ${e.min} at ${fmt(e.load)} ${e.unit}`];
+  if (e.reps >= e.max) return ["go", "Ready to add weight"];
+  return ["reps", `Add reps toward ${e.max}`];
+}
+const EQUIP = { barbell: "Barbell", plate: "Plate-loaded / Smith", dumbbell: "Dumbbells (lb)", cable: "Cable stack", machine: "Pin machine" };
+function renderDay(day) {
+  document.querySelectorAll("#days button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.day === day ? "true" : "false"));
+  document.getElementById("prog-body").innerHTML = exs.filter((e) => e.day === day).map((e) => {
+    const [cls, txt] = status(e);
+    const range = e.min == null ? "—" : `${e.min}–${e.max}`;
+    const next = e.excluded ? "—" : `${fmt(e.load + PROGRAM.increments[e.equipment].amount)} ${e.unit}`;
+    return `<tr><td>${e.name}${e.main ? '<span class="tag">Main</span>' : ""}${e.note ? `<span class="note">${e.note}</span>` : ""}</td>
+      <td class="num">${fmt(e.load)} ${e.unit} × ${e.reps}${e.sets > 1 ? `, ${e.sets} sets` : ""}</td>
+      <td class="num">${range}</td><td><span class="pill ${cls}">${txt}</span></td><td class="num">${next}</td></tr>`;
+  }).join("");
+  try { localStorage.setItem("po-day", day); } catch (_) {}
+}
+document.getElementById("days").innerHTML = PROGRAM.days.map((d) => `<button type="button" data-day="${d}">${d}</button>`).join("");
+document.querySelectorAll("#days button").forEach((b) => b.addEventListener("click", () => renderDay(b.dataset.day)));
+let startDay = "Push A";
+try { const s = localStorage.getItem("po-day"); if (s && PROGRAM.days.includes(s)) startDay = s; } catch (_) {}
+renderDay(startDay);
+
+// Jump table
+document.getElementById("jump-body").innerHTML = Object.entries(PROGRAM.increments).map(([k, v]) => {
+  const names = [...new Set(exs.filter((e) => e.equipment === k && !e.excluded).map((e) => e.name))].join(", ");
+  return `<tr><td>${EQUIP[k]}</td><td>${v.label}</td><td>${names}</td></tr>`;
+}).join("");
+</script>

@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "updated": "2026-10-25",
+  "source": "nutrition-training-handoff.md, section 10 (Strong templates, Oct 2026)",
+  "method": "double-progression",
+  "rules": {
+    "effort": "Stop every working set 1-2 reps short of failure (RIR 1-2). The last set of a small isolation lift may go to failure.",
+    "addReps": "Keep the same weight. Each session, try to add at least 1 rep to one set (usually the lowest one) with the same form and full range of motion.",
+    "addLoad": "When every working set reaches the top of the rep range at RIR 1-2, add the smallest jump for that equipment next session.",
+    "afterJump": "Reps fall back toward the bottom of the range. That is expected. Build back up to the top again.",
+    "jumpTooBig": "If the first set at the new weight falls below the bottom of the range, go back to the old weight and add 1-2 more reps above the top first, or use a smaller jump if one exists.",
+    "badSession": "One bad session means nothing. Repeat the same targets next time.",
+    "dropRule": "If a main lift drops for 2+ sessions in a row: check sleep, pre-workout food (Meal 1 at 2 pm + Gatorade) and total volume before touching calories.",
+    "stallRule": "If a lift gets no extra reps for 3 sessions in a row at the same weight: take 5-10% off, rebuild to the top of the range, then try the jump again.",
+    "deload": "Every 6-8 weeks, or when several main lifts stall together: one 8-day cycle with the same weights, half the sets, stopping 3-4 reps short of failure.",
+    "rest": { "compound": "2.5-3 min", "isolation": "1-2 min" },
+    "cutExpectation": "While cutting at 2,000 kcal, holding weights and reps is a win. Expect small, uneven rep gains; big load jumps will be rare."
+  },
+  "repRanges": {
+    "compound": { "min": 8, "max": 12 },
+    "smallIsolation": { "min": 10, "max": 15, "why": "The smallest jump on light cables and dumbbells is 15-35% of the load, so a wider range is needed before each jump." },
+    "hip": { "min": 12, "max": 20 },
+    "calves": { "min": 10, "max": 15 }
+  },
+  "increments": {
+    "barbell": { "amount": 2.5, "unit": "kg", "label": "+2.5 kg total (1.25 kg per side)" },
+    "plate": { "amount": 5, "unit": "kg", "label": "+5 kg total (2.5 kg per side)" },
+    "dumbbell": { "amount": 5, "unit": "lb", "label": "next dumbbell, +5 lb each" },
+    "cable": { "amount": 2.5, "unit": "kg", "label": "next plate on the stack (usually +2.5 kg)" },
+    "machine": { "amount": 5, "unit": "kg", "label": "next pin (usually +5 kg; depends on the stack)" }
+  },
+  "days": ["Push A", "Pull A", "Lower A", "Push B", "Pull B", "Lower B"],
+  "exercises": [
+    { "id": "pushA-bench", "day": "Push A", "name": "Bench Press (Barbell)", "equipment": "barbell", "load": 90, "unit": "kg", "reps": 8, "sets": 2, "min": 8, "max": 12, "main": true, "note": "35 kg per side on a 20 kg bar. Next jump: 92.5 kg (36.25 kg per side). Warm-ups: bar, 40, 60, 70 kg." },
+    { "id": "pushA-cable-lateral", "day": "Push A", "name": "Lateral Raise (Cable)", "equipment": "cable", "load": 7.5, "unit": "kg", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false },
+    { "id": "pushA-incline-db", "day": "Push A", "name": "Incline DB Press", "equipment": "dumbbell", "load": 65, "unit": "lb", "reps": 10, "sets": 2, "min": 8, "max": 12, "main": true },
+    { "id": "pushA-crossover", "day": "Push A", "name": "Cable Crossover", "equipment": "cable", "load": 16.5, "unit": "kg", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false },
+    { "id": "pushA-triceps-ext", "day": "Push A", "name": "Triceps Extension (Cable)", "equipment": "cable", "load": 15, "unit": "kg", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false },
+    { "id": "pushA-pushdown", "day": "Push A", "name": "Triceps Pushdown (Straight bar)", "equipment": "cable", "load": 32.5, "unit": "kg", "reps": 10, "sets": 2, "min": 8, "max": 12, "main": false },
+    { "id": "pushA-side-delt-machine", "day": "Push A", "name": "Standing Side Delts (Machine)", "equipment": "machine", "load": 66, "unit": "kg", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false },
+
+    { "id": "pullA-pulldown-wide", "day": "Pull A", "name": "Lat Pulldown, Wide", "equipment": "machine", "load": 80, "unit": "kg", "reps": 8, "sets": 3, "min": 8, "max": 12, "main": true },
+    { "id": "pullA-pulldown-single", "day": "Pull A", "name": "Lat Pulldown, Single Arm", "equipment": "machine", "load": 60, "unit": "kg", "reps": 10, "sets": 3, "min": 8, "max": 12, "main": false },
+    { "id": "pullA-seated-row", "day": "Pull A", "name": "Seated Row (Cable)", "equipment": "machine", "load": 95, "unit": "kg", "reps": 8, "sets": 2, "min": 8, "max": 12, "main": true },
+    { "id": "pullA-pullover", "day": "Pull A", "name": "Pullover (Machine)", "equipment": "machine", "load": 61, "unit": "kg", "reps": 8, "sets": 2, "min": 8, "max": 12, "main": false },
+    { "id": "pullA-db-curl", "day": "Pull A", "name": "DB Curl", "equipment": "dumbbell", "load": 30, "unit": "lb", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false },
+    { "id": "pullA-seated-curl", "day": "Pull A", "name": "Seated Bicep Curl", "equipment": "machine", "load": 25, "unit": "kg", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false },
+    { "id": "pullA-reverse-fly", "day": "Pull A", "name": "Reverse Fly (Machine)", "equipment": "machine", "load": 61, "unit": "kg", "reps": 10, "sets": 1, "min": 10, "max": 15, "main": false },
+
+    { "id": "lowerA-leg-ext", "day": "Lower A", "name": "Leg Extension", "equipment": "machine", "load": 122, "unit": "kg", "reps": 8, "sets": 3, "min": 8, "max": 12, "main": true },
+    { "id": "lowerA-hack", "day": "Lower A", "name": "Hack Squat", "equipment": "plate", "load": 70, "unit": "kg", "reps": 8, "sets": 2, "min": 8, "max": 12, "main": true },
+    { "id": "lowerA-smith", "day": "Lower A", "name": "Smith Squat", "equipment": "plate", "load": 40, "unit": "kg", "reps": 7, "sets": 1, "min": 8, "max": 12, "main": false, "note": "Below the range (7 reps). Keep 40 kg and get to 8 first." },
+    { "id": "lowerA-leg-curl", "day": "Lower A", "name": "Lying Leg Curl", "equipment": "machine", "load": 63, "unit": "kg", "reps": 8, "sets": 2, "min": 8, "max": 12, "main": true },
+    { "id": "lowerA-adductor", "day": "Lower A", "name": "Hip Adductor", "equipment": "machine", "load": 85, "unit": "kg", "reps": 10, "sets": 3, "min": 12, "max": 20, "main": false, "note": "Below the 12-20 range. Keep 85 kg and build to 12." },
+    { "id": "lowerA-calf", "day": "Lower A", "name": "Standing Calf Raise", "equipment": "machine", "load": 60, "unit": "kg", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false },
+    { "id": "lowerA-abs", "day": "Lower A", "name": "Seated Abs", "equipment": "machine", "load": 5, "unit": "kg", "reps": 100, "sets": 1, "min": null, "max": null, "main": false, "excluded": true, "note": "Logged as 5 kg x 100. Confirm the real numbers before progressing it." },
+
+    { "id": "pushB-gundam", "day": "Push B", "name": "Gundam (Chest Machine)", "equipment": "machine", "load": 60, "unit": "kg", "reps": 8, "sets": 3, "min": 8, "max": 12, "main": true },
+    { "id": "pushB-db-ohp", "day": "Push B", "name": "Seated DB Overhead Press", "equipment": "dumbbell", "load": 60, "unit": "lb", "reps": 8, "sets": 3, "min": 8, "max": 12, "main": true },
+    { "id": "pushB-side-delts", "day": "Push B", "name": "Side Delts", "equipment": "cable", "load": 7.5, "unit": "kg", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false },
+    { "id": "pushB-reverse-fly", "day": "Push B", "name": "Reverse Fly (Machine)", "equipment": "machine", "load": 61, "unit": "kg", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false, "note": "Logged as 2-3 sets." },
+    { "id": "pushB-front-raise", "day": "Push B", "name": "Front Raise (DB)", "equipment": "dumbbell", "load": 30, "unit": "lb", "reps": 10, "sets": 1, "min": 10, "max": 15, "main": false },
+    { "id": "pushB-rope", "day": "Push B", "name": "Triceps Rope", "equipment": "cable", "load": 15, "unit": "kg", "reps": 10, "sets": 2, "min": 10, "max": 15, "main": false },
+    { "id": "pushB-pushdown", "day": "Push B", "name": "Triceps Pushdown", "equipment": "cable", "load": 32.5, "unit": "kg", "reps": 10, "sets": 2, "min": 8, "max": 12, "main": false },
+
+    { "id": "pullB-tbar", "day": "Pull B", "name": "T-Bar Row", "equipment": "plate", "load": 50, "unit": "kg", "reps": 8, "sets": 3, "min": 8, "max": 12, "main": true },
+    { "id": "pullB-pulldown-single", "day": "Pull B", "name": "Lat Pulldown, Single Arm", "equipment": "machine", "load": 60, "unit": "kg", "reps": 8, "sets": 3, "min": 8, "max": 12, "main": false, "note": "Logged as 8-10 reps; counted from 8." },
+    { "id": "pullB-iso-row", "day": "Pull B", "name": "Iso-Lateral Low Row (Plate)", "equipment": "plate", "load": 70, "unit": "kg", "reps": 10, "sets": 2, "min": 8, "max": 12, "main": false },
+    { "id": "pullB-seated-row", "day": "Pull B", "name": "Seated Row (Cable)", "equipment": "machine", "load": 90, "unit": "kg", "reps": 8, "sets": 2, "min": 8, "max": 12, "main": true },
+    { "id": "pullB-traps", "day": "Pull B", "name": "Traps Machine", "equipment": "machine", "load": 80, "unit": "kg", "reps": 10, "sets": 2, "min": 10, "max": 15, "main": false },
+    { "id": "pullB-cable-curl", "day": "Pull B", "name": "Cable Standing Biceps", "equipment": "cable", "load": 16, "unit": "kg", "reps": 10, "sets": 3, "min": 10, "max": 15, "main": false },
+
+    { "id": "lowerB-leg-curl", "day": "Lower B", "name": "Lying Leg Curl", "equipment": "machine", "load": 63, "unit": "kg", "reps": 8, "sets": 3, "min": 8, "max": 12, "main": true },
+    { "id": "lowerB-leg-ext", "day": "Lower B", "name": "Leg Extension", "equipment": "machine", "load": 122, "unit": "kg", "reps": 8, "sets": 2, "min": 8, "max": 12, "main": true },
+    { "id": "lowerB-hack", "day": "Lower B", "name": "Hack Squat", "equipment": "plate", "load": 70, "unit": "kg", "reps": 8, "sets": 2, "min": 8, "max": 12, "main": true },
+    { "id": "lowerB-smith", "day": "Lower B", "name": "Smith Squat", "equipment": "plate", "load": 40, "unit": "kg", "reps": 10, "sets": 2, "min": 8, "max": 12, "main": false },
+    { "id": "lowerB-abductor", "day": "Lower B", "name": "Hip Abductor", "equipment": "machine", "load": 135, "unit": "kg", "reps": 20, "sets": 3, "min": 12, "max": 20, "main": false, "note": "Already at the top of 12-20. If all 3 sets were 20 with 1-2 reps left, move up a pin." },
+    { "id": "lowerB-calf-press", "day": "Lower B", "name": "Calf Press on Seated Leg Press", "equipment": "machine", "load": 65, "unit": "kg", "reps": 10, "sets": 2, "min": 10, "max": 15, "main": false },
+    { "id": "lowerB-abs", "day": "Lower B", "name": "Seated Abs", "equipment": "machine", "load": 5, "unit": "kg", "reps": 100, "sets": 1, "min": null, "max": null, "main": false, "excluded": true, "note": "Logged as 5 kg x 100. Confirm the real numbers before progressing it." }
+  ]
+}

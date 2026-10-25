@@ -1,0 +1,139 @@
+/* ==========================================================================
+   Fitness app motion
+   Rule of thumb: motion confirms an action (a set logged, a meal eaten)
+   or shows progress (rings, bars). It never delays reading.
+   Everything collapses to instant under prefers-reduced-motion.
+   ========================================================================== */
+
+:root {
+  --dur-tap: 120ms;     /* press feedback */
+  --dur-ui: 220ms;      /* toggles, tabs, sheets */
+  --dur-enter: 420ms;   /* cards entering a screen */
+  --dur-fill: 900ms;    /* rings and bars filling */
+  --dur-celebrate: 1200ms;
+
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+
+  --stagger: 50ms;      /* per item, via style="--i: 2" */
+}
+
+/* ---- Press feedback: any button or tappable card ---- */
+.tap { transition: transform var(--dur-tap) var(--ease-out), background-color var(--dur-ui) var(--ease-out); }
+.tap:active { transform: scale(.97); }
+
+/* ---- Screen entry: cards rise in, staggered by --i ---- */
+@keyframes fit-rise { from { opacity: 0; transform: translateY(12px); } }
+.anim-rise {
+  animation: fit-rise var(--dur-enter) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* ---- Pop: checking off a set, marking a meal as eaten ---- */
+@keyframes fit-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.anim-pop { animation: fit-pop 320ms var(--ease-spring); }
+
+/* ---- Check mark draws itself (SVG path with pathLength="1") ---- */
+@keyframes fit-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.anim-draw { stroke-dasharray: 1; animation: fit-draw 260ms var(--ease-out) both; }
+
+/* ---- Progress ring: SVG circle with pathLength="100".
+        Set style="--value: 82" (0-100) and the ring animates to it. ---- */
+.ring-track { stroke: var(--surface-2); }
+.ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - min(var(--value, 0), 100));
+  transition: stroke-dashoffset var(--dur-fill) var(--ease-out);
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+.ring-fill.is-over { stroke: var(--warn); }
+
+/* ---- Bars (macros, volume): width set via --value (0-100) ---- */
+.bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.bar > span {
+  display: block; height: 100%; border-radius: inherit;
+  width: calc(min(var(--value, 0), 100) * 1%);
+  background: var(--bar-color, var(--accent));
+  transition: width var(--dur-fill) var(--ease-out);
+}
+
+/* ---- Tab / screen switch fallback (when View Transitions aren't supported) ---- */
+@keyframes fit-slide-in-r { from { opacity: 0; transform: translateX(24px); } }
+@keyframes fit-slide-in-l { from { opacity: 0; transform: translateX(-24px); } }
+.anim-in-right { animation: fit-slide-in-r var(--dur-ui) var(--ease-out) backwards; }
+.anim-in-left  { animation: fit-slide-in-l var(--dur-ui) var(--ease-out) backwards; }
+
+/* ---- View Transitions (Chrome, Safari 18+): used by FitMotion.switchView ---- */
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: var(--dur-ui); animation-timing-function: var(--ease-out); }
+::view-transition-old(fit-screen) { animation: var(--dur-ui) var(--ease-out) both fit-out; }
+::view-transition-new(fit-screen) { animation: var(--dur-ui) var(--ease-out) both fit-slide-in-r; }
+:root[data-nav="back"]::view-transition-new(fit-screen) { animation-name: fit-slide-in-l; }
+@keyframes fit-out { to { opacity: 0; } }
+
+/* ---- Bottom sheet (add food, log weight) ---- */
+.sheet {
+  transform: translateY(100%);
+  transition: transform var(--dur-ui) var(--ease-out);
+}
+.sheet.is-open { transform: translateY(0); }
+
+/* ---- Rest timer: soft pulse in the last 10 seconds ---- */
+@keyframes fit-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.anim-pulse { animation: fit-pulse 1s var(--ease-in-out) infinite; }
+
+/* ---- Loading placeholder ---- */
+@keyframes fit-shimmer { to { background-position: -200% 0; } }
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: fit-shimmer 1.4s linear infinite;
+}
+
+/* ---- New PR: number lifts and a burst of plate-colored pieces (FitMotion.celebrate) ---- */
+@keyframes fit-lift {
+  0%   { transform: translateY(0) scale(1); }
+  35%  { transform: translateY(-6px) scale(1.12); }
+  100% { transform: translateY(0) scale(1); }
+}
+.anim-pr { animation: fit-lift 600ms var(--ease-spring); color: var(--accent); }
+.fit-burst-piece {
+  position: absolute; width: 8px; height: 4px; border-radius: 1px;
+  pointer-events: none;
+  animation: fit-burst var(--dur-celebrate) var(--ease-out) forwards;
+}
+@keyframes fit-burst {
+  from { transform: translate(0, 0) rotate(0); opacity: 1; }
+  to   { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 0; }
+}
+
+/* ---- Theme switch: colors cross-fade instead of snapping ---- */
+:root.is-theming, :root.is-theming * {
+  transition: background-color var(--dur-ui) var(--ease-out),
+              color var(--dur-ui) var(--ease-out),
+              border-color var(--dur-ui) var(--ease-out),
+              fill var(--dur-ui) var(--ease-out),
+              stroke var(--dur-ui) var(--ease-out) !important;
+}
+
+/* ---- Reduced motion: keep state changes, drop movement ---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .fit-burst-piece { display: none; }
+}

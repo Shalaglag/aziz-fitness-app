@@ -1,0 +1,335 @@
+<title>Aziz Today</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700;800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one narrow column, a gym-board header, then a time rail with today's blocks; now/next marked on the rail. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --ink: #15202b;
+  --muted: #5b6b7a;
+  --line: #d3dbe3;
+  --accent: #1f5fd1;          /* training */
+  --accent-soft: #e2ebfb;
+  --food: #b4570f;            /* meals */
+  --food-soft: #f8eadd;
+  --ok: #217a4b;
+  --display: "Saira Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --surface: #182129; --ink: #e6edf3; --muted: #93a3b3; --line: #2a3640;
+    --accent: #79a6ff; --accent-soft: #1b2a44; --food: #f0a35e; --food-soft: #3a2817; --ok: #5fc98e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --surface: #182129; --ink: #e6edf3; --muted: #93a3b3; --line: #2a3640;
+  --accent: #79a6ff; --accent-soft: #1b2a44; --food: #f0a35e; --food-soft: #3a2817; --ok: #5fc98e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 560px; margin: 0 auto; display: grid; gap: 20px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.label { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+
+header { display: grid; gap: 6px; }
+.date { font-family: var(--display); font-weight: 800; font-size: 44px; line-height: 1; letter-spacing: .01em; text-transform: uppercase; text-wrap: balance; }
+.sub { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.pill.train { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.pill.free { background: var(--food-soft); border-color: transparent; color: var(--food); }
+
+.days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.days button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 0; font-family: var(--display); font-weight: 700; font-size: 15px; text-transform: uppercase; }
+.days button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.days button.is-today:not([aria-pressed="true"]) { border-color: var(--accent); color: var(--accent); }
+
+.next { background: var(--ink); color: var(--bg); border-radius: 12px; padding: 14px 16px; display: grid; gap: 2px; }
+.next .label { color: inherit; opacity: .7; }
+.next strong { font-family: var(--display); font-size: 26px; font-weight: 700; line-height: 1.1; }
+
+.session { display: grid; gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: 14px; font-weight: 500; }
+.chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.chips button.suggested:not([aria-pressed="true"]) { border-style: dashed; border-color: var(--accent); }
+.hint { font-size: 13px; color: var(--muted); }
+
+.targets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block: 1px solid var(--line); }
+.targets div { padding: 10px 0; display: grid; gap: 0; }
+.targets div + div { padding-left: 12px; border-left: 1px solid var(--line); }
+.targets b { font-family: var(--display); font-size: 22px; font-weight: 700; line-height: 1.1; }
+
+.rail { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.item { display: grid; grid-template-columns: 64px 1fr; gap: 12px; position: relative; padding-bottom: 16px; }
+.item::before { content: ""; position: absolute; left: 75px; top: 14px; bottom: 0; width: 2px; background: var(--line); }
+.item:last-child::before { display: none; }
+.time { font-family: var(--mono); font-size: 13px; color: var(--muted); padding-top: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.card { position: relative; margin-left: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 4px; min-width: 0; }
+.card::before { content: ""; position: absolute; left: -19px; top: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--muted); }
+.item.train .card { border-left: 3px solid var(--accent); }
+.item.train .card::before { border-color: var(--accent); }
+.item.food .card { border-left: 3px solid var(--food); }
+.item.food .card::before { border-color: var(--food); }
+.item.done .card { opacity: .55; }
+.item.done .card::before { background: var(--muted); border-color: var(--muted); }
+.item.now .card { box-shadow: 0 0 0 2px var(--accent); }
+.item.now .card::before { background: var(--accent); border-color: var(--accent); }
+.item.food.now .card { box-shadow: 0 0 0 2px var(--food); }
+.item.food.now .card::before { background: var(--food); border-color: var(--food); }
+.card h3 { margin: 0; font-family: var(--display); font-size: 21px; font-weight: 700; line-height: 1.15; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.tag { font-family: var(--body); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+.item.food .tag { color: var(--food); }
+.card p { margin: 0; color: var(--muted); font-size: 14px; }
+.card ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+.macro { font-family: var(--mono); font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+details { margin-top: 4px; }
+summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--accent); }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 6px; }
+td { padding: 5px 0; border-top: 1px solid var(--line); vertical-align: top; }
+td:last-child { text-align: right; font-family: var(--mono); font-size: 12.5px; white-space: nowrap; padding-left: 10px; font-variant-numeric: tabular-nums; }
+.notes { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+.notes p { margin: 0; }
+.notes b { color: var(--ink); font-weight: 600; }
+@media (max-width: 380px) { .date { font-size: 36px; } .item { grid-template-columns: 52px 1fr; } .item::before { left: 63px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="label" id="eyebrow">Today in Kuwait</div>
+    <div class="date" id="date">Sunday 25 Oct</div>
+    <div class="sub" id="sub"></div>
+  </header>
+
+  <nav class="days" id="days" aria-label="Preview another day"></nav>
+
+  <section class="next" id="next" aria-live="polite"></section>
+
+  <section class="session" id="session">
+    <div class="label">Today's session</div>
+    <div class="chips" id="chips"></div>
+    <div class="hint" id="sessionHint"></div>
+  </section>
+
+  <section class="targets" id="targets"></section>
+
+  <ol class="rail" id="rail"></ol>
+
+  <section class="notes" id="notes"></section>
+</div>
+
+<script>
+const TZ = "Asia/Kuwait";
+const ROTATION = ["Push A", "Pull A", "Lower A", "Rest", "Push B", "Pull B", "Lower B", "Rest"];
+const SESSIONS = ["Push A", "Pull A", "Lower A", "Push B", "Pull B", "Lower B", "Rest"];
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const TRACK_START = "2026-10-25", TRACK_END = "2026-11-07";
+
+// Working-set baselines from the Strong templates (Oct 2026)
+const WORKOUTS = {
+  "Push A": [["Bench Press (Barbell)", "90 kg × 8, ×2"], ["Lateral Raise (Cable)", "7.5 kg × 10, ×3"], ["Incline DB Press", "65 lb × 10, ×2"], ["Cable Crossover", "16.5 kg × 10, ×3"], ["Triceps Extension (Cable)", "15 kg × 10, ×3"], ["Triceps Pushdown (Straight bar)", "32.5 kg × 10, ×2"], ["Standing Side Delts (machine)", "66 kg × 10, ×3"]],
+  "Pull A": [["Lat Pulldown, Wide", "80 kg × 8, ×3"], ["Lat Pulldown, Single Arm", "60 kg × 10, ×3"], ["Seated Row (Cable)", "95 kg × 8, ×2"], ["Pullover (Machine)", "61 kg × 8, ×2"], ["DB Curl", "30 lb × 10, ×3"], ["Seated Bicep Curl", "25 kg × 10, ×3"], ["Reverse Fly (Machine)", "61 kg × 10"]],
+  "Lower A": [["Leg Extension", "122 kg × 8, ×3"], ["Hack Squat", "70 kg × 8, ×2"], ["Smith Squat", "40 kg × 7, ×1"], ["Lying Leg Curl", "63 kg × 8, ×2"], ["Hip Adductor", "85 kg × 10, ×3"], ["Standing Calf Raise", "60 kg × 10, ×3"], ["Seated Abs", "5 kg × 100 (check)"]],
+  "Push B": [["Gundam (chest machine)", "60 kg × 8, ×3"], ["Seated DB Overhead Press", "60 lb × 8, ×3"], ["Side Delts", "7.5 kg × 10, ×3"], ["Reverse Fly (Machine)", "61 kg × 10, ×2–3"], ["Front Raise (DB)", "30 lb × 10"], ["Triceps Rope", "15 kg × 10, ×2"], ["Triceps Pushdown", "32.5 kg × 10, ×2"]],
+  "Pull B": [["T-Bar Row", "50 kg × 8, ×3"], ["Lat Pulldown, Single Arm", "60 kg × 8–10, ×3"], ["Iso-Lateral Low Row (plate)", "70 kg × 10, ×2"], ["Seated Row (Cable)", "90 kg × 8, ×2"], ["Traps Machine", "80 kg × 10, ×2"], ["Cable Standing Biceps", "16 kg × 10, ×3"]],
+  "Lower B": [["Lying Leg Curl", "63 kg × 8, ×3"], ["Leg Extension", "122 kg × 8, ×2"], ["Hack Squat", "70 kg × 8, ×2"], ["Smith Squat", "40 kg × 10, ×2"], ["Hip Abductor", "135 kg × 20, ×3"], ["Calf Press on Seated Leg Press", "65 kg × 10, ×2"], ["Seated Abs", "5 kg × 100 (check)"]],
+};
+
+// ---- storage (per-viewer convenience only) ----
+function loadLog() { try { return JSON.parse(localStorage.getItem("sessionLog") || "{}"); } catch { return {}; } }
+function saveLog(log) { try { localStorage.setItem("sessionLog", JSON.stringify(log)); } catch {} }
+let log = loadLog();
+
+// ---- Kuwait clock ----
+function kuwaitNow() {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(p => [p.type, p.value]));
+  const iso = `${parts.year}-${parts.month}-${parts.day}`;
+  return { iso, dow: new Date(iso + "T12:00:00Z").getUTCDay(), mins: +parts.hour * 60 + +parts.minute };
+}
+function addDays(iso, n) { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function daysBetween(a, b) { return Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 864e5); }
+function fmtDate(iso) { const d = new Date(iso + "T12:00:00Z"); return `${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()} ${d.toLocaleString("en-GB", { month: "short", timeZone: "UTC" })}`; }
+function hm(m) { const h = Math.floor(m / 60), mm = m % 60; const h12 = ((h + 11) % 12) + 1; return `${h12}:${String(mm).padStart(2, "0")}${h < 12 ? "am" : "pm"}`; }
+function dur(m) { const h = Math.floor(m / 60), mm = m % 60; return h ? `${h} h ${mm ? mm + " min" : ""}`.trim() : `${mm} min`; }
+
+// Next session in the 8-day rotation after the last one logged before this date
+function suggestedSession(iso) {
+  const past = Object.keys(log).filter(d => d < iso).sort();
+  if (!past.length) return "Push A";
+  const last = log[past.at(-1)];
+  const idx = ROTATION.indexOf(last);
+  if (last === "Rest") {
+    // Find the training session before the rest to know which half of the cycle we're in
+    const lastTrain = past.map(d => log[d]).filter(s => s !== "Rest").at(-1);
+    return lastTrain && lastTrain.endsWith("A") ? "Push B" : "Push A";
+  }
+  return ROTATION[(idx + 1) % ROTATION.length];
+}
+
+// ---- schedule templates ----
+const TREADMILL = "Then 30 min treadmill at ~4.0 km/h, incline ~3.";
+const ADONIS = { kind: "food", title: "Adonis Cookie Dough", macro: "192 kcal · 22 g P · 11 g C · 6 g F", text: "Every day unless you say “No Adonis today”. It doesn't count as one of the 2 snacks." };
+
+function workoutItem(start, session) {
+  return { start, end: start + 90, kind: "train", tag: "Workout", title: session,
+    text: `${TREADMILL} Drink 1 L Gatorade during (~240 kcal, counts inside the 2,000).`, session };
+}
+
+function buildDay(dow, session) {
+  const rest = session === "Rest";
+  if (dow === 5) {
+    return {
+      type: "Free day", pillClass: "free", training: false,
+      items: [
+        { kind: "food", tag: "Breakfast", title: "Eggs + khubz", macro: "~460–520 kcal · ~31 g P", text: "3 eggs, a little Kraft cheese spread, 1½ thin khubz. Morning, no fixed time." },
+        { kind: "food", tag: "Main meal", title: "½ kg Cajun shrimp, Jumpy Shrimp", macro: "~600–1,100 kcal · 70–85 g P from the shrimp", text: "Ask for the Cajun butter sauce on the side; the sauce is most of the swing (300–700 kcal). Some Fridays you have 2 meals instead." },
+        { ...ADONIS, tag: "Anytime" },
+      ],
+      notes: [
+        "<b>Not a dirty day.</b> Eggs plus the shrimp meal usually lands at ~1,100–1,600 kcal, still below maintenance. No changes needed.",
+        "Tomorrow's weigh-in may read high after the salty shrimp. Judge by the 7-day average.",
+      ],
+    };
+  }
+  if (dow === 6) {
+    const items = [
+      { start: 480, end: 510, kind: "food", tag: "Breakfast", title: "Eggs + khubz", macro: "~460–520 kcal · ~31 g P · ~40–50 g C · ~20 g F", text: rest ? "3 eggs, a little Kraft cheese spread, 1½ thin khubz." : "3 eggs, a little Kraft cheese spread, 1½ thin khubz. Leave ~1.5–2 h before training. Add 40–120 kcal if cooked in oil or butter." },
+    ];
+    if (!rest) items.push(workoutItem(600, session), { ...ADONIS, start: 690, end: 720, tag: "Post-workout" });
+    else items.push({ ...ADONIS, tag: "Anytime" });
+    items.push({ kind: "food", tag: "Rest of the day", title: "2 Nutreeze meals + 2 snacks", text: "Times are up to you. After eggs and Adonis about 1,300 kcal and ~107 g protein remain, so pick lighter meals and fruit snacks." });
+    return { type: rest ? "Rest day" : "Morning training", pillClass: rest ? "" : "train", training: !rest, items,
+      notes: ["Saturday weigh-ins can run high after Friday's Cajun shrimp. That's water and salt, not fat."] };
+  }
+  // Sunday–Thursday
+  const items = [
+    { start: 840, end: 870, kind: "food", tag: rest ? "Meal 1" : "Pre-workout", title: "Meal 1 + both snacks",
+      text: rest ? "Rest day, so timing is flexible." : "Make Meal 1 the lighter, lower-fat, higher-carb meal. Pair it with fruit or a light sweet; keep nuts and Pro Mud Cake for Meal 2. If Meal 1 is 700+ kcal, move the sweet to the evening." },
+  ];
+  if (!rest) items.push(workoutItem(930, session), { ...ADONIS, start: 1020, end: 1050, tag: "Post-workout" });
+  else items.push({ ...ADONIS, tag: "Anytime" });
+  items.push({ start: 1200, end: 1260, kind: "food", tag: "Meal 2", title: "Meal 2", text: "This one can be the heavier meal. Nuts or Pro Mud Cake go best here, since fat slows digestion." });
+  return { type: rest ? "Rest day" : "Training day", pillClass: rest ? "" : "train", training: !rest, items, notes: [] };
+}
+
+// ---- render ----
+let view = null; // iso date being previewed; null = today
+
+function render() {
+  const now = kuwaitNow();
+  const iso = view || now.iso;
+  const isToday = iso === now.iso;
+  const dow = new Date(iso + "T12:00:00Z").getUTCDay();
+
+  const picked = log[iso];
+  const suggestion = dow === 5 ? "Rest" : suggestedSession(iso);
+  const session = picked || suggestion;
+  const day = buildDay(dow, session);
+
+  document.getElementById("eyebrow").textContent = isToday ? "Today in Kuwait" : (iso < now.iso ? "Looking back" : "Looking ahead");
+  document.getElementById("date").textContent = fmtDate(iso);
+
+  // sub line: day type + tracking day
+  const sub = document.getElementById("sub");
+  const trackDay = daysBetween(TRACK_START, iso) + 1;
+  const pills = [`<span class="pill ${day.pillClass}">${day.type}</span>`];
+  if (iso >= TRACK_START && iso <= TRACK_END) pills.push(`<span class="pill">Tracking day ${trackDay} of 14</span>`);
+  if (iso === "2026-10-31") pills.push(`<span class="pill">First 7-day average</span>`);
+  sub.innerHTML = pills.join("");
+
+  // week strip: Sun..Sat of the viewed week
+  const weekStart = addDays(iso, -dow);
+  const days = document.getElementById("days");
+  days.innerHTML = "";
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(weekStart, i);
+    const b = document.createElement("button");
+    b.id = "day-" + i;
+    b.textContent = DAY_NAMES[i].slice(0, 3);
+    b.setAttribute("aria-pressed", d === iso);
+    b.setAttribute("aria-label", fmtDate(d));
+    if (d === now.iso) b.classList.add("is-today");
+    b.onclick = () => { view = d === now.iso ? null : d; render(); };
+    days.appendChild(b);
+  }
+
+  // session chips
+  const chips = document.getElementById("chips");
+  chips.innerHTML = "";
+  document.querySelector("#session .label").textContent = isToday ? "Today's session" : "Session";
+  for (const s of SESSIONS) {
+    const b = document.createElement("button");
+    b.id = "chip-" + s.replace(/\s/g, "");
+    b.textContent = s;
+    b.setAttribute("aria-pressed", s === picked ? "true" : "false");
+    if (!picked && s === suggestion) b.classList.add("suggested");
+    b.onclick = () => { if (log[iso] === s) delete log[iso]; else log[iso] = s; saveLog(log); render(); };
+    chips.appendChild(b);
+  }
+  const hint = document.getElementById("sessionHint");
+  if (dow === 5) hint.textContent = picked && picked !== "Rest" ? "Training on a Friday. Tap it again to go back to a free day." : "Friday is your free day. Tap a session if you train anyway.";
+  else if (picked) hint.textContent = "Saved for this day. Tap it again to clear it.";
+  else hint.textContent = `Next in your rotation is ${suggestion}. Tap a session to confirm it or pick a different one.`;
+
+  // targets
+  document.getElementById("targets").innerHTML = `
+    <div><span class="label">Calories</span><b class="mono">2,000</b></div>
+    <div><span class="label">Protein</span><b class="mono">160–170 g</b></div>
+    <div><span class="label">Fluids</span><b class="mono">${day.training ? "3.5–4 L" : "~3 L"}</b></div>`;
+
+  // timeline
+  const rail = document.getElementById("rail");
+  rail.innerHTML = "";
+  let current = null, upcoming = null;
+  for (const it of day.items) {
+    const li = document.createElement("li");
+    li.className = "item " + it.kind;
+    if (isToday && it.start != null) {
+      if (now.mins >= it.end) li.classList.add("done");
+      else if (now.mins >= it.start) { li.classList.add("now"); current = it; }
+      else if (!upcoming) upcoming = it;
+    }
+    const time = it.start != null ? hm(it.start) : (it.tag === "Anytime" ? "any" : "—");
+    let body = `<h3>${it.title}${it.tag && it.tag !== it.title ? ` <span class="tag">${it.tag}</span>` : ""}</h3>`;
+    if (it.macro) body += `<div class="macro">${it.macro}</div>`;
+    if (it.text) body += `<p>${it.text}</p>`;
+    if (it.session && WORKOUTS[it.session]) {
+      body += `<details id="ex-${it.session.replace(/\s/g, "")}"><summary>Exercises and baselines</summary><table>${WORKOUTS[it.session].map(([n, b]) => `<tr><td>${n}</td><td>${b}</td></tr>`).join("")}</table></details>`;
+    }
+    li.innerHTML = `<div class="time">${time}</div><div class="card">${body}</div>`;
+    rail.appendChild(li);
+  }
+
+  // now / next banner
+  const next = document.getElementById("next");
+  next.hidden = !isToday;
+  if (isToday) {
+    if (current) next.innerHTML = `<span class="label">Now</span><strong>${current.session ? current.title + " workout" : current.title}</strong><span>until ${hm(current.end)}</span>`;
+    else if (upcoming) next.innerHTML = `<span class="label">Next up</span><strong>${upcoming.session ? upcoming.title + " workout" : upcoming.title}</strong><span>at ${hm(upcoming.start)}, in ${dur(upcoming.start - now.mins)}</span>`;
+    else if (day.items.some(i => i.start != null)) next.innerHTML = `<span class="label">Done for today</span><strong>All timed blocks are finished</strong><span>Magnesium in the evening, then sleep.</span>`;
+    else next.innerHTML = `<span class="label">${day.type}</span><strong>No fixed times today</strong><span>Eat when it suits you.</span>`;
+  }
+
+  // notes
+  const notes = [...day.notes];
+  if (isToday && now.mins < 720) notes.unshift("<b>Weigh in this morning</b> before eating or drinking, and log it.");
+  document.getElementById("notes").innerHTML = notes.map(n => `<p>${n}</p>`).join("");
+}
+
+render();
+setInterval(() => { if (!document.hidden) render(); }, 30000);
+</script>

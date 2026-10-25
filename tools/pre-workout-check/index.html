@@ -1,0 +1,407 @@
+<title>Pre-workout Check</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one narrow column, verdict first, then the eat-to-train timeline, the plate, and the six checks. */
+:root{
+  --bg:#EEF2F1; --surface:#FFFFFF; --ink:#13201D; --muted:#5B6B67; --line:#D5DEDB;
+  --accent:#0E6E62; --accent-soft:#D6EBE7;
+  --good:#1E7A3C; --good-bg:#DDF0E2; --ok:#9A6200; --ok-bg:#F7EBCF; --warn:#B3261E; --warn-bg:#F8DEDB;
+  --band:#E3A23B;
+  --f-display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1513; --surface:#17211E; --ink:#E4ECE9; --muted:#93A39F; --line:#2A3833;
+  --accent:#4FC3B0; --accent-soft:#1D3833;
+  --good:#6FD38E; --good-bg:#183324; --ok:#E8B85A; --ok-bg:#3A2E12; --warn:#F28B82; --warn-bg:#3D1D1A;
+  --band:#C98A2A; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0E1513; --surface:#17211E; --ink:#E4ECE9; --muted:#93A39F; --line:#2A3833;
+  --accent:#4FC3B0; --accent-soft:#1D3833;
+  --good:#6FD38E; --good-bg:#183324; --ok:#E8B85A; --ok-bg:#3A2E12; --warn:#F28B82; --warn-bg:#3D1D1A;
+  --band:#C98A2A; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px;display:grid;gap:22px}
+h1,h2{font-family:var(--f-display);font-weight:700;letter-spacing:.01em;text-wrap:balance;margin:0}
+h1{font-size:34px;line-height:1}
+h2{font-size:21px;text-transform:uppercase;letter-spacing:.04em}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.num{font-variant-numeric:tabular-nums}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+header p{margin:4px 0 0;color:var(--muted)}
+
+/* verdict */
+.verdict{border-radius:14px;padding:18px;display:grid;gap:6px;background:var(--surface);border:2px solid var(--line)}
+.verdict[data-s="good"]{border-color:var(--good);background:var(--good-bg)}
+.verdict[data-s="ok"]{border-color:var(--ok);background:var(--ok-bg)}
+.verdict[data-s="warn"]{border-color:var(--warn);background:var(--warn-bg)}
+.verdict .big{font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1.05}
+.verdict[data-s="good"] .big{color:var(--good)}
+.verdict[data-s="ok"] .big{color:var(--ok)}
+.verdict[data-s="warn"] .big{color:var(--warn)}
+.verdict ul{margin:4px 0 0;padding-left:18px}
+.totals{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.totals b{color:var(--ink);font-weight:500}
+
+/* timing */
+section{display:grid;gap:12px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+.field{display:grid;gap:4px;min-width:0}
+.field label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:40px}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=number]{width:84px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:9px 12px;font:inherit;font-size:14px;color:var(--ink);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface);font-weight:600}
+.track{position:relative;height:58px;margin-top:4px}
+.track .rail{position:absolute;left:0;right:0;top:24px;height:10px;border-radius:5px;background:var(--line)}
+.track .band{position:absolute;top:24px;height:10px;border-radius:5px;background:repeating-linear-gradient(135deg,var(--band) 0 6px,transparent 6px 10px),var(--band);opacity:.85}
+.track .solid{position:absolute;top:24px;height:10px;border-radius:5px 0 0 5px;background:var(--band);left:0}
+.mark{position:absolute;top:0;transform:translateX(-50%);display:grid;justify-items:center;font-size:12px;white-space:nowrap}
+.mark i{display:block;width:2px;height:22px;background:var(--ink);margin-top:2px}
+.mark.end{top:auto;bottom:0}
+.mark.end i{margin:0 0 2px;order:-1;background:var(--accent);width:3px;height:26px}
+.mark.end span{color:var(--accent);font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend span::before{content:"";display:inline-block;width:12px;height:8px;border-radius:2px;margin-right:6px;vertical-align:middle;background:var(--band)}
+.legend span.t::before{background:var(--accent);width:3px;height:12px}
+
+/* plate */
+.plate{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.plate table{width:100%;border-collapse:collapse;font-size:14px}
+.plate th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;text-align:right;padding:8px 10px;border-bottom:1px solid var(--line)}
+.plate th:first-child{text-align:left}
+.plate td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+.plate td:first-child{text-align:left;width:100%}
+.plate tr:last-child td{border-bottom:0}
+.plate tfoot td{font-weight:600;background:var(--accent-soft)}
+.est{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:6px;white-space:nowrap}
+.x{border:0;background:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 4px;line-height:1}
+.x:hover{color:var(--warn)}
+.empty{padding:16px;color:var(--muted);text-align:center}
+.tblwrap{overflow-x:auto}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 11px;font:inherit;font-size:13px;cursor:pointer}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip small{color:var(--muted);font-family:var(--f-mono);font-size:11px;margin-left:4px}
+.group{display:grid;gap:6px}
+.custom{display:flex;flex-wrap:wrap;gap:8px;align-items:end;background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:12px}
+.custom .field.name{flex:1 1 180px}
+.custom .field.name input{width:100%}
+.custom input[type=number]{width:72px}
+.btn{border:0;background:var(--accent);color:var(--surface);font:inherit;font-weight:600;border-radius:8px;padding:9px 14px;min-height:40px;cursor:pointer}
+.btn.ghost{background:none;color:var(--accent);border:1px solid var(--accent)}
+.err{color:var(--warn);font-size:13px;margin:0;flex-basis:100%}
+.example{font-size:13px;color:var(--ok);margin:0}
+
+/* checks */
+.checks{display:grid;gap:8px}
+.check{display:grid;grid-template-columns:96px 1fr;gap:12px;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:12px 14px}
+.check[data-s="good"]{border-left-color:var(--good)}
+.check[data-s="ok"]{border-left-color:var(--ok)}
+.check[data-s="warn"]{border-left-color:var(--warn)}
+.check .k{font-family:var(--f-display);font-size:18px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.check .pill{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;margin-top:2px}
+.check[data-s="good"] .pill{background:var(--good-bg);color:var(--good)}
+.check[data-s="ok"] .pill{background:var(--ok-bg);color:var(--ok)}
+.check[data-s="warn"] .pill{background:var(--warn-bg);color:var(--warn)}
+.check p{margin:0;min-width:0}
+.check .v{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+@media (max-width:480px){.check{grid-template-columns:1fr;gap:4px}.check .k{display:flex;gap:8px;align-items:center}}
+.foot{color:var(--muted);font-size:12.5px;display:grid;gap:6px}
+.foot p{margin:0;max-width:65ch}
+.toast{font-size:13px;color:var(--good)}
+@media (prefers-reduced-motion:no-preference){.band,.solid{transition:left .25s,width .25s}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Pre-workout?</div>
+      <h1>Pre-workout Check</h1>
+      <p>Add what you're eating before the gym and see if it's the right fuel at the right time.</p>
+    </div>
+  </header>
+
+  <div class="verdict" id="verdict" aria-live="polite"></div>
+
+  <section aria-labelledby="h-time">
+    <h2 id="h-time">Timing</h2>
+    <div class="row">
+      <div class="field">
+        <label>Day</label>
+        <div class="seg" role="group" aria-label="Day type">
+          <button type="button" id="day-week" data-day="week">Sun–Thu</button>
+          <button type="button" id="day-sat" data-day="sat">Saturday</button>
+          <button type="button" id="day-fri" data-day="fri">Friday</button>
+        </div>
+      </div>
+      <div class="field"><label for="eat">Eating at</label><input type="time" id="eat"></div>
+      <div class="field"><label for="train">Training at</label><input type="time" id="train"></div>
+      <div class="field"><label for="gat">Gatorade 1 L during</label>
+        <select id="gat"><option value="1">Yes</option><option value="0">No</option></select></div>
+    </div>
+    <div class="track" id="track" aria-hidden="true"></div>
+    <div class="legend"><span>Digestion window for this food</span><span class="t">Training starts</span></div>
+  </section>
+
+  <section aria-labelledby="h-plate">
+    <h2 id="h-plate">What you're eating</h2>
+    <p class="example" id="exampleNote" hidden>Example loaded: Meal 1 from your Tue, Oct 27 plan with a Mango. Remove it and add your own food.</p>
+    <div class="plate tblwrap">
+      <table>
+        <thead><tr><th>Food</th><th>kcal</th><th>P</th><th>C</th><th>F</th><th><span class="eyebrow" style="font-size:0">Remove</span></th></tr></thead>
+        <tbody id="rows"></tbody>
+        <tfoot id="foot"></tfoot>
+      </table>
+    </div>
+
+    <div class="custom" id="customForm">
+      <div class="field name"><label for="c-name">Nutreeze meal or other food</label><input id="c-name" placeholder="e.g. French Tacos Chicken"></div>
+      <div class="field"><label for="c-kcal">kcal</label><input type="number" id="c-kcal" min="0" inputmode="decimal"></div>
+      <div class="field"><label for="c-p">P (g)</label><input type="number" id="c-p" min="0" inputmode="decimal"></div>
+      <div class="field"><label for="c-c">C (g)</label><input type="number" id="c-c" min="0" inputmode="decimal"></div>
+      <div class="field"><label for="c-f">F (g)</label><input type="number" id="c-f" min="0" inputmode="decimal"></div>
+      <button type="button" class="btn" id="c-add">Add</button>
+      <p class="err" id="c-err" hidden></p>
+    </div>
+
+    <div class="group"><div class="eyebrow">Recent Nutreeze meals</div><div class="chips" id="chips-meals"></div></div>
+    <div class="group"><div class="eyebrow">Fruit snacks</div><div class="chips" id="chips-fruit"></div></div>
+    <div class="group"><div class="eyebrow">Sweets</div><div class="chips" id="chips-sweet"></div></div>
+    <div class="group"><div class="eyebrow">Nuts (better with Meal 2)</div><div class="chips" id="chips-nuts"></div></div>
+    <div class="group"><div class="eyebrow">Breakfast, fixed items and shake</div><div class="chips" id="chips-fixed"></div></div>
+  </section>
+
+  <section aria-labelledby="h-day">
+    <h2 id="h-day">Earlier today</h2>
+    <div class="row">
+      <div class="field"><label for="prevK">Calories already eaten</label><input type="number" id="prevK" min="0" value="0" inputmode="decimal"></div>
+      <div class="field"><label for="prevP">Protein already eaten (g)</label><input type="number" id="prevP" min="0" value="0" inputmode="decimal"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-checks">
+    <h2 id="h-checks">The checks</h2>
+    <div class="checks" id="checks"></div>
+    <div class="row"><button type="button" class="btn ghost" id="copy">Copy summary</button><span class="toast" id="toast" aria-live="polite"></span></div>
+  </section>
+
+  <div class="foot">
+    <p>Targets come from your plan: 2,000 kcal and 160–170 g protein a day, Adonis daily, Gatorade inside the 2,000 on training days. Pre-workout guides are general sports-nutrition ranges, not rules: roughly 40–110 g carbs and 20–40 g protein in the meal 1–2 hours before lifting, with fat kept low so it digests in time.</p>
+    <p>Items marked <span class="est">est.</span> are estimates until you confirm them (Gatorade label, khubz loaf weight, eggs cooked in oil or butter).</p>
+  </div>
+</div>
+
+<script>
+(function(){
+const MEALS=[
+  {n:"Buffalo Chicken with Sweet Potato",k:496,p:65,c:41,f:8},
+  {n:"Chicken Masala",k:607,p:67,c:60,f:11},
+];
+const FRUIT=[
+  {n:"Chopped Pineapple",k:44,p:0,c:11,f:0},{n:"Fruit Salad",k:48,p:1,c:11,f:0},{n:"Mango",k:52,p:1,c:12,f:0},
+  {n:"Pomegranate",k:60,p:1,c:14,f:0},{n:"Grapes",k:68,p:1,c:16,f:0},{n:"Dry Fruits",k:93,p:1,c:20,f:1},
+  {n:"Green Apple",k:104,p:1,c:25,f:0},{n:"Banana",k:121,p:1,c:27,f:1}];
+const SWEET=[
+  {n:"Zaafaran Cake",k:105,p:2,c:13,f:5},{n:"Chocolate Chip Cookies",k:113,p:3,c:14,f:5},{n:"Pro Mud Cake",k:252,p:4,c:14,f:20}];
+const NUTS=[
+  {n:"Tamari Roasted Seeds",k:167,p:6,c:11,f:11},{n:"Roasted Rosemary Almonds",k:183,p:6,c:6,f:15},{n:"Herbs Roasted Walnut",k:248,p:6,c:11,f:20}];
+const FIXED=[
+  {n:"Saturday eggs + cheese + 1½ khubz",k:490,p:31,c:45,f:20,e:1},
+  {n:"Thin khubz, 1 loaf (~58 g)",k:147,p:7,c:28,f:0.5,e:1},
+  {n:"Adonis Cookie Dough",k:192,p:22,c:11.4,f:6.2,adonis:1},
+  {n:"ISO100 scoop in water",k:110,p:25,c:2,f:0.5,e:1}];
+const GAT={k:240,c:60};
+const BW=91.9, DAY_K=2000, DAY_P=160;
+const FATTY=new Set(["Pro Mud Cake","Tamari Roasted Seeds","Roasted Rosemary Almonds","Herbs Roasted Walnut"]);
+const SWEETS=new Set(SWEET.map(s=>s.n));
+const $=id=>document.getElementById(id);
+
+function load(k,d){try{const v=localStorage.getItem("pwc_"+k);return v==null?d:JSON.parse(v)}catch(e){return d}}
+function save(k,v){try{localStorage.setItem("pwc_"+k,JSON.stringify(v))}catch(e){}}
+
+const now=new Date();
+const wd=now.getDay();
+const defDay=wd===6?"sat":wd===5?"fri":"week";
+const DEF={week:{eat:"14:00",train:"15:30"},sat:{eat:"08:15",train:"10:00"},fri:{eat:"13:00",train:"15:30"}};
+let state=load("state",null);
+const today=now.toDateString();
+if(!state||state.date!==today){
+  const d=defDay;
+  const cur=String(now.getHours()).padStart(2,"0")+":"+String(Math.floor(now.getMinutes()/5)*5).padStart(2,"0");
+  const eat=toMin(cur)<toMin(DEF[d].train)&&toMin(DEF[d].train)-toMin(cur)<=300?cur:DEF[d].eat;
+  state={date:today,day:d,eat,train:DEF[d].train,gat:d!=="fri",prevK:0,prevP:0,
+    items:state&&state.date===today?state.items:[{...MEALS[0]},{...FRUIT[2]}],example:!state||state.date!==today};
+}
+
+function toMin(t){if(!t)return NaN;const [h,m]=t.split(":").map(Number);return h*60+m}
+function fmtT(m){m=((m%1440)+1440)%1440;let h=Math.floor(m/60),mm=m%60;const ap=h>=12?"pm":"am";h=h%12||12;return h+":"+String(mm).padStart(2,"0")+" "+ap}
+function fmtDur(min){min=Math.round(min);const h=Math.floor(min/60),m=min%60;if(h&&m)return h+" h "+m+" min";if(h)return h+" h";return m+" min"}
+function r(n){return Math.round(n).toLocaleString("en-US")}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+
+function chips(id,list){
+  const el=$(id);
+  el.innerHTML=list.map((x,i)=>`<button type="button" class="chip" data-i="${i}">${esc(x.n)}<small>${x.k}</small></button>`).join("");
+  el.onclick=e=>{const b=e.target.closest(".chip");if(!b)return;addItem({...list[+b.dataset.i]})};
+}
+function addItem(it){if(state.example){state.items=[];state.example=false}state.items.push(it);update()}
+
+function totals(){return state.items.reduce((a,x)=>({k:a.k+x.k,p:a.p+x.p,c:a.c+x.c,f:a.f+x.f}),{k:0,p:0,c:0,f:0})}
+
+function digestion(t){
+  if(t.k<=0)return null;
+  if(t.k<=250&&t.f<=10)return{lo:30,hi:60,label:"a light snack"};
+  if(t.k<=600&&t.f<=15)return{lo:60,hi:90,label:"a moderate, low-fat meal"};
+  if(t.k<=850&&t.f<=25)return{lo:90,hi:120,label:"a larger or moderate-fat meal"};
+  return{lo:120,hi:180,label:"a big or high-fat meal"};
+}
+
+function evaluate(){
+  const t=totals();const items=state.items;
+  const left=toMin(state.train)-toMin(state.eat);
+  const dg=digestion(t);
+  const checks=[];const tips=[];
+  const fatty=items.filter(x=>FATTY.has(x.n)).map(x=>x.n);
+  const sweets=items.filter(x=>SWEETS.has(x.n)).map(x=>x.n);
+  const gat=state.gat;
+
+  // time left
+  let ts,tt;
+  if(isNaN(left)){ts="warn";tt="Set both times to check digestion."}
+  else if(left<=0){ts="warn";tt="Training time is before or at your eating time. Check the two times above."}
+  else if(!dg){ts="ok";tt=`${fmtDur(left)} until training, but nothing is listed yet.`}
+  else if(left>=dg.hi){ts="good";tt=`${fmtDur(left)} until training. This is ${dg.label}, which needs about ${fmtDur(dg.lo)}–${fmtDur(dg.hi)}. You'll be ready around ${fmtT(toMin(state.eat)+dg.hi)}.`}
+  else if(left>=dg.lo){ts="ok";tt=`${fmtDur(left)} until training. This is ${dg.label} (about ${fmtDur(dg.lo)}–${fmtDur(dg.hi)}), so it's on the edge. Start warm-ups easy if you still feel full.`}
+  else {ts="warn";tt=`Only ${fmtDur(left)} until training. This is ${dg.label}, which needs about ${fmtDur(dg.lo)}–${fmtDur(dg.hi)}.`;
+    tips.push(`Train at ${fmtT(toMin(state.eat)+dg.lo)} or later, or eat less now and save the rest for after.`)}
+  if(dg&&left>240&&t.k<400){tips.push("That's a long gap. A fruit snack about an hour before training will top you up.")}
+  checks.push({k:"Time",s:ts,v:isNaN(left)||left<=0?"":fmtDur(Math.max(left,0))+" until training",t:tt});
+
+  // carbs
+  let cs,ct;const gc=gat?` plus ~${GAT.c} g from Gatorade during (estimate)`:"";
+  if(t.c<30){cs=gat&&t.c>=15?"ok":"warn";ct=`Low for a lifting session${gc}.`;
+    if(left>=45)tips.push("Add a fruit snack (Banana 27 g carbs, Green Apple 25 g) for more fuel. It digests fast.")}
+  else if(t.c<40){cs="ok";ct=`On the light side${gc}. Fine for a short session.`}
+  else if(t.c<=110){cs="good";ct=`Good fuel for lifting and the treadmill${gc}.`}
+  else {cs=t.c>140?"ok":"good";ct=`Plenty of carbs${gc}. No need for anything extra.`}
+  checks.push({k:"Carbs",s:cs,v:r(t.c)+" g",t:ct});
+
+  // protein
+  let ps,pt;
+  if(t.p<20){ps="ok";pt=`Light on protein. Your Adonis after training covers the rest, so no shake needed unless you want one.`}
+  else if(t.p<=40){ps="good";pt="Right in the 20–40 g pre-workout range."}
+  else {ps="good";pt="More than the minimum, which is fine. It counts toward your daily 160 g."}
+  checks.push({k:"Protein",s:ps,v:r(t.p)+" g",t:pt});
+
+  // fat
+  let fs,ft;
+  if(t.f<=15){fs="good";ft="Low fat, so it digests quickly."}
+  else if(t.f<=25){fs="ok";ft="Moderate fat slows digestion. Allow about 1.5–2 hours."}
+  else {fs="warn";ft="High fat will sit heavy during training."}
+  if(fatty.length&&t.f>12){ft+=` Move ${fatty.join(" and ")} to Meal 2 in the evening.`;if(fs==="good")fs="ok";tips.push(`Save ${fatty.join(" and ")} for Meal 2. Fat slows digestion.`)}
+  checks.push({k:"Fat",s:fs,v:r(t.f)+" g",t:ft});
+
+  // size
+  let ss,st;
+  if(t.k===0){ss="ok";st="Nothing listed yet."}
+  else if(t.k<700){ss="good";st="A comfortable size before training."}
+  else if(t.k<=900){ss="ok";st="A big pre-workout meal.";
+    if(sweets.length){st+=` Your plan says to move the sweet (${sweets.join(", ")}) to the evening.`;tips.push(`Over 700 kcal: move ${sweets.join(", ")} to the evening.`)}}
+  else {ss="warn";st="Very large for 1–2 hours before lifting. Split it and eat part after training."}
+  checks.push({k:"Size",s:ss,v:r(t.k)+" kcal",t:st});
+
+  // day budget
+  const hasAdonis=items.some(x=>x.adonis);
+  const reserved=(hasAdonis?0:192)+(gat?GAT.k:0);
+  const eatenAfter=(+state.prevK||0)+t.k;
+  const restK=DAY_K-eatenAfter-reserved;
+  const restP=DAY_P-(+state.prevP||0)-t.p-(hasAdonis?0:22);
+  let ds,dt;
+  const res=[!hasAdonis?"Adonis":"",gat?"Gatorade":""].filter(Boolean).join(" and ");
+  dt=`After this you'll be at ${r(eatenAfter)} kcal. Keeping ${res||"nothing"} aside, ${r(restK)} kcal and ${Math.max(0,Math.round(restP))} g protein are left for the rest of the day.`;
+  if(restK<0){ds="warn";dt+=" That's over 2,000. Make Meal 2 light."}
+  else if(restK<350&&restP>30){ds="warn";dt+=" Little room left to reach your protein. Pick a high-protein, lower-calorie Meal 2."}
+  else if(restK<500){ds="ok";dt+=" Meal 2 will need to be on the lighter side."}
+  else ds="good";
+  checks.push({k:"Day total",s:ds,v:r(eatenAfter)+" / 2,000",t:dt});
+
+  const worst=checks.some(c=>c.s==="warn")?"warn":checks.some(c=>c.s==="ok")?"ok":"good";
+  return{t,checks,tips,worst,left,dg};
+}
+
+function render(){
+  const ev=evaluate();const {t}=ev;
+  // rows
+  $("rows").innerHTML=state.items.length?state.items.map((x,i)=>`<tr><td>${esc(x.n)}${x.e?'<span class="est">est.</span>':""}</td><td>${r(x.k)}</td><td>${r(x.p)}</td><td>${r(x.c)}</td><td>${r(x.f)}</td><td><button type="button" class="x" data-i="${i}" aria-label="Remove ${esc(x.n)}">×</button></td></tr>`).join(""):`<tr><td colspan="6" class="empty">Nothing yet. Add a meal or snack below.</td></tr>`;
+  $("foot").innerHTML=state.items.length?`<tr><td>Total</td><td>${r(t.k)}</td><td>${r(t.p)}</td><td>${r(t.c)}</td><td>${r(t.f)}</td><td></td></tr>`:"";
+  $("exampleNote").hidden=!state.example;
+
+  // verdict
+  const head={good:"Good to go",ok:"Good to go, with a tweak",warn:"Adjust before you train"}[ev.worst];
+  const v=$("verdict");v.dataset.s=state.items.length?ev.worst:"";
+  const tips=ev.tips.length?`<ul>${ev.tips.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:(ev.worst==="good"?"<div>Eat it as planned. Nothing extra needed.</div>":"");
+  v.innerHTML=state.items.length?`<div class="eyebrow">Verdict</div><div class="big">${head}</div>${tips}<div class="totals num"><span><b>${r(t.k)}</b> kcal</span><span><b>${r(t.p)}</b> g P</span><span><b>${r(t.c)}</b> g C</span><span><b>${r(t.f)}</b> g F</span></div>`
+    :`<div class="eyebrow">Verdict</div><div class="big">Add your food</div><div>Pick your Nutreeze meal and snacks below, or type in a meal from today's menu.</div>`;
+
+  // checks
+  const lab={good:"Good",ok:"Watch",warn:"Fix"};
+  $("checks").innerHTML=ev.checks.map(c=>`<div class="check" data-s="${c.s}"><div class="k">${c.k}<span class="pill">${lab[c.s]}</span></div><p>${c.v?`<span class="v num">${esc(c.v)}</span><br>`:""}${esc(c.t)}</p></div>`).join("");
+
+  // timeline
+  const tr=$("track");
+  if(ev.left>0&&ev.dg){
+    const span=Math.max(ev.left,ev.dg.hi)*1.12;const pct=m=>(m/span*100).toFixed(2)+"%";
+    tr.innerHTML=`<div class="rail"></div><div class="solid" style="width:${pct(ev.dg.lo)}"></div><div class="band" style="left:${pct(ev.dg.lo)};width:${pct(ev.dg.hi-ev.dg.lo)}"></div>
+      <div class="mark" style="left:0;transform:none;justify-items:start"><span>Eat ${fmtT(toMin(state.eat))}</span><i></i></div>
+      <div class="mark end" style="left:${pct(ev.left)}"><i></i><span>Train ${fmtT(toMin(state.train))}</span></div>`;
+  } else tr.innerHTML=`<div class="rail"></div>`;
+
+  // timing controls
+  document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.day===state.day));
+  $("eat").value=state.eat;$("train").value=state.train;$("gat").value=state.gat?"1":"0";
+  if(document.activeElement!==$("prevK"))$("prevK").value=state.prevK;
+  if(document.activeElement!==$("prevP"))$("prevP").value=state.prevP;
+  return ev;
+}
+function update(){save("state",state);return render()}
+
+chips("chips-meals",MEALS);chips("chips-fruit",FRUIT);chips("chips-sweet",SWEET);chips("chips-nuts",NUTS);chips("chips-fixed",FIXED);
+$("rows").onclick=e=>{const b=e.target.closest(".x");if(!b)return;state.items.splice(+b.dataset.i,1);state.example=false;update()};
+document.querySelector(".seg").onclick=e=>{const b=e.target.closest("button");if(!b)return;const d=b.dataset.day;state.day=d;state.eat=DEF[d].eat;state.train=DEF[d].train;state.gat=d!=="fri";update()};
+$("eat").onchange=e=>{state.eat=e.target.value;update()};
+$("train").onchange=e=>{state.train=e.target.value;update()};
+$("gat").onchange=e=>{state.gat=e.target.value==="1";update()};
+$("prevK").oninput=e=>{state.prevK=Math.max(0,+e.target.value||0);update()};
+$("prevP").oninput=e=>{state.prevP=Math.max(0,+e.target.value||0);update()};
+$("c-add").onclick=()=>{
+  const n=$("c-name").value.trim();const vals=["c-kcal","c-p","c-c","c-f"].map(id=>$(id).value);
+  const err=$("c-err");
+  if(!n||vals.some(v=>v===""||isNaN(+v)||+v<0)){err.textContent="Enter a name and all four numbers from the menu (kcal, protein, carbs, fat).";err.hidden=false;return}
+  err.hidden=true;
+  addItem({n,k:+vals[0],p:+vals[1],c:+vals[2],f:+vals[3]});
+  ["c-name","c-kcal","c-p","c-c","c-f"].forEach(id=>$(id).value="");
+};
+$("copy").onclick=()=>{
+  const ev=evaluate();const t=ev.t;
+  const head={good:"Good to go",ok:"Good to go, with a tweak",warn:"Adjust before you train"}[ev.worst];
+  const txt=`Pre-workout check (eat ${fmtT(toMin(state.eat))}, train ${fmtT(toMin(state.train))})\n`+
+    state.items.map(x=>`- ${x.n}: ${r(x.k)} kcal | ${r(x.p)} P | ${r(x.c)} C | ${r(x.f)} F`).join("\n")+
+    `\nTotal: ${r(t.k)} kcal | ${r(t.p)} P | ${r(t.c)} C | ${r(t.f)} F\nVerdict: ${head}\n`+
+    ev.checks.map(c=>`${c.k}: ${c.t}`).join("\n");
+  const toast=$("toast");
+  const done=()=>{toast.textContent="Copied";setTimeout(()=>toast.textContent="",2000)};
+  try{navigator.clipboard.writeText(txt).then(done,()=>{toast.textContent="Copy isn't allowed here. Select the checks and copy them by hand."})}catch(e){toast.textContent="Copy isn't allowed here."}
+};
+render();
+})();
+</script>

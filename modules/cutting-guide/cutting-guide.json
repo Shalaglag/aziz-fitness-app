@@ -1,0 +1,135 @@
+{
+  "id": "keep-strength-while-cutting",
+  "version": 1,
+  "updated": "2026-10-25",
+  "title": "Keep Your Strength on the Cut",
+  "subtitle": "How Aziz keeps muscle and strength from 91.9 kg to 80 kg on 2,000 kcal",
+  "source": "fitness-app/nutrition-training-handoff.md (Oct 25, 2026)",
+  "numbers": {
+    "startKg": 91.9,
+    "goalKg": 80,
+    "toLoseKg": 11.9,
+    "kcal": 2000,
+    "maintenanceKcal": [2700, 2900],
+    "dailyDeficitKcal": [700, 900],
+    "expectedLossKgPerWeek": [0.5, 0.8],
+    "expectedWeeksToGoal": [15, 24],
+    "proteinG": [160, 170],
+    "proteinGPerKgNow": [1.74, 1.85],
+    "proteinGPerKgAtGoal": [2.0, 2.1],
+    "maxSafeLossPctPerWeek": 1.0,
+    "note": "Weeks to goal = 11.9 kg ÷ 0.5–0.8 kg/week. Week 1 will drop faster from water and glycogen."
+  },
+  "shortVersion": [
+    "Keep the weights heavy. The load on the bar is the signal that tells your body to keep muscle.",
+    "Keep your sets as they are. Don't add volume to burn calories; the deficit does that.",
+    "Hit 160–170 g protein every day, including Friday.",
+    "Eat Meal 1 (lighter, higher carb) about 1.5 h before training and drink the Gatorade during.",
+    "If a main lift drops 2+ sessions in a row, check sleep, pre-workout food and volume before touching calories."
+  ],
+  "sections": [
+    {
+      "id": "why-plan-works",
+      "title": "Why your plan already protects muscle",
+      "points": [
+        "Rate of loss: 0.5–0.8 kg/week is about 0.5–0.9% of body weight, inside the 0.5–1% range where strength usually holds.",
+        "Protein: 160–170 g is about 1.75–1.85 g/kg now and 2.0–2.1 g/kg at 80 kg, within the 1.6–2.2 g/kg evidence range for lifters in a deficit.",
+        "Calories: 2,000 kcal is a ~700–900 kcal deficit. Going lower (1,500–1,700) speeds loss but costs strength and recovery. Stay at 2,000.",
+        "Training: 3 years of lifting, 5–6 sessions a week, with every muscle hit twice per 8-day cycle. That frequency is enough to maintain and even slowly build."
+      ]
+    },
+    {
+      "id": "training-rules",
+      "title": "Training rules while cutting",
+      "points": [
+        "Keep loads heavy. Stay in your 8–12 rep range at the weights you use now. Don't switch to light, high-rep 'cutting' workouts.",
+        "Keep volume the same. Your current sets per exercise are enough. Adding sets during a deficit adds fatigue you can't recover from as well.",
+        "Train 1–2 reps short of failure on working sets. Going to failure on every set costs more recovery than it's worth on a cut.",
+        "Rest 2.5–3 min on big compounds (bench, incline DB, OHP, rows, pulldowns, hack squat). Short rests cost reps.",
+        "Double progression still applies: when you hit the top of the range on all sets, add weight. On a cut, matching last session is also a win.",
+        "Keep the treadmill as is: 30 min at ~4.0 km/h, incline ~3, after lifting. Low-intensity walking barely interferes with strength. Don't turn it into running or HIIT."
+      ]
+    },
+    {
+      "id": "fuel",
+      "title": "Fuel around training",
+      "points": [
+        "Sun–Thu: Meal 1 + snacks at ~2 pm is your pre-workout. Make it the lighter, lower-fat, higher-carb meal; carbs are what you lift on.",
+        "Gatorade 1 L during the session gives ~60 g carbs (estimate until you send the label). It's inside the 2,000, so it's free performance.",
+        "Adonis at ~5 pm gives 22 g protein right after training. Meal 2 at 8–9 pm can be the heavier, higher-fat meal.",
+        "Saturday: allow 1.5–2 h after the eggs and khubz before training at 10 am.",
+        "Spread protein: Meal 1 (~60–70 g), Adonis (22 g), Meal 2 (~60–70 g). Three solid feedings a day is plenty.",
+        "Friday: the free day is fine. The Cajun shrimp still delivers 70–85 g protein. Sauce on the side keeps it from blowing up the day."
+      ]
+    },
+    {
+      "id": "recovery",
+      "title": "Recovery",
+      "points": [
+        "Sleep is the biggest lever after protein. Aim for 7–9 hours; short sleep on a cut shows up as lost reps first. (Your usual bedtime is still an open item.)",
+        "Keep creatine at 5 g/day. It supports strength in a deficit. It holds 1–2 kg of water, which is stable and doesn't hide fat loss.",
+        "Keep steps steady at 6k–10k. Big swings in daily activity make the scale and your energy harder to read.",
+        "Keep hydration consistent: ~3 L rest days, ~3.5–4 L training days including the Gatorade."
+      ]
+    },
+    {
+      "id": "expectations",
+      "title": "What to expect",
+      "points": [
+        "Weeks 1–6: most lifts usually hold or still go up. You're well fed relative to most cuts.",
+        "Later in the cut (roughly under 85 kg): a lift may lose 1–2 reps or stall. That's normal and doesn't mean you're losing muscle.",
+        "Pumps get smaller and you may feel flatter. That's glycogen and water, not muscle.",
+        "Bench and pressing may feel slightly harder as you get leaner (less leverage from body mass). Machine and isolation lifts usually hold best."
+      ]
+    },
+    {
+      "id": "long-cut",
+      "title": "Tools for a long cut",
+      "points": [
+        "Deload: if you feel beaten up for 1–2 weeks (joints, sleep, motivation), do one week with half the sets at the same weights, then resume.",
+        "Diet break (optional): after ~8–12 weeks of dieting, 1–2 weeks at maintenance (~2,700 kcal, mostly extra carbs) can restore training quality. Evidence is mixed; use it if lifts and energy are sliding, not on a schedule.",
+        "Don't change the program mid-cut unless something hurts. You decided on Oct 25 to keep it as is, and consistency is what lets you spot a real drop."
+      ]
+    },
+    {
+      "id": "myths",
+      "title": "Things you don't need to do",
+      "points": [
+        "Switch to high reps to 'tone' or 'cut'. Heavy work keeps muscle; light work doesn't burn meaningfully more fat.",
+        "Drop to 1,500–1,700 kcal because of one high weigh-in. Judge by the 7-day average.",
+        "Add extra cardio when the scale stalls for a few days. Wait for the weekly trend.",
+        "Take a shake 'just in case'. If the meals hit 160–170 g, you're covered."
+      ]
+    }
+  ],
+  "dropProtocol": {
+    "definition": "A drop is when the top working set on a main lift is lower than its best recent value (less weight, or fewer reps at the same weight) for 2 or more sessions of that lift in a row.",
+    "ignore": "A single bad session. Also ignore drops on the session right after a missed meal, a bad night, or Friday's free day.",
+    "checkInOrder": [
+      { "step": "Sleep", "ask": "Fewer than 7 hours on the nights before those sessions?", "fix": "Fix sleep for a week before changing anything else." },
+      { "step": "Pre-workout food", "ask": "Was Meal 1 eaten ~1.5 h before, with carbs, and was the Gatorade drunk during?", "fix": "Pick a higher-carb Meal 1 and fruit snacks on training days." },
+      { "step": "Volume and fatigue", "ask": "Did sets, failure training or session length creep up? Joints achy?", "fix": "Keep sets at baseline, stop 1–2 reps short, or take a deload week." },
+      { "step": "Hydration and stress", "ask": "Low water, poor appetite, unusual stress?", "fix": "Bring fluids back to target and keep the routine steady." },
+      { "step": "Calories (last)", "ask": "Is the 7-day average dropping faster than ~0.9 kg/week (1% of body weight) after the first 2 weeks?", "fix": "Only then add ~150–200 kcal of carbs to Meal 1 on training days. Not before the Nov 7 review." }
+    ]
+  },
+  "mainLifts": [
+    { "lift": "Bench Press (Barbell)", "day": "Push A", "baseline": "90 kg × 8", "kg": 90, "reps": 8 },
+    { "lift": "Incline DB Press", "day": "Push A", "baseline": "65 lb × 10", "lb": 65, "reps": 10 },
+    { "lift": "Gundam (chest machine)", "day": "Push B", "baseline": "60 kg × 8", "kg": 60, "reps": 8 },
+    { "lift": "Seated DB Overhead Press", "day": "Push B", "baseline": "60 lb × 8", "lb": 60, "reps": 8 },
+    { "lift": "Lat Pulldown, Wide", "day": "Pull A", "baseline": "80 kg × 8", "kg": 80, "reps": 8 },
+    { "lift": "Seated Row (Cable)", "day": "Pull A / Pull B", "baseline": "95 kg × 8 (A), 90 kg × 8 (B)", "kg": 95, "reps": 8 },
+    { "lift": "T-Bar Row", "day": "Pull B", "baseline": "50 kg × 8", "kg": 50, "reps": 8 },
+    { "lift": "Hack Squat", "day": "Lower A / Lower B", "baseline": "70 kg × 8", "kg": 70, "reps": 8 },
+    { "lift": "Leg Extension", "day": "Lower A / Lower B", "baseline": "122 kg × 8", "kg": 122, "reps": 8 },
+    { "lift": "Lying Leg Curl", "day": "Lower A / Lower B", "baseline": "63 kg × 8", "kg": 63, "reps": 8 }
+  ],
+  "weeklyCheck": [
+    "Did I hit 160–170 g protein at least 6 of 7 days?",
+    "Did my main lifts hold or go up? Any lift down 2 sessions in a row?",
+    "Did I average 7+ hours of sleep?",
+    "Is my 7-day average weight down 0.5–0.9 kg from last week (after week 1)?",
+    "Did I eat Meal 1 ~1.5 h before every session?"
+  ]
+}

@@ -1,0 +1,492 @@
+<title>Aziz Food Log</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one narrow column, phone first. Totals on top, then the day's items
+   grouped by slot. Planned items are dashed outlines (not counted yet);
+   eaten items are solid (counted). */
+:root {
+  --bg: #f3f5f4;
+  --surface: #ffffff;
+  --fg: #17211f;
+  --muted: #5d6b67;
+  --line: #d3dbd8;
+  --accent: #0e6b5c;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcefe9;
+  --plan: #a35d00;
+  --plan-soft: #fbf0df;
+  --warn: #b3261e;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1514; --surface: #18201e; --fg: #e4ebe9; --muted: #95a39f; --line: #2c3835;
+    --accent: #4fc2a9; --accent-ink: #06231d; --accent-soft: #173832;
+    --plan: #f0aa4a; --plan-soft: #2e2416; --warn: #ff8a80; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1514; --surface: #18201e; --fg: #e4ebe9; --muted: #95a39f; --line: #2c3835;
+  --accent: #4fc2a9; --accent-ink: #06231d; --accent-soft: #173832;
+  --plan: #f0aa4a; --plan-soft: #2e2416; --warn: #ff8a80; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: 26px; letter-spacing: -0.01em; }
+h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); padding: 7px 12px; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+button.ghost { background: transparent; }
+button.danger { color: var(--warn); }
+input, select { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 9px; min-width: 0; }
+
+header { display: flex; flex-direction: column; gap: 10px; }
+.daterow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.daterow input { flex: 0 1 170px; }
+.sub { color: var(--muted); font-size: 13px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); font-weight: 700; }
+
+.totals { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.meter { display: flex; flex-direction: column; gap: 6px; }
+.meter-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.meter-top b { font-family: var(--font-display); font-size: 22px; }
+.bar { position: relative; height: 12px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.bar .eaten { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.bar .planned { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, var(--plan) 0 3px, transparent 3px 7px); opacity: .75; }
+.bar .tick { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--fg); }
+.macro-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.macro { background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+.macro small { display: block; color: var(--muted); font-size: 12px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.legend .le::before { background: var(--accent); }
+.legend .lp::before { background: repeating-linear-gradient(135deg, var(--plan) 0 2px, transparent 2px 4px); border: 1px solid var(--plan); }
+.verdict { font-size: 14px; }
+
+.group { display: flex; flex-direction: column; gap: 8px; }
+.item { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 10px 12px; border-radius: 10px; }
+.item.planned { border: 1.5px dashed var(--plan); background: var(--plan-soft); }
+.item.eaten { border: 1.5px solid var(--accent); background: var(--surface); }
+.item.skipped { border: 1px solid var(--line); background: transparent; color: var(--muted); }
+.item.skipped .name { text-decoration: line-through; }
+.item .name { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.item .meta { font-size: 13px; color: var(--muted); min-width: 0; }
+.item .status { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; }
+.item.planned .status { color: var(--plan); }
+.item.eaten .status { color: var(--accent); }
+.item .acts { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+.item .acts button { padding: 4px 10px; font-size: 13px; }
+.est { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px; color: var(--muted); }
+.empty { color: var(--muted); font-size: 14px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.formgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.formgrid label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); min-width: 0; }
+.formgrid .wide { grid-column: span 4; }
+.formgrid .half { grid-column: span 2; }
+@media (max-width: 460px) { .formgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .formgrid .wide { grid-column: span 2; } }
+.hint { font-size: 12px; color: var(--muted); }
+.quick { display: flex; gap: 6px; flex-wrap: wrap; }
+.quick button { font-size: 13px; padding: 5px 10px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.history { overflow-x: auto; }
+.history table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.history th, .history td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.history th:first-child, .history td:first-child { text-align: left; }
+.history tr.cur td { font-weight: 700; }
+.history button { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; }
+.note { font-size: 12px; color: var(--muted); }
+.confirm { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+@media (prefers-reduced-motion: no-preference) { .bar .eaten, .bar .planned { transition: width .3s ease, left .3s ease; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Food log</h1>
+    <div class="daterow">
+      <button class="ghost" id="prev" aria-label="Previous day">‹</button>
+      <input type="date" id="date">
+      <button class="ghost" id="next" aria-label="Next day">›</button>
+      <button class="ghost" id="today">Today</button>
+    </div>
+    <div class="sub" id="dateLabel"></div>
+    <div class="chips" id="dayType" role="group" aria-label="Day type"></div>
+  </header>
+
+  <section class="totals" aria-label="Today's totals">
+    <div class="meter">
+      <div class="meter-top"><span>Eaten <b class="num" id="kEaten">0</b> <span class="num sub">/ 2,000 kcal</span></span><span class="sub num" id="kPlan"></span></div>
+      <div class="bar" id="kBar"><div class="eaten"></div><div class="planned"></div><div class="tick" style="left:calc(100%/1.25 - 1px)"></div></div>
+    </div>
+    <div class="meter">
+      <div class="meter-top"><span>Protein <b class="num" id="pEaten">0</b> <span class="num sub">/ 160–170 g</span></span><span class="sub num" id="pPlan"></span></div>
+      <div class="bar" id="pBar"><div class="eaten"></div><div class="planned"></div><div class="tick" style="left:calc(160%/2.1 - 1px)"></div></div>
+    </div>
+    <div class="macro-row">
+      <div class="macro"><small>Carbs eaten</small><span class="num" id="cEaten">0 g</span></div>
+      <div class="macro"><small>Fat eaten</small><span class="num" id="fEaten">0 g</span></div>
+      <div class="macro"><small>Still planned</small><span class="num" id="leftPlan">0 kcal</span></div>
+    </div>
+    <div class="legend"><span class="le">Eaten (counted)</span><span class="lp">Planned (not counted until you confirm)</span></div>
+    <div class="verdict" id="verdict"></div>
+  </section>
+
+  <div id="startBox" class="panel" hidden>
+    <b>Nothing logged for this day yet.</b>
+    <span class="hint">Start the day to add the fixed items as planned: Adonis every day, Gatorade on training days, and the egg and khubz breakfast on Saturday and Friday. Then add your Nutreeze picks.</span>
+    <div class="quick"><button class="primary" id="startDay">Start this day</button><button id="startEmpty">Start empty</button></div>
+  </div>
+
+  <div id="dayBody" class="group" hidden>
+    <div id="groups" class="group"></div>
+    <div class="quick">
+      <button id="adonisToggle"></button>
+      <button id="newDayBtn" class="ghost danger">New day (reset)</button>
+    </div>
+    <div id="resetConfirm" class="confirm" hidden>Clear every item for this day? <button class="danger" id="resetYes">Clear the day</button><button id="resetNo">Keep it</button></div>
+  </div>
+
+  <section class="panel" id="addPanel" hidden>
+    <div class="tabs" role="tablist">
+      <button class="chip" role="tab" data-mode="plan" aria-pressed="true">Plan a Nutreeze item</button>
+      <button class="chip" role="tab" data-mode="extra" aria-pressed="false">Add this (eaten)</button>
+    </div>
+    <div class="hint" id="modeHint"></div>
+    <div class="quick" id="quick"></div>
+    <form id="form" class="formgrid" autocomplete="off">
+      <label class="wide">Name<input id="fName" required placeholder="e.g. French Tacos Chicken"></label>
+      <label class="half">Slot<select id="fSlot"></select></label>
+      <label class="half">kcal (low–high if unsure)<span style="display:flex;gap:4px"><input id="fKcal" inputmode="decimal" required placeholder="496" style="width:50%"><input id="fKcalHi" inputmode="decimal" placeholder="max" style="width:50%"></span></label>
+      <label>Protein g<input id="fP" inputmode="decimal" placeholder="0"></label>
+      <label>Carbs g<input id="fC" inputmode="decimal" placeholder="0"></label>
+      <label>Fat g<input id="fF" inputmode="decimal" placeholder="0"></label>
+      <label>Estimate?<select id="fEst"><option value="">Exact</option><option value="1">Estimate</option></select></label>
+      <label class="wide">Note<input id="fNote" placeholder="optional, e.g. cooked in butter, sauce on the side"></label>
+      <div class="wide quick"><button class="primary" type="submit" id="fSubmit">Add as planned</button><button type="button" id="fCancel" hidden>Cancel edit</button></div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>14-day tracking · Oct 25 – Nov 7</h2>
+    <div class="history"><table><thead><tr><th>Day</th><th>Eaten kcal</th><th>Protein</th><th>Planned left</th></tr></thead><tbody id="hist"></tbody></table></div>
+    <div class="note" id="histNote"></div>
+  </section>
+
+  <div class="note" id="store"></div>
+</div>
+
+<script>
+(function () {
+  const TARGET_KCAL = 2000, P_MIN = 160, P_MAX = 170;
+  const TRACK_START = "2026-10-25", TRACK_END = "2026-11-07";
+  const SLOTS = [["breakfast","Breakfast"],["meal1","Meal 1"],["meal2","Meal 2"],["snack","Snacks"],["fixed","Adonis and drinks"],["extra","Extras"]];
+  const SLOT_NAME = Object.fromEntries(SLOTS);
+  const DAY_TYPES = [["training","Training (Sun–Thu)"],["rest","Rest day"],["saturday","Saturday"],["friday","Friday free day"]];
+
+  // Fixed items from the plan. Ranges are [low, high]; equal numbers mean an exact label value.
+  const ADONIS = { name: "Adonis Protein Cookie Dough (50 g)", slot: "fixed", kcal: [192,192], p: [22,22], c: [11.4,11.4], f: [6.2,6.2], est: false, key: "adonis" };
+  const GATORADE = { name: "Gatorade 1 L", slot: "fixed", kcal: [240,240], p: [0,0], c: [60,60], f: [0,0], est: true, note: "Estimate until the label is checked", key: "gatorade" };
+  const EGGS = { name: "3 eggs + Kraft cheese spread + 1½ thin khubz", slot: "breakfast", kcal: [460,520], p: [31,31], c: [40,50], f: [20,20], est: true, note: "Add 40–120 kcal if cooked in oil or butter", key: "eggs" };
+  const SNACKS = [
+    ["Chopped Pineapple",44,0,11,0],["Fruit Salad",48,1,11,0],["Mango",52,1,12,0],["Pomegranate",60,1,14,0],["Grapes",68,1,16,0],
+    ["Dry Fruits",93,1,20,1],["Green Apple",104,1,25,0],["Banana",121,1,27,1],["Zaafaran Cake",105,2,13,5],["Chocolate Chip Cookies",113,3,14,5],
+    ["Pro Mud Cake",252,4,14,20],["Tamari Roasted Seeds",167,6,11,11],["Roasted Rosemary Almonds",183,6,6,15],["Herbs Roasted Walnut",248,6,11,20]
+  ];
+  const EXTRAS = [
+    { label: "ISO100 scoop (water)", name: "Dymatize ISO100, 1 scoop in water", slot: "extra", kcal: [110,120], p: [25,25], c: [1,2], f: [0,1], est: true, note: "Check the tub label for exact kcal" },
+    { label: "Thin khubz, 1 loaf", name: "Kuwait Flour Mills thin khubz, 1 loaf", slot: "extra", kcal: [127,165], p: [6,8], c: [25,32], f: [0,1], est: true, note: "Loaf not weighed yet (~50–65 g at 254 kcal/100 g)" },
+    { label: "Gatorade 1 L", ...GATORADE, slot: "extra" },
+    { label: "Adonis", ...ADONIS, slot: "extra" }
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const pad = (n) => String(n).padStart(2, "0");
+  const iso = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  const parseIso = (s) => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+  const addDays = (s, n) => { const d = parseIso(s); d.setDate(d.getDate() + n); return iso(d); };
+  const defaultType = (s) => { const w = parseIso(s).getDay(); return w === 5 ? "friday" : w === 6 ? "saturday" : "training"; };
+  const fmt = (n) => Math.round(n).toLocaleString("en-US");
+  const fmtR = ([lo, hi], unit) => (Math.round(lo) === Math.round(hi) ? fmt(lo) : fmt(lo) + "–" + fmt(hi)) + (unit || "");
+  const num = (v) => { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) && n >= 0 ? n : 0; };
+
+  // ---------- storage: shared db when available, this browser otherwise ----------
+  let db = null, pending = !!(window.claude && window.claude.use), unsubHist = null;
+  const local = {
+    read() { try { return JSON.parse(localStorage.getItem("foodlog.days") || "{}"); } catch (e) { return {}; } },
+    write(all) { try { localStorage.setItem("foodlog.days", JSON.stringify(all)); } catch (e) {} }
+  };
+  async function saveDay(day) {
+    day.updatedAt = new Date().toISOString();
+    if (db) {
+      try { await db.collection("days").doc(day.date).set(day); }
+      catch (e) { $("store").textContent = "Couldn't save: " + (e && e.message || "unknown error") + ". Your last change may not be kept."; }
+    } else {
+      const all = local.read(); all[day.date] = day; local.write(all); state.days[day.date] = day; render();
+    }
+  }
+  function subscribe() {
+    if (!db) { state.days = local.read(); render(); return; }
+    if (unsubHist) unsubHist();
+    unsubHist = db.collection("days").onSnapshot((snap) => {
+      const days = {};
+      snap.docs.forEach((d) => { if (d.exists) days[d.id] = d.data(); });
+      state.days = days; state.loaded = true; render();
+    }, (e) => { $("store").textContent = "Couldn't load the log: " + e.message; });
+  }
+
+  // ---------- state ----------
+  const state = { date: iso(new Date()), days: {}, mode: "plan", editing: null, loaded: false };
+  const cur = () => state.days[state.date];
+
+  function totals(day) {
+    const t = { eaten: { kcal: [0,0], p: [0,0], c: [0,0], f: [0,0] }, planned: { kcal: [0,0], p: [0,0], c: [0,0], f: [0,0] } };
+    (day && day.items || []).forEach((it) => {
+      const bucket = it.status === "eaten" ? t.eaten : it.status === "planned" ? t.planned : null;
+      if (!bucket) return;
+      ["kcal","p","c","f"].forEach((k) => { bucket[k][0] += it[k][0]; bucket[k][1] += it[k][1]; });
+    });
+    return t;
+  }
+  const mid = (r) => (r[0] + r[1]) / 2;
+
+  function verdict(day, t) {
+    if (!day || !day.items.length) return "";
+    const eK = mid(t.eaten.kcal), allK = eK + mid(t.planned.kcal), eP = mid(t.eaten.p), allP = eP + mid(t.planned.p);
+    const parts = [];
+    if (t.planned.kcal[1] > 0) {
+      parts.push("If you eat everything planned you land at " + fmtR([t.eaten.kcal[0] + t.planned.kcal[0], t.eaten.kcal[1] + t.planned.kcal[1]]) + " kcal and " + fmtR([t.eaten.p[0] + t.planned.p[0], t.eaten.p[1] + t.planned.p[1]]) + " g protein.");
+      if (allP < P_MIN) parts.push("That is " + fmt(P_MIN - allP) + " g short on protein.");
+      if (allK > TARGET_KCAL + 100) parts.push("That is about " + fmt(allK - TARGET_KCAL) + " kcal over 2,000.");
+    } else {
+      const left = TARGET_KCAL - eK;
+      parts.push(left >= 0 ? "Everything is confirmed. " + fmt(left) + " kcal left under 2,000." : "Everything is confirmed. About " + fmt(-left) + " kcal over 2,000.");
+      if (eP < P_MIN) parts.push(fmt(P_MIN - eP) + " g protein short of 160.");
+      else parts.push("Protein target met.");
+    }
+    return parts.join(" ");
+  }
+
+  // ---------- render ----------
+  function setBar(el, eaten, planned, max) {
+    const e = Math.min(eaten / max, 1) * 100, p = Math.min(planned / max, 1 - e / 100) * 100;
+    el.querySelector(".eaten").style.width = e + "%";
+    const pl = el.querySelector(".planned"); pl.style.left = e + "%"; pl.style.width = p + "%";
+  }
+
+  function render() {
+    const day = cur();
+    const d = parseIso(state.date);
+    $("date").value = state.date;
+    const inTrack = state.date >= TRACK_START && state.date <= TRACK_END;
+    const dayNo = Math.round((d - parseIso(TRACK_START)) / 864e5) + 1;
+    $("dateLabel").textContent = d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" }) + (inTrack ? " · tracking day " + dayNo + " of 14" : "");
+
+    const type = day ? day.dayType : defaultType(state.date);
+    $("dayType").innerHTML = "";
+    DAY_TYPES.forEach(([k, label]) => {
+      const b = document.createElement("button");
+      b.className = "chip"; b.textContent = label; b.setAttribute("aria-pressed", String(k === type));
+      b.onclick = () => setDayType(k);
+      $("dayType").appendChild(b);
+    });
+
+    const t = totals(day);
+    $("kEaten").textContent = fmtR(t.eaten.kcal);
+    $("pEaten").textContent = fmtR(t.eaten.p);
+    $("cEaten").textContent = fmtR(t.eaten.c, " g");
+    $("fEaten").textContent = fmtR(t.eaten.f, " g");
+    $("leftPlan").textContent = fmtR(t.planned.kcal, " kcal");
+    $("kPlan").textContent = t.planned.kcal[1] ? "+" + fmtR(t.planned.kcal) + " planned" : "";
+    $("pPlan").textContent = t.planned.p[1] ? "+" + fmtR(t.planned.p) + " g planned" : "";
+    setBar($("kBar"), mid(t.eaten.kcal), mid(t.planned.kcal), TARGET_KCAL * 1.25);
+    setBar($("pBar"), mid(t.eaten.p), mid(t.planned.p), 210);
+    $("verdict").textContent = verdict(day, t);
+
+    const ready = !pending && (!db || state.loaded);
+    $("startBox").hidden = !ready || !!day;
+    $("dayBody").hidden = !day;
+    $("addPanel").hidden = !day;
+    if (day) renderItems(day);
+    renderForm();
+    renderHistory();
+    $("store").textContent = pending ? "Loading your log…" : db ? "Saved to your log, so it's the same on your phone and computer." : "Saved in this browser only. Open the log from claude.ai to keep it in sync across devices.";
+  }
+
+  function renderItems(day) {
+    const g = $("groups"); g.innerHTML = "";
+    SLOTS.forEach(([slot, label]) => {
+      const items = day.items.filter((it) => it.slot === slot);
+      if (!items.length && slot !== "meal1" && slot !== "meal2") return;
+      const box = document.createElement("div"); box.className = "group";
+      const h = document.createElement("h2"); h.textContent = label; box.appendChild(h);
+      if (!items.length) {
+        const e = document.createElement("div"); e.className = "empty";
+        e.textContent = "No " + label + " planned yet. Add it from the Nutreeze menu below.";
+        box.appendChild(e);
+      }
+      items.forEach((it) => box.appendChild(itemEl(it)));
+      g.appendChild(box);
+    });
+    $("adonisToggle").textContent = day.noAdonis ? "Bring Adonis back today" : "No Adonis today";
+  }
+
+  function itemEl(it) {
+    const el = document.createElement("div"); el.className = "item " + it.status;
+    const left = document.createElement("div"); left.style.minWidth = "0";
+    const name = document.createElement("div"); name.className = "name"; name.textContent = it.name;
+    if (it.est) { const s = document.createElement("span"); s.className = "est"; s.textContent = "est."; name.appendChild(s); }
+    const meta = document.createElement("div"); meta.className = "meta num";
+    meta.textContent = fmtR(it.kcal, " kcal") + " · " + fmtR(it.p, " P") + " · " + fmtR(it.c, " C") + " · " + fmtR(it.f, " F") + (it.note ? "  —  " + it.note : "");
+    left.append(name, meta);
+    const st = document.createElement("div"); st.className = "status";
+    st.textContent = it.status === "eaten" ? "Eaten" : it.status === "planned" ? "Planned" : "Skipped";
+    const acts = document.createElement("div"); acts.className = "acts";
+    const btn = (label, fn, cls) => { const b = document.createElement("button"); b.textContent = label; if (cls) b.className = cls; b.onclick = fn; acts.appendChild(b); return b; };
+    if (it.status === "planned") { btn("I ate this", () => setStatus(it.id, "eaten"), "primary"); btn("Skip", () => setStatus(it.id, "skipped")); }
+    else if (it.status === "eaten") btn("Not eaten yet", () => setStatus(it.id, "planned"));
+    else btn("Plan again", () => setStatus(it.id, "planned"));
+    if (it.slot === "meal1" || it.slot === "meal2" || it.slot === "snack") btn("Change", () => startEdit(it));
+    else btn("Edit", () => startEdit(it));
+    const del = btn("Remove", () => {
+      acts.innerHTML = "";
+      const c = document.createElement("span"); c.className = "confirm"; c.textContent = "Remove from the log? ";
+      const y = document.createElement("button"); y.className = "danger"; y.textContent = "Remove"; y.onclick = () => removeItem(it.id);
+      const n = document.createElement("button"); n.textContent = "Keep"; n.onclick = render;
+      c.append(y, n); acts.appendChild(c);
+    }, "ghost danger");
+    el.append(left, st, acts);
+    return el;
+  }
+
+  function renderForm() {
+    const extra = state.mode === "extra";
+    document.querySelectorAll('[role="tab"]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
+    $("modeHint").textContent = extra
+      ? "For anything you already had: sauces, oils, milk, bars, fruit, drinks, sweets, restaurant food. It counts as eaten right away. Use a range when unsure."
+      : "For today's Nutreeze picks. Copy kcal and macros from the menu. It won't count until you tap I ate this.";
+    const slotSel = $("fSlot"); const want = extra ? ["extra","snack","meal1","meal2","breakfast","fixed"] : ["meal1","meal2","snack","breakfast","fixed"];
+    const prev = slotSel.value;
+    slotSel.innerHTML = want.map((s) => '<option value="' + s + '">' + SLOT_NAME[s] + "</option>").join("");
+    if (want.includes(prev) && state.editing) slotSel.value = prev;
+    $("fSubmit").textContent = state.editing ? "Save changes" : extra ? "Add as eaten" : "Add as planned";
+    $("fCancel").hidden = !state.editing;
+    const q = $("quick"); q.innerHTML = "";
+    const list = extra ? EXTRAS.map((x) => [x.label, x]) : SNACKS.map(([n,k,p,c,f]) => [n + " " + k, { name: n, slot: "snack", kcal: [k,k], p: [p,p], c: [c,c], f: [f,f], est: false }]);
+    list.forEach(([label, tpl]) => {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = "+ " + label;
+      b.onclick = () => addItem({ ...tpl, status: extra ? "eaten" : "planned" });
+      q.appendChild(b);
+    });
+  }
+
+  function renderHistory() {
+    const rows = []; let sumK = 0, sumP = 0, n = 0;
+    for (let s = TRACK_START; s <= TRACK_END; s = addDays(s, 1)) {
+      const day = state.days[s]; const t = totals(day);
+      const has = day && day.items.some((i) => i.status === "eaten");
+      if (has && s < iso(new Date())) { sumK += mid(t.eaten.kcal); sumP += mid(t.eaten.p); n++; }
+      rows.push('<tr class="' + (s === state.date ? "cur" : "") + '"><td><button data-d="' + s + '">' + parseIso(s).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + "</button></td>" +
+        '<td class="num">' + (has ? fmtR(t.eaten.kcal) : "—") + '</td><td class="num">' + (has ? fmtR(t.eaten.p, " g") : "—") + '</td><td class="num">' + (t.planned.kcal[1] ? fmtR(t.planned.kcal) : "—") + "</td></tr>");
+    }
+    $("hist").innerHTML = rows.join("");
+    $("hist").querySelectorAll("button[data-d]").forEach((b) => b.onclick = () => go(b.dataset.d));
+    $("histNote").textContent = n ? "Average of " + n + " finished day" + (n > 1 ? "s" : "") + " with eaten food: " + fmt(sumK / n) + " kcal and " + fmt(sumP / n) + " g protein. Calorie review comes after Nov 7, from the weight trend." : "Averages show here once a finished day has eaten food logged. Calorie review comes after Nov 7.";
+  }
+
+  // ---------- actions ----------
+  function fixedFor(type, noAdonis) {
+    const out = [];
+    if (type === "saturday" || type === "friday") out.push(EGGS);
+    if (!noAdonis) out.push(ADONIS);
+    if (type === "training" || type === "saturday") out.push(GATORADE);
+    return out.map((x) => ({ ...x, id: uid(), status: "planned" }));
+  }
+  function startDay(withFixed) {
+    const type = defaultType(state.date);
+    saveDay({ date: state.date, dayType: type, noAdonis: false, items: withFixed ? fixedFor(type, false) : [] });
+  }
+  function update(fn) { const day = JSON.parse(JSON.stringify(cur())); fn(day); saveDay(day); }
+  function setDayType(type) {
+    if (!cur()) { saveDay({ date: state.date, dayType: type, noAdonis: false, items: fixedFor(type, false) }); return; }
+    update((day) => {
+      day.dayType = type;
+      // Add Gatorade and the egg breakfast when the day type calls for them; drop them only if still just planned.
+      const wantG = type === "training" || type === "saturday", wantE = type === "saturday" || type === "friday";
+      const has = (k) => day.items.some((i) => i.key === k);
+      day.items = day.items.filter((i) => !(i.status === "planned" && ((i.key === "gatorade" && !wantG) || (i.key === "eggs" && !wantE))));
+      if (wantG && !has("gatorade")) day.items.push({ ...GATORADE, id: uid(), status: "planned" });
+      if (wantE && !has("eggs")) day.items.push({ ...EGGS, id: uid(), status: "planned" });
+    });
+  }
+  function setStatus(id, status) { update((day) => { const it = day.items.find((i) => i.id === id); if (it) { it.status = status; it.at = new Date().toISOString(); } }); }
+  function removeItem(id) { update((day) => { day.items = day.items.filter((i) => i.id !== id); }); }
+  function addItem(it) { update((day) => { day.items.push({ id: uid(), est: false, note: "", ...it, at: new Date().toISOString() }); }); }
+  function toggleAdonis() {
+    update((day) => {
+      day.noAdonis = !day.noAdonis;
+      if (day.noAdonis) day.items = day.items.filter((i) => !(i.key === "adonis" && i.status === "planned"));
+      else if (!day.items.some((i) => i.key === "adonis")) day.items.push({ ...ADONIS, id: uid(), status: "planned" });
+    });
+  }
+  function startEdit(it) {
+    state.editing = it.id; state.mode = it.status === "planned" ? "plan" : "extra"; renderForm();
+    $("fSlot").value = it.slot; $("fName").value = it.name;
+    $("fKcal").value = it.kcal[0]; $("fKcalHi").value = it.kcal[1] !== it.kcal[0] ? it.kcal[1] : "";
+    $("fP").value = mid(it.p); $("fC").value = mid(it.c); $("fF").value = mid(it.f);
+    $("fEst").value = it.est ? "1" : ""; $("fNote").value = it.note || "";
+    $("fSubmit").textContent = "Save changes"; $("fCancel").hidden = false;
+    $("addPanel").scrollIntoView({ behavior: "smooth", block: "start" }); $("fName").focus();
+  }
+  function clearForm() { $("form").reset(); state.editing = null; renderForm(); }
+
+  $("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const lo = num($("fKcal").value), hiRaw = $("fKcalHi").value.trim(), hi = hiRaw ? Math.max(num(hiRaw), lo) : lo;
+    const r = (v) => [num(v), num(v)];
+    const fields = { name: $("fName").value.trim(), slot: $("fSlot").value, kcal: [lo, hi], p: r($("fP").value), c: r($("fC").value), f: r($("fF").value), est: $("fEst").value === "1" || hi !== lo, note: $("fNote").value.trim() };
+    if (!fields.name) return;
+    if (state.editing) {
+      const id = state.editing;
+      update((day) => { const it = day.items.find((i) => i.id === id); if (it) { Object.assign(it, fields); delete it.key; } });
+    } else addItem({ ...fields, status: state.mode === "extra" ? "eaten" : "planned" });
+    clearForm();
+  });
+  $("fCancel").onclick = clearForm;
+  document.querySelectorAll('[role="tab"]').forEach((b) => b.onclick = () => { state.mode = b.dataset.mode; state.editing = null; renderForm(); });
+  function go(date) { state.date = date; state.editing = null; render(); }
+  $("prev").onclick = () => go(addDays(state.date, -1));
+  $("next").onclick = () => go(addDays(state.date, 1));
+  $("today").onclick = () => go(iso(new Date()));
+  $("date").onchange = (e) => { if (e.target.value) go(e.target.value); };
+  $("startDay").onclick = () => startDay(true);
+  $("startEmpty").onclick = () => startDay(false);
+  $("adonisToggle").onclick = toggleAdonis;
+  $("newDayBtn").onclick = () => { $("resetConfirm").hidden = false; };
+  $("resetNo").onclick = () => { $("resetConfirm").hidden = true; };
+  $("resetYes").onclick = () => { $("resetConfirm").hidden = true; const day = cur(); saveDay({ date: day.date, dayType: day.dayType, noAdonis: false, items: fixedFor(day.dayType, false) }); };
+
+  render();
+  if (window.claude && window.claude.use) {
+    window.claude.use("db").then((d) => { db = d; pending = false; subscribe(); }).catch(() => { pending = false; subscribe(); });
+  } else subscribe();
+})();
+</script>

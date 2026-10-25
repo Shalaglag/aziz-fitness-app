@@ -1,0 +1,234 @@
+<title>Sleep and Recovery Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one reading column; an evening timeline driven by your bedtime, then a morning check, then the guide. */
+:root{
+  --bg:#f2f3f7; --surface:#ffffff; --fg:#1c2233; --muted:#5b6378; --line:#d9dce6;
+  --accent:#3b5490; --accent-soft:#e3e8f4; --lamp:#b8742a;
+  --good:#2f7d55; --warn:#a8711b; --bad:#b0413e;
+  --f-display:"Newsreader",Georgia,"Times New Roman",serif;
+  --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12151f; --surface:#1a1f2d; --fg:#e6e8f0; --muted:#9aa1b5; --line:#2b3245;
+  --accent:#8fa6e0; --accent-soft:#232c44; --lamp:#e2a65c;
+  --good:#6cc596; --warn:#e0b25e; --bad:#ec8a85; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12151f; --surface:#1a1f2d; --fg:#e6e8f0; --muted:#9aa1b5; --line:#2b3245;
+  --accent:#8fa6e0; --accent-soft:#232c44; --lamp:#e2a65c;
+  --good:#6cc596; --warn:#e0b25e; --bad:#ec8a85; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.6 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:32px 64px}
+.wrap{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+h1,h2{font-family:var(--f-display);font-weight:600;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:2.3rem}
+h2{font-size:1.45rem}
+.eyebrow{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+p{margin:0}
+.lede{color:var(--muted);max-width:60ch}
+header{display:flex;flex-direction:column;gap:10px}
+.facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.fact{border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:.85rem;color:var(--muted)}
+.fact b{color:var(--fg);font-weight:600}
+section{display:flex;flex-direction:column;gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:16px}
+label{font-size:.85rem;color:var(--muted);font-weight:500}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:end}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+input,select{font:500 1rem var(--f-mono);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.note{font-size:.85rem;color:var(--muted)}
+.note.flag{color:var(--lamp)}
+ol.timeline{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+ol.timeline li{display:grid;grid-template-columns:5.2rem 1fr;gap:14px;padding:10px 0;border-top:1px solid var(--line)}
+ol.timeline li:first-child{border-top:0}
+.t{font:500 .95rem var(--f-mono);font-variant-numeric:tabular-nums;color:var(--accent);padding-top:1px}
+li.bed .t,li.bed .what{color:var(--lamp)}
+.what{font-weight:600}
+.why{font-size:.88rem;color:var(--muted)}
+.li-body{min-width:0;display:flex;flex-direction:column;gap:2px}
+.scales{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
+.verdict{border-radius:10px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;background:var(--accent-soft)}
+.dot{width:12px;height:12px;border-radius:50%;flex:none;margin-top:6px}
+.verdict[data-v="green"] .dot{background:var(--good)}
+.verdict[data-v="amber"] .dot{background:var(--warn)}
+.verdict[data-v="red"] .dot{background:var(--bad)}
+.verdict strong{display:block}
+.guide{display:flex;flex-direction:column;gap:30px}
+.guide ul{margin:0;padding-left:1.1rem;display:flex;flex-direction:column;gap:8px;max-width:65ch}
+.guide li::marker{color:var(--accent)}
+.flagbox{border-left:3px solid var(--bad);padding:4px 0 4px 14px}
+footer{font-size:.8rem;color:var(--muted)}
+@media (max-width:420px){h1{font-size:1.9rem}ol.timeline li{grid-template-columns:4.6rem 1fr}}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Cut 91.9 → 80 kg · 2,000 kcal</span>
+    <h1>Sleep and recovery plan</h1>
+    <p class="lede">On a cut, sleep decides how much of the weight you lose is fat and how much is muscle. This page turns your bedtime into an evening plan and gives you a quick morning check for how hard to train.</p>
+    <div class="facts">
+      <span class="fact">Sleep target <b>7.5–9 h</b></span>
+      <span class="fact">Floor <b>7 h</b></span>
+      <span class="fact">Room <b>18–21 °C</b></span>
+      <span class="fact">Wake time <b>±1 h, every day</b></span>
+    </div>
+  </header>
+
+  <section aria-labelledby="eve">
+    <h2 id="eve">Your evening</h2>
+    <div class="panel">
+      <div class="row">
+        <div class="field"><label for="day">Night of</label>
+          <select id="day"><option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select></div>
+        <div class="field"><label for="bedtime">Bedtime</label><input id="bedtime" type="time" value="23:30"></div>
+        <div class="field"><label for="hours">Hours of sleep</label>
+          <select id="hours"><option>7</option><option>7.5</option><option selected>8</option><option>8.5</option><option>9</option></select></div>
+      </div>
+      <p class="note flag" id="defaultNote">11:30 pm is an example. Set your usual bedtime for this night and the page remembers it for each day.</p>
+      <ol class="timeline" id="timeline"></ol>
+      <p class="note" id="c4note"></p>
+    </div>
+  </section>
+
+  <section aria-labelledby="morning">
+    <h2 id="morning">Morning check</h2>
+    <p class="lede">Ten seconds after your weigh-in. It tells you whether to push for a PR, match last time, or go easy.</p>
+    <div class="panel">
+      <div class="scales">
+        <div class="field"><label for="slept">Hours slept</label><input id="slept" type="number" min="0" max="14" step="0.5" value="7.5"></div>
+        <div class="field"><label for="quality">Sleep quality</label><select id="quality"></select></div>
+        <div class="field"><label for="soreness">Soreness (5 = none)</label><select id="soreness"></select></div>
+        <div class="field"><label for="energy">Energy</label><select id="energy"></select></div>
+      </div>
+      <div class="verdict" id="verdict" data-v="green" aria-live="polite"><span class="dot"></span><div><strong id="vTitle"></strong><span id="vText"></span></div></div>
+    </div>
+  </section>
+
+  <div class="guide">
+    <section>
+      <h2>Why it matters on a cut</h2>
+      <ul>
+        <li>In a well-known study, dieters on the same deficit who slept 5.5 hours instead of 8.5 lost about the same weight, but much less of it was fat and more of it was muscle.</li>
+        <li>Short sleep raises hunger and cravings, which makes 2,000 kcal feel harder than it is.</li>
+        <li>Strength is usually the first thing to slip after bad nights, and holding your loads is the point of this cut.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Your day, set up for sleep</h2>
+      <ul>
+        <li>Training at 3:30 pm suits sleep well. Just keep pre-workout caffeine before the cutoff above.</li>
+        <li>Meal 2 at 8–9 pm is fine. Finish about 2 hours before bed. Nuts or Pro Mud Cake with Meal 2 are fine too.</li>
+        <li>Front-load water: most of your 3–4 L by early evening, then sips, so you don't wake up to pee.</li>
+        <li>Keep magnesium in the evening. It may help a little; you won't feel knocked out by it.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Bedroom</h2>
+      <ul>
+        <li>Cool: AC around 18–21 °C. A cool room helps you fall asleep and stay asleep.</li>
+        <li>Dark: blackout curtains or an eye mask, and cover any LEDs.</li>
+        <li>Quiet: earplugs, or steady fan or AC noise if the street is loud.</li>
+        <li>Charge your phone away from the bed if you tend to scroll.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Friday and Saturday</h2>
+      <ul>
+        <li>Keep your wake time within an hour of your weekday time, Friday included.</li>
+        <li>You train Saturday at 10 am after the 8:00–8:30 egg breakfast, so Friday night is the one that matters most.</li>
+        <li>Friday's salty Cajun shrimp can raise Saturday's weigh-in, and a short night adds to that. Neither is fat.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Recovery in training</h2>
+      <ul>
+        <li>Take the rest days in your rotation. A walk is fine if you want to move.</li>
+        <li>Keep the 30 minute treadmill easy (4.0 km/h, incline 3). It shouldn't turn into hard cardio.</li>
+        <li>Stop sets 1–2 reps short of failure most of the time. Grinding past that on every set costs more recovery than it gives back on a cut.</li>
+        <li>Your cut rule: if a main lift drops for 2+ sessions in a row, check sleep first, then pre-workout food, then volume. Don't cut calories for it.</li>
+        <li>If several main lifts drop at once, or after 6–8 hard weeks, take a deload week: same loads, about half the sets.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Sleep and the scale</h2>
+      <ul>
+        <li>Weigh in after waking and using the toilet, before food or water.</li>
+        <li>A bad night can hold extra water and bump the scale. Judge by the 7-day average.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Naps</h2>
+      <ul>
+        <li>A 15–20 minute nap before about 1:30 pm is fine and can help the afternoon session.</li>
+        <li>Skip long or late naps if you struggle to fall asleep at night.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>When to see a doctor</h2>
+      <p class="flagbox">Loud snoring, choking or gasping at night, morning headaches, or daytime sleepiness despite 7–8 hours can be signs of sleep apnea. It's common at higher body weight and worth getting checked. Losing weight often helps.</p>
+    </section>
+  </div>
+
+  <footer>Built from your plan of Oct 25, 2026. General guidance, not medical advice.</footer>
+</div>
+
+<script>
+(function(){
+  var RULES=[
+    {m:-480,what:"Last caffeine",why:"C4, coffee, tea and energy drinks. Caffeine's half-life is about 5 hours."},
+    {m:-120,what:"Finish Meal 2",why:"Gives your stomach time to settle before you lie down."},
+    {m:-90,what:"Taper fluids",why:"Small sips from here on."},
+    {m:-60,what:"Magnesium",why:"Your evening capsule."},
+    {m:-45,what:"Wind down",why:"Dim lights, phone away, AC down to 18–21 °C."},
+    {m:0,what:"Lights out",why:"",bed:true},
+    {m:"wake",what:"Wake, toilet, weigh in",why:"Same routine every morning keeps weigh-ins comparable."}
+  ];
+  var $=function(id){return document.getElementById(id)};
+  function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+  function fmt(min){min=((min%1440)+1440)%1440;var h=Math.floor(min/60),m=min%60,ap=h<12?"am":"pm";h=h%12||12;return h+":"+(m<10?"0":"")+m+" "+ap}
+  function render(){
+    var v=$("bedtime").value||"23:30",p=v.split(":"),bed=(+p[0])*60+(+p[1]),hrs=parseFloat($("hours").value);
+    var d=+$("day").value;
+    $("defaultNote").hidden=!!store("sr-bed-"+d);
+    var ol=$("timeline");ol.innerHTML="";
+    RULES.forEach(function(r){
+      var t=r.m==="wake"?bed+Math.round(hrs*60):bed+r.m;
+      var li=document.createElement("li");if(r.bed)li.className="bed";
+      li.innerHTML='<span class="t">'+fmt(t)+'</span><div class="li-body"><span class="what">'+r.what+'</span>'+(r.why?'<span class="why">'+r.why+'</span>':'')+'</div>';
+      ol.appendChild(li);
+    });
+    var cutNorm=(((bed-480)%1440)+1440)%1440;
+    var tom=(d+1)%7,msg="";
+    if(d===5)msg="Saturday you train at 10 am after the 8:00–8:30 egg breakfast. This is the night that matters most for that session, so keep it close to your usual bedtime.";
+    else if(d===4)msg="Friday is your free day, so a later night is fine. Keep Friday's wake time within an hour of your usual one.";
+    if(d===5||d===6)msg+=(msg?" ":"")+"No afternoon session today, so the caffeine cutoff only matters for coffee or tea.";
+    else msg+=(msg?" ":"")+(cutNorm<15*60?
+      "With this bedtime your caffeine cutoff is before your usual 3:00 pm pre-workout. Try half a scoop of C4 or a caffeine-free pre-workout, and check the label for caffeine per scoop.":
+      "A C4 around 3:00 pm before your 3:30 session fits inside this cutoff.");
+    $("c4note").textContent=msg;
+  }
+  ["quality","soreness","energy"].forEach(function(id){
+    var s=$(id);for(var i=1;i<=5;i++){var o=document.createElement("option");o.textContent=i;if(i===4)o.selected=true;s.appendChild(o)}
+  });
+  function check(){
+    var h=parseFloat($("slept").value)||0,sum=+$("quality").value+ +$("soreness").value+ +$("energy").value,v,t,x;
+    if(h<5.5||sum<=6){v="red";t="Go easy today";x=" Same loads, drop the last set of each exercise. If warm-ups feel awful, make it a rest day."}
+    else if(h>=7&&sum>=10){v="green";t="Train as planned";x=" Try to beat last session."}
+    else{v="amber";t="Match last session";x=" Train as planned and aim to match your numbers. Don't chase PRs."}
+    $("verdict").dataset.v=v;$("vTitle").textContent=t;$("vText").textContent=x;
+  }
+  function loadDay(){var b=store("sr-bed-"+$("day").value);$("bedtime").value=b||"23:30";render()}
+  var sh=store("sr-hours");if(sh)$("hours").value=sh;
+  var today=new Date(),dd=today.getHours()<5?(today.getDay()+6)%7:today.getDay();$("day").value=String(dd);
+  $("day").addEventListener("change",loadDay);
+  $("bedtime").addEventListener("input",function(){store("sr-bed-"+$("day").value,this.value);render()});
+  $("hours").addEventListener("change",function(){store("sr-hours",this.value);render()});
+  ["slept","quality","soreness","energy"].forEach(function(id){$(id).addEventListener("input",check)});
+  loadDay();check();
+})();
+</script>

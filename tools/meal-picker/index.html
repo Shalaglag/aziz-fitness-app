@@ -1,0 +1,490 @@
+<title>Nutreeze Meal Picker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a day sheet. Plan + timeline on the left, today's menu input on the right; stacks on phones. */
+:root {
+  --bg: #f2f4ee;
+  --surface: #ffffff;
+  --ink: #1c2420;
+  --muted: #5f6b63;
+  --line: #d9ded4;
+  --accent: #b8690f;       /* zaafaran */
+  --accent-soft: #f6e6cf;
+  --leaf: #4f7a45;         /* on target */
+  --leaf-soft: #e1ecd9;
+  --warn: #a8461f;
+  --warn-soft: #f6dfd3;
+  --band: #e8ece2;
+  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141a17; --surface: #1c2420; --ink: #e8ece4; --muted: #9aa69d; --line: #2f3a34;
+  --accent: #e39a3f; --accent-soft: #3a2c19; --leaf: #8fc07f; --leaf-soft: #23331f;
+  --warn: #f0906a; --warn-soft: #3d241a; --band: #26302a; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #141a17; --surface: #1c2420; --ink: #e8ece4; --muted: #9aa69d; --line: #2f3a34;
+  --accent: #e39a3f; --accent-soft: #3a2c19; --leaf: #8fc07f; --leaf-soft: #23331f;
+  --warn: #f0906a; --warn-soft: #3d241a; --band: #26302a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.15rem; font-weight: 700; }
+.eyebrow { font: 500 0.72rem var(--font-data); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+header.top p { margin: 4px 0 0; color: var(--muted); max-width: 60ch; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--surface); flex-wrap: wrap; }
+.seg button { border: 0; background: none; padding: 6px 12px; border-radius: 999px; font-weight: 500; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.toggle { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+input[type="date"] { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 5px 8px; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 16px; min-width: 0; }
+.banner { border-radius: 10px; padding: 10px 12px; background: var(--accent-soft); font-size: 0.92rem; }
+
+.verdict { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; }
+.verdict.ok { background: var(--leaf-soft); }
+.verdict.miss { background: var(--warn-soft); }
+.verdict .pill { font: 500 0.72rem var(--font-data); text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 999px; white-space: nowrap; color: var(--surface); }
+.verdict.ok .pill { background: var(--leaf); }
+.verdict.miss .pill { background: var(--warn); }
+
+/* Day timeline */
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; }
+.timeline > li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.timeline > li:first-child { border-top: 0; }
+.time { font: 500 0.82rem var(--font-data); color: var(--accent); padding-top: 2px; }
+.slot-title { font-weight: 600; font-size: 0.82rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.items { display: grid; gap: 6px; margin-top: 4px; }
+.item { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; justify-content: space-between; }
+.item .name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.item .name small { font-weight: 400; color: var(--muted); }
+.item .macros { font: 0.82rem var(--font-data); color: var(--muted); white-space: nowrap; }
+.swap { border: 1px solid var(--line); background: none; border-radius: 6px; font-size: 0.75rem; padding: 1px 8px; color: var(--muted); margin-left: 6px; }
+.swap:hover { border-color: var(--accent); color: var(--accent); }
+.tag { font: 500 0.68rem var(--font-data); text-transform: uppercase; letter-spacing: 0.05em; border-radius: 4px; padding: 1px 5px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; }
+.event { color: var(--muted); }
+
+/* Macro bars */
+.macros-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 520px) { .macros-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.macro .val { font: 500 1.35rem var(--font-data); font-variant-numeric: tabular-nums; }
+.macro .val span { font-size: 0.8rem; color: var(--muted); margin-left: 2px; }
+.macro .target { font-size: 0.78rem; color: var(--muted); }
+.bar { position: relative; height: 8px; border-radius: 4px; background: var(--band); margin-top: 6px; overflow: hidden; }
+.bar .zone { position: absolute; top: 0; bottom: 0; background: var(--leaf-soft); border-left: 1.5px solid var(--leaf); border-right: 1.5px solid var(--leaf); }
+.bar .fill { position: absolute; left: 0; top: 2px; bottom: 2px; border-radius: 3px; background: var(--ink); }
+.macro.off .fill { background: var(--warn); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { border: 1px solid var(--ink); background: var(--ink); color: var(--bg); border-radius: 8px; padding: 7px 14px; font-weight: 600; }
+.btn.ghost { background: none; color: var(--ink); border-color: var(--line); }
+.btn.ghost:hover { border-color: var(--ink); }
+
+/* Alternatives */
+.alts { display: grid; gap: 6px; }
+.alt { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; text-align: left; border: 1px solid var(--line); background: none; border-radius: 10px; padding: 8px 12px; }
+.alt[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.alt .who { min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.alt .who small { display: block; color: var(--muted); font-weight: 400; }
+.alt .num { font-size: 0.82rem; color: var(--muted); text-align: right; white-space: nowrap; }
+
+/* Menu input */
+textarea { width: 100%; min-height: 170px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); padding: 10px 12px; font: 0.85rem/1.55 var(--font-data); }
+.hint { font-size: 0.84rem; color: var(--muted); margin: 0; }
+.hint code { font-family: var(--font-data); font-size: 0.8rem; background: var(--band); padding: 0 4px; border-radius: 4px; }
+.parsed { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.parsed li { display: flex; flex-wrap: wrap; gap: 2px 10px; justify-content: space-between; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); font-size: 0.9rem; }
+.parsed li.out .nm { text-decoration: line-through; color: var(--muted); }
+.parsed .nm { min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.parsed .why { font-size: 0.78rem; color: var(--warn); }
+.parsed .ok { font-size: 0.78rem; color: var(--leaf); }
+.parsed .m { font: 0.8rem var(--font-data); color: var(--muted); white-space: nowrap; }
+.never-btn { border: 0; background: none; color: var(--muted); font-size: 0.75rem; text-decoration: underline; padding: 0; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 3px 10px; font-size: 0.82rem; }
+.chip[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; background: var(--band); }
+.chip.banned { color: var(--muted); background: var(--band); cursor: default; text-decoration: line-through; }
+.chip .x { margin-left: 4px; color: var(--muted); }
+details summary { cursor: pointer; font-family: var(--font-display); font-weight: 700; }
+details > div { margin-top: 12px; display: grid; gap: 10px; }
+.addban { display: flex; gap: 8px; }
+.addban input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--bg); }
+.empty { color: var(--muted); padding: 12px 0; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 8px; font-weight: 500; }
+@media (prefers-reduced-motion: no-preference) { .alt, .chip, .btn { transition: border-color .15s, background .15s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Aziz · 2,000 kcal · 160–170 g protein</div>
+      <h1>Nutreeze Meal Picker</h1>
+      <p>Paste today's Nutreeze meals and it picks 2 meals, 2 snacks and Adonis, plus Gatorade on training days.</p>
+    </div>
+    <div class="controls">
+      <input type="date" id="date" aria-label="Date">
+      <div class="seg" role="group" aria-label="Day type" id="daytype">
+        <button type="button" data-v="training">Training</button>
+        <button type="button" data-v="rest">Rest</button>
+        <button type="button" data-v="saturday">Saturday</button>
+        <button type="button" data-v="friday">Friday</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="adonis"> Adonis</label>
+      <label class="toggle"><input type="checkbox" id="gatorade"> Gatorade</label>
+      <label class="toggle" id="eggsWrap"><input type="checkbox" id="eggs"> Egg breakfast</label>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="panel" id="planPanel" aria-live="polite"></section>
+
+    <section class="panel">
+      <div>
+        <div class="eyebrow">Step 1</div>
+        <h2>Today's Nutreeze meals</h2>
+      </div>
+      <p class="hint">One meal per line, then kcal, protein, carbs, fat in that order. For example <code>Meal name 620 55 60 18</code>. Commas, pipes and units like "kcal" or "P" are fine. You can also paste a menu file saved from the Nutreeze Menu Reader.</p>
+      <textarea id="menu" spellcheck="false" aria-label="Today's meals"></textarea>
+      <div class="actions">
+        <button class="btn ghost" type="button" id="clearMenu">Clear for a new day</button>
+        <button class="btn ghost" type="button" id="sampleMenu">Load Oct 27 sample</button>
+      </div>
+      <ul class="parsed" id="parsed"></ul>
+
+      <details>
+        <summary>Snacks available today</summary>
+        <div>
+          <p class="hint">Tap a snack to take it out of today's choices. Crossed-out grey ones are on your never-pick list.</p>
+          <div class="chips" id="snackChips"></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Never-pick list</summary>
+        <div>
+          <p class="hint">Built in from your plan:</p>
+          <div class="chips" id="builtinBans"></div>
+          <p class="hint">Added by you (matches any meal whose name contains the text):</p>
+          <div class="chips" id="userBans"></div>
+          <form class="addban" id="banForm">
+            <input id="banInput" placeholder="e.g. Kung Pao" aria-label="Meal to never pick">
+            <button class="btn ghost" type="submit">Add</button>
+          </form>
+        </div>
+      </details>
+    </section>
+  </div>
+</div>
+
+<script src="picker-engine.js"></script>
+<script>
+(() => {
+  const P = window.NutreezePicker;
+  const $ = id => document.getElementById(id);
+  const SAMPLE = 'Buffalo Chicken with Sweet Potato — 496 kcal | 65 P | 41 C | 8 F\nChicken Masala — 607 kcal | 67 P | 60 C | 11 F';
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('nzp:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('nzp:' + k, JSON.stringify(v)); } catch (e) {} },
+  };
+
+  const today = new Date();
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const defaultDay = d => ({ 5: 'friday', 6: 'saturday' }[d.getDay()] || 'training');
+
+  const state = {
+    date: iso(today),
+    dayType: defaultDay(today),
+    adonis: true, gatorade: true, eggs: false,
+    menuText: store.get('menu', SAMPLE),
+    extraBans: store.get('bans', []),
+    unavailableSnacks: store.get('offSnacks', []),
+    lockMeals: [], lockSnacks: [], exclude: [],
+    selected: 0,
+  };
+  applyDayDefaults();
+
+  function applyDayDefaults() {
+    const t = state.dayType;
+    state.gatorade = t === 'training' || t === 'saturday';
+    state.eggs = t === 'saturday' || t === 'friday';
+  }
+  function resetSwaps() { state.lockMeals = []; state.lockSnacks = []; state.exclude = []; state.selected = 0; }
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const r = n => Math.round(n);
+  const fmt = n => r(n).toLocaleString('en-US');
+  const mac = x => `${fmt(x.kcal)} kcal · ${r(x.p)} P · ${r(x.c)} C · ${r(x.f)} F`;
+  const dateLabel = () => {
+    const d = new Date(state.date + 'T12:00:00');
+    return isNaN(d) ? '' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  let current = null; // last pick() result
+  let lastJsonDate = null;
+
+  function render() {
+    // Controls
+    $('date').value = state.date;
+    document.querySelectorAll('#daytype button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === state.dayType));
+    $('adonis').checked = state.adonis;
+    $('gatorade').checked = state.gatorade;
+    $('eggs').checked = state.eggs;
+    if ($('menu').value !== state.menuText) $('menu').value = state.menuText;
+
+    const meals = P.parseMenu(state.menuText);
+    if (meals.date && meals.date !== lastJsonDate) {
+      lastJsonDate = meals.date; state.date = meals.date; $('date').value = state.date;
+      const d = new Date(state.date + 'T12:00:00');
+      if (!isNaN(d)) { state.dayType = defaultDay(d); applyDayDefaults(); render(); return; }
+    }
+    renderParsed(meals);
+    renderSnackChips();
+    renderBans();
+
+    current = P.pick({
+      meals, dayType: state.dayType, adonis: state.adonis, gatorade: state.gatorade, eggs: state.eggs,
+      extraBans: state.extraBans, unavailableSnacks: state.unavailableSnacks,
+      lockMeals: state.lockMeals, lockSnacks: state.lockSnacks, exclude: state.exclude, top: 5,
+    });
+    if (state.selected >= current.options.length) state.selected = 0;
+    renderPlan();
+  }
+
+  function renderParsed(meals) {
+    const ul = $('parsed');
+    if (!meals.length) { ul.innerHTML = '<li class="empty">No meals yet. Paste today\'s menu above.</li>'; return; }
+    ul.innerHTML = meals.map(m => {
+      if (m.error) return `<li class="out"><span class="nm">${esc(m.name || m.raw)}</span><span class="why">${esc(m.error)}</span></li>`;
+      const ban = P.bannedReason(m, state.extraBans);
+      const like = P.likeOf(m.name);
+      const note = ban ? `<span class="why">Never pick: ${esc(ban)}</span>`
+        : like && like.bonus >= 15 ? `<span class="ok">${esc(like.label)}</span>` : '';
+      const add = ban ? '' : ` <button class="never-btn" type="button" data-never="${esc(m.name)}">never pick</button>`;
+      return `<li class="${ban ? 'out' : ''}"><span class="nm">${esc(m.name)} ${note}${add}</span><span class="m">${mac(m)}</span></li>`;
+    }).join('');
+  }
+
+  function renderSnackChips() {
+    $('snackChips').innerHTML = P.SNACKS.map(s => {
+      if (P.bannedReason(s.name, state.extraBans)) return `<span class="chip banned">${esc(s.name)}</span>`;
+      const on = !state.unavailableSnacks.includes(s.name);
+      return `<button type="button" class="chip" aria-pressed="${on}" data-snack="${esc(s.name)}">${esc(s.name)} <span class="num">${s.kcal}</span></button>`;
+    }).join('');
+  }
+
+  function renderBans() {
+    $('builtinBans').innerHTML = P.NEVER.map(n => `<span class="chip">${esc(n.label)}</span>`).join('');
+    $('userBans').innerHTML = state.extraBans.length
+      ? state.extraBans.map(b => `<button type="button" class="chip" data-unban="${esc(b)}">${esc(b)}<span class="x" aria-label="remove">×</span></button>`).join('')
+      : '<span class="hint">None yet.</span>';
+  }
+
+  function itemRow(x, swapKey) {
+    const tag = x.estimate ? '<span class="tag">est.</span>' : '';
+    const like = x.cat ? '' : (P.likeOf(x.name) || {});
+    const fav = like && like.bonus >= 40 ? '<span class="tag">favorite</span>' : '';
+    const swap = swapKey ? `<button type="button" class="swap" data-swap="${swapKey}">Swap</button>` : '';
+    return `<div class="item"><span class="name">${esc(x.name)}${fav}${tag}${swap}</span><span class="macros">${mac(x)}</span></div>`;
+  }
+
+  function slot(time, title, rows, event) {
+    return `<li><div class="time">${time}</div><div><div class="slot-title">${title}</div>${event ? `<div class="event">${event}</div>` : ''}<div class="items">${rows.join('')}</div></div></li>`;
+  }
+
+  function timeline(plan) {
+    const fx = k => current.fixed.find(x => x.slot === k);
+    const s1 = plan.snacks.map((s, i) => ({ s, i })).filter(o => o.s.with === 'meal1').map(o => itemRow(o.s, 'snack' + o.i));
+    const s2 = plan.snacks.map((s, i) => ({ s, i })).filter(o => o.s.with === 'meal2').map(o => itemRow(o.s, 'snack' + o.i));
+    const m1 = [itemRow(plan.meal1, 'meal1'), ...s1];
+    const m2 = [itemRow(plan.meal2, 'meal2'), ...s2];
+    const out = [];
+    const t = state.dayType;
+    if (fx('breakfast')) out.push(slot('8:00 am', 'Breakfast', [itemRow(fx('breakfast'))], t === 'saturday' ? 'Train at 10 am; give it ~1.5–2 h.' : ''));
+    if (t === 'training') {
+      out.push(slot('2:00 pm', 'Meal 1 · pre-workout', m1));
+      out.push(slot('3:30 pm', 'Workout + 30 min treadmill', fx('gatorade') ? [itemRow(fx('gatorade'))] : [], fx('gatorade') ? 'Sip the Gatorade during the session.' : ''));
+      if (fx('adonis')) out.push(slot('5:00 pm', 'Post-workout', [itemRow(fx('adonis'))]));
+      out.push(slot('8–9 pm', 'Meal 2', m2));
+    } else if (t === 'saturday') {
+      out.push(slot('10:00 am', 'Workout + 30 min treadmill', fx('gatorade') ? [itemRow(fx('gatorade'))] : []));
+      if (fx('adonis')) out.push(slot('~11:30 am', 'Post-workout', [itemRow(fx('adonis'))]));
+      out.push(slot('Lunch', 'Meal 1', m1));
+      out.push(slot('Evening', 'Meal 2', m2));
+    } else {
+      out.push(slot('Lunch', 'Meal 1', m1));
+      const extra = [fx('adonis'), fx('gatorade')].filter(Boolean).map(x => itemRow(x));
+      if (extra.length) out.push(slot('Afternoon', 'Snack', extra));
+      out.push(slot('Evening', 'Meal 2', m2));
+    }
+    return `<ol class="timeline">${out.join('')}</ol>`;
+  }
+
+  function bar(label, value, unit, lo, hi, max, targetText) {
+    const scale = Math.max(max, value * 1.05);
+    const pct = v => Math.min(100, v / scale * 100);
+    const off = value < lo || value > hi;
+    return `<div class="macro${off ? ' off' : ''}">
+      <div class="eyebrow">${label}</div>
+      <div class="val">${fmt(value)}<span>${unit}</span></div>
+      <div class="bar" role="img" aria-label="${label} ${r(value)} ${unit}, target ${targetText}">
+        <div class="zone" style="left:${pct(lo)}%;width:${pct(hi) - pct(lo)}%"></div>
+        <div class="fill" style="width:${pct(value)}%"></div>
+      </div>
+      <div class="target">Target ${targetText}</div>
+    </div>`;
+  }
+
+  function renderPlan() {
+    const el = $('planPanel');
+    const head = `<div><div class="eyebrow">${esc(dateLabel())} · ${esc({ training: 'Training day', rest: 'Rest day', saturday: 'Saturday', friday: 'Friday free day' }[state.dayType])}</div><h2>Today's pick</h2></div>`;
+    const fri = state.dayType === 'friday' ? '<div class="banner">Friday is your free day. Most Fridays are the egg breakfast and ½ kg Cajun shrimp (about 1,100–1,600 kcal in total), so you don\'t need a pick. Use this only if you\'re ordering Nutreeze today.</div>' : '';
+
+    if (!current.options.length) {
+      const why = current.mealCount < 2 ? `Add at least 2 meals you can eat (${current.mealCount} usable right now).`
+        : current.snackCount < 2 ? 'Turn on at least 2 snacks.'
+        : 'Nothing matches the swaps and locks you set. Reset swaps to start over.';
+      el.innerHTML = head + fri + `<div class="verdict miss"><span class="pill">No plan</span><div>${why}</div></div>`
+        + (state.exclude.length ? '<div class="actions"><button class="btn ghost" type="button" id="resetSwaps">Reset swaps</button></div>' : '');
+      return;
+    }
+
+    const plan = current.options[state.selected];
+    const t = plan.totals, T = P.TARGETS;
+    const ok = plan.check.fits;
+    el.innerHTML = head + fri
+      + `<div class="verdict ${ok ? 'ok' : 'miss'}"><span class="pill">${ok ? 'Fits' : 'Closest'}</span><div>${esc(plan.check.verdict)}</div></div>`
+      + `<div class="macros-grid">
+          ${bar('Calories', t.kcal, ' kcal', T.kcal - 100, T.kcal + 100, 2300, '~2,000')}
+          ${bar('Protein', t.p, ' g', T.proteinMin, 999, 200, '160–170 g min')}
+          ${bar('Carbs', t.c, ' g', T.carbs[0], T.carbs[1], 260, '180–220 g')}
+          ${bar('Fat', t.f, ' g', T.fat[0], T.fat[1], 90, '55–70 g')}
+        </div>`
+      + timeline(plan)
+      + `<div class="actions">
+          <button class="btn" type="button" id="copy">Copy plan</button>
+          ${state.exclude.length || state.lockMeals.length ? '<button class="btn ghost" type="button" id="resetSwaps">Reset swaps</button>' : ''}
+        </div>`
+      + (current.options.length > 1 ? `<div><div class="eyebrow" style="margin-bottom:6px">Other options</div><div class="alts">${current.options.map((o, i) => `
+          <button type="button" class="alt" data-alt="${i}" aria-current="${i === state.selected}">
+            <span class="who">${esc(o.meal1.name)} + ${esc(o.meal2.name)}<small>${o.snacks.map(s => esc(s.name)).join(' + ')}</small></span>
+            <span class="num">${fmt(o.totals.kcal)} kcal<br>${r(o.totals.p)} g P</span>
+          </button>`).join('')}</div></div>` : '');
+  }
+
+  function toast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast'; t.textContent = msg; t.setAttribute('role', 'status');
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1800);
+  }
+
+  // Swap one item: keep the rest of the plan, rule this item out, re-pick.
+  function swap(key) {
+    const plan = current.options[state.selected];
+    const meals = [plan.meal1, plan.meal2], snacks = plan.snacks;
+    let out;
+    if (key === 'meal1' || key === 'meal2') {
+      out = key === 'meal1' ? plan.meal1 : plan.meal2;
+      // Keep the other meal; snacks re-balance around the new one.
+      state.lockMeals = meals.filter(m => m !== out).map(m => m.name);
+      state.lockSnacks = [];
+    } else {
+      out = snacks[+key.slice(5)];
+      state.lockMeals = meals.map(m => m.name);
+      state.lockSnacks = snacks.filter(s => s !== out).map(s => s.name);
+    }
+    state.exclude.push(out.name);
+    state.selected = 0;
+    render();
+    if (!current.options.length) {
+      // Nothing can replace it with everything else held; free the other slots.
+      state.lockMeals = []; state.lockSnacks = [];
+      render();
+    }
+    toast(`Swapped out ${out.name}`);
+  }
+
+  // Events
+  $('date').addEventListener('change', e => {
+    state.date = e.target.value;
+    const d = new Date(state.date + 'T12:00:00');
+    if (!isNaN(d)) { state.dayType = defaultDay(d); applyDayDefaults(); }
+    render();
+  });
+  $('daytype').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    state.dayType = b.dataset.v; applyDayDefaults(); render();
+  });
+  ['adonis', 'gatorade', 'eggs'].forEach(k => $(k).addEventListener('change', e => { state[k] = e.target.checked; render(); }));
+  let typing;
+  $('menu').addEventListener('input', e => {
+    state.menuText = e.target.value; store.set('menu', state.menuText); resetSwaps();
+    clearTimeout(typing); typing = setTimeout(render, 200);
+  });
+  $('clearMenu').addEventListener('click', () => { state.menuText = ''; store.set('menu', ''); resetSwaps(); render(); $('menu').focus(); });
+  $('sampleMenu').addEventListener('click', () => { state.menuText = SAMPLE; store.set('menu', SAMPLE); resetSwaps(); render(); });
+  $('banForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('banInput').value.trim();
+    if (v && !state.extraBans.includes(v)) { state.extraBans.push(v); store.set('bans', state.extraBans); }
+    $('banInput').value = ''; resetSwaps(); render();
+  });
+  document.addEventListener('click', e => {
+    const t = e.target.closest('[data-swap],[data-alt],[data-snack],[data-unban],[data-never],#copy,#resetSwaps');
+    if (!t) return;
+    if (t.dataset.swap) swap(t.dataset.swap);
+    else if (t.dataset.alt) { state.selected = +t.dataset.alt; renderPlan(); }
+    else if (t.dataset.snack) {
+      const n = t.dataset.snack, i = state.unavailableSnacks.indexOf(n);
+      i < 0 ? state.unavailableSnacks.push(n) : state.unavailableSnacks.splice(i, 1);
+      store.set('offSnacks', state.unavailableSnacks); resetSwaps(); render();
+    } else if (t.dataset.unban) {
+      state.extraBans = state.extraBans.filter(b => b !== t.dataset.unban); store.set('bans', state.extraBans); resetSwaps(); render();
+    } else if (t.dataset.never) {
+      state.extraBans.push(t.dataset.never); store.set('bans', state.extraBans); resetSwaps(); render(); toast(`Won't pick ${t.dataset.never} again`);
+    } else if (t.id === 'resetSwaps') { resetSwaps(); render(); }
+    else if (t.id === 'copy') {
+      const text = P.formatPlan(current.options[state.selected], current.fixed, { date: dateLabel(), dayType: state.dayType });
+      const done = () => toast('Plan copied');
+      try {
+        navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text));
+      } catch (err) { fallbackCopy(text); }
+    }
+  });
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    toast(ok ? 'Plan copied' : 'Copy blocked here; select the text manually');
+  }
+
+  render();
+})();
+</script>

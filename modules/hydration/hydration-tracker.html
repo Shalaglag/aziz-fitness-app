@@ -1,0 +1,413 @@
+<title>Aziz Water Log</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one phone-width column. Measuring cylinder beside today's numbers, quick-add pad, log, 14-day chart. */
+:root {
+  --bg: #edf3f5;
+  --surface: #ffffff;
+  --ink: #0d2a33;
+  --muted: #557079;
+  --line: #cfdde2;
+  --water: #1673a6;
+  --water-soft: #cfe6f2;
+  --band: rgba(22,115,166,.14);
+  --sport: #d9661a;
+  --sport-soft: #fbe3d2;
+  --good: #1f8a5b;
+  --warn: #b7791f;
+  --warn-soft: #fbefd9;
+  --bad: #b33a3a;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b1a20; --surface: #12262e; --ink: #e3eff3; --muted: #8ea8b1; --line: #24414b;
+  --water: #4fb0e3; --water-soft: #173a4b; --band: rgba(79,176,227,.16);
+  --sport: #f08c45; --sport-soft: #3a2616; --good: #4cc08a; --warn: #e0a64a; --warn-soft: #33281a; --bad: #e07070;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0b1a20; --surface: #12262e; --ink: #e3eff3; --muted: #8ea8b1; --line: #24414b;
+  --water: #4fb0e3; --water-soft: #173a4b; --band: rgba(79,176,227,.16);
+  --sport: #f08c45; --sport-soft: #3a2616; --good: #4cc08a; --warn: #e0a64a; --warn-soft: #33281a; --bad: #e07070;
+  color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5 }
+.wrap { max-width: 560px; margin: 0 auto; padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 22px }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: 1.7rem; line-height: 1.1; margin: 0; text-wrap: balance }
+h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.1rem; margin: 0 }
+.eyebrow { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600 }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums }
+button { font: inherit; color: inherit; cursor: pointer }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--water); outline-offset: 2px }
+
+header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap }
+.datenav { display: flex; align-items: center; gap: 6px }
+.datenav button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; width: 34px; height: 34px }
+.datenav button:disabled { opacity: .35; cursor: default }
+#dateLabel { min-width: 8.5em; text-align: center; font-weight: 500 }
+
+.daytype { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--surface) }
+.daytype button { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; font-size: .88rem; font-weight: 500; color: var(--muted) }
+.daytype button[aria-pressed="true"] { background: var(--ink); color: var(--bg) }
+
+.today { display: grid; grid-template-columns: 96px 1fr; gap: 20px; align-items: stretch;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px }
+.cyl { position: relative; height: 260px }
+.cyl svg { width: 100%; height: 100%; display: block; overflow: visible }
+.stats { display: flex; flex-direction: column; gap: 12px; min-width: 0 }
+.big { font-family: var(--f-display); font-weight: 700; font-size: 2.6rem; line-height: 1 }
+.big small { font-size: 1rem; font-weight: 500; color: var(--muted) }
+.status { display: inline-block; font-size: .8rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--water-soft); color: var(--water) }
+.status.good { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good) }
+.status.over { background: var(--warn-soft); color: var(--warn) }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: .9rem; margin: 0 }
+.kv dt { color: var(--muted) }
+.kv dd { margin: 0; text-align: right }
+
+.alert { border-radius: 12px; padding: 10px 14px; font-size: .9rem; background: var(--warn-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent) }
+.alert strong { color: var(--warn) }
+
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px }
+.pad button { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 8px; text-align: left; display: flex; flex-direction: column; gap: 2px; min-width: 0 }
+.pad button:hover { border-color: var(--water) }
+.pad .amt { font-family: var(--f-mono); font-weight: 500; font-size: 1.05rem }
+.pad .what { font-size: .78rem; color: var(--muted) }
+.pad button.sport { background: var(--sport-soft); border-color: color-mix(in srgb, var(--sport) 45%, transparent) }
+.pad button.sport .amt { color: var(--sport) }
+.custom { display: flex; gap: 8px; margin-top: 10px }
+.custom input { flex: 1; min-width: 0; font: inherit; font-family: var(--f-mono); padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink) }
+.custom button { border: 0; background: var(--water); color: #fff; border-radius: 10px; padding: 0 18px; font-weight: 600 }
+
+.urine { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px }
+.urine button { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px 6px 6px; font-size: .85rem }
+.urine button[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink) }
+.swatch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15) }
+
+.log { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--line) }
+.log li { display: grid; grid-template-columns: 3.6em 1fr auto auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: .92rem }
+.log .t { color: var(--muted); font-size: .85rem }
+.log .del { border: 0; background: transparent; color: var(--muted); padding: 4px 8px; border-radius: 6px }
+.log .del:hover { color: var(--bad) }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--water); margin-right: 8px; vertical-align: 1px }
+.dot.sport { background: var(--sport) }
+.empty { color: var(--muted); font-size: .9rem; padding: 12px 0 }
+
+.chart { overflow-x: auto }
+.chart svg { display: block; width: 100%; min-width: 360px; height: auto }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); margin-top: 6px }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px }
+
+.rules { font-size: .88rem; color: var(--muted); margin: 0; padding-left: 1.1em; display: grid; gap: 4px }
+.foot { font-size: .78rem; color: var(--muted) }
+.sync { font-size: .78rem; color: var(--muted) }
+
+@media (max-width: 420px) {
+  .today { grid-template-columns: 74px 1fr; gap: 14px; padding: 14px }
+  .big { font-size: 2.2rem }
+}
+@media (prefers-reduced-motion: no-preference) { #fill, #fillTop { transition: y .5s ease, height .5s ease } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Hydration · 14-day tracking</div>
+      <h1>Water log</h1>
+    </div>
+    <div class="datenav">
+      <button id="prev" aria-label="Previous day">‹</button>
+      <span id="dateLabel">Today</span>
+      <button id="next" aria-label="Next day">›</button>
+    </div>
+  </header>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <div class="daytype" role="group" aria-label="Day type">
+      <button id="dtTrain" aria-pressed="true">Training day</button>
+      <button id="dtRest" aria-pressed="false">Rest day</button>
+    </div>
+    <span class="sync" id="sync">Loading…</span>
+  </div>
+
+  <section class="today" aria-label="Today's total">
+    <div class="cyl"><svg id="cyl" viewBox="0 0 80 260" aria-hidden="true"></svg></div>
+    <div class="stats">
+      <div>
+        <div class="big num" id="total">0.00 <small>L</small></div>
+        <div style="margin-top:8px"><span class="status" id="status">Starting</span></div>
+      </div>
+      <dl class="kv">
+        <dt>Target</dt><dd class="num" id="target">3.5–4.0 L</dd>
+        <dt>Still to go</dt><dd class="num" id="left">–</dd>
+        <dt>Gatorade</dt><dd class="num" id="gat">0 mL</dd>
+        <dt>Last 60 min</dt><dd class="num" id="hour">0 mL</dd>
+      </dl>
+    </div>
+  </section>
+
+  <div class="alert" id="paceAlert" hidden></div>
+
+  <section aria-labelledby="addH">
+    <h2 id="addH">Add a drink</h2>
+    <div class="pad" style="margin-top:10px" id="pad">
+      <button data-ml="250" data-kind="water"><span class="amt">250 mL</span><span class="what">Glass of water</span></button>
+      <button data-ml="330" data-kind="water"><span class="amt">330 mL</span><span class="what">Small bottle</span></button>
+      <button data-ml="500" data-kind="water"><span class="amt">500 mL</span><span class="what">Bottle</span></button>
+      <button data-ml="750" data-kind="water"><span class="amt">750 mL</span><span class="what">Large bottle</span></button>
+      <button data-ml="300" data-kind="shake"><span class="amt">300 mL</span><span class="what">ISO100 shake water</span></button>
+      <button data-ml="1000" data-kind="gatorade" class="sport"><span class="amt">1 L</span><span class="what">Gatorade</span></button>
+    </div>
+    <form class="custom" id="customForm">
+      <label for="customMl" class="eyebrow" style="position:absolute;left:-9999px">Custom amount in mL</label>
+      <input id="customMl" type="number" inputmode="numeric" min="10" max="2000" step="10" placeholder="Other amount, mL">
+      <button type="submit">Add</button>
+    </form>
+  </section>
+
+  <section aria-labelledby="urH">
+    <h2 id="urH">Urine colour check</h2>
+    <div class="urine" id="urine">
+      <button data-u="clear" aria-pressed="false"><span class="swatch" style="background:#f4f6ee"></span>Clear</button>
+      <button data-u="pale" aria-pressed="false"><span class="swatch" style="background:#f3e7a1"></span>Pale yellow (goal)</button>
+      <button data-u="dark" aria-pressed="false"><span class="swatch" style="background:#d9a63a"></span>Dark yellow</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="logH">
+    <h2 id="logH">Today's drinks</h2>
+    <ul class="log" id="log"></ul>
+  </section>
+
+  <section aria-labelledby="chH">
+    <h2 id="chH">Last 14 days</h2>
+    <div class="chart" id="chart"></div>
+    <div class="legend">
+      <span><i style="background:var(--water)"></i>Water and other fluids</span>
+      <span><i style="background:var(--sport)"></i>Gatorade</span>
+      <span><i style="background:var(--band)"></i>Target range</span>
+    </div>
+    <p class="foot" id="consistency" style="margin:8px 0 0"></p>
+  </section>
+
+  <section aria-labelledby="ruH">
+    <h2 id="ruH">Your rules</h2>
+    <ul class="rules" style="margin-top:8px">
+      <li>Rest days: about 3 L total fluids.</li>
+      <li>Training days: 3.5–4 L, and the 1 L Gatorade during the workout counts.</li>
+      <li>Drink to thirst and aim for pale-yellow urine.</li>
+      <li>Keep intake about the same each day, because swings in water move the scale.</li>
+      <li>Don't drink more than about 1 L per hour.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const TARGETS = { training: { lo: 3500, hi: 4000 }, rest: { lo: 3000, hi: 3000 } };
+  const MAX_L = 4.5;
+  const KIND_LABEL = { water: "Water", shake: "Shake water", gatorade: "Gatorade", other: "Other" };
+  const $ = id => document.getElementById(id);
+
+  // Local dates (Kuwait time on Aziz's phone).
+  const pad2 = n => String(n).padStart(2, "0");
+  const keyOf = d => d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  const dateOf = k => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+  const addDays = (k, n) => { const d = dateOf(k); d.setDate(d.getDate() + n); return keyOf(d); };
+  // Plan: trains Sun–Thu and Sat; Friday is the free day. Rotation rest days are set by hand.
+  const defaultType = k => dateOf(k).getDay() === 5 ? "rest" : "training";
+
+  const days = {};          // key -> {date, dayType, urine, entries:[{at, ml, kind}]}
+  let viewKey = keyOf(new Date());
+  let db = null, col = null;
+  const queues = {};
+
+  const day = k => days[k] || { date: k, dayType: defaultType(k), urine: null, entries: [] };
+  const totalOf = d => d.entries.reduce((s, e) => s + e.ml, 0);
+  const sportOf = d => d.entries.filter(e => e.kind === "gatorade").reduce((s, e) => s + e.ml, 0);
+
+  // Storage: the artifact db when available, otherwise this browser only.
+  const LS = "aziz-water-v1";
+  function saveLocal() { try { localStorage.setItem(LS, JSON.stringify(days)); } catch (e) {} }
+  function loadLocal() { try { Object.assign(days, JSON.parse(localStorage.getItem(LS) || "{}")); } catch (e) {} }
+
+  function persist(k) {
+    const d = day(k); days[k] = d; saveLocal();
+    if (!col) return;
+    const prev = queues[k] || Promise.resolve();
+    queues[k] = prev.then(() => col.doc(k).set(JSON.parse(JSON.stringify(d))))
+      .then(() => setSync("Saved"), err => setSync("Not saved: " + (err && err.message || "try again")));
+  }
+  const setSync = t => { $("sync").textContent = t; };
+
+  // ---------- cylinder ----------
+  function drawCylinder(d) {
+    const svg = $("cyl"); svg.textContent = "";
+    const top = 10, bot = 250, x = 30, w = 40;
+    const y = ml => bot - (Math.min(ml, MAX_L * 1000) / (MAX_L * 1000)) * (bot - top);
+    const el = (n, a) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; };
+    const t = TARGETS[d.dayType];
+    el("rect", { x, y: y(t.hi) - (t.hi === t.lo ? 3 : 0), width: w, height: Math.max(6, y(t.lo) - y(t.hi)), fill: "var(--band)" });
+    const total = totalOf(d), sport = sportOf(d);
+    el("rect", { id: "fill", x: x + 2, y: y(total), width: w - 4, height: bot - y(total), fill: "var(--water)", opacity: .85 });
+    // Gatorade shown as its own layer at the bottom of the column
+    el("rect", { x: x + 2, y: y(sport), width: w - 4, height: bot - y(sport), fill: "var(--sport)", opacity: .9 });
+    el("path", { d: `M${x} ${top - 4} V${bot} q0 6 6 6 h${w - 12} q6 0 6 -6 V${top - 4}`, fill: "none", stroke: "var(--ink)", "stroke-width": 1.5 });
+    for (let ml = 0; ml <= MAX_L * 1000; ml += 250) {
+      const major = ml % 1000 === 0, half = ml % 500 === 0;
+      el("line", { x1: x, x2: x + (major ? 12 : half ? 8 : 4), y1: y(ml), y2: y(ml), stroke: "var(--ink)", "stroke-width": major ? 1.2 : .7, opacity: .7 });
+      if (major || half) {
+        const tx = el("text", { x: x - 5, y: y(ml) + 3.5, "text-anchor": "end", "font-size": major ? 10 : 8, fill: "var(--muted)", "font-family": "IBM Plex Mono, monospace" });
+        tx.textContent = (ml / 1000).toFixed(major ? 0 : 1);
+      }
+    }
+    const lbl = el("text", { x: x - 5, y: top - 6 + 2, "text-anchor": "end", "font-size": 8, fill: "var(--muted)", "font-family": "IBM Plex Mono, monospace" });
+    lbl.textContent = "L";
+  }
+
+  // ---------- 14-day chart ----------
+  function drawChart() {
+    const W = 520, H = 190, L = 34, R = 8, T = 10, B = 34;
+    const keys = []; for (let i = 13; i >= 0; i--) keys.push(addDays(keyOf(new Date()), -i));
+    const max = 5000;
+    const yv = v => T + (1 - v / max) * (H - T - B);
+    const bw = (W - L - R) / keys.length;
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily fluid totals for the last 14 days">`;
+    for (let v = 0; v <= max; v += 1000) {
+      s += `<line x1="${L}" x2="${W - R}" y1="${yv(v)}" y2="${yv(v)}" stroke="var(--line)" stroke-width="1"/>`;
+      s += `<text x="${L - 6}" y="${yv(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${v / 1000} L</text>`;
+    }
+    keys.forEach((k, i) => {
+      const d = day(k), t = TARGETS[d.dayType], x = L + i * bw;
+      const bandTop = yv(t.hi), bandH = Math.max(3, yv(t.lo) - yv(t.hi));
+      s += `<rect x="${x + 1}" y="${bandTop - (t.hi === t.lo ? 1.5 : 0)}" width="${bw - 2}" height="${bandH}" fill="var(--band)"/>`;
+      const tot = totalOf(d), sp = sportOf(d);
+      if (tot > 0) {
+        s += `<rect x="${x + bw * .22}" y="${yv(tot)}" width="${bw * .56}" height="${yv(0) - yv(tot)}" rx="2" fill="var(--water)"/>`;
+        if (sp > 0) s += `<rect x="${x + bw * .22}" y="${yv(sp)}" width="${bw * .56}" height="${yv(0) - yv(sp)}" fill="var(--sport)"/>`;
+      }
+      const dt = dateOf(k);
+      const wk = "SMTWTFS"[dt.getDay()];
+      const isView = k === viewKey;
+      s += `<text x="${x + bw / 2}" y="${H - B + 14}" text-anchor="middle" font-size="10" fill="${isView ? "var(--ink)" : "var(--muted)"}" font-weight="${isView ? 600 : 400}" font-family="IBM Plex Sans, sans-serif">${wk}</text>`;
+      s += `<text x="${x + bw / 2}" y="${H - B + 27}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${dt.getDate()}</text>`;
+    });
+    s += `</svg>`;
+    $("chart").innerHTML = s;
+
+    // Consistency: spread of totals on days with drinks logged
+    const logged = keys.map(k => day(k)).filter(d => d.entries.length);
+    const c = $("consistency");
+    if (logged.length < 3) { c.textContent = "After 3 logged days this shows how steady your intake is."; return; }
+    const tots = logged.map(totalOf), avg = tots.reduce((a, b) => a + b, 0) / tots.length;
+    const spread = Math.max(...tots) - Math.min(...tots);
+    const hit = logged.filter(d => { const t = TARGETS[d.dayType], v = totalOf(d); return v >= t.lo - 150 && v <= t.hi + 250; }).length;
+    c.textContent = `${logged.length} days logged · average ${(avg / 1000).toFixed(2)} L · in range on ${hit} of ${logged.length} · spread ${(spread / 1000).toFixed(1)} L` +
+      (spread > 1500 ? ". That's a big swing, so expect it to show on the scale." : ".");
+  }
+
+  // ---------- main render ----------
+  function render() {
+    const d = day(viewKey), t = TARGETS[d.dayType];
+    const isToday = viewKey === keyOf(new Date());
+    const dt = dateOf(viewKey);
+    $("dateLabel").textContent = isToday ? "Today" : dt.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+    $("next").disabled = isToday;
+    $("dtTrain").setAttribute("aria-pressed", d.dayType === "training");
+    $("dtRest").setAttribute("aria-pressed", d.dayType === "rest");
+
+    const total = totalOf(d), sport = sportOf(d);
+    $("total").innerHTML = (total / 1000).toFixed(2) + " <small>L</small>";
+    $("target").textContent = t.lo === t.hi ? `~${(t.lo / 1000).toFixed(1)} L` : `${(t.lo / 1000).toFixed(1)}–${(t.hi / 1000).toFixed(1)} L`;
+    const left = Math.max(0, t.lo - total);
+    $("left").textContent = left ? `${left.toLocaleString("en")} mL` : "Done";
+    $("gat").textContent = sport ? `${sport.toLocaleString("en")} mL` : (d.dayType === "training" ? "Not yet" : "–");
+
+    const st = $("status");
+    st.className = "status";
+    if (total === 0) st.textContent = "Nothing logged";
+    else if (total < t.lo) st.textContent = `${Math.round(total / t.lo * 100)}% of target`;
+    else if (total <= t.hi + 250) { st.textContent = "In range"; st.classList.add("good"); }
+    else { st.textContent = "Above range"; st.classList.add("over"); }
+
+    // Pace: the plan caps intake at about 1 L per hour
+    const now = Date.now();
+    const lastHour = isToday ? d.entries.filter(e => now - new Date(e.at).getTime() < 3600e3).reduce((s, e) => s + e.ml, 0) : 0;
+    $("hour").textContent = isToday ? `${lastHour.toLocaleString("en")} mL` : "–";
+    const pa = $("paceAlert");
+    if (isToday && lastHour > 1000) {
+      pa.hidden = false;
+      pa.innerHTML = `<strong>Slow down.</strong> You've had ${lastHour.toLocaleString("en")} mL in the last hour. Your plan keeps it under about 1 L per hour.`;
+    } else if (isToday && d.dayType === "training" && sport === 0 && new Date().getHours() >= 17) {
+      pa.hidden = false;
+      pa.innerHTML = `<strong>Gatorade not logged.</strong> On training days the 1 L during the workout counts toward the target.`;
+    } else pa.hidden = true;
+
+    document.querySelectorAll("#urine button").forEach(b => b.setAttribute("aria-pressed", b.dataset.u === d.urine));
+
+    const log = $("log"); log.textContent = "";
+    if (!d.entries.length) {
+      const li = document.createElement("li"); li.className = "empty"; li.style.display = "block";
+      li.textContent = "No drinks logged yet. Tap an amount above to add one.";
+      log.appendChild(li);
+    }
+    d.entries.slice().sort((a, b) => a.at < b.at ? 1 : -1).forEach(e => {
+      const li = document.createElement("li");
+      const tm = new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      li.innerHTML = `<span class="t num">${tm}</span><span><span class="dot${e.kind === "gatorade" ? " sport" : ""}"></span>${KIND_LABEL[e.kind] || "Other"}</span><span class="num">${e.ml.toLocaleString("en")} mL</span>`;
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "Remove";
+      del.setAttribute("aria-label", `Remove ${e.ml} mL at ${tm}`);
+      del.onclick = () => { const dd = day(viewKey); dd.entries = dd.entries.filter(x => x.at !== e.at); days[viewKey] = dd; persist(viewKey); render(); };
+      li.appendChild(del); log.appendChild(li);
+    });
+
+    drawCylinder(d);
+    drawChart();
+  }
+
+  function add(ml, kind) {
+    ml = Math.round(ml);
+    if (!(ml > 0 && ml <= 2000)) return;
+    const d = day(viewKey);
+    const isToday = viewKey === keyOf(new Date());
+    // Past days get a midday timestamp so they never count toward "last 60 min"
+    let at = isToday ? new Date() : new Date(dateOf(viewKey).getTime() + 12 * 3600e3);
+    while (d.entries.some(e => e.at === at.toISOString())) at = new Date(at.getTime() + 1000);
+    d.entries.push({ at: at.toISOString(), ml, kind });
+    days[viewKey] = d; persist(viewKey); render();
+  }
+
+  $("pad").addEventListener("click", ev => { const b = ev.target.closest("button"); if (b) add(+b.dataset.ml, b.dataset.kind); });
+  $("customForm").addEventListener("submit", ev => { ev.preventDefault(); const v = +$("customMl").value; if (v) { add(v, "other"); $("customMl").value = ""; } });
+  $("dtTrain").onclick = () => { const d = day(viewKey); if (d.dayType !== "training") { d.dayType = "training"; days[viewKey] = d; persist(viewKey); render(); } };
+  $("dtRest").onclick = () => { const d = day(viewKey); if (d.dayType !== "rest") { d.dayType = "rest"; days[viewKey] = d; persist(viewKey); render(); } };
+  $("urine").addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b) return; const d = day(viewKey); d.urine = d.urine === b.dataset.u ? null : b.dataset.u; days[viewKey] = d; persist(viewKey); render(); });
+  $("prev").onclick = () => { viewKey = addDays(viewKey, -1); render(); };
+  $("next").onclick = () => { const n = addDays(viewKey, 1); if (n <= keyOf(new Date())) { viewKey = n; render(); } };
+  // Roll over to the new day and refresh the "last 60 min" figure
+  setInterval(() => render(), 60e3);
+
+  loadLocal();
+  render();
+  setSync("Saved on this device only");
+
+  const claude = window.claude;
+  if (claude && claude.use) {
+    claude.use("db").then(handle => {
+      if (!handle) return;
+      db = handle; col = db.collection("days");
+      setSync("Syncing…");
+      col.onSnapshot(snap => {
+        snap.docs.forEach(s => { const v = s.data(); if (v && v.date) days[s.id] = v; });
+        saveLocal(); setSync("Synced"); render();
+      }, err => setSync("Sync stopped: " + (err && err.message || "reload to retry")));
+    });
+  }
+})();
+</script>
