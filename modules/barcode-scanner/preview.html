@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Barcode Food Scanner</title>
+<style>
+:root{--bg:#F2F4F6;--surface:#fff;--sunk:#E7EBEF;--line:#D3DAE1;--ink:#12161B;--muted:#586370;--accent:#1F5FD1;--accent-ink:#fff;--warn:#B86E00;--r:12px;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0F1317;--surface:#171C22;--sunk:#1F262E;--line:#2C353F;--ink:#E8EDF2;--muted:#9AA5B1;--accent:#6B9BF5;--accent-ink:#0B1222;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0F1317;--surface:#171C22;--sunk:#1F262E;--line:#2C353F;--ink:#E8EDF2;--muted:#9AA5B1;--accent:#6B9BF5;--accent-ink:#0B1222;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:20px 16px 40px;display:flex;flex-direction:column;gap:16px}
+h1{font-size:1.5rem;margin:0}h3{margin:0}p{margin:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spread{display:flex;gap:10px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+.btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600;font:inherit;font-weight:600}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer;font-size:.9rem}
+input[type=number],input[type=text],select{border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:8px;padding:7px 9px;min-width:0;font:inherit}
+input[type=number]{width:5.2em}
+.muted{color:var(--muted)}.label{font-size:.78rem;color:var(--muted)}.num{font-variant-numeric:tabular-nums}
+.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--sunk);border-radius:0 8px 8px 0;font-size:.92rem}
+ul{margin:0;padding-left:1.2em}
+</style>
+</head>
+<body>
+<main>
+  <h1>Scan a food</h1>
+  <p class="muted">Preview of the barcode card for the Food tab. Rows you add show below, in the app's <code>days/{date}.food[]</code> shape.</p>
+  <div class="card"><h3>Scan a barcode</h3><div id="bf"></div></div>
+  <div class="card"><h3>Added</h3><ul id="out"><li class="muted">Nothing yet.</li></ul></div>
+</main>
+<script src="barcode-food.js"></script>
+<script>
+  const st = document.createElement("style"); st.textContent = BarcodeFood.CSS; document.head.appendChild(st);
+  const out = document.getElementById("out"), rows = [];
+  BarcodeFood.mount(document.getElementById("bf"), {
+    onAdd(item) {
+      rows.push(item);
+      out.innerHTML = rows.map(r => `<li class="num">${r.slot}: ${r.name}, ${r.kcal} kcal · P ${r.p} · C ${r.c} · F ${r.f}${r.est ? " (est)" : ""}</li>`).join("");
+      window.__added = rows;
+    },
+  });
+</script>
+</body>
+</html>
