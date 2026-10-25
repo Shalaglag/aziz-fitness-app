@@ -8,7 +8,7 @@ One card for the Guide tab that backs up the whole app to a single file, restore
 - `preview.html`: the card with sample data in memory and one-tap sample files. Open it next to `../strong-sync/`.
 
 ## What it does
-- **Backup**: every collection in the snapshot goes into `fitness-backup-YYYY-MM-DD.json` (`{format:"aziz-fitness-backup", schema:1, exported, counts, collections}`), including the logger's `lb_*` collections and `cardio`. An in-progress workout (`lb_meta/active`) is left out. Photo images live in the artifact's asset store, so only the `photos` records are in the file. `prefs/main.lastBackup` is stamped; the card nudges after 14 days.
+- **Backup**: every collection in the snapshot goes into `fitness-backup-YYYY-MM-DD.json` (`{format:"aziz-fitness-backup", schema:1, exported, counts, collections}`), including the logger's `lb_*` collections and `cardio`. An in-progress workout (`lb_meta/active`) is left out. Photo images live in the artifact's asset store, so only the `photos` records are in the file. `prefs/main.lastBackup` is stamped; the card says how old the last backup is and nudges after 7 days (`DUE_DAYS`). The shell uses `backupStatus(prefs.main)` to show the same nudge on Today with a one-tap download.
 - **Restore**, always previewed first:
   - *Add to what I have* (default): adds missing records and fills empty fields; food lists are joined by item id; nothing you have is overwritten.
   - *Replace everything*: the backup wins and records not in it are removed (only in collections the backup contains). A backup of the current data downloads first.
@@ -62,7 +62,7 @@ Call `syncDataCard()` at the end of `render()`. Targets come from `AppTargets` (
 The existing "Import from Strong", steps and WaterH cards can stay; this card is the one place that handles every file.
 
 ## API
-`makeBackup(snapshot, {now, appVersion})`, `backupFilename(now)`, `readBackup(textOrObj)`, `planRestore(backup, current, {mode})`, `detect(text, filename)`, `importText(text, opts)`, `applyPlan(plan, {put, remove})`, `toCsv(snapshot, what, {kcalTarget, proteinMin})`, `mount(host, opts)`. A plan is `{kind, label, mode, writes:[{col,id,doc}], deletes:[{col,id}], counts, lines, warnings, range}`; nothing is saved until `applyPlan`. `mount` re-plans against fresh data right before applying, so changes synced from the phone in between aren't lost.
+`makeBackup(snapshot, {now, appVersion})`, `backupFilename(now)`, `readBackup(textOrObj)`, `planRestore(backup, current, {mode})`, `detect(text, filename)`, `importText(text, opts)`, `applyPlan(plan, {put, remove})`, `toCsv(snapshot, what, {kcalTarget, proteinMin})`, `backupStatus(prefsMain, {now, dueDays})` → `{lastBackup, ageDays, due, label}`, `mount(host, opts)`. A plan is `{kind, label, mode, writes:[{col,id,doc}], deletes:[{col,id}], counts, lines, warnings, range}`; nothing is saved until `applyPlan`. `mount` re-plans against fresh data right before applying, so changes synced from the phone in between aren't lost.
 
 ## Connections
 An Artifact can't reach Health Connect, Apple Health, Strong, Hevy, MyFitnessPal or Cronometer directly (no APIs from inside the app, and network is blocked). Every connection is a file the phone exports and you pick here; the card's "What can I import?" lists where each app hides its export.

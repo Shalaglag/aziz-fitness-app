@@ -843,6 +843,18 @@ const DataIO = (() => {
     ["Any spreadsheet", "A CSV with a date column plus weight, waist/chest/hips…, food + calories, or exercise + reps."],
   ];
 
+  // Age of the last backup from prefs/main. `due` after DUE_DAYS (7) or when there has never been one.
+  const DUE_DAYS = 7;
+  function backupStatus(prefsMain, { now, dueDays } = {}) {
+    const lastBackup = (prefsMain || {}).lastBackup || null;
+    const t = lastBackup ? new Date(lastBackup).getTime() : NaN;
+    const ageDays = Number.isFinite(t) ? Math.max(0, Math.floor(((now || Date.now()) - t) / 86400000)) : null;
+    const limit = dueDays == null ? DUE_DAYS : dueDays;
+    const due = ageDays == null || ageDays >= limit;
+    const label = ageDays == null ? "No backup yet" : ageDays === 0 ? "Backed up today" : ageDays === 1 ? "Last backup yesterday" : `Last backup ${ageDays} days ago`;
+    return { lastBackup: Number.isFinite(t) ? lastBackup : null, ageDays, due, label };
+  }
+
   function mount(host, opts) {
     opts = opts || {};
     if (!document.getElementById("dio-style")) { const st = document.createElement("style"); st.id = "dio-style"; st.textContent = CSS; document.head.appendChild(st); }
@@ -857,7 +869,7 @@ const DataIO = (() => {
       return true;
     }
 
-    function lastBackup() { const p = (opts.snapshot().prefs || {}).main || {}; return p.lastBackup || null; }
+    function lastBackup() { return backupStatus((opts.snapshot().prefs || {}).main).lastBackup; }
 
     function planHtml(p) {
       const c = p.counts, n = p.writes.length + p.deletes.length;
@@ -876,13 +888,12 @@ const DataIO = (() => {
     }
 
     function render() {
-      const lb = lastBackup();
-      const age = lb ? Math.floor((Date.now() - new Date(lb).getTime()) / 86400000) : null;
+      const bs = backupStatus((opts.snapshot().prefs || {}).main), lb = bs.lastBackup, age = bs.ageDays;
       host.innerHTML = `<section class="card dio" aria-label="Your data">
         <div><h3>Your data</h3>
           <p class="dio-muted">Back up everything, bring in history from other apps, or export spreadsheets.</p></div>
         <div>
-          <p><b>Backup</b> · ${lb ? `last one ${age === 0 ? "today" : age === 1 ? "yesterday" : age + " days ago"}` : "<span class=\"dio-warn\">no backup yet</span>"}${age != null && age >= 14 ? ` <span class="dio-warn">(time for a new one)</span>` : ""}</p>
+          <p><b>Backup</b> · ${lb ? `last one ${age === 0 ? "today" : age === 1 ? "yesterday" : age + " days ago"}` : "<span class=\"dio-warn\">no backup yet</span>"}${lb && bs.due ? ` <span class="dio-warn">(time for a new one)</span>` : ""}</p>
           <div class="dio-row">
             <button class="dio-btn primary" data-dio="backup" ${ui.busy ? "disabled" : ""}>Download backup</button>
             <label class="dio-btn">Restore or import a file<input type="file" data-dio="file" accept=".json,.csv,.txt,.xml,.tsv,application/json,text/csv,text/plain,text/xml"></label>
@@ -962,6 +973,7 @@ const DataIO = (() => {
   return {
     FORMAT, SCHEMA, COLLECTIONS, KINDS, MIGRATIONS,
     makeBackup, backupFilename, readBackup, planRestore, detect, importText, applyPlan, toCsv, mount,
+    backupStatus, DUE_DAYS,
     parseWhen, parseWeights, parseFood, parseMeasures, toStrongCsv, readCsv,
   };
 })();

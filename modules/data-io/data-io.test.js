@@ -257,3 +257,16 @@ test("CSV exports", () => {
   assert.equal(back.writes.length, 0);
   assert.equal(back.counts.weights.same, 2);
 });
+
+test("backupStatus: age in days, due after 7 days or when there has never been a backup", () => {
+  const now = Date.parse("2026-10-25T12:00:00Z");
+  assert.deepEqual(DataIO.backupStatus(undefined, { now }), { lastBackup: null, ageDays: null, due: true, label: "No backup yet" });
+  assert.deepEqual(DataIO.backupStatus({ lastBackup: "2026-10-25T06:00:00Z" }, { now }), { lastBackup: "2026-10-25T06:00:00Z", ageDays: 0, due: false, label: "Backed up today" });
+  assert.equal(DataIO.backupStatus({ lastBackup: "2026-10-24T06:00:00Z" }, { now }).label, "Last backup yesterday");
+  const six = DataIO.backupStatus({ lastBackup: "2026-10-19T06:00:00Z" }, { now });
+  assert.equal(six.ageDays, 6); assert.equal(six.due, false);
+  const seven = DataIO.backupStatus({ lastBackup: "2026-10-18T06:00:00Z" }, { now });
+  assert.equal(seven.due, true); assert.equal(seven.label, "Last backup 7 days ago");
+  assert.equal(DataIO.backupStatus({ lastBackup: "garbage" }, { now }).due, true);
+  assert.equal(DataIO.backupStatus({ lastBackup: "2026-10-18T06:00:00Z" }, { now, dueDays: 14 }).due, false);
+});
