@@ -36,6 +36,8 @@
     { name: 'Blueberry Vanilla Muffin', cat: 'Sweet', kcal: 166, p: 8, c: 11, f: 10 },
   ];
 
+  const module_TARGETS = TARGETS;
+
   const ADONIS = { name: 'Adonis Protein Cookie Dough (50 g)', kcal: 192, p: 22, c: 11.4, f: 6.2 };
   const GATORADE = { name: 'Gatorade 1 L', kcal: 240, p: 0, c: 60, f: 0, estimate: true };
   // Midpoint of the plan's ~460-520 kcal | 31 P | 40-50 C | 20 F estimate.
@@ -144,8 +146,31 @@
 
   const outside = (v, [lo, hi]) => (v < lo ? lo - v : v > hi ? v - hi : 0);
 
+  /*
+   * Targets in the engine's shape. Accepts an AppTargets object ({kcal, proteinMin, proteinMax,
+   * fatLo, fatHi, carbsLo, carbsHi}) so the day's numbers come from "Your numbers", not these defaults.
+   */
+  function targetsFrom(t) {
+    if (!t) return TARGETS;
+    const n = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+    const fat = Array.isArray(t.fat) ? t.fat : [n(t.fatLo, TARGETS.fat[0]), n(t.fatHi, TARGETS.fat[1])];
+    const carbs = Array.isArray(t.carbs) ? t.carbs : [n(t.carbsLo, TARGETS.carbs[0]), n(t.carbsHi, TARGETS.carbs[1])];
+    const proteinMin = n(t.proteinMin, TARGETS.proteinMin);
+    return { kcal: n(t.kcal, TARGETS.kcal), proteinMin, proteinMax: n(t.proteinMax, proteinMin + 10), fat, carbs };
+  }
+
+  // Category for a snack that came from a menu rather than the fixed list.
+  function snackCat(name) {
+    const n = norm(name);
+    if (/\b(nuts?|almonds?|walnuts?|cashews?|pistachios?|seeds?|peanuts?|trail mix)\b/.test(n)) return 'Nuts';
+    if (/\b(fruits?|apple|banana|mango|grapes?|pineapple|berries|berry|pomegranate|melon|watermelon|orange|kiwi|dates?)\b/.test(n) && !/\b(cake|muffin|cookie|pie|tart|yogh?urt)\b/.test(n)) return 'Fruit';
+    if (/\b(yogh?urt|greek|skyr|labneh|cottage|eggs?|jerky|protein bar|bar|shake|chicken|turkey)\b/.test(n)) return 'Protein';
+    return 'Sweet';
+  }
+
   // Lower is better.
   function score(meal1, meal2, snacks, totals, opts) {
+    const TARGETS = opts.T || module_TARGETS;
     let s = 0;
     const dk = totals.kcal - TARGETS.kcal;
     const adk = Math.abs(dk);
@@ -188,11 +213,14 @@
    * opts: {
    *   meals: [{name,kcal,p,c,f}], dayType: 'training'|'rest'|'saturday'|'friday',
    *   adonis: bool, gatorade: bool, eggs: bool, extraBans: [str], unavailableSnacks: [name],
-   *   lockMeals: [name], lockSnacks: [name], exclude: [name], top: n
+   *   lockMeals: [name], lockSnacks: [name], exclude: [name], top: n,
+   *   snacks: [{name,kcal,p,c,f,cat?}]  (a menu's own snacks; replaces the fixed list when 2+ are given),
+   *   targets: AppTargets object or {kcal, proteinMin, proteinMax, fat:[lo,hi], carbs:[lo,hi]}
    * }
    */
   function pick(opts) {
     const o = Object.assign({ dayType: 'training', adonis: true, gatorade: true, eggs: false, extraBans: [], unavailableSnacks: [], lockMeals: [], lockSnacks: [], exclude: [], top: 5 }, opts);
+    o.T = targetsFrom(o.targets);
     const excluded = new Set(o.exclude.map(norm));
     const fixed = [];
     if (o.eggs) fixed.push({ ...SATURDAY_EGGS, slot: 'breakfast' });
@@ -201,7 +229,10 @@
     const fixedTotals = sum(fixed);
 
     const meals = (o.meals || []).filter(m => !m.error && !bannedReason(m, o.extraBans) && !excluded.has(norm(m.name)));
-    const snacks = SNACKS.filter(s => !bannedReason(s.name, o.extraBans) && !o.unavailableSnacks.map(norm).includes(norm(s.name)) && !excluded.has(norm(s.name)));
+    const pool = Array.isArray(o.snacks) && o.snacks.length >= 2
+      ? o.snacks.filter(s => s && !s.error).map(s => ({ ...s, cat: s.cat || snackCat(s.name) }))
+      : SNACKS;
+    const snacks = pool.filter(s => !bannedReason(s, o.extraBans) && !o.unavailableSnacks.map(norm).includes(norm(s.name)) && !excluded.has(norm(s.name)));
     const lockM = o.lockMeals.map(norm), lockS = o.lockSnacks.map(norm);
 
     const combos = [];
@@ -230,22 +261,24 @@
       if (options.length >= o.top) break;
       if (!options.includes(c)) options.push(c);
     }
-    options.forEach(c => { c.check = evaluate(c); });
+    options.forEach(c => { c.check = evaluate(c, o.T); });
 
     return { fixed, fixedTotals, options, mealCount: meals.length, snackCount: snacks.length, labels: slotLabels(o.dayType) };
   }
 
   // How well a plan fits, plus warnings to show.
-  function evaluate(c) {
+  function evaluate(c, T) {
+    const TARGETS = T || module_TARGETS;
     const t = c.totals, notes = [];
+    const kcalLabel = fmt(TARGETS.kcal);
     const dk = Math.round(t.kcal - TARGETS.kcal);
     const kcalOk = Math.abs(dk) <= 100;
     const proteinOk = t.p >= TARGETS.proteinMin;
-    if (!kcalOk) notes.push(`${Math.abs(dk)} kcal ${dk > 0 ? 'over' : 'under'} 2,000`);
-    if (!proteinOk) notes.push(`${Math.round(TARGETS.proteinMin - t.p)} g protein short of 160 g (snacks can't close this; flag it rather than assume a shake)`);
-    if (outside(t.f, TARGETS.fat)) notes.push(`fat ${Math.round(t.f)} g is outside 55–70 g`);
-    if (outside(t.c, TARGETS.carbs) > 15) notes.push(`carbs ${Math.round(t.c)} g are outside 180–220 g`);
-    for (const m of [c.meal1, c.meal2]) if (m.needsCheck) notes.push(`check the numbers for ${m.name} (the Menu Reader flagged them)`);
+    if (!kcalOk) notes.push(`${Math.abs(dk)} kcal ${dk > 0 ? 'over' : 'under'} ${kcalLabel}`);
+    if (!proteinOk) notes.push(`${Math.round(TARGETS.proteinMin - t.p)} g protein short of ${TARGETS.proteinMin} g (snacks can't close this; flag it rather than assume a shake)`);
+    if (outside(t.f, TARGETS.fat)) notes.push(`fat ${Math.round(t.f)} g is outside ${TARGETS.fat[0]}–${TARGETS.fat[1]} g`);
+    if (outside(t.c, TARGETS.carbs) > 15) notes.push(`carbs ${Math.round(t.c)} g are outside ${TARGETS.carbs[0]}–${TARGETS.carbs[1]} g`);
+    for (const m of [c.meal1, c.meal2, ...c.snacks]) if (m.needsCheck) notes.push(`check the numbers for ${m.name} (${m.fromMenu ? 'not confirmed against the menu yet' : 'the Menu Reader flagged them'})`);
     if (c.meal1.kcal >= 700) notes.push('Meal 1 is 700+ kcal, so the sweet moves to the evening');
     const fits = kcalOk && proteinOk;
     let verdict;
@@ -294,5 +327,5 @@
     return items;
   }
 
-  return { toFoodItems, TARGETS, SNACKS, ADONIS, GATORADE, SATURDAY_EGGS, NEVER, bannedReason, likeOf, parseMenu, pick, formatPlan, slotLabels };
+  return { toFoodItems, TARGETS, targetsFrom, snackCat, SNACKS, ADONIS, GATORADE, SATURDAY_EGGS, NEVER, bannedReason, likeOf, parseMenu, pick, formatPlan, slotLabels };
 });

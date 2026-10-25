@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Menu Planner</title>
+<style>
+:root{--bg:#f4f5f7;--surface:#fff;--sunk:#eef0f3;--line:#dde1e6;--ink:#14171c;--muted:#5d6470;--accent:#1f5fd1;--accent-ink:#fff;--good:#1d8a4e;--warn:#b86e00;--bad:#c8362f;--mono:ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111317;--surface:#1a1d23;--sunk:#22262d;--line:#30353e;--ink:#eceef2;--muted:#9aa2ae;--accent:#6b9bff;--accent-ink:#0b1020;--good:#4cc17f;--warn:#f0a63a;--bad:#ff6b62}}
+:root[data-theme="dark"]{--bg:#111317;--surface:#1a1d23;--sunk:#22262d;--line:#30353e;--ink:#eceef2;--muted:#9aa2ae;--accent:#6b9bff;--accent-ink:#0b1020;--good:#4cc17f;--warn:#f0a63a;--bad:#ff6b62}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:0 0 4px}
+h3{margin:0;font-size:1.05rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+.spread{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.muted{color:var(--muted)}
+.btn{display:inline-flex;align-items:center;border:0;border-radius:8px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:600;padding:9px 14px;cursor:pointer}
+.btn.small{padding:5px 10px;font-size:.85rem}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.pill{font-size:.78rem;border-radius:99px;padding:2px 8px;border:1px solid currentColor}
+.pill.good{color:var(--good)}.pill.warn{color:var(--warn)}
+.ex{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.note{color:var(--warn);font-size:.9rem}
+.num{font-family:var(--mono)}
+#toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:.9rem;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.on{opacity:1}
+pre{white-space:pre-wrap;font-size:.8rem;background:var(--sunk);padding:8px;border-radius:8px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Menu planner preview</h1>
+  <p class="muted">The Food tab card on its own. Menus and the planned day are kept in this browser only. Try <code>samples/table-menu.pdf</code>. Screenshots need Claude, so they work only inside the app.</p>
+  <div id="host"></div>
+  <div class="card"><h3>Planned day</h3><pre id="planned">Nothing planned yet.</pre></div>
+</main>
+<div id="toast"></div>
+<script src="../../tools/meal-picker/picker-engine.js"></script>
+<script src="menu-import.js"></script>
+<script>
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+const addScript = src => new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = bad; document.head.appendChild(s); });
+let pdfP = null;
+const loadPdf = () => pdfP || (pdfP = (async () => {
+  await addScript(PDFJS + "pdf.min.js"); await addScript(PDFJS + "pdf.worker.min.js");
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js";
+  return window.pdfjsLib;
+})().catch(() => { pdfP = null; return null; }));
+const store = { get(k) { try { return JSON.parse(localStorage.getItem("menu-preview:" + k) || "null"); } catch (e) { return null; } },
+                set(k, v) { try { v == null ? localStorage.removeItem("menu-preview:" + k) : localStorage.setItem("menu-preview:" + k, JSON.stringify(v)); } catch (e) {} } };
+const today = new Date().toISOString().slice(0, 10);
+const st = document.createElement("style"); st.textContent = MenuImport.css; document.head.appendChild(st);
+function toast(m) { const t = document.getElementById("toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 2200); }
+function render() { document.getElementById("host").innerHTML = MenuImport.html(today); }
+MenuImport.bind(document, {
+  engine: NutreezePicker,
+  getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(() => null) : Promise.resolve(null),
+  loadPdf,
+  getMenu: d => store.get("menu:" + d),
+  saveMenu: (d, rec) => store.set("menu:" + d, rec),
+  dayType: () => "training",
+  dislikes: () => [],
+  date: () => today, render, toast,
+  onUsePlan(d, plan, fixed) {
+    const items = NutreezePicker.toFoodItems(plan, fixed);
+    document.getElementById("planned").textContent = NutreezePicker.formatPlan(plan, fixed, { date: d });
+    store.set("plan:" + d, items);
+    toast("Planned. Nothing counts until you tick it as eaten.");
+  }
+});
+render();
+</script>
+</body>
+</html>
