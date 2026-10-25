@@ -2203,6 +2203,8 @@ Stair Climber|Cardio|Cardio|`;
   });
 
   let exTab = 'about';
+  // Form cues (optional FormCues instance passed as opts.formCues).
+  const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
   on('exOpen', t => {
     const id = t.dataset.id; exTab = 'about';
     openSheet({
@@ -2220,7 +2222,8 @@ Stair Climber|Cardio|Cardio|`;
         (ex.avoided ? '<p class="lb-warnbox">Your plan avoids this lift (no deadlifts, RDLs, hip thrusts, back extensions, glute-ham raises, reverse hypers or cable pull-throughs). Pick a machine-based option instead.</p>' : '') +
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
-        (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '');
+        (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '') +
+        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '');
     }
     if (!ss.length) return '<div class="lb-empty">No sets logged for this exercise yet.</div>';
     if (exTab === 'history') {
@@ -2583,6 +2586,7 @@ Stair Climber|Cardio|Cardio|`;
       html += '<article class="lb-exblock' + (e.ss ? ' ss ss' + (ssIdx % 4) : '') + '" data-ei="' + i + '">' +
         (e.ss ? '<div class="lb-sslabel">Superset ' + String.fromCharCode(65 + ssIdx) + '</div>' : '') +
         '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
+        (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') +
         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
         (ex.memo ? '<p class="lb-memo small">' + esc(ex.memo) + '</p>' : '') +
@@ -3042,6 +3046,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     opts = opts || {};
     S.opts = opts; S.storage = opts.storage || localStorageAdapter('lb:');
     if (!document.getElementById('lb-style')) { const st = document.createElement('style'); st.id = 'lb-style'; st.textContent = CSS; document.head.appendChild(st); }
+    if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
     root = el; root.classList.add('lb');
     overlay = document.querySelector('.lb-overlay') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'lb-overlay' }));
     if (!root.dataset.lbBound) { delegate(root); root.dataset.lbBound = '1'; }
@@ -3357,6 +3362,3194 @@ if (typeof module !== "undefined") module.exports = { EffortDeload };
 window.EffortDeload=EffortDeload;
 </script>
 <script>
+/* Over-budget day recovery for the Aziz Cut Tracker.
+ * Plain JS, no imports, no network. Reads the app's own days/{date} docs:
+ *   {date, food:[{kcal, eaten, ...}], budgetAdj:{<sourceDate>: -kcal}, recovery:{choice, at, ...}}
+ * API:
+ *   BudgetRecovery.css                          -> string, inject once (uses the app's tokens)
+ *   BudgetRecovery.eatenKcal(dayDoc)            -> kcal of items marked eaten
+ *   BudgetRecovery.plan(date, days)             -> {date, eaten, target, surplus, reason, text,
+ *                                                   recommended, options:{spread, walk}}
+ *   BudgetRecovery.apply(plan, choice, at)      -> [{date, patch}] to merge into days/{date}
+ *                                                   (choice: "spread" | "walk" | "skip")
+ *   BudgetRecovery.targetFor(date, days)        -> that day's kcal target after any recovery cuts
+ *   BudgetRecovery.cardHtml(plan)               -> "Went over today?" card ("" when nothing to do);
+ *                                                   buttons carry data-recover="spread|walk|skip"
+ *                                                   and data-recover-date="<source date>"
+ *
+ * The rule (from the plan: 2,000 kcal, never cut to 1,500-1,700 or 1,800, Friday is a free day):
+ *   surplus <= 100 kcal       -> nothing to do (the app already calls 1,900-2,100 "on target")
+ *   Friday                    -> nothing to do, and nothing is ever taken from Saturday for it
+ *   otherwise, two options:
+ *     spread -> take the surplus off the next 3 non-Friday days, at most 150 kcal a day, so no day
+ *               drops below 1,850. Anything above 450 kcal is let go: one day does not undo a week.
+ *     walk   -> one extra 30-min brisk walk (~150-200 kcal at ~92 kg, on top of the post-lift
+ *               treadmill). If the surplus is above ~175 kcal, the rest is spread as above.
+ *   recommended: walk when the surplus fits inside it (<= 200 kcal), otherwise spread.
+ *   Cuts come from carbs or fat; protein stays at 160 g+.
+ */
+const BudgetRecovery = (() => {
+  const TARGET = 2000;
+  const FLOOR = 1850;          // lowest a recovery day may go
+  const MAX_CUT = TARGET - FLOOR;
+  const DAYS = 3;
+  const IGNORE = 100;          // within this, the day is on target
+  const WALK = { minutes: 30, kcal: [150, 200], credit: 175 };
+  const DAY = 864e5;
+
+  const iso = ms => new Date(ms).toISOString().slice(0, 10);
+  const addDays = (date, n) => iso(Date.parse(date + "T00:00:00Z") + n * DAY);
+  const isFriday = date => new Date(date + "T00:00:00Z").getUTCDay() === 5;
+  const fmt = n => Math.round(n).toLocaleString("en-US");
+  const round10 = n => Math.round(n / 10) * 10;
+
+  function eatenKcal(doc) {
+    if (!doc || !Array.isArray(doc.food)) return 0;
+    return doc.food.reduce((s, i) => s + (i && i.eaten ? Number(i.kcal) || 0 : 0), 0);
+  }
+
+  // Sum of cuts already planned on a day, from any source day.
+  function existingCut(doc) {
+    const adj = doc && doc.budgetAdj;
+    if (!adj) return 0;
+    return Object.values(adj).reduce((s, v) => s + Math.min(0, Number(v) || 0), 0);
+  }
+
+  function targetFor(date, days) {
+    if (isFriday(date)) return TARGET;
+    return Math.max(FLOOR, TARGET + existingCut((days || {})[date]));
+  }
+
+  // Spread `kcal` over the next DAYS non-Friday days after `date`, respecting room left above FLOOR.
+  function spreadFrom(date, kcal, days, sourceDate) {
+    const out = [];
+    let d = date;
+    while (out.length < DAYS) {
+      d = addDays(d, 1);
+      if (isFriday(d)) continue;
+      const doc = (days || {})[d];
+      const already = existingCut(doc) - Math.min(0, Number(doc && doc.budgetAdj && doc.budgetAdj[sourceDate]) || 0);
+      out.push({ date: d, room: Math.max(0, MAX_CUT + already) });
+    }
+    let left = Math.max(0, round10(kcal));
+    const even = round10(left / DAYS);
+    out.forEach((day, i) => {
+      const want = i === DAYS - 1 ? left : Math.min(left, even);
+      day.cut = Math.min(day.room, want);
+      left -= day.cut;
+    });
+    // second pass: push anything a full day could not take onto days with room
+    out.forEach(day => { const more = Math.min(day.room - day.cut, left); day.cut += more; left -= more; });
+    const list = out.filter(d => d.cut > 0).map(d => ({ date: d.date, cut: d.cut, target: TARGET - (MAX_CUT - d.room) - d.cut }));
+    return { days: list, covered: list.reduce((s, d) => s + d.cut, 0) };
+  }
+
+  function plan(date, days) {
+    days = days || {};
+    const doc = days[date];
+    const eaten = eatenKcal(doc);
+    const target = targetFor(date, days);
+    const surplus = Math.round(eaten - target);
+    const base = { date, eaten, target, surplus, options: null, recommended: null };
+    if (doc && doc.recovery && doc.recovery.choice) return { ...base, reason: "handled", choice: doc.recovery.choice, text: handledText(doc.recovery) };
+    if (surplus <= IGNORE) return { ...base, reason: surplus > 0 ? "small" : "under", text: "" };
+    if (isFriday(date)) return { ...base, reason: "friday", text: "Friday is a free day. Nothing to make up, and Saturday stays at 2,000." };
+
+    const spread = spreadFrom(date, surplus, days, date);
+    spread.letGo = Math.max(0, surplus - spread.covered);
+    const walkRest = Math.max(0, surplus - WALK.credit);
+    const walkSpread = walkRest > IGNORE / 2 ? spreadFrom(date, walkRest, days, date) : { days: [], covered: 0 };
+    const walk = { ...WALK, days: walkSpread.days, covered: walkSpread.covered, letGo: Math.max(0, walkRest - walkSpread.covered) };
+    const recommended = surplus <= WALK.kcal[1] ? "walk" : "spread";
+    return { ...base, reason: "recover", options: { spread, walk }, recommended,
+      text: `${fmt(surplus)} kcal over ${fmt(target)}. No need to starve tomorrow: pick one.` };
+  }
+
+  function handledText(r) {
+    if (r.choice === "spread") return "Spread over the next days.";
+    if (r.choice === "walk") return "Extra 30-min walk planned.";
+    return "Let it go. Weekly average is what counts.";
+  }
+
+  function apply(p, choice, at) {
+    if (!p || p.reason !== "recover") return [];
+    const stamp = at || new Date().toISOString();
+    const opt = choice === "spread" ? p.options.spread : choice === "walk" ? p.options.walk : null;
+    const writes = [{ date: p.date, patch: { recovery: { choice: opt ? choice : "skip", surplus: p.surplus, at: stamp } } }];
+    if (opt) opt.days.forEach(d => writes.push({ date: d.date, patch: { budgetAdj: { [p.date]: -d.cut } } }));
+    return writes;
+  }
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const day = d => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+  const list = ds => ds.map(d => `${day(d.date)} ${fmt(d.target)} (−${d.cut})`).join(", ");
+
+  function cardHtml(p) {
+    if (!p || p.reason !== "recover") return "";
+    const { spread, walk } = p.options;
+    const spreadLine = `Next ${spread.days.length} days: ${list(spread.days)}.` + (spread.letGo ? ` The last ${fmt(spread.letGo)} kcal is let go.` : "");
+    const walkLine = `One extra 30-min brisk walk, today or tomorrow (~${walk.kcal[0]}–${walk.kcal[1]} kcal).` +
+      (walk.days.length ? ` Plus ${list(walk.days)}.` : "") + (walk.letGo ? ` The last ${fmt(walk.letGo)} kcal is let go.` : "");
+    const opt = (key, title, body) => `<div class="br-opt${p.recommended === key ? " rec" : ""}"><b>${title}${p.recommended === key ? ' <span class="br-tag">Suggested</span>' : ""}</b><p>${esc(body)}</p>` +
+      `<button class="br-btn" data-recover="${key}" data-recover-date="${p.date}">${key === "walk" ? "I'll walk" : "Spread it"}</button></div>`;
+    return `<div class="card br-card"><h3>Went over today?</h3><p class="br-sum">${esc(p.text)}</p>` +
+      opt("walk", "Walk it off", walkLine) + opt("spread", "Spread it", spreadLine) +
+      `<p class="br-note">Cuts come from carbs or fat. Protein stays at 160 g+. No day goes below ${fmt(FLOOR)}, and Fridays are never touched.</p>` +
+      `<button class="br-btn ghost" data-recover="skip" data-recover-date="${p.date}">Let it go</button></div>`;
+  }
+
+  const css = `
+.br-card{border-left:4px solid var(--warn)}
+.br-sum{margin:0 0 10px}
+.br-opt{border:1px solid var(--line);border-radius:var(--r,12px);padding:10px 12px;margin:0 0 8px;background:var(--sunk)}
+.br-opt.rec{border-color:var(--accent)}
+.br-opt p{margin:4px 0 8px;color:var(--muted)}
+.br-tag{font:600 .7em var(--mono);color:var(--accent);margin-left:6px;text-transform:uppercase}
+.br-note{color:var(--muted);font-size:.85em;margin:4px 0 10px}
+.br-btn{min-height:44px;padding:0 16px;border-radius:calc(var(--r,12px)*.6);border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:600;cursor:pointer}
+.br-btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+`;
+
+  return { css, TARGET, FLOOR, WALK, eatenKcal, targetFor, plan, apply, cardHtml };
+})();
+
+if (typeof module !== "undefined") module.exports = { BudgetRecovery };
+
+window.BudgetRecovery=BudgetRecovery;
+</script>
+<script>
+/* Daily score and streak for the Aziz Cut Tracker.
+ * Plain JS, no imports, no network. Reads the app's own collections:
+ *   docs = { days: {date: {food:[{kcal,p,eaten}], water, waterh:{ml}, supps:{creatine,omega,d3,mag}, treadmill, sleep}},
+ *            workouts: {date: {session, sets:{name:[{w,r}]}, treadmill}} }
+ * One score out of 100 per day, from six parts:
+ *   Protein 25 (≥160 g eaten, partial from 120 g) · Calories 20 (1,850–2,150 eaten, partial to ±300; Friday free day skipped)
+ *   Water 15 (3.5 L training days, 3 L otherwise) · Training 15 (sets logged 10 + treadmill 5; rest days and Fridays full marks)
+ *   Supplements 10 (2.5 each) · Sleep 15 (≥7 h, partial from 5 h)
+ * Sleep is optional: the app has no sleep input yet, so until days/{date}.sleep (hours slept the night before) is set,
+ * that part is left out and the score is scaled from the other parts. Everything else counts as 0 when not logged.
+ * A good day scores 80 or more with no part at zero (so skipping a lift or all supplements can't still pass). The streak counts good days in a row; today only joins once it reaches 80,
+ * so an unfinished today never breaks it.
+ * API:
+ *   DailyScore.css                                -> string, inject once (uses the app's tokens)
+ *   DailyScore.score(docs, date, {session})       -> {date, score, good, logged, parts:[{key,label,got,max,ok,detail}]}
+ *   DailyScore.streak(docs, today, {sessionFor})  -> {current, best, todayGood, last7:[{date,score,good}]}
+ *   DailyScore.html(docs, date, {today, sessionFor}) -> HTML string for a card on the Today tab
+ * session / sessionFor(date) is the planned session name (the app's sessionFor(d).session) so a rotation Rest day
+ * without a workout doc still counts as rest. Without it, workouts/{date}.session is used.
+ */
+const DailyScore = (() => {
+  const START = "2026-10-25", GOOD = 80;
+  const PRO = 160, PRO_FLOOR = 120, KCAL_LO = 1850, KCAL_HI = 2150, KCAL_SLACK = 300;
+  const WATER_TRAIN = 3500, WATER_REST = 3000, SLEEP_OK = 7, SLEEP_FLOOR = 5;
+  const SUPPS = ["creatine", "omega", "d3", "mag"];
+  const DAY = 864e5, WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  const ms = s => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  const add = (s, n) => iso(ms(s) + n * DAY);
+  const wday = s => new Date(ms(s)).getUTCDay();
+  const localToday = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const num = v => { const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v; return typeof n === "number" && isFinite(n) ? n : null; };
+  const clamp01 = x => Math.max(0, Math.min(1, x));
+  const ramp = (v, lo, hi) => clamp01((v - lo) / (hi - lo));
+  const fint = n => Math.round(n).toLocaleString("en-US");
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function score(docs, date, opts = {}) {
+    const day = (docs.days && docs.days[date]) || {};
+    const wk = (docs.workouts && docs.workouts[date]) || {};
+    const food = (day.food || []).filter(i => i && i.eaten);
+    const kcal = food.reduce((s, i) => s + (num(i.kcal) || 0), 0);
+    const p = food.reduce((s, i) => s + (num(i.p) || 0), 0);
+    const friday = wday(date) === 5;
+    const session = opts.session || wk.session || null;
+    const training = !friday && session !== "Rest";
+    const water = (num(day.water) || 0) + ((day.waterh && num(day.waterh.ml)) || 0);
+    const waterGoal = training ? WATER_TRAIN : WATER_REST;
+    const lifted = Object.values(wk.sets || {}).some(a => (a || []).some(x => x && (num(x.w) || num(x.r))));
+    const tread = !!(day.treadmill || wk.treadmill);
+    const supps = SUPPS.filter(k => day.supps && day.supps[k]).length;
+    const sleep = num(day.sleep);
+    const parts = [];
+    const part = (key, label, max, frac, detail) => parts.push({ key, label, max, got: Math.round(max * frac * 10) / 10, ok: frac >= 1, detail });
+
+    part("protein", "Protein", 25, food.length ? ramp(p, PRO_FLOOR, PRO) : 0, food.length ? Math.round(p) + " / " + PRO + " g" : "No food ticked as eaten");
+    if (!friday) {
+      const off = kcal < KCAL_LO ? KCAL_LO - kcal : kcal > KCAL_HI ? kcal - KCAL_HI : 0;
+      part("kcal", "Calories", 20, food.length ? clamp01(1 - off / KCAL_SLACK) : 0, food.length ? fint(kcal) + " kcal (1,850–2,150)" : "No food ticked as eaten");
+    }
+    part("water", "Water", 15, clamp01(water / waterGoal), (water / 1000).toFixed(1) + " / " + waterGoal / 1000 + " L");
+    if (training) part("training", "Training + treadmill", 15, (lifted ? 10 : 0) / 15 + (tread ? 5 : 0) / 15,
+      (lifted ? "Lifted" : "No sets logged") + " · " + (tread ? "treadmill done" : "no treadmill"));
+    else part("training", "Training", 15, 1, friday ? "Friday free day" : "Rest day");
+    part("supps", "Supplements", 10, supps / SUPPS.length, supps + " of " + SUPPS.length);
+    if (sleep != null) part("sleep", "Sleep", 15, ramp(sleep, SLEEP_FLOOR, SLEEP_OK), sleep + " h (7+)");
+
+    const got = parts.reduce((s, x) => s + x.got, 0), max = parts.reduce((s, x) => s + x.max, 0);
+    const pct = max ? Math.round(got / max * 100) : 0;
+    const logged = food.length > 0 || water > 0 || lifted || tread || supps > 0 || sleep != null;
+    return { date, score: logged ? pct : 0, good: logged && pct >= GOOD && parts.every(x => x.got > 0), logged, sleepLogged: sleep != null, parts };
+  }
+
+  function streak(docs, today, opts = {}) {
+    today = today || localToday();
+    const sc = d => score(docs, d, { session: opts.sessionFor ? opts.sessionFor(d) : undefined });
+    const todayGood = today >= START && sc(today).good;
+    let current = 0;
+    for (let d = todayGood ? today : add(today, -1); d >= START && sc(d).good; d = add(d, -1)) current++;
+    let best = 0, run = 0;
+    for (let d = START; d <= today; d = add(d, 1)) { if (sc(d).good) best = Math.max(best, ++run); else run = 0; }
+    const last7 = [];
+    for (let i = 6; i >= 0; i--) { const d = add(today, -i); const s = sc(d); last7.push({ date: d, score: s.score, good: s.good, logged: s.logged, future: d < START }); }
+    return { current, best, todayGood, last7 };
+  }
+
+  function html(docs, date, opts = {}) {
+    const today = opts.today || localToday();
+    const s = score(docs, date, { session: opts.sessionFor ? opts.sessionFor(date) : undefined });
+    const st = streak(docs, date < today ? date : today, opts);
+    const tone = s.good ? "good" : s.score >= 60 ? "warn" : "bad";
+    const ring = (() => {
+      const r = 34, c = 2 * Math.PI * r, f = s.score / 100;
+      return '<svg class="ds-ring" viewBox="0 0 80 80" role="img" aria-label="Daily score ' + s.score + ' out of 100">' +
+        '<circle cx="40" cy="40" r="' + r + '" class="ds-track"/>' +
+        '<circle cx="40" cy="40" r="' + r + '" class="ds-fill ds-' + tone + '" stroke-dasharray="' + (c * f).toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90 40 40)"/>' +
+        '<text x="40" y="46" text-anchor="middle" class="ds-num">' + s.score + '</text></svg>';
+    })();
+    const rows = s.parts.map(x => '<li class="' + (x.ok ? "ok" : "") + '"><span class="ds-lab">' + esc(x.label) + '</span><span class="ds-det">' + esc(x.detail) + '</span><span class="ds-pts">' + (Math.round(x.got * 10) / 10) + '<small>/' + x.max + '</small></span></li>').join("");
+    const dots = st.last7.filter(d => !d.future).map(d => '<span class="ds-dot' + (d.good ? " good" : d.logged ? " part" : "") + '" title="' + d.date + ": " + (d.future ? "before the plan" : d.score) + '">' + WD[wday(d.date)][0] + '</span>').join("");
+    const streakLine = st.current
+      ? st.current + (st.current === 1 ? " good day" : " good days in a row") + (st.todayGood || date < today ? "" : ". Hit 80 today to make it " + (st.current + 1) + ".")
+      : (date === today ? "Hit 80 today to start a streak." : "No streak on this day.");
+    return '<div class="card ds-card"><div class="spread"><h3>Daily score</h3><span class="muted ds-small">Good day = 80+, nothing skipped</span></div>' +
+      '<div class="ds-top">' + ring + '<div><p class="ds-streak"><b>' + streakLine + '</b></p><p class="muted ds-small">Best streak ' + st.best + ' · last 7 days</p><div class="ds-dots">' + dots + '</div></div></div>' +
+      '<ul class="ds-parts">' + rows + '</ul>' +
+      (date === today && !s.good ? '<p class="muted ds-small">So far today. Food counts once it’s ticked as eaten.</p>' : "") +
+      (s.sleepLogged ? "" : '<p class="muted ds-small">Sleep isn’t logged, so the score is out of the other parts.</p>') + '</div>';
+  }
+
+  const css = `
+.ds-card .ds-top{display:flex;gap:16px;align-items:center;margin:8px 0}
+.ds-ring{width:84px;height:84px;flex:none}
+.ds-track{fill:none;stroke:var(--sunk);stroke-width:8}
+.ds-fill{fill:none;stroke-width:8;stroke-linecap:round;transition:stroke-dasharray .6s}
+.ds-fill.ds-good{stroke:var(--good)}.ds-fill.ds-warn{stroke:var(--warn)}.ds-fill.ds-bad{stroke:var(--bad)}
+.ds-num{font-family:var(--display);font-size:24px;font-weight:700;fill:var(--ink)}
+.ds-streak{margin:0}.ds-small{font-size:.82rem}
+.ds-dots{display:flex;gap:6px;margin-top:6px}
+.ds-dot{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:.7rem;font-family:var(--mono);background:var(--sunk);color:var(--muted)}
+.ds-dot.part{background:color-mix(in srgb,var(--warn) 30%,var(--sunk));color:var(--ink)}
+.ds-dot.good{background:var(--good);color:var(--surface)}
+.ds-parts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.ds-parts li{display:grid;grid-template-columns:7.5rem 1fr auto;gap:8px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line);font-size:.9rem}
+.ds-lab{font-weight:600}.ds-det{color:var(--muted);font-size:.84rem}
+.ds-pts{font-family:var(--mono);color:var(--muted)}.ds-parts li.ok .ds-pts{color:var(--good)}
+@media (max-width:420px){.ds-parts li{grid-template-columns:1fr auto}.ds-det{grid-column:1/-1;grid-row:2}}
+`;
+
+  return { score, streak, html, css, GOOD, START };
+})();
+if (typeof module !== "undefined") module.exports = DailyScore;
+
+window.DailyScore=DailyScore;
+</script>
+<script>
+/* Goal date to 80 kg for the Aziz Cut Tracker.
+ * Plain JS, no imports, no network. Reads the app's weights collection:
+ *   weights = { "YYYY-MM-DD": {date, kg} }  (an array of {date, kg} works too)
+ * API:
+ *   GoalDate.css                               -> string, inject once (uses the app's tokens)
+ *   GoalDate.trend(weights, {alpha})           -> [{date, kg, trend}] smoothed weight (EWMA, gap-aware)
+ *   GoalDate.project(weights, {today, trend})  -> projection object (see below)
+ *   GoalDate.html(weights, {today, trend})     -> card body HTML for the Progress tab
+ *   GoalDate.compact(weights, {today, trend})  -> one-line HTML for the Today tab
+ * opts.trend: optional series from the trend weight module, TrendTDEE.series(weights, {today}) -> [{date, kg, trend}].
+ *   When given it is used as is, so both features show the same trend line. Without it the same
+ *   smoothing is computed here (daily interpolation + EWMA 0.1). The weekly rate is always a
+ *   least-squares slope on raw weigh-ins over the last 28 days, needing 5+ weigh-ins across 14+ days.
+ * project() returns
+ *   {status, today, current, start, goal, ratePerWeek, goalDate, range:{early, late}, daysLeft,
+ *    weeksLeft, pctDone, milestones:[{kg, reachedOn, eta}], note}
+ *   status: "empty" | "plan" (too little data, dates use the 0.5–0.8 kg/wk plan pace)
+ *           | "trend" (dates from the trend slope) | "stalled" (trend not going down) | "reached"
+ */
+const GoalDate = (() => {
+  const START = "2026-10-25", START_KG = 91.9, GOAL = 80, MILESTONES = [90, 85, 80];
+  const ALPHA = 0.1, WINDOW = 28, MIN_SPAN = 14, MIN_POINTS = 5;
+  const PLAN_FAST = 0.8, PLAN_SLOW = 0.5, WATER_FAST = 1.2, STALL = 0.1, RECENT = 14;
+  const DAY = 864e5, WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  const ms = d => Date.parse(d + "T00:00:00Z");
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  const add = (d, n) => iso(ms(d) + Math.round(n) * DAY);
+  const days = (a, b) => Math.round((ms(b) - ms(a)) / DAY);
+  const r1 = n => Math.round(n * 10) / 10;
+  const todayIso = () => { const n = new Date(); return iso(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate())); };
+  // Dates show the year only when it differs from the year of `ref` (today).
+  const yr = (d, ref) => (d.slice(0, 4) !== String(ref || "").slice(0, 4) ? ", " + d.slice(0, 4) : "");
+  const fmt = (d, ref) => { const t = new Date(ms(d)); return WD[t.getUTCDay()] + ", " + MON[t.getUTCMonth()] + " " + t.getUTCDate() + yr(d, ref); };
+  const fmtShort = (d, ref) => { const t = new Date(ms(d)); return MON[t.getUTCMonth()] + " " + t.getUTCDate() + yr(d, ref); };
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function clean(weights) {
+    const list = Array.isArray(weights) ? weights : Object.values(weights || {});
+    return list.filter(w => w && /^\d{4}-\d{2}-\d{2}$/.test(w.date) && +w.kg > 30 && +w.kg < 250)
+      .map(w => ({ date: w.date, kg: +w.kg })).sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  // Same smoothing as TrendTDEE.series: one point per calendar day, gaps filled by linear interpolation
+  // between weigh-ins, then an EWMA (alpha 0.1) seeded at the first weigh-in. kg is null on filled days.
+  function trend(weights, opts = {}) {
+    const a = opts.alpha || ALPHA, ws = clean(weights), out = [];
+    let t = null;
+    for (let i = 0; i < ws.length; i++) {
+      const w = ws[i], next = ws[i + 1];
+      const gap = next ? days(w.date, next.date) : 1;
+      for (let d = 0; d < gap; d++) {
+        const v = w.kg + (next ? (next.kg - w.kg) * d / gap : 0);
+        t = t == null ? v : t + a * (v - t);
+        out.push({ date: add(w.date, d), kg: d ? null : w.kg, trend: Math.round(t * 100) / 100 });
+      }
+    }
+    return out;
+  }
+
+  function fromExternal(series) {
+    return (series || []).map(p => ({ date: p.date, kg: p.kg ?? null, trend: +(p.trend ?? p.kg) }))
+      .filter(p => p.date && isFinite(p.trend)).sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  // Least-squares slope (kg/day) and its standard error over points [{x: day number, y: kg}].
+  function fit(pts) {
+    const n = pts.length, mx = pts.reduce((s, p) => s + p.x, 0) / n, my = pts.reduce((s, p) => s + p.y, 0) / n;
+    let sxx = 0, sxy = 0;
+    for (const p of pts) { sxx += (p.x - mx) ** 2; sxy += (p.x - mx) * (p.y - my); }
+    const b = sxx ? sxy / sxx : 0, a = my - b * mx;
+    const rss = pts.reduce((s, p) => s + (p.y - a - b * p.x) ** 2, 0);
+    const se = n > 2 && sxx ? Math.sqrt(rss / (n - 2) / sxx) : 0;
+    return { a, b, se };
+  }
+
+  function project(weights, opts = {}) {
+    const today = opts.today || todayIso(), goal = opts.goal || GOAL;
+    const raw = clean(weights).filter(w => w.date <= today);
+    const series = (opts.trend ? fromExternal(opts.trend) : trend(raw)).filter(p => p.date <= today);
+    const base = { today, goal, start: START_KG, milestones: [], range: { early: null, late: null } };
+    if (!series.length) {
+      return Object.assign(base, { status: "empty", current: null, ratePerWeek: null, goalDate: null, daysLeft: null, weeksLeft: null, pctDone: 0,
+        note: "Log a morning weigh-in to get your goal date." });
+    }
+    // Anchor on the last real weigh-in: a series padded to today holds the trend flat after it.
+    const last = series.filter(p => p.kg != null).pop() || series[series.length - 1], current = last.trend;
+    const pctDone = Math.max(0, Math.min(100, (START_KG - current) / (START_KG - goal) * 100));
+    const reachedOn = kg => { const p = series.find(s => s.trend <= kg); return p ? p.date : null; };
+    const ms_ = (kg, eta) => ({ kg, reachedOn: reachedOn(kg), eta: reachedOn(kg) ? null : eta(kg) });
+    const marks = MILESTONES.filter(k => k >= goal);
+
+    if (current <= goal) {
+      return Object.assign(base, { status: "reached", current, ratePerWeek: null, goalDate: reachedOn(goal), daysLeft: 0, weeksLeft: 0, pctDone: 100,
+        milestones: marks.map(k => ms_(k, () => null)), note: "You reached " + goal + " kg. Time to plan maintenance." });
+    }
+
+    // Rate is a least-squares slope on the raw weigh-ins of the last 28 days (as TrendTDEE does): the EWMA lags.
+    const from = add(last.date, -(WINDOW - 1));
+    const win = raw.filter(w => w.date >= from && w.date <= last.date);
+    const span = win.length ? days(win[0].date, last.date) : 0;
+    const left = current - goal;
+    // The trend's own date is the anchor: projections count forward from the last weigh-in, not from today.
+    const at = (rate, kg) => add(last.date, (current - kg) / rate * 7);
+
+    if (win.length < MIN_POINTS || span < MIN_SPAN) {
+      const eta = kg => at((PLAN_FAST + PLAN_SLOW) / 2, kg);
+      return Object.assign(base, {
+        status: "plan", current, ratePerWeek: null, pctDone,
+        goalDate: eta(goal), range: { early: at(PLAN_FAST, goal), late: at(PLAN_SLOW, goal) },
+        daysLeft: days(today, eta(goal)), weeksLeft: r1(left / ((PLAN_FAST + PLAN_SLOW) / 2)),
+        milestones: marks.map(k => ms_(k, eta)),
+        note: "Based on the plan pace of " + PLAN_SLOW + "–" + PLAN_FAST + " kg a week. Your own trend takes over once you have " +
+          MIN_POINTS + "+ weigh-ins across 2 weeks (" + (win.length >= MIN_POINTS ? "from " : "earliest ") + fmtShort(add(win.length ? win[0].date : last.date, MIN_SPAN), today) + ").",
+      });
+    }
+
+    const f = fit(win.map(w => ({ x: days(START, w.date), y: w.kg })));
+    const rate = -f.b * 7;
+    const recent = win.filter(w => w.date >= add(last.date, -(RECENT - 1)));
+    const recentRate = recent.length >= 4 ? -fit(recent.map(w => ({ x: days(START, w.date), y: w.kg }))).b * 7 : rate;
+    if (rate < STALL || recentRate < STALL) {
+      return Object.assign(base, { status: "stalled", current, ratePerWeek: r1(Math.min(rate, recentRate)) || 0, goalDate: null, daysLeft: null, weeksLeft: null, pctDone,
+        milestones: marks.map(k => ms_(k, () => null)),
+        note: "Your weight has not gone down over the last " + (rate < STALL ? Math.round(span / 7) : 2) + " weeks, so there's no date to show. Check the weekly report before changing calories." });
+    }
+    const fast = -(f.b - f.se) * 7, slow = -(f.b + f.se) * 7;
+    const eta = kg => at(rate, kg);
+    const note = rate > WATER_FAST && days(START, last.date) < 28
+      ? "Early weeks include water loss, so this date will likely move later as the trend settles."
+      : rate < PLAN_SLOW ? "Slower than the " + PLAN_SLOW + "–" + PLAN_FAST + " kg a week plan." : rate > PLAN_FAST ? "Faster than the " + PLAN_SLOW + "–" + PLAN_FAST + " kg a week plan." : "On the plan pace of " + PLAN_SLOW + "–" + PLAN_FAST + " kg a week.";
+    return Object.assign(base, {
+      status: "trend", current, ratePerWeek: r1(rate), pctDone,
+      goalDate: eta(goal), range: { early: at(fast, goal), late: slow > 0.05 ? at(slow, goal) : null },
+      daysLeft: days(today, eta(goal)), weeksLeft: r1(left / rate),
+      milestones: marks.map(k => ms_(k, eta)), note,
+    });
+  }
+
+  function rangeText(p) {
+    const { early, late } = p.range;
+    if (!early || early === late) return "";
+    if (!late) return "earliest " + fmtShort(early, p.today);
+    const sameYear = early.slice(0, 4) === late.slice(0, 4);
+    return (sameYear ? fmtShort(early, late) : fmtShort(early, p.today)) + " – " + fmtShort(late, p.today);
+  }
+
+  function html(weights, opts = {}) {
+    const p = project(weights, opts);
+    if (p.status === "empty") return '<div class="gd"><p class="gd-sub">' + esc(p.note) + "</p></div>";
+    const head = p.status === "reached"
+      ? '<div class="gd-big">' + esc(p.goal) + " kg reached</div><div class=\"gd-sub\">" + (p.goalDate ? "On " + esc(fmt(p.goalDate, p.today)) : "") + "</div>"
+      : p.status === "stalled"
+        ? '<div class="gd-big">No date yet</div><div class="gd-sub">Trend ' + esc(r1(p.current)) + " kg, not going down</div>"
+        : '<div class="gd-big">' + esc(fmt(p.goalDate, p.today)) + '</div><div class="gd-sub">' +
+          (p.status === "plan" ? "Plan estimate" : "At " + esc(p.ratePerWeek) + " kg a week") + " · " + esc(p.weeksLeft) + " weeks to go" +
+          (rangeText(p) ? " · likely " + esc(rangeText(p)) : "") + "</div>";
+    const bar = '<div class="gd-bar" role="img" aria-label="' + Math.round(p.pctDone) + '% of the way from ' + START_KG + " to " + p.goal + ' kg"><i style="width:' + p.pctDone.toFixed(1) + '%"></i>' +
+      p.milestones.map(m => '<b class="' + (m.reachedOn ? "on" : "") + '" style="left:' + ((START_KG - m.kg) / (START_KG - p.goal) * 100).toFixed(1) + '%"></b>').join("") + "</div>" +
+      '<div class="gd-ends"><span>' + START_KG + " kg</span><span>Trend " + r1(p.current) + " kg</span><span>" + p.goal + " kg</span></div>";
+    const list = '<ul class="gd-ms">' + p.milestones.map(m => "<li" + (m.reachedOn ? ' class="on"' : "") + "><b>" + m.kg + " kg</b><span>" +
+      (m.reachedOn ? "Reached " + esc(fmtShort(m.reachedOn, p.today)) : m.eta ? esc(fmt(m.eta, p.today)) : "–") + "</span></li>").join("") + "</ul>";
+    return '<div class="gd">' + head + bar + list + '<p class="gd-note">' + esc(p.note) + "</p></div>";
+  }
+
+  function compact(weights, opts = {}) {
+    const p = project(weights, opts);
+    if (p.status === "empty") return "";
+    const next = p.milestones.find(m => !m.reachedOn && m.eta && m.kg !== p.goal);
+    const txt = p.status === "reached" ? "You reached " + p.goal + " kg."
+      : p.status === "stalled" ? "Trend " + r1(p.current) + " kg and flat, no goal date yet."
+        : p.goal + " kg around <b>" + esc(fmtShort(p.goalDate, p.today)) + "</b>" + (p.status === "plan" ? " (plan pace)" : "") +
+          (next ? " · " + next.kg + " kg by " + esc(fmtShort(next.eta, p.today)) : "");
+    return '<div class="gd-line">' + txt + "</div>";
+  }
+
+  const css = [
+    ".gd{display:flex;flex-direction:column;gap:10px}",
+    ".gd-big{font-family:var(--display);font-size:1.8rem;font-weight:700;line-height:1.05}",
+    ".gd-sub,.gd-note,.gd-ends{font-size:.85rem;color:var(--muted)}.gd-note{margin:0}",
+    ".gd-bar{position:relative;height:10px;border-radius:999px;background:var(--sunk);margin-top:4px}",
+    ".gd-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:inherit;background:var(--accent);transition:width .4s}",
+    ".gd-bar b{position:absolute;top:-3px;width:4px;height:16px;margin-left:-2px;border-radius:2px;background:var(--line)}.gd-bar b.on{background:var(--good)}",
+    ".gd-ends{display:flex;justify-content:space-between}",
+    ".gd-ms{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}",
+    ".gd-ms li{border:1px solid var(--line);border-radius:var(--r,10px);padding:6px 8px;display:flex;flex-direction:column;gap:2px}",
+    ".gd-ms li span{font-size:.8rem;color:var(--muted)}.gd-ms li.on{border-color:var(--good)}.gd-ms li.on b{color:var(--good)}",
+    ".gd-line{font-size:.92rem;color:var(--muted)}.gd-line b{color:var(--ink)}",
+  ].join("\n");
+
+  return { css, trend, project, html, compact, START, START_KG, GOAL, MILESTONES };
+})();
+
+if (typeof module !== "undefined" && module.exports) module.exports = GoalDate;
+
+window.GoalDate=GoalDate;
+</script>
+<script>
+window.Steps=(function(){
+// Daily steps: parses what the phone hands over (a typed number or a Health
+// Connect / Google Fit CSV), folds it into a `days/{date}` doc, and renders
+// the "Steps" goal card for the Today tab. Plain ES module, no dependencies,
+// no network.
+//
+// A Claude Artifact can't read Health Connect, so the phone hands the number
+// over: type today's count from the phone's step widget, or export a CSV with
+// a Health Connect exporter (e.g. "Health Data Export" on Play) for back-fill.
+//
+// Accepted input (one paste or one file):
+//   8432 / 8,432 / 8.4k             <- a bare number = today
+//   STEPS 2026-10-25 8432           <- one line per day (latest line wins)
+//   CSV, daily:   Date,Steps        (also Google Fit "Step count")
+//   CSV, records: start_time,end_time,count[,data_origin]
+//   CSV, long:    time,type,value   (only rows whose type is steps)
+// Health Connect record exports list the phone and a watch separately, so
+// records are summed per source and the day takes the biggest source, never
+// phone + watch added together.
+//
+// Day doc field this module owns:
+//   steps: { count, at (ISO of last change), source: "manual"|"csv"|"line" }
+// Goal lives in prefs/main.stepGoal (default DEFAULT_GOAL).
+
+const DEFAULT_GOAL = 10000;
+const MAX_DAY = 100000; // anything above is a bad row, not a day
+
+function localISODate(d) {
+  const z = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+}
+
+// "8432", "8,432", "8 432", "8.4k" -> 8432 / 8400. Null if not a count.
+function toCount(s) {
+  s = String(s == null ? "" : s).trim().toLowerCase().replace(/^"|"$/g, "");
+  let m = s.match(/^(\d+(?:[.,]\d+)?)\s*k$/);
+  if (m) return Math.round(parseFloat(m[1].replace(",", ".")) * 1000);
+  s = s.replace(/[\s,']/g, "");
+  if (/^\d+\.\d{3}$/.test(s)) s = s.replace(".", ""); // 8.432 = European thousands
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  return Math.round(parseFloat(s));
+}
+
+// The local calendar day a timestamp belongs to. A timestamp with a zone
+// (Z or +03:00) is converted to this device's day; a bare one is taken as written.
+function toDate(s) {
+  s = String(s || "").trim().replace(/^"|"$/g, "");
+  if (/^\d{10,13}$/.test(s)) return localISODate(new Date(+s * (s.length === 10 ? 1000 : 1)));
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/.test(s)) {
+    const d = new Date(s.replace(" ", "T").replace(/([+-]\d{2})(\d{2})$/, "$1:$2"));
+    if (!isNaN(d)) return localISODate(d);
+  }
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})/);
+  if (m) {
+    const a = +m[1], b = +m[2]; // month/day unless the first can't be a month
+    const [mo, da] = a > 12 ? [b, a] : [a, b];
+    return `${m[3]}-${String(mo).padStart(2, "0")}-${String(da).padStart(2, "0")}`;
+  }
+  return null;
+}
+
+function splitCsvLine(line, sep) {
+  const out = []; let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q; }
+    else if (c === sep && !q) { out.push(cur); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map(x => x.trim());
+}
+
+function parseLines(text, today) {
+  const rows = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    let m = line.match(/^STEPS\s+(\d{4}-\d{2}-\d{2})\s+(.+?)\s*(steps?)?$/i);
+    if (m) { const n = toCount(m[2]); if (n != null) rows.push({ date: m[1], steps: n, source: "line" }); continue; }
+    const n = toCount(line.replace(/\s*steps?$/i, ""));
+    if (n != null) rows.push({ date: today, steps: n, source: "manual" });
+  }
+  return rows; // each is a whole-day figure: the latest per day wins
+}
+
+function parseCsv(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const sep = [",", ";", "\t"].sort((a, b) => lines[0].split(b).length - lines[0].split(a).length)[0];
+  const head = splitCsvLine(lines[0], sep).map(h => h.toLowerCase().replace(/^"|"$/g, ""));
+  const find = re => head.findIndex(h => re.test(h));
+  const dateCol = [/^(start|start_?time|starttime|from)\b/, /^(date|day)\b/, /date|time|start/].map(find).find(i => i >= 0);
+  const typeCol = find(/^(type|data ?type|metric|record ?type)$/);
+  let countCol = find(/step/);
+  if (countCol === dateCol) countCol = -1;
+  if (countCol < 0) countCol = find(/^(count|value|amount|quantity|qty)\b/);
+  const originCol = find(/origin|source|package|app/);
+  if (dateCol == null || dateCol < 0 || countCol < 0) return [];
+  // day -> origin -> sum
+  const byDay = {};
+  for (const line of lines.slice(1)) {
+    const c = splitCsvLine(line, sep);
+    if (typeCol >= 0 && !/step/i.test(c[typeCol] || "")) continue;
+    const date = toDate(c[dateCol]), n = toCount(c[countCol]);
+    if (!date || n == null) continue;
+    const o = originCol >= 0 ? (c[originCol] || "") : "";
+    const d = byDay[date] || (byDay[date] = {});
+    d[o] = (d[o] || 0) + n;
+  }
+  return Object.entries(byDay).map(([date, src]) => ({ date, steps: Math.max(...Object.values(src)), source: "csv" }));
+}
+
+// Returns [{date, steps, source}] sorted by date, one row per day.
+function parseSteps(text, now = new Date()) {
+  text = String(text || "").trim();
+  const first = text.split(/\r?\n/)[0] || "";
+  const isCsv = /[,;\t]/.test(first) && /[a-z]/i.test(first) && !/^STEPS\s/i.test(first);
+  const rows = isCsv ? parseCsv(text) : parseLines(text, localISODate(now));
+  const byDay = {};
+  for (const r of rows) if (r.steps >= 0 && r.steps <= MAX_DAY) byDay[r.date] = r;
+  return Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Count on a day doc. Accepts the object form or a bare number.
+function stepCount(day) {
+  const s = day && day.steps;
+  if (typeof s === "number") return s;
+  return s && s.count || 0;
+}
+
+// Sets the day's count (returns a new day doc). Importing a day again replaces
+// it, so syncing twice never double counts.
+function setSteps(day, count, source = "manual", now = new Date()) {
+  count = Math.max(0, Math.min(MAX_DAY, Math.round(+count || 0)));
+  return Object.assign({}, day, { steps: { count, at: now.toISOString(), source } });
+}
+
+function applySteps(day, row, now = new Date()) {
+  return setSteps(day, row.steps, row.source, now);
+}
+
+// Adds to the day's count (the +1,000 chips). Never goes below 0.
+function addSteps(day, delta, now = new Date()) {
+  return setSteps(day, stepCount(day) + (+delta || 0), "manual", now);
+}
+
+function stepGoal(prefs) {
+  const g = prefs && +prefs.stepGoal;
+  return g >= 1000 && g <= MAX_DAY ? Math.round(g) : DEFAULT_GOAL;
+}
+
+// Progress for the card: {count, goal, pct (0-100), left, hit}.
+function stepProgress(day, goal = DEFAULT_GOAL) {
+  const count = stepCount(day);
+  return { count, goal, pct: Math.min(100, Math.round(count / goal * 100)), left: Math.max(0, goal - count), hit: count >= goal };
+}
+
+// The 7 days ending on `date`: {avg (over days with a count), logged, hitDays}.
+// getDay(isoDate) -> day doc or undefined.
+function weekSteps(getDay, date, goal = DEFAULT_GOAL) {
+  const [y, m, d] = date.split("-").map(Number);
+  let sum = 0, logged = 0, hitDays = 0;
+  for (let i = 0; i < 7; i++) {
+    const n = stepCount(getDay(localISODate(new Date(y, m - 1, d - i))));
+    if (n > 0) { sum += n; logged++; if (n >= goal) hitDays++; }
+  }
+  return { avg: logged ? Math.round(sum / logged) : 0, logged, hitDays };
+}
+
+const fmtN = n => Math.round(n).toLocaleString("en-US");
+
+// The Today-tab card, in the app's own classes (.card .spread .row .bigk .num
+// .muted .bar .chip .btn). Wire these in the app's click/change handlers:
+//   data-act="stepsadd" data-n="1000"   -> addSteps
+//   data-act="stepsset"                 -> setSteps from #stepsInput
+//   data-act="stepsimport"              -> parseSteps(#stepsText) + applySteps per row
+//   #stepsFile (change)                 -> same, from the file's text
+//   data-act="stepsgoal"                -> prefs/main.stepGoal from #stepsGoalInput
+function stepsCardHTML(day, { goal = DEFAULT_GOAL, week = null } = {}) {
+  const p = stepProgress(day, goal);
+  const s = day && day.steps && typeof day.steps === "object" ? day.steps : null;
+  const status = p.hit ? `Goal hit, ${fmtN(p.count - goal)} over` : `${fmtN(p.left)} to go`;
+  const synced = s && s.at ? ` · ${s.source === "csv" ? "imported" : "updated"} ${new Date(s.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "";
+  const weekLine = week && week.logged ? `<p class="muted" style="font-size:.85rem">7-day average <span class="num">${fmtN(week.avg)}</span> · goal hit ${week.hitDays} of ${week.logged} logged days</p>` : "";
+  const field = "border:1px solid var(--line);background:var(--sunk);border-radius:8px;padding:6px 8px;font-family:var(--mono);font-size:.85rem;color:var(--ink)";
+  return `<div class="card steps-card">
+  <div class="spread"><h3>Steps</h3><span class="muted">Goal ${fmtN(goal)}</span></div>
+  <div class="row"><span class="bigk num">${fmtN(p.count)}</span><span class="muted">${status}</span></div>
+  <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.pct}" aria-label="Steps toward goal"><span style="width:${p.pct}%;--value:${p.pct}${p.hit ? ";background:var(--good)" : ""}"></span></div>
+  ${s ? `<p class="muted" style="font-size:.85rem">${s.source === "csv" ? "From Health Connect" : "Entered by hand"}${synced}</p>` : ""}
+  ${weekLine}
+  <div class="row"><button class="chip" data-act="stepsadd" data-n="1000">+1,000</button><button class="chip" data-act="stepsadd" data-n="2500">+2,500</button><button class="chip" data-act="stepsadd" data-n="-1000">−1,000</button></div>
+  <div class="row"><input id="stepsInput" type="number" inputmode="numeric" min="0" max="${MAX_DAY}" placeholder="Today's count" aria-label="Today's step count" style="width:9rem;${field}"><button class="btn small" data-act="stepsset">Set</button></div>
+  <details><summary>Import from Health Connect</summary>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+      <p class="muted" style="font-size:.85rem">Export Steps as CSV with a Health Connect exporter, then pick the file, or paste lines like <span class="num">STEPS 2026-10-25 8432</span>. Importing a day again replaces its count instead of adding to it.</p>
+      <textarea id="stepsText" rows="2" style="width:100%;${field}" placeholder="STEPS 2026-10-25 8432"></textarea>
+      <div class="row"><button class="btn small" data-act="stepsimport">Apply</button><label class="btn ghost small" style="cursor:pointer">Choose file<input type="file" id="stepsFile" accept=".csv,.txt" hidden></label></div>
+    </div>
+  </details>
+  <details><summary>Change goal</summary>
+    <div class="row" style="margin-top:8px"><input id="stepsGoalInput" type="number" inputmode="numeric" min="1000" max="${MAX_DAY}" step="500" value="${goal}" aria-label="Daily step goal" style="width:7rem;${field}"><button class="btn small ghost" data-act="stepsgoal">Save goal</button></div>
+  </details>
+  <p class="muted" style="font-size:.88rem">Your 30-minute treadmill walk after lifting covers roughly 3,000 to 4,000 of these. Steady daily steps keep the cut moving without eating into recovery.</p>
+</div>`;
+}
+
+return {DEFAULT_GOAL,localISODate,toCount,parseSteps,stepCount,setSteps,applySteps,addSteps,stepGoal,stepProgress,weekSteps,stepsCardHTML};
+})();
+</script>
+<script>
+/* Ramadan mode for the Aziz Cut Tracker.
+ * Plain JS, no imports, no network. Prayer times are computed on the device
+ * (sun position), so it works offline. Defaults are Kuwait City, UTC+3, no DST.
+ * API:
+ *   Ramadan.DEFAULTS                          -> config (copy and override any field)
+ *   Ramadan.dayOf(isoDate, cfg)               -> 1..30 during Ramadan, else 0
+ *   Ramadan.range(cfg)                        -> {start, end, eid} ISO dates
+ *   Ramadan.times(isoDate, cfg)               -> {imsak, fajr, sunrise, dhuhr, asr, maghrib, isha} as "HH:MM" (24 h)
+ *   Ramadan.plan(isoDate, {dayType, train, cfg}) -> the day's slots, water window and notes
+ *       dayType: "training" | "rest" | "saturday" | "friday" (same values the app's picker uses)
+ *       train:   "after-iftar" (default) | "before-iftar"
+ *   Ramadan.css                               -> string, inject once (uses the app's tokens)
+ *   Ramadan.html(isoDate, opts)               -> HTML card for the Today tab ("" outside Ramadan)
+ * Food stays 2 Nutreeze meals + 2 snacks + Adonis (+ Gatorade on training days) at 2,000 kcal;
+ * Ramadan only moves them. Each slot's `appSlot` is the Food tab slot name the item goes in.
+ */
+const Ramadan = (() => {
+  const DEFAULTS = {
+    // 1 Ramadan 1448 AH is expected on Mon 8 Feb 2027 (astronomical estimate).
+    // Kuwait confirms by moon sighting the night before; change `start` if it moves a day.
+    start: "2027-02-08",
+    days: 30,
+    lat: 29.3759, lon: 47.9774, tz: 3, // Kuwait City
+    fajrAngle: 18, ishaAngle: 17.5,    // Kuwait Ministry of Awqaf convention
+    imsakMin: 10,                       // stop eating this many minutes before Fajr
+    trainAfterIftarMin: 120,            // lift this long after Maghrib (time for Meal 1 to settle)
+    trainBeforeIftarMin: 75,            // fasted session starts this long before Maghrib
+    water: { training: 3500, rest: 3000 }, // ml, same targets as the hydration tracker
+  };
+
+  const RAD = Math.PI / 180;
+  const pad = (n) => String(n).padStart(2, "0");
+  const toUTC = (iso) => { const [y, m, d] = iso.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  const isoOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const addDays = (iso, n) => isoOf(toUTC(iso) + n * 864e5);
+  const hhmm = (min) => { const m = Math.round(((min % 1440) + 1440) % 1440); return pad(Math.floor(m / 60)) + ":" + pad(m % 60); };
+  const ampm = (s) => { let [h, m] = s.split(":").map(Number); const p = h >= 12 ? "pm" : "am"; h = h % 12 || 12; return h + ":" + pad(m) + " " + p; };
+  const conf = (cfg) => Object.assign({}, DEFAULTS, cfg || {}, { water: Object.assign({}, DEFAULTS.water, (cfg || {}).water) });
+
+  function range(cfg) {
+    const c = conf(cfg);
+    return { start: c.start, end: addDays(c.start, c.days - 1), eid: addDays(c.start, c.days) };
+  }
+
+  function dayOf(iso, cfg) {
+    const c = conf(cfg);
+    const n = Math.round((toUTC(iso) - toUTC(c.start)) / 864e5) + 1;
+    return n >= 1 && n <= c.days ? n : 0;
+  }
+
+  // Sun declination and equation of time (NOAA low-precision formulas, good to ~1 min).
+  function sun(iso) {
+    const jd = toUTC(iso) / 864e5 + 2440587.5 + 0.5; // local-ish noon
+    const T = (jd - 2451545) / 36525;
+    const L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360;
+    const M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+    const e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+    const C = Math.sin(M * RAD) * (1.914602 - T * (0.004817 + 0.000014 * T)) + Math.sin(2 * M * RAD) * (0.019993 - 0.000101 * T) + Math.sin(3 * M * RAD) * 0.000289;
+    const omega = 125.04 - 1934.136 * T;
+    const lambda = L0 + C - 0.00569 - 0.00478 * Math.sin(omega * RAD);
+    const eps = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60 + 0.00256 * Math.cos(omega * RAD);
+    const decl = Math.asin(Math.sin(eps * RAD) * Math.sin(lambda * RAD)) / RAD;
+    const y = Math.tan((eps / 2) * RAD) ** 2;
+    const eqt = 4 / RAD * (y * Math.sin(2 * L0 * RAD) - 2 * e * Math.sin(M * RAD) + 4 * e * y * Math.sin(M * RAD) * Math.cos(2 * L0 * RAD) - 0.5 * y * y * Math.sin(4 * L0 * RAD) - 1.25 * e * e * Math.sin(2 * M * RAD));
+    return { decl, eqt };
+  }
+
+  // Minutes after local midnight for each prayer.
+  function minutes(iso, cfg) {
+    const c = conf(cfg);
+    const { decl, eqt } = sun(iso);
+    const noon = 720 - 4 * c.lon - eqt + c.tz * 60;
+    const ha = (alt) => {
+      const cosH = (Math.sin(alt * RAD) - Math.sin(c.lat * RAD) * Math.sin(decl * RAD)) / (Math.cos(c.lat * RAD) * Math.cos(decl * RAD));
+      return Math.acos(Math.max(-1, Math.min(1, cosH))) / RAD * 4; // minutes
+    };
+    const asrAlt = Math.atan(1 / (1 + Math.tan(Math.abs(c.lat - decl) * RAD))) / RAD; // Shafi'i/standard
+    const fajr = noon - ha(-c.fajrAngle);
+    return {
+      imsak: fajr - c.imsakMin,
+      fajr,
+      sunrise: noon - ha(-0.833),
+      dhuhr: noon,
+      asr: noon + ha(asrAlt),
+      maghrib: noon + ha(-0.833),
+      isha: noon + ha(-c.ishaAngle),
+    };
+  }
+
+  function times(iso, cfg) {
+    const m = minutes(iso, cfg), out = {};
+    for (const k in m) out[k] = hhmm(m[k]);
+    return out;
+  }
+
+  // Sort clock times that cross midnight: anything before noon counts as "after midnight".
+  const order = (s) => { const [h, mm] = s.split(":").map(Number); const t = h * 60 + mm; return t < 720 ? t + 1440 : t; };
+
+  function plan(iso, opts) {
+    const o = opts || {};
+    const c = conf(o.cfg);
+    const day = dayOf(iso, c);
+    const dayType = o.dayType || "training";
+    const training = dayType === "training" || dayType === "saturday";
+    const train = o.train === "before-iftar" ? "before-iftar" : "after-iftar";
+    const m = minutes(iso, c);
+    // Suhoor is eaten before the next dawn, so use the next day's Fajr for it.
+    const next = minutes(addDays(iso, 1), c);
+    const night = { maghrib: m.maghrib, imsak: next.imsak + 1440, fajr: next.fajr + 1440 };
+
+    const slots = [];
+    const add = (t, id, label, items, appSlot, note) => slots.push({ time: hhmm(t), id, label, items, appSlot, note: note || "" });
+
+    if (training && train === "before-iftar") {
+      const start = m.maghrib - c.trainBeforeIftarMin;
+      add(start, "train", "Lift (fasted)", ["Shorter session: main lifts only, stop sets 2 reps short of failure", "Skip the treadmill here, walk after Taraweeh instead"], null,
+        "Keep it under an hour. If you feel dizzy, stop the session.");
+      add(m.maghrib, "iftar", "Iftar", ["3 dates + water", "Gatorade 1 L over the evening", "Meal 1 (the higher-carb meal)", "Adonis cookie dough"], "Meal 1",
+        "Post-workout meal: carbs and protein together.");
+      add(m.maghrib + 150, "evening", "Evening snack", ["Snack 1", "30 min treadmill or walk (optional)"], "Snack");
+    } else {
+      add(m.maghrib, "iftar", "Iftar", ["3 dates + water", "Meal 1 (lighter, lower-fat, higher-carb)", "Snack 1 (fruit if possible)"], "Meal 1",
+        training ? "Pray Maghrib, then eat. Keep it light so you can train in two hours." : "");
+      if (training) {
+        const start = m.maghrib + c.trainAfterIftarMin;
+        add(start, "train", "Lift + 30 min treadmill", ["Normal session from the rotation", "Gatorade 1 L during"], null,
+          "If you pray Taraweeh first, push this later. Two hours after iftar is the minimum.");
+        add(start + 120, "post", "After training", ["Adonis cookie dough", "Snack 2"], "Snack");
+      } else {
+        add(m.maghrib + 180, "evening", "Evening snack", ["Adonis cookie dough", "Snack 2"], "Snack");
+      }
+    }
+    if (training && train === "before-iftar") {
+      add(night.imsak - 50, "suhoor", "Suhoor", ["Meal 2 (the higher-protein, heavier meal)", "Snack 2 (nuts or Pro Mud Cake fit here)"], "Meal 2",
+        "Finish by " + ampm(hhmm(night.imsak)) + ".");
+    } else {
+      add(night.imsak - 50, "suhoor", "Suhoor", ["Meal 2 (the higher-protein, heavier meal)"], "Meal 2",
+        "Finish by " + ampm(hhmm(night.imsak)) + ". Protein and some fat here keep you full through the fast.");
+    }
+    slots.sort((a, b) => order(a.time) - order(b.time));
+
+    const target = training ? c.water.training : c.water.rest;
+    const water = waterPlanFor(m, night, target, training, train, c);
+
+    const supps = [
+      { time: hhmm(m.maghrib), name: "Creatine 5 g", note: "With iftar." },
+      { time: hhmm(night.imsak - 50), name: "Vitamin D3 + omega-3", note: "With suhoor (the meal with fat)." },
+      { time: hhmm(m.maghrib + 300), name: "Magnesium", note: "Before sleep." },
+    ];
+
+    const fastMin = m.maghrib - m.fajr;
+    const notes = [
+      "Calories stay at 2,000 and protein at 160–170 g. Ramadan moves the meals, it doesn't change the targets.",
+      "Expect the scale to bounce in week 1 from water and meal timing. Judge by the 7-day average.",
+    ];
+    if (dayType === "friday") notes.push("Friday is still the free day, but it's one iftar meal now, not a whole day of eating.");
+    if (training && train === "before-iftar") notes.push("Fasted training: drop a set per exercise if strength dips. Keeping the weight on the bar matters more than volume.");
+
+    return {
+      date: iso, day, isRamadan: day > 0, dayType, training, train,
+      times: times(iso, c), suhoorBy: hhmm(night.imsak),
+      fastHours: Math.round((fastMin / 60) * 10) / 10,
+      slots, water, supps, notes,
+    };
+  }
+
+  // Spread the target over the eating window: front-loaded after iftar, a bigger share
+  // at suhoor, little right before sleep.
+  function waterPlanFor(m, night, target, training, train, c) {
+    const gatorade = training ? 1000 : 0;
+    const plain = Math.max(0, target - gatorade);
+    const trainAt = train === "before-iftar" ? m.maghrib : m.maghrib + c.trainAfterIftarMin;
+    const afterIftar = training && train === "after-iftar";
+    const pts = [
+      [m.maghrib, 0.15, "Break the fast: water with dates. Sip, don't chug."],
+      [m.maghrib + 45, 0.15, "After Meal 1."],
+      [m.maghrib + 100, 0.15, afterIftar ? "Before the gym." : "Steady sips."],
+      [m.maghrib + 240, 0.15, afterIftar ? "After the gym, with Adonis." : "Evening."],
+      [m.maghrib + 300, 0.1, "Before sleep. A glass or two, not more."],
+      [night.imsak - 50, 0.3, "Suhoor: water with Meal 2. Spread it over the meal."],
+    ];
+    let left = plain;
+    const checkpoints = pts.map(([t, share, note], i) => {
+      const ml = i === pts.length - 1 ? left : Math.round((plain * share) / 50) * 50;
+      left -= ml;
+      return { time: hhmm(t), ml, note };
+    });
+    if (gatorade) {
+      checkpoints.push({
+        time: hhmm(trainAt), ml: gatorade,
+        note: train === "before-iftar" ? "Gatorade 1 L over the evening (you trained fasted, so refill here)." : "Gatorade 1 L during the workout, as usual.",
+      });
+      checkpoints.sort((a, b) => order(a.time) - order(b.time));
+    }
+    return {
+      from: hhmm(m.maghrib), to: hhmm(night.imsak), targetMl: target,
+      hours: Math.round(((night.imsak - m.maghrib) / 60) * 10) / 10,
+      checkpoints,
+    };
+  }
+
+  const css = `
+.rm-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r,14px);padding:16px}
+.rm-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.rm-head h2{margin:0;font-family:var(--display);font-size:1.15rem}
+.rm-day{font-family:var(--mono);color:var(--muted);font-size:.85rem}
+.rm-times{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.rm-times div{background:var(--sunk);border-radius:10px;padding:8px;text-align:center}
+.rm-times b{display:block;font-family:var(--mono);font-size:1.05rem;color:var(--ink)}
+.rm-times span{font-size:.75rem;color:var(--muted)}
+.rm-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.rm-list li{display:grid;grid-template-columns:5.2rem 1fr;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.rm-list time{font-family:var(--mono);color:var(--accent);font-size:.9rem}
+.rm-list strong{display:block}
+.rm-list small{color:var(--muted)}
+.rm-sub{margin:14px 0 6px;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.rm-note{color:var(--muted);font-size:.85rem;margin:6px 0 0}`;
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+  function html(iso, opts) {
+    const p = plan(iso, opts);
+    if (!p.isRamadan) return "";
+    const L = (t, title, body) => `<li><time>${ampm(t)}</time><div><strong>${esc(title)}</strong>${body ? `<small>${body}</small>` : ""}</div></li>`;
+    return `<section class="rm-card">
+  <div class="rm-head"><h2>Ramadan · day ${p.day}</h2><span class="rm-day">Fast ${p.fastHours} h</span></div>
+  <div class="rm-times">
+    <div><b>${ampm(p.suhoorBy)}</b><span>Suhoor ends</span></div>
+    <div><b>${ampm(p.times.maghrib)}</b><span>Iftar</span></div>
+    <div><b>${ampm(p.times.isha)}</b><span>Isha</span></div>
+  </div>
+  <ul class="rm-list">${p.slots.map((s) => L(s.time, s.label, esc(s.items.join(" · ")) + (s.note ? "<br>" + esc(s.note) : ""))).join("")}</ul>
+  <p class="rm-sub">Water ${(p.water.targetMl / 1000).toFixed(1)} L between ${ampm(p.water.from)} and ${ampm(p.water.to)}</p>
+  <ul class="rm-list">${p.water.checkpoints.map((w) => L(w.time, w.ml + " ml", esc(w.note))).join("")}</ul>
+  <p class="rm-sub">Supplements</p>
+  <ul class="rm-list">${p.supps.map((s) => L(s.time, s.name, esc(s.note))).join("")}</ul>
+  ${p.notes.map((n) => `<p class="rm-note">${esc(n)}</p>`).join("")}
+</section>`;
+  }
+
+  return { DEFAULTS, dayOf, range, times, plan, css, html, _ampm: ampm };
+})();
+
+if (typeof module !== "undefined") module.exports = Ramadan;
+
+window.Ramadan=Ramadan;
+</script>
+<script>
+/* Trend weight + adaptive calorie burn (TDEE) for the Aziz Cut Tracker.
+ * Plain JS, no imports, no network. Reads the app's own collections:
+ *   docs = { days: {date: {food:[{kcal,eaten,est,...}]}}, weights: {date: {kg}} }
+ * API:
+ *   TrendTDEE.css                            -> string, inject once (uses the app's tokens)
+ *   TrendTDEE.series(weights, {today})       -> [{date, kg|null, trend}] one row per calendar day
+ *   TrendTDEE.estimate(docs, {today})        -> numbers for the card (see estimate() below)
+ *   TrendTDEE.html(docs, {today})            -> HTML string: one card for the Progress tab
+ *   TrendTDEE.summary(docs, {today})         -> plain-text summary to paste into a chat
+ * Trend: EWMA, alpha 0.1 (Hacker's Diet). Gaps between weigh-ins are filled by straight-line
+ * interpolation before smoothing; after the last weigh-in the trend holds flat.
+ * Burn: average eaten kcal on logged days minus the weight slope × 7,700 kcal/kg. The slope is a
+ * least-squares fit on raw weigh-ins over the last 28 days (min 14), ending yesterday so a
+ * half-logged today never counts. Only food marked eaten is counted.
+ */
+const TrendTDEE = (() => {
+  const START = "2026-10-25", REVIEW = "2026-11-07", KCAL = 2000, FLOOR = 1700;
+  const ALPHA = 0.1, KCAL_PER_KG = 7700, MIN_DAYS = 14, MAX_DAYS = 28, MIN_FOOD = 10, MIN_WEIGH = 8;
+  const PACE_LO = 0.5, PACE_HI = 0.8; // kg per week, the plan band
+  const DAY = 864e5, MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  const ms = s => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  const add = (s, n) => iso(ms(s) + n * DAY);
+  const diff = (a, b) => Math.round((ms(b) - ms(a)) / DAY);
+  const short = s => { const d = new Date(ms(s)); return MON[d.getUTCMonth()] + " " + d.getUTCDate(); };
+  const localToday = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const num = v => { const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v; return typeof n === "number" && isFinite(n) ? n : null; };
+  const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const f1 = n => (Math.round(n * 10) / 10).toFixed(1);
+  const fint = n => Math.round(n).toLocaleString("en-US");
+  const r50 = n => Math.round(n / 50) * 50;
+  const sgn = (n, d = 1) => (n > 0 ? "+" : n < 0 ? "−" : "±") + Math.abs(n).toFixed(d);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function weighIns(weights) {
+    return Object.entries(weights || {})
+      .map(([k, w]) => ({ date: isDate(w && w.date) ? w.date : k, kg: num(w && w.kg) }))
+      .filter(w => isDate(w.date) && w.kg != null && w.kg > 20 && w.kg < 400)
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  function series(weights, opts = {}) {
+    const w = weighIns(weights).filter(x => !isDate(opts.today) || x.date <= opts.today);
+    if (!w.length) return [];
+    const last = w[w.length - 1].date, end = isDate(opts.today) && opts.today > last ? opts.today : last;
+    const by = {}; w.forEach(x => { by[x.date] = x.kg; });
+    const out = [];
+    let trend = w[0].kg, j = 0;
+    for (let d = w[0].date; d <= end; d = add(d, 1)) {
+      while (j < w.length - 1 && w[j + 1].date <= d) j++;
+      let fill = null;
+      if (d <= last) {
+        const a = w[j], b = w[j + 1];
+        fill = a.date === d || !b ? a.kg : a.kg + (b.kg - a.kg) * diff(a.date, d) / diff(a.date, b.date);
+        trend = d === w[0].date ? fill : trend + ALPHA * (fill - trend);
+      }
+      out.push({ date: d, kg: d in by ? by[d] : null, trend: Math.round(trend * 100) / 100 });
+    }
+    return out;
+  }
+
+  function fit(points) { // least squares kg ~ day; returns slope (kg/day) and its standard error
+    const n = points.length, mx = points.reduce((s, p) => s + p.x, 0) / n, my = points.reduce((s, p) => s + p.y, 0) / n;
+    let sxx = 0, sxy = 0;
+    points.forEach(p => { sxx += (p.x - mx) ** 2; sxy += (p.x - mx) * (p.y - my); });
+    if (!sxx) return null;
+    const slope = sxy / sxx, b = my - slope * mx;
+    const ssr = points.reduce((s, p) => s + (p.y - (b + slope * p.x)) ** 2, 0);
+    return { slope, se: n > 2 ? Math.sqrt(ssr / (n - 2) / sxx) : Infinity };
+  }
+
+  function eaten(docs, date) {
+    const food = ((docs.days && docs.days[date] && docs.days[date].food) || []).filter(i => i && i.eaten);
+    return food.length ? { kcal: food.reduce((s, i) => s + (num(i.kcal) || 0), 0), est: food.some(i => i.est) } : null;
+  }
+
+  /* Returns {
+   *   today, from, to, days, ready, status: "empty"|"building"|"ready",
+   *   trendNow, trendDelta7 (kg vs 7 days ago, null if no data), weighIns, foodDays, estDays,
+   *   intakeAvg, rateKgWk, tdee, tdeeLo, tdeeHi, suggest: {lo, hi, keep} | null,
+   *   readyOn (first date with enough days), reviewOpen (today > Nov 7), notes: [string]
+   * } */
+  function estimate(docs, opts = {}) {
+    docs = docs || {};
+    const today = isDate(opts.today) ? opts.today : localToday();
+    const ser = series(docs.weights, { today });
+    const at = d => { const r = ser.find(x => x.date === d); return r ? r.trend : null; };
+    const trendNow = ser.length ? ser[ser.length - 1].trend : null;
+    const wk = at(add(today, -7));
+    const to = add(today, -1);
+    const from = add(to, -(MAX_DAYS - 1)) < START ? START : add(to, -(MAX_DAYS - 1));
+    const days = Math.max(0, diff(from, to) + 1);
+    const R = {
+      today, from, to, days, trendNow, trendDelta7: trendNow != null && wk != null ? trendNow - wk : null,
+      weighIns: 0, foodDays: 0, estDays: 0, intakeAvg: null, rateKgWk: null, tdee: null, tdeeLo: null, tdeeHi: null,
+      suggest: null, readyOn: add(START, MIN_DAYS), reviewOpen: today > REVIEW, notes: [], ready: false, status: "empty",
+    };
+    if (!ser.length) return R;
+    R.status = "building";
+    const pts = [];
+    let kcal = 0;
+    for (let d = from; days && d <= to; d = add(d, 1)) {
+      const w = docs.weights && docs.weights[d], kg = num(w && w.kg);
+      if (kg != null && kg > 20 && kg < 400) pts.push({ x: diff(from, d), y: kg });
+      const e = eaten(docs, d);
+      if (e) { R.foodDays++; kcal += e.kcal; if (e.est) R.estDays++; }
+    }
+    R.weighIns = pts.length;
+    if (R.foodDays) R.intakeAvg = kcal / R.foodDays;
+    if (days < MIN_DAYS || R.foodDays < MIN_FOOD || R.weighIns < MIN_WEIGH) {
+      const need = [];
+      if (days < MIN_DAYS) need.push((MIN_DAYS - days) + " more day" + (MIN_DAYS - days === 1 ? "" : "s"));
+      if (R.foodDays < MIN_FOOD) need.push("at least " + MIN_FOOD + " days of food logged (" + R.foodDays + " so far)");
+      if (R.weighIns < MIN_WEIGH) need.push("at least " + MIN_WEIGH + " weigh-ins (" + R.weighIns + " so far)");
+      R.notes.push("Needs " + need.join(", ") + ".");
+      return R;
+    }
+    const f = fit(pts);
+    if (!f || R.intakeAvg == null) return R;
+    R.ready = true; R.status = "ready";
+    R.rateKgWk = f.slope * 7;
+    R.tdee = R.intakeAvg - f.slope * KCAL_PER_KG;
+    const band = Math.min(600, f.se * KCAL_PER_KG);
+    R.tdeeLo = R.tdee - band; R.tdeeHi = R.tdee + band;
+    const lo = Math.max(FLOOR, r50(R.tdee - PACE_HI * KCAL_PER_KG / 7)), hi = Math.max(FLOOR, r50(R.tdee - PACE_LO * KCAL_PER_KG / 7));
+    R.suggest = { lo, hi, keep: KCAL >= lo && KCAL <= hi };
+    const missing = days - R.foodDays;
+    if (missing) R.notes.push(missing + " day" + (missing === 1 ? "" : "s") + " without food logged " + (missing === 1 ? "was" : "were") + " left out. If those were bigger days (Fridays), real burn is a little lower than shown.");
+    if (R.estDays) R.notes.push(R.estDays + " logged day" + (R.estDays === 1 ? " includes" : "s include") + " estimated items.");
+    if (from <= add(START, 6)) R.notes.push("Includes the first week of the cut, when water and glycogen drop fast, so burn may read high. It settles as more weeks come in.");
+    if (band >= 300) R.notes.push("Weigh-ins are noisy over this window, so the range is wide. More days will narrow it.");
+    return R;
+  }
+
+  // ---------- rendering ----------
+  const stat = (lab, v, sub) => '<div class="tt-stat"><span class="label">' + lab + '</span><span class="v">' + v + '</span><span class="tt-sub">' + sub + '</span></div>';
+
+  function chartSvg(ser, from) {
+    const rows = ser.filter(r => r.date >= from);
+    const vals = rows.flatMap(r => (r.kg != null ? [r.kg, r.trend] : [r.trend]));
+    if (rows.length < 2) return "";
+    let lo = Math.floor((Math.min(...vals) - 0.2) * 2) / 2, hi = Math.ceil((Math.max(...vals) + 0.2) * 2) / 2;
+    if (hi - lo < 1.5) { const m = (hi + lo) / 2; lo = Math.floor((m - 0.75) * 2) / 2; hi = lo + 1.5; }
+    const W = 480, H = 200, L = 40, R = 8, T = 10, B = 26, n = rows.length;
+    const x = i => L + (W - L - R) * (n === 1 ? 0.5 : i / (n - 1)), y = v => T + (H - T - B) * (hi - v) / (hi - lo);
+    let g = "";
+    const step = hi - lo > 3 ? 1 : 0.5;
+    for (let v = lo; v <= hi + 1e-9; v += step) g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--line)"/><text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + v.toFixed(1) + '</text>';
+    [0, Math.floor((n - 1) / 2), n - 1].forEach((i, k, a) => { if (a.indexOf(i) === k) g += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="' + (k === 0 ? "start" : k === 2 ? "end" : "middle") + '">' + short(rows[i].date) + '</text>'; });
+    rows.forEach((r, i) => { if (r.kg != null) g += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(r.kg).toFixed(1) + '" r="3.5" fill="var(--muted)" opacity=".7"><title>' + short(r.date) + ": " + f1(r.kg) + ' kg weighed</title></circle>'; });
+    g += '<path d="' + rows.map((r, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(r.trend).toFixed(1)).join("") + '" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>';
+    const lr = rows[n - 1];
+    g += '<circle cx="' + x(n - 1) + '" cy="' + y(lr.trend) + '" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"><title>Trend ' + f1(lr.trend) + ' kg</title></circle>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Daily weigh-ins as dots with the smoothed trend weight as a line">' + g + '</svg>';
+  }
+
+  function verdict(E) {
+    if (!E.ready) return "";
+    const s = E.suggest;
+    if (!E.reviewOpen) return "Hold 2,000 until the Nov 7 review. If it were today: " + (s.keep ? "keep 2,000." : "aim for " + fint(s.lo) + "–" + fint(s.hi) + " kcal.");
+    if (s.keep) return "2,000 kcal sits inside the " + fint(s.lo) + "–" + fint(s.hi) + " range for 0.5–0.8 kg a week. Keep it.";
+    if (KCAL > s.hi) return "At 2,000 you're losing slower than 0.5 kg a week. Move to " + fint(s.hi) + " kcal (range " + fint(s.lo) + "–" + fint(s.hi) + ").";
+    return "At 2,000 you're losing faster than 0.8 kg a week. You can eat up to " + fint(s.lo) + "–" + fint(s.hi) + " kcal and protect strength.";
+  }
+
+  function html(docs, opts) {
+    const E = estimate(docs, opts), ser = series(docs && docs.weights, { today: E.today });
+    const head = '<div class="spread"><h2>Trend weight and burn</h2><span class="label">' + (E.ready ? short(E.from) + " – " + short(E.to) : "Learning") + '</span></div>';
+    if (E.status === "empty") return '<div class="card tt">' + head + '<p class="muted">Log a morning weigh-in on Today to start the trend.</p></div>';
+    const trend = '<div class="tt-stats">' +
+      stat("Trend weight", f1(E.trendNow) + ' <small>kg</small>', E.trendDelta7 != null ? sgn(E.trendDelta7) + " kg vs 7 days ago" : "smoothed from daily weigh-ins") +
+      stat("Calorie burn", E.ready ? fint(r50(E.tdee)) + ' <small>kcal</small>' : "—", E.ready ? "likely " + fint(r50(E.tdeeLo)) + "–" + fint(r50(E.tdeeHi)) : "ready from " + short(E.readyOn)) +
+      stat("Pace", E.ready ? sgn(E.rateKgWk, 2) + ' <small>kg/wk</small>' : "—", E.ready ? "eating " + fint(E.intakeAvg) + " kcal a day" : E.foodDays + " food days, " + E.weighIns + " weigh-ins") +
+      '</div>';
+    const chart = '<div class="tt-chart">' + chartSvg(ser, E.ready ? E.from : START) + '</div>';
+    const v = verdict(E);
+    const review = v ? '<p class="tt-verdict"><span class="tt-pill ' + (E.suggest.keep ? "good" : "warn") + '">' + (E.reviewOpen ? "Calorie review" : "Nov 7 preview") + '</span> ' + esc(v) + '</p>' : "";
+    const notes = E.notes.length ? '<ul class="tt-notes">' + E.notes.map(t => '<li>' + esc(t) + '</li>').join("") + '</ul>' : "";
+    return '<div class="card tt">' + head + trend + chart + review + notes +
+      '<p class="tt-small">Dots are weigh-ins, the line is the trend. Burn = what you ate minus what the scale says, at 7,700 kcal per kg.</p></div>';
+  }
+
+  function summary(docs, opts) {
+    const E = estimate(docs, opts), out = ["Trend weight and calorie burn (" + short(E.today) + ")"];
+    if (E.status === "empty") return out.concat("No weigh-ins yet.").join("\n");
+    out.push("Trend weight: " + f1(E.trendNow) + " kg" + (E.trendDelta7 != null ? " (" + sgn(E.trendDelta7) + " kg vs 7 days ago)" : ""));
+    if (!E.ready) return out.concat("Burn estimate: not ready. " + E.notes.join(" ")).join("\n");
+    out.push("Window: " + short(E.from) + "–" + short(E.to) + " (" + E.days + " days, " + E.foodDays + " with food logged, " + E.weighIns + " weigh-ins)");
+    out.push("Eaten: " + fint(E.intakeAvg) + " kcal/day. Pace: " + sgn(E.rateKgWk, 2) + " kg/week.");
+    out.push("Estimated burn: " + fint(r50(E.tdee)) + " kcal/day (likely " + fint(r50(E.tdeeLo)) + "–" + fint(r50(E.tdeeHi)) + ")");
+    out.push(verdict(E));
+    E.notes.forEach(n => out.push("Note: " + n));
+    return out.join("\n");
+  }
+
+  const css = [
+    ".tt-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}",
+    ".tt-stat{display:flex;flex-direction:column;gap:2px}.tt-stat .v{font-family:var(--display);font-size:1.8rem;font-weight:700;line-height:1.05}",
+    ".tt-stat .v small{font-size:1rem;color:var(--muted)}.tt-sub,.tt-small{font-size:.85rem;color:var(--muted)}",
+    ".tt-chart svg{display:block;width:100%;height:auto;overflow:visible}.tt-chart text{fill:var(--muted);font-family:var(--body);font-size:13px}",
+    ".tt-verdict{margin:0;line-height:1.45}",
+    ".tt-pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:600;border:1px solid currentColor;white-space:nowrap;margin-right:4px}",
+    ".tt-pill.good{color:var(--good)}.tt-pill.warn{color:var(--warn)}",
+    ".tt-notes{margin:0;padding-left:18px;font-size:.85rem;color:var(--muted);display:flex;flex-direction:column;gap:4px}",
+  ].join("\n");
+
+  return { css, series, estimate, html, summary, START, REVIEW };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = TrendTDEE;
+
+window.TrendTDEE=window.TrendTDEE||(typeof TrendTDEE!=="undefined"?TrendTDEE:undefined);
+</script>
+<script>
+window.FORM_GUIDE={
+  "schemaVersion": 1,
+  "title": "Exercise form guide",
+  "owner": "Aziz",
+  "updated": "2026-10-25",
+  "source": "Training plan, section 10 (Strong templates, Oct 2026)",
+  "principles": [
+    {
+      "title": "Warm up the first lift, not every lift",
+      "text": "Ramp up on the first big press, row or squat of the day with 2–4 lighter sets of falling reps (your bench ramp of bar, 40, 60, 70 kg is a good model). Later exercises for the same muscles need one light feeler set at most."
+    },
+    {
+      "title": "Stop 1–2 reps short of failure",
+      "text": "Most working sets should end when you could do 1–2 more clean reps. Isolation and machine moves (laterals, curls, leg extensions) can go to failure on the last set. Keep barbell bench and hack squat a rep shy so form holds."
+    },
+    {
+      "title": "Control the lowering",
+      "text": "Take about 2–3 seconds on the way down and lift with intent. A controlled negative keeps tension on the muscle and makes reps comparable from week to week."
+    },
+    {
+      "title": "Full range first, then load",
+      "text": "A rep only counts if it hits the same depth and lockout as last time. Add weight or reps only when the range stays the same. This is how your Strong numbers stay honest."
+    },
+    {
+      "title": "Rest long enough on big lifts",
+      "text": "Rest about 2.5–3 minutes on bench, incline press, OHP, rows, pulldowns and hack squat, and 1–2 minutes on isolation work. Short rests cost reps, and reps are what you're trying to keep during a cut."
+    },
+    {
+      "title": "Brace on anything heavy",
+      "text": "Breathe into your belly, tighten your midsection as if about to be poked, then do the rep. Breathe out near the top. This protects your lower back, which matters because your program avoids hinge lifts."
+    },
+    {
+      "title": "During the cut",
+      "text": "Keep loads heavy and form identical. If a main lift drops two sessions in a row, check sleep, pre-workout food and volume before changing technique or calories."
+    },
+    {
+      "title": "Log the setup, not just the weight",
+      "text": "Seat heights, foot placement and which machine you used change how heavy a weight feels. Add them to the exercise notes in Strong once so every session starts from the same position."
+    }
+  ],
+  "days": [
+    {
+      "id": "push-a",
+      "name": "Push A",
+      "group": "push",
+      "exercises": [
+        "bench-press",
+        "lateral-raise",
+        "incline-db-press",
+        "cable-crossover",
+        "cable-overhead-triceps-extension",
+        "straight-bar-pushdown",
+        "machine-lateral-raise"
+      ]
+    },
+    {
+      "id": "pull-a",
+      "name": "Pull A",
+      "group": "pull",
+      "exercises": [
+        "wide-lat-pulldown",
+        "single-arm-lat-pulldown",
+        "seated-cable-row",
+        "machine-pullover",
+        "db-curl",
+        "seated-machine-curl",
+        "reverse-fly-machine"
+      ]
+    },
+    {
+      "id": "lower-a",
+      "name": "Lower A",
+      "group": "lower",
+      "focus": "quads",
+      "exercises": [
+        "leg-extension",
+        "hack-squat",
+        "smith-squat",
+        "lying-leg-curl",
+        "hip-adductor",
+        "standing-calf-raise",
+        "seated-ab-crunch"
+      ]
+    },
+    {
+      "id": "push-b",
+      "name": "Push B",
+      "group": "push",
+      "exercises": [
+        "gundam-chest-press",
+        "seated-db-ohp",
+        "lateral-raise",
+        "reverse-fly-machine",
+        "front-raise-db",
+        "rope-pushdown",
+        "straight-bar-pushdown"
+      ]
+    },
+    {
+      "id": "pull-b",
+      "name": "Pull B",
+      "group": "pull",
+      "exercises": [
+        "t-bar-row",
+        "single-arm-lat-pulldown",
+        "iso-lateral-low-row",
+        "seated-cable-row",
+        "traps-machine",
+        "cable-curl"
+      ]
+    },
+    {
+      "id": "lower-b",
+      "name": "Lower B",
+      "group": "lower",
+      "focus": "hamstrings",
+      "exercises": [
+        "lying-leg-curl",
+        "leg-extension",
+        "hack-squat",
+        "smith-squat",
+        "hip-abductor",
+        "leg-press-calf-raise",
+        "seated-ab-crunch"
+      ]
+    },
+    {
+      "id": "cardio",
+      "name": "After every lift",
+      "group": "cardio",
+      "exercises": [
+        "incline-treadmill-walk"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "bench-press",
+      "name": "Bench Press (Barbell)",
+      "loggedAs": [
+        "Bench Press (Barbell)"
+      ],
+      "equipment": "Barbell, flat bench",
+      "category": "Chest",
+      "main": true,
+      "primary": [
+        "Chest"
+      ],
+      "secondary": [
+        "Front delts",
+        "Triceps"
+      ],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "90 kg × 8, 2 sets (35 kg/side)"
+        }
+      ],
+      "setup": [
+        "Lie with your eyes under the bar. Feet flat and planted, a little behind your knees.",
+        "Grip just outside shoulder width so your forearms are vertical at the bottom. Squeeze the bar hard.",
+        "Pull your shoulder blades back and down into the bench and keep a small arch in your upper back. Butt stays on the bench.",
+        "Unrack with straight arms and bring the bar over your shoulders."
+      ],
+      "steps": [
+        "Take a breath and brace.",
+        "Lower the bar under control to your lower chest, around nipple line. Elbows about 45–70° from your body, not flared straight out.",
+        "Touch the chest lightly. No bounce.",
+        "Press up and slightly back toward your face so the bar finishes over your shoulders. Drive your feet into the floor."
+      ],
+      "cues": [
+        "Bend the bar",
+        "Shoulder blades in your back pockets",
+        "Push yourself away from the bar",
+        "Same touch point every rep"
+      ],
+      "mistakes": [
+        "Elbows flared to 90°, which loads the front of the shoulder.",
+        "Shoulder blades drifting apart as the set gets hard.",
+        "Bouncing off the chest or lifting the butt to finish a rep.",
+        "Touching higher on the chest each rep as you tire."
+      ],
+      "note": "Bench without a spotter only inside a rack with safeties set just below chest height, or stop a full rep short of failure.",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "incline-db-press",
+      "name": "Incline Dumbbell Press",
+      "loggedAs": [
+        "Incline DB Press"
+      ],
+      "equipment": "Dumbbells, adjustable bench",
+      "category": "Chest",
+      "main": true,
+      "primary": [
+        "Upper chest"
+      ],
+      "secondary": [
+        "Front delts",
+        "Triceps"
+      ],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "65 lb × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the bench to about 30°. Steeper than 45° turns it into a shoulder press.",
+        "Sit with the dumbbells on your thighs, then kick them up one knee at a time as you lie back.",
+        "Shoulder blades back and down, chest up, feet planted."
+      ],
+      "steps": [
+        "Start with the dumbbells over your upper chest, palms forward or turned slightly in.",
+        "Lower slowly until the handles are level with your chest and you feel a stretch. Elbows stay under your wrists, about 45° out.",
+        "Press up and slightly together, finishing over the upper chest. Don't clank the bells."
+      ],
+      "cues": [
+        "Chest up to the ceiling",
+        "Wrists stacked over elbows",
+        "Deep stretch, smooth turnaround"
+      ],
+      "mistakes": [
+        "Bench set too steep, so the shoulders do the work.",
+        "Cutting the range short as the weight goes up.",
+        "Dropping the dumbbells sideways at the end instead of bringing them back to the thighs."
+      ],
+      "note": "To finish safely, bring the dumbbells to your chest, tuck your knees up, and rock back up to sitting with them on your thighs.",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "gundam-chest-press",
+      "name": "Gundam Chest Press (machine)",
+      "loggedAs": [
+        "Gundam (chest machine)"
+      ],
+      "equipment": "Chest press machine",
+      "category": "Chest",
+      "main": true,
+      "primary": [
+        "Chest"
+      ],
+      "secondary": [
+        "Front delts",
+        "Triceps"
+      ],
+      "baseline": [
+        {
+          "day": "push-b",
+          "value": "60 kg × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the seat so the handles line up with your mid to lower chest, not your neck.",
+        "Sit tall with your back on the pad, shoulder blades pulled back and down, feet flat.",
+        "If the machine has a start-position lever or foot bar, use it to get the handles into place without straining your shoulders."
+      ],
+      "steps": [
+        "Brace and press the handles forward until your arms are almost straight.",
+        "Let them come back slowly until you feel a good stretch across the chest. Keep your shoulder blades pinned.",
+        "Pause briefly in the stretch, then press again."
+      ],
+      "cues": [
+        "Shoulders stay down and back",
+        "Press through the palms",
+        "Slow on the way back"
+      ],
+      "mistakes": [
+        "Seat too low, so the handles sit near the neck and the shoulders take over.",
+        "Shoulders rolling forward at lockout.",
+        "Letting the stack bang between reps."
+      ],
+      "note": "Use the same seat setting every time and note it in Strong so your numbers compare across weeks.",
+      "days": [
+        "push-b"
+      ]
+    },
+    {
+      "id": "cable-crossover",
+      "name": "Cable Crossover",
+      "loggedAs": [
+        "Cable Crossover"
+      ],
+      "equipment": "Cable station, D-handles",
+      "category": "Chest",
+      "main": false,
+      "primary": [
+        "Chest"
+      ],
+      "secondary": [
+        "Front delts"
+      ],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "16.5 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set both pulleys at about shoulder height, or a little higher.",
+        "Step forward into a split stance with a slight forward lean. Chest up.",
+        "Soft bend in the elbows. Keep that bend fixed for the whole set."
+      ],
+      "steps": [
+        "Start with your arms out wide and a stretch across the chest.",
+        "Hug the handles together in an arc in front of your lower chest, as if wrapping a big tree.",
+        "Squeeze for a second, then let the arms open slowly back to the stretch."
+      ],
+      "cues": [
+        "Hug the tree",
+        "Elbows lead, hands follow",
+        "Squeeze, then slow return"
+      ],
+      "mistakes": [
+        "Bending and straightening the elbows, which turns it into a press.",
+        "Going so heavy that you have to lean and swing.",
+        "Short range: not opening up into the stretch."
+      ],
+      "note": "",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "seated-db-ohp",
+      "name": "Seated Dumbbell Overhead Press",
+      "loggedAs": [
+        "Seated DB Overhead Press"
+      ],
+      "equipment": "Dumbbells, bench with back support",
+      "category": "Shoulders",
+      "main": true,
+      "primary": [
+        "Front and side delts"
+      ],
+      "secondary": [
+        "Triceps",
+        "Upper chest"
+      ],
+      "baseline": [
+        {
+          "day": "push-b",
+          "value": "60 lb × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the backrest upright or one notch back from vertical.",
+        "Kick the dumbbells up from your thighs to shoulder height.",
+        "Back flat against the pad, feet planted wide, ribs down."
+      ],
+      "steps": [
+        "Start with the dumbbells at about ear to chin height, palms forward, elbows slightly in front of your body.",
+        "Brace and press up until your arms are straight and the bells are over your head.",
+        "Lower under control back to ear height."
+      ],
+      "cues": [
+        "Ribs down",
+        "Head through the window at the top",
+        "Elbows under the wrists"
+      ],
+      "mistakes": [
+        "Arching the lower back off the pad to finish reps.",
+        "Stopping above ear height, so the range shrinks as you tire.",
+        "Elbows flared straight out to the sides."
+      ],
+      "note": "",
+      "days": [
+        "push-b"
+      ]
+    },
+    {
+      "id": "lateral-raise",
+      "name": "Lateral Raise (cable or dumbbell)",
+      "loggedAs": [
+        "Lateral Raise (Cable)",
+        "Side Delts"
+      ],
+      "equipment": "Cable with D-handle, or dumbbells",
+      "category": "Shoulders",
+      "main": false,
+      "primary": [
+        "Side delts"
+      ],
+      "secondary": [
+        "Upper traps"
+      ],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "7.5 kg × 10, 3 sets (cable)"
+        },
+        {
+          "day": "push-b",
+          "value": "7.5 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Cable: set the pulley at hand or hip height. Stand side-on and hold the handle in the far hand so the cable runs across or behind your body.",
+        "Dumbbell: stand tall or lean slightly forward, bells by your sides.",
+        "Slight bend in the elbow. Shoulders down, away from your ears."
+      ],
+      "steps": [
+        "Raise the arm out to the side, leading with the elbow, until it reaches about shoulder height.",
+        "Pause briefly at the top.",
+        "Lower slowly. Don't let the weight drop."
+      ],
+      "cues": [
+        "Push the weight out, not up",
+        "Elbow leads the hand",
+        "Shoulders stay out of your ears"
+      ],
+      "mistakes": [
+        "Shrugging, which moves the work into the traps.",
+        "Swinging the body to start the rep.",
+        "Going too heavy. This muscle responds to clean reps, not big weights."
+      ],
+      "note": "Your plan logs both Lateral Raise (Cable) on Push A and Side Delts on Push B at 7.5 kg. If Push B is dumbbells, the form is the same.",
+      "days": [
+        "push-a",
+        "push-b"
+      ]
+    },
+    {
+      "id": "machine-lateral-raise",
+      "name": "Standing Side Delt Machine",
+      "loggedAs": [
+        "Standing Side Delts (machine)"
+      ],
+      "equipment": "Lateral raise machine",
+      "category": "Shoulders",
+      "main": false,
+      "primary": [
+        "Side delts"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "66 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Line your shoulder joint up with the machine's pivot point.",
+        "Place the pads on the outside of your upper arms or elbows. Chest against the pad if there is one.",
+        "Stand tall, shoulders down."
+      ],
+      "steps": [
+        "Push the pads out and up with your elbows until your upper arms are about level with your shoulders.",
+        "Pause, then lower slowly to the start."
+      ],
+      "cues": [
+        "Push out with the elbows",
+        "Shoulders down",
+        "Slow lower"
+      ],
+      "mistakes": [
+        "Shoulder not lined up with the pivot, which makes the movement feel jerky.",
+        "Shrugging or leaning away from the machine to move more weight."
+      ],
+      "note": "This replaced the front raise on Push A.",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "front-raise-db",
+      "name": "Front Raise (dumbbell)",
+      "loggedAs": [
+        "Front Raise (DB)"
+      ],
+      "equipment": "Dumbbells",
+      "category": "Shoulders",
+      "main": false,
+      "primary": [
+        "Front delts"
+      ],
+      "secondary": [
+        "Upper chest"
+      ],
+      "baseline": [
+        {
+          "day": "push-b",
+          "value": "30 lb × 10, 1 set"
+        }
+      ],
+      "setup": [
+        "Stand tall with the dumbbells in front of your thighs, palms facing your legs or each other.",
+        "Soft knees, braced midsection, slight bend in the elbows."
+      ],
+      "steps": [
+        "Raise the dumbbells straight in front of you to about shoulder height.",
+        "Pause, then lower slowly to the thighs."
+      ],
+      "cues": [
+        "No swing",
+        "Stop at eye level at most",
+        "Slow down"
+      ],
+      "mistakes": [
+        "Leaning back and using momentum.",
+        "Raising far above the head."
+      ],
+      "note": "Your front delts already get plenty of work from bench, incline and overhead press. If you ever revisit Push B, this is the slot the plan suggests swapping for more laterals.",
+      "days": [
+        "push-b"
+      ]
+    },
+    {
+      "id": "reverse-fly-machine",
+      "name": "Reverse Fly (machine)",
+      "loggedAs": [
+        "Reverse Fly (Machine)"
+      ],
+      "equipment": "Pec deck / rear delt machine",
+      "category": "Shoulders",
+      "main": false,
+      "primary": [
+        "Rear delts"
+      ],
+      "secondary": [
+        "Mid traps",
+        "Rhomboids"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "61 kg × 10"
+        },
+        {
+          "day": "push-b",
+          "value": "61 kg × 10, 2–3 sets"
+        }
+      ],
+      "setup": [
+        "Sit facing the pad. Set the seat so the handles are at shoulder height.",
+        "Set the handles so your arms start in front with a stretch in the back of the shoulders.",
+        "Neutral grip (palms facing in) or palms down, slight bend in the elbows."
+      ],
+      "steps": [
+        "Sweep the arms out and back in a wide arc until they are in line with your body.",
+        "Pause briefly, then return slowly."
+      ],
+      "cues": [
+        "Reach wide, not back",
+        "Pinkies lead",
+        "Chest stays on the pad"
+      ],
+      "mistakes": [
+        "Squeezing the shoulder blades hard together, which turns it into an upper-back move.",
+        "Pulling the chest off the pad and using the back.",
+        "Bending the elbows more as the set goes on."
+      ],
+      "note": "",
+      "days": [
+        "pull-a",
+        "push-b"
+      ]
+    },
+    {
+      "id": "cable-overhead-triceps-extension",
+      "name": "Cable Triceps Extension",
+      "loggedAs": [
+        "Triceps Extension (Cable)"
+      ],
+      "equipment": "Cable, rope or bar",
+      "category": "Triceps",
+      "main": false,
+      "primary": [
+        "Triceps (long head)"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "15 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Overhead version: set the pulley low, face away from the stack, and bring the rope over your head. Staggered stance, slight lean forward.",
+        "Elbows point forward, about head width apart."
+      ],
+      "steps": [
+        "Start with the elbows bent and your hands behind your head, feeling a stretch in the back of the arms.",
+        "Straighten the arms fully by moving only the forearms.",
+        "Return slowly to the stretch."
+      ],
+      "cues": [
+        "Elbows stay still",
+        "Big stretch behind the head",
+        "Lock out fully"
+      ],
+      "mistakes": [
+        "Elbows flaring wide as the set gets hard.",
+        "Moving the upper arm, which turns it into a pullover.",
+        "Cutting the stretch short."
+      ],
+      "note": "Your log doesn't say whether this is done overhead. If you do it as a pushdown or across the body, use the pushdown cues and keep the elbows pinned.",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "straight-bar-pushdown",
+      "name": "Triceps Pushdown (straight bar)",
+      "loggedAs": [
+        "Triceps Pushdown (Straight bar)",
+        "Triceps Pushdown"
+      ],
+      "equipment": "Cable, straight bar",
+      "category": "Triceps",
+      "main": false,
+      "primary": [
+        "Triceps"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "32.5 kg × 10, 2 sets"
+        },
+        {
+          "day": "push-b",
+          "value": "32.5 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the pulley high. Grip the bar overhand about shoulder width.",
+        "Stand close, slight forward lean, elbows tucked at your sides."
+      ],
+      "steps": [
+        "Push the bar down until your arms are fully straight.",
+        "Squeeze for a moment.",
+        "Let the bar rise until your forearms are just past parallel to the floor, elbows still at your sides."
+      ],
+      "cues": [
+        "Elbows glued to your ribs",
+        "Only the forearms move",
+        "Full lockout"
+      ],
+      "mistakes": [
+        "Elbows drifting forward and the shoulders helping.",
+        "Leaning over the bar and pushing with body weight.",
+        "Letting the bar ride up to the face."
+      ],
+      "note": "",
+      "days": [
+        "push-a",
+        "push-b"
+      ]
+    },
+    {
+      "id": "rope-pushdown",
+      "name": "Triceps Rope Pushdown",
+      "loggedAs": [
+        "Triceps Rope"
+      ],
+      "equipment": "Cable, rope",
+      "category": "Triceps",
+      "main": false,
+      "primary": [
+        "Triceps"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "push-b",
+          "value": "15 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the pulley high and hold the rope with palms facing each other, thumbs up near the knobs.",
+        "Elbows at your sides, slight forward lean."
+      ],
+      "steps": [
+        "Push the rope down and spread the ends apart at the bottom so your hands finish beside your thighs.",
+        "Squeeze, then let the rope rise slowly until your forearms pass parallel."
+      ],
+      "cues": [
+        "Pull the rope apart at the bottom",
+        "Elbows stay pinned",
+        "Slow up"
+      ],
+      "mistakes": [
+        "Elbows coming forward on the way up.",
+        "Short reps that never reach lockout."
+      ],
+      "note": "",
+      "days": [
+        "push-b"
+      ]
+    },
+    {
+      "id": "wide-lat-pulldown",
+      "name": "Lat Pulldown (wide grip)",
+      "loggedAs": [
+        "Lat Pulldown, Wide"
+      ],
+      "equipment": "Pulldown station, long bar",
+      "category": "Back",
+      "main": true,
+      "primary": [
+        "Lats"
+      ],
+      "secondary": [
+        "Upper back",
+        "Biceps",
+        "Rear delts"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "80 kg × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the thigh pad so your legs are locked in snugly.",
+        "Grip the bar overhand, a little wider than shoulder width.",
+        "Sit down with arms fully straight and a stretch in your lats. Chest up, slight lean back (about 10–20°)."
+      ],
+      "steps": [
+        "Start by pulling your shoulders down, away from your ears.",
+        "Drive your elbows down toward your back pockets until the bar reaches your upper chest.",
+        "Pause, then let the bar rise slowly all the way to a full stretch."
+      ],
+      "cues": [
+        "Elbows to back pockets",
+        "Chest up to meet the bar",
+        "Full stretch at the top"
+      ],
+      "mistakes": [
+        "Leaning far back and rowing the weight with body swing.",
+        "Pulling the bar behind the neck.",
+        "Stopping short of the full stretch at the top."
+      ],
+      "note": "",
+      "days": [
+        "pull-a"
+      ]
+    },
+    {
+      "id": "single-arm-lat-pulldown",
+      "name": "Single-Arm Lat Pulldown",
+      "loggedAs": [
+        "Lat Pulldown, Single Arm"
+      ],
+      "equipment": "Pulldown machine or cable, single handle",
+      "category": "Back",
+      "main": false,
+      "primary": [
+        "Lats"
+      ],
+      "secondary": [
+        "Biceps",
+        "Rear delts"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "60 kg × 10, 3 sets"
+        },
+        {
+          "day": "pull-b",
+          "value": "60 kg × 8–10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Sit or kneel so the handle is directly overhead or slightly in front, with the arm fully stretched.",
+        "Neutral grip (palm facing in) usually feels best.",
+        "Brace with the free hand on your thigh or the machine."
+      ],
+      "steps": [
+        "Let the arm reach up and slightly across so you feel a deep stretch down the side of your back.",
+        "Pull the elbow down and in toward your hip.",
+        "Pause, then return slowly to the full stretch."
+      ],
+      "cues": [
+        "Elbow to hip",
+        "Reach long at the top",
+        "Don't twist the torso"
+      ],
+      "mistakes": [
+        "Rotating the body to move the weight.",
+        "Pulling with the biceps by curling the hand down.",
+        "Skipping the stretch at the top, which is where this variation pays off."
+      ],
+      "note": "Do all reps on your weaker side first, then match the same reps on the other side.",
+      "days": [
+        "pull-a",
+        "pull-b"
+      ]
+    },
+    {
+      "id": "seated-cable-row",
+      "name": "Seated Cable Row",
+      "loggedAs": [
+        "Seated Row (Cable)"
+      ],
+      "equipment": "Low cable row, V-handle or bar",
+      "category": "Back",
+      "main": true,
+      "primary": [
+        "Mid back",
+        "Lats"
+      ],
+      "secondary": [
+        "Rear delts",
+        "Biceps"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "95 kg × 8, 2 sets"
+        },
+        {
+          "day": "pull-b",
+          "value": "90 kg × 8, 2 sets"
+        }
+      ],
+      "setup": [
+        "Sit with feet on the platform and knees slightly bent.",
+        "Grab the handle and sit tall, chest up, back neutral.",
+        "Start with your arms straight and shoulders allowed to reach forward a little."
+      ],
+      "steps": [
+        "Pull your shoulders back, then row the handle to your lower ribs or upper stomach.",
+        "Squeeze the shoulder blades together for a moment.",
+        "Return slowly, letting the arms straighten and the shoulders reach forward, without rounding your lower back."
+      ],
+      "cues": [
+        "Chest tall",
+        "Elbows past your ribs",
+        "Reach, don't slump"
+      ],
+      "mistakes": [
+        "Rocking the torso back and forth by 30° or more to move the weight.",
+        "Rounding the lower back at the start of each rep.",
+        "Shrugging the handle toward the neck."
+      ],
+      "note": "A small torso movement (about 10–15°) is fine. If you need more than that, the weight is too heavy for 8 clean reps.",
+      "days": [
+        "pull-a",
+        "pull-b"
+      ]
+    },
+    {
+      "id": "machine-pullover",
+      "name": "Pullover Machine",
+      "loggedAs": [
+        "Pullover (Machine)"
+      ],
+      "equipment": "Pullover machine",
+      "category": "Back",
+      "main": false,
+      "primary": [
+        "Lats"
+      ],
+      "secondary": [
+        "Long head of triceps",
+        "Chest"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "61 kg × 8, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the seat so your shoulder joint lines up with the machine's pivot.",
+        "Put the pads on the back of your upper arms, hands lightly on the bar.",
+        "Belt or brace your hips so you stay seated."
+      ],
+      "steps": [
+        "Start with arms up and back and a strong stretch in the lats.",
+        "Drive the elbows down in an arc until the bar reaches your stomach.",
+        "Return slowly to the stretch."
+      ],
+      "cues": [
+        "Push with the elbows, not the hands",
+        "Ribs down",
+        "Big stretch at the top"
+      ],
+      "mistakes": [
+        "Pulling with the hands, which brings in the arms.",
+        "Arching the back at the top."
+      ],
+      "note": "",
+      "days": [
+        "pull-a"
+      ]
+    },
+    {
+      "id": "t-bar-row",
+      "name": "T-Bar Row",
+      "loggedAs": [
+        "T-Bar Row"
+      ],
+      "equipment": "T-bar row (landmine or plate-loaded)",
+      "category": "Back",
+      "main": true,
+      "primary": [
+        "Mid back",
+        "Lats"
+      ],
+      "secondary": [
+        "Rear delts",
+        "Biceps",
+        "Lower back (holding position)"
+      ],
+      "baseline": [
+        {
+          "day": "pull-b",
+          "value": "50 kg × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "If your gym has a chest-supported T-bar, use it. Lie on the pad and grip the handles.",
+        "Free-standing version: straddle the bar, hinge forward to about 45°, knees soft, back flat and braced.",
+        "Close or neutral grip handle."
+      ],
+      "steps": [
+        "Start with arms straight and a stretch through the upper back.",
+        "Row the handle toward your lower chest or upper stomach, elbows about 45° from your body.",
+        "Squeeze, then lower under control. Keep your torso angle the same throughout."
+      ],
+      "cues": [
+        "Lock the torso angle",
+        "Elbows back and in",
+        "Squeeze before lowering"
+      ],
+      "mistakes": [
+        "Standing up more each rep to use momentum.",
+        "Rounding the lower back.",
+        "Short, choppy reps with a heavy load."
+      ],
+      "note": "Your program leaves out hinge lifts, and the free-standing T-bar row loads the lower back. Use the chest-supported version if you can, or swap to a heavier Iso-Lateral Low Row on days your back feels tired.",
+      "days": [
+        "pull-b"
+      ]
+    },
+    {
+      "id": "iso-lateral-low-row",
+      "name": "Iso-Lateral Low Row (plate-loaded)",
+      "loggedAs": [
+        "Iso-Lateral Low Row (plate)"
+      ],
+      "equipment": "Plate-loaded row machine",
+      "category": "Back",
+      "main": false,
+      "primary": [
+        "Lats",
+        "Mid back"
+      ],
+      "secondary": [
+        "Biceps",
+        "Rear delts"
+      ],
+      "baseline": [
+        {
+          "day": "pull-b",
+          "value": "70 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the seat so the handles are in line with the bottom of your chest or a bit lower.",
+        "Chest against the pad, feet braced."
+      ],
+      "steps": [
+        "Reach forward for a full stretch.",
+        "Pull the elbows back low and close to the body, toward your hips.",
+        "Pause, then return slowly. You can train one arm at a time."
+      ],
+      "cues": [
+        "Elbows to hips",
+        "Chest stays on the pad",
+        "Full reach forward"
+      ],
+      "mistakes": [
+        "Lifting the chest off the pad to finish reps.",
+        "Shortening the reach at the front."
+      ],
+      "note": "",
+      "days": [
+        "pull-b"
+      ]
+    },
+    {
+      "id": "traps-machine",
+      "name": "Shrug Machine",
+      "loggedAs": [
+        "Traps Machine"
+      ],
+      "equipment": "Shrug / traps machine",
+      "category": "Back",
+      "main": false,
+      "primary": [
+        "Upper traps"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "pull-b",
+          "value": "80 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Stand or sit under the pads or handles with arms straight and the load hanging.",
+        "Stand tall, chin neutral."
+      ],
+      "steps": [
+        "Shrug your shoulders straight up toward your ears.",
+        "Hold the top for a second.",
+        "Lower all the way down for a full stretch."
+      ],
+      "cues": [
+        "Straight up, straight down",
+        "Pause at the top",
+        "Arms are just hooks"
+      ],
+      "mistakes": [
+        "Rolling the shoulders in circles.",
+        "Bending the elbows to pull.",
+        "Bouncing short reps."
+      ],
+      "note": "",
+      "days": [
+        "pull-b"
+      ]
+    },
+    {
+      "id": "db-curl",
+      "name": "Dumbbell Curl",
+      "loggedAs": [
+        "DB Curl"
+      ],
+      "equipment": "Dumbbells",
+      "category": "Biceps",
+      "main": false,
+      "primary": [
+        "Biceps"
+      ],
+      "secondary": [
+        "Forearms"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "30 lb × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Stand tall with the dumbbells at your sides, palms forward or turning forward as you lift.",
+        "Elbows by your sides, shoulders back."
+      ],
+      "steps": [
+        "Curl the dumbbells up, turning the palms up, until the forearms are close to vertical.",
+        "Squeeze, then lower slowly all the way to straight arms."
+      ],
+      "cues": [
+        "Elbows stay put",
+        "Pinky slightly higher than thumb at the top",
+        "Straight arms at the bottom"
+      ],
+      "mistakes": [
+        "Swinging from the hips.",
+        "Elbows drifting forward so the shoulders lift the weight.",
+        "Half reps at the bottom."
+      ],
+      "note": "",
+      "days": [
+        "pull-a"
+      ]
+    },
+    {
+      "id": "seated-machine-curl",
+      "name": "Seated Biceps Curl (machine)",
+      "loggedAs": [
+        "Seated Bicep Curl"
+      ],
+      "equipment": "Preacher-style curl machine",
+      "category": "Biceps",
+      "main": false,
+      "primary": [
+        "Biceps"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "25 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the seat so your armpits sit at the top edge of the pad.",
+        "Line your elbows up with the machine's pivot point."
+      ],
+      "steps": [
+        "Curl the handles up until the biceps are fully shortened.",
+        "Lower slowly to almost straight arms."
+      ],
+      "cues": [
+        "Armpits to the pad",
+        "Elbows on the pivot",
+        "Slow at the bottom"
+      ],
+      "mistakes": [
+        "Lifting your elbows off the pad.",
+        "Dropping fast into the bottom, which stresses the elbow."
+      ],
+      "note": "",
+      "days": [
+        "pull-a"
+      ]
+    },
+    {
+      "id": "cable-curl",
+      "name": "Standing Cable Curl",
+      "loggedAs": [
+        "Cable Standing Biceps"
+      ],
+      "equipment": "Low cable, straight bar, EZ bar or handles",
+      "category": "Biceps",
+      "main": false,
+      "primary": [
+        "Biceps"
+      ],
+      "secondary": [
+        "Forearms"
+      ],
+      "baseline": [
+        {
+          "day": "pull-b",
+          "value": "16 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the pulley low. Stand facing the stack, a small step back so the cable pulls slightly forward.",
+        "Underhand grip, elbows by your sides."
+      ],
+      "steps": [
+        "Curl up until your hands reach shoulder height.",
+        "Squeeze, then lower slowly to straight arms."
+      ],
+      "cues": [
+        "Elbows still",
+        "Squeeze at the top",
+        "Fight it on the way down"
+      ],
+      "mistakes": [
+        "Leaning back to finish reps.",
+        "Letting the stack pull the arms down fast."
+      ],
+      "note": "",
+      "days": [
+        "pull-b"
+      ]
+    },
+    {
+      "id": "hack-squat",
+      "name": "Hack Squat",
+      "loggedAs": [
+        "Hack Squat"
+      ],
+      "equipment": "Hack squat machine",
+      "category": "Legs",
+      "main": true,
+      "primary": [
+        "Quads"
+      ],
+      "secondary": [
+        "Glutes",
+        "Adductors"
+      ],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "70 kg × 8, 2 sets"
+        },
+        {
+          "day": "lower-b",
+          "value": "70 kg × 8, 2 sets"
+        }
+      ],
+      "setup": [
+        "Back and hips flat against the pad, shoulders snug under the shoulder pads.",
+        "Feet shoulder width, middle of the platform. Toes slightly turned out.",
+        "Brace before you release the safety handles."
+      ],
+      "steps": [
+        "Lower slowly, letting your knees travel forward over your toes.",
+        "Go as deep as you can while your hips stay on the pad. Aim for thighs at least parallel to the platform.",
+        "Drive up through your whole foot to just short of locking the knees."
+      ],
+      "cues": [
+        "Knees follow the toes",
+        "Hips glued to the pad",
+        "Same depth every rep"
+      ],
+      "mistakes": [
+        "Knees caving inward on the way up.",
+        "Heels lifting.",
+        "Hips peeling off the pad at the bottom, which rounds the lower back.",
+        "Cutting depth as the weight goes up."
+      ],
+      "note": "Lower foot placement puts more work on the quads. Use the same placement every session so numbers compare.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "smith-squat",
+      "name": "Smith Machine Squat",
+      "loggedAs": [
+        "Smith Squat"
+      ],
+      "equipment": "Smith machine",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondary": [
+        "Adductors"
+      ],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "40 kg × 7, 1 set"
+        },
+        {
+          "day": "lower-b",
+          "value": "40 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Bar across your upper back, not your neck. Grip just outside your shoulders.",
+        "Feet shoulder width, slightly in front of the bar so you sit straight down.",
+        "Set the safety stops just below your lowest squat depth."
+      ],
+      "steps": [
+        "Brace and unrack by twisting the bar.",
+        "Sit down between your heels until the thighs are at least parallel to the floor.",
+        "Drive up through the whole foot."
+      ],
+      "cues": [
+        "Chest tall",
+        "Sit between the heels",
+        "Push the floor away"
+      ],
+      "mistakes": [
+        "Feet too far forward, which loads the lower back.",
+        "Knees caving in.",
+        "Bouncing off the bottom."
+      ],
+      "note": "Smith machines vary in how heavy the bar is. Log the same machine every time.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "leg-extension",
+      "name": "Leg Extension",
+      "loggedAs": [
+        "Leg Extension"
+      ],
+      "equipment": "Leg extension machine",
+      "category": "Legs",
+      "main": true,
+      "primary": [
+        "Quads"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "122 kg × 8, 3 sets"
+        },
+        {
+          "day": "lower-b",
+          "value": "122 kg × 8, 2 sets"
+        }
+      ],
+      "setup": [
+        "Line your knee joint up with the machine's pivot.",
+        "Ankle pad sits just above the ankle, on the front of the shin.",
+        "Back against the pad, hold the side handles hard. Lean back slightly if the seat allows."
+      ],
+      "steps": [
+        "Kick up until the legs are straight and squeeze the quads for a second.",
+        "Lower slowly until your knees are bent past 90°."
+      ],
+      "cues": [
+        "Squeeze at the top",
+        "Slow down",
+        "Butt stays in the seat"
+      ],
+      "mistakes": [
+        "Kicking the weight up and letting it drop.",
+        "Hips lifting off the seat as the weight gets heavy.",
+        "Short reps that skip the bottom stretch."
+      ],
+      "note": "At 122 kg you are near the top of most stacks. When you max out the stack, add a pause at the top or slow down the lowering instead.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "lying-leg-curl",
+      "name": "Lying Leg Curl",
+      "loggedAs": [
+        "Lying Leg Curl"
+      ],
+      "equipment": "Lying leg curl machine",
+      "category": "Legs",
+      "main": true,
+      "primary": [
+        "Hamstrings"
+      ],
+      "secondary": [
+        "Calves"
+      ],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "63 kg × 8, 2 sets"
+        },
+        {
+          "day": "lower-b",
+          "value": "63 kg × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "Lie face down with your knees just off the end of the pad, lined up with the pivot.",
+        "Pad just above the heels.",
+        "Hold the handles and press your hips into the bench."
+      ],
+      "steps": [
+        "Curl your heels toward your butt as far as you can.",
+        "Squeeze, then lower slowly to almost straight legs."
+      ],
+      "cues": [
+        "Hips down",
+        "Heels to butt",
+        "Slow to straight"
+      ],
+      "mistakes": [
+        "Hips lifting off the bench, which lets the lower back help.",
+        "Stopping halfway up.",
+        "Letting the weight crash down."
+      ],
+      "note": "This is your only direct hamstring exercise, so treat every rep seriously. Your plan mentions adding seated leg curls later if you want more hamstring work.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "hip-adductor",
+      "name": "Hip Adductor Machine",
+      "loggedAs": [
+        "Hip Adductor"
+      ],
+      "equipment": "Adductor machine (legs squeeze in)",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Inner thighs (adductors)"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "85 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Sit tall with the pads on the inside of your knees.",
+        "Open the legs to a range that gives a stretch without pain."
+      ],
+      "steps": [
+        "Squeeze the legs together until the pads meet.",
+        "Pause, then open slowly back to the stretch."
+      ],
+      "cues": [
+        "Sit tall",
+        "Control the opening",
+        "Squeeze, don't slam"
+      ],
+      "mistakes": [
+        "Starting with a stretch that is too wide on the first set.",
+        "Letting the pads fly open."
+      ],
+      "note": "Adductors help a lot in squats. Increase the starting width gradually over a few sessions.",
+      "days": [
+        "lower-a"
+      ]
+    },
+    {
+      "id": "hip-abductor",
+      "name": "Hip Abductor Machine",
+      "loggedAs": [
+        "Hip Abductor"
+      ],
+      "equipment": "Abductor machine (legs push out)",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Outer glutes (glute medius)"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-b",
+          "value": "135 kg × 20, 3 sets"
+        }
+      ],
+      "setup": [
+        "Sit with the pads on the outside of your knees.",
+        "Sit tall, or lean forward slightly to feel more of the glutes."
+      ],
+      "steps": [
+        "Push the knees out as wide as you can.",
+        "Pause, then return slowly. Don't let the plates touch between reps."
+      ],
+      "cues": [
+        "Knees out",
+        "Pause wide",
+        "Keep tension at the start"
+      ],
+      "mistakes": [
+        "Rocking the torso to push out.",
+        "Short, fast reps with heavy weight."
+      ],
+      "note": "135 kg × 20 is likely the full stack. Make sets harder with a 2-second pause at the widest point instead of adding reps.",
+      "days": [
+        "lower-b"
+      ]
+    },
+    {
+      "id": "standing-calf-raise",
+      "name": "Standing Calf Raise",
+      "loggedAs": [
+        "Standing Calf Raise"
+      ],
+      "equipment": "Standing calf machine",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Calves (gastrocnemius)"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "60 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Pads on your shoulders, balls of your feet on the edge of the step.",
+        "Knees straight but not locked hard."
+      ],
+      "steps": [
+        "Lower your heels as far as they go and hold the stretch for 1–2 seconds.",
+        "Rise as high as you can onto your toes.",
+        "Pause at the top, then lower slowly."
+      ],
+      "cues": [
+        "Pause in the stretch",
+        "Up onto the big toe",
+        "No bouncing"
+      ],
+      "mistakes": [
+        "Bouncing quick half reps.",
+        "Bending the knees to push."
+      ],
+      "note": "",
+      "days": [
+        "lower-a"
+      ]
+    },
+    {
+      "id": "leg-press-calf-raise",
+      "name": "Calf Press on Seated Leg Press",
+      "loggedAs": [
+        "Calf Press on Seated Leg Press"
+      ],
+      "equipment": "Seated leg press",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Calves"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-b",
+          "value": "65 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Sit in the leg press and put the balls of your feet on the bottom edge of the platform. Heels hang off.",
+        "Legs almost straight, knees soft."
+      ],
+      "steps": [
+        "Let the platform push your toes back for a deep stretch. Hold 1–2 seconds.",
+        "Press through the balls of your feet as far as you can.",
+        "Lower slowly."
+      ],
+      "cues": [
+        "Stretch, pause, press",
+        "Knees stay still",
+        "Feet planted"
+      ],
+      "mistakes": [
+        "Feet slipping off the edge. Keep your shoes firmly on the platform.",
+        "Bending the knees to move the platform."
+      ],
+      "note": "Keep the safety handles within reach and never remove your feet with the platform unlocked.",
+      "days": [
+        "lower-b"
+      ]
+    },
+    {
+      "id": "seated-ab-crunch",
+      "name": "Seated Ab Crunch (machine)",
+      "loggedAs": [
+        "Seated Abs"
+      ],
+      "equipment": "Ab crunch machine",
+      "category": "Core",
+      "main": false,
+      "primary": [
+        "Abs"
+      ],
+      "secondary": [
+        "Obliques"
+      ],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "5 kg × 100 (as logged, to confirm)"
+        },
+        {
+          "day": "lower-b",
+          "value": "5 kg × 100 (as logged, to confirm)"
+        }
+      ],
+      "setup": [
+        "Set the seat so the handles or pads sit at chest or shoulder level.",
+        "Hook your feet under the rollers if there are any."
+      ],
+      "steps": [
+        "Breathe out and curl your ribcage toward your hips, rounding your spine.",
+        "Squeeze for a second.",
+        "Return slowly until you feel a stretch in the abs."
+      ],
+      "cues": [
+        "Ribs to hips",
+        "Breathe out as you crunch",
+        "Round, don't hinge"
+      ],
+      "mistakes": [
+        "Pulling with the arms.",
+        "Bending at the hips instead of curling the spine.",
+        "Very light weight for very high reps."
+      ],
+      "note": "Your plan still has this down as 5 kg × 100, to confirm. Abs grow like other muscles: pick a weight you can curl for 10–20 controlled reps.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "incline-treadmill-walk",
+      "name": "Incline Treadmill Walk",
+      "loggedAs": [
+        "Treadmill (30 min)"
+      ],
+      "equipment": "Treadmill",
+      "category": "Cardio",
+      "main": false,
+      "primary": [
+        "Low-intensity cardio"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "cardio",
+          "value": "30 min at about 4.0 km/h, incline about 3"
+        }
+      ],
+      "setup": [
+        "Set the speed to about 4.0 km/h and the incline to about 3.",
+        "Have your Gatorade within reach."
+      ],
+      "steps": [
+        "Walk tall with your normal stride and let your arms swing.",
+        "Keep the pace where you can still talk in full sentences."
+      ],
+      "cues": [
+        "Hands off the rails",
+        "Tall posture",
+        "Easy, steady pace"
+      ],
+      "mistakes": [
+        "Holding the handrails, which cuts the work by a lot.",
+        "Leaning far forward."
+      ],
+      "note": "This is for burning calories while recovering. If your legs are trashed after Lower A or B, keep the time and lower the incline.",
+      "days": [
+        "cardio"
+      ]
+    }
+  ]
+};
+</script>
+<script>
+/* FormCues: technique cues, injury watch-outs, muscles worked and a demo link for
+   each exercise, built from exercise-form-guide.json. Plain JS, no imports, no network.
+   Usage: const fc = FormCues.create(guideJson); fc.find('bench-press-barbell') -> entry */
+(function (root) {
+  'use strict';
+
+  // Workout logger (Liftbook) exercise ids -> form guide ids, for names the fuzzy match misses.
+  const ALIASES = {
+    'bench-press-barbell': 'bench-press', 'incline-bench-press-dumbbell': 'incline-db-press',
+    'gundam-chest-press-machine': 'gundam-chest-press', 'seated-overhead-press-dumbbell': 'seated-db-ohp',
+    'lateral-raise-dumbbell': 'lateral-raise', 'lateral-raise-cable': 'lateral-raise', 'side-delts': 'lateral-raise',
+    'standing-lateral-raise-machine': 'machine-lateral-raise', 'front-raise-dumbbell': 'front-raise-db',
+    'triceps-extension-cable': 'cable-overhead-triceps-extension', 'triceps-pushdown-straight-bar': 'straight-bar-pushdown',
+    'triceps-rope-pushdown-cable': 'rope-pushdown', 'lat-pulldown-wide-grip-cable': 'wide-lat-pulldown',
+    'lat-pulldown-single-arm-cable': 'single-arm-lat-pulldown', 'seated-row-cable': 'seated-cable-row',
+    'pullover-machine': 'machine-pullover', 'iso-lateral-low-row-plate-loaded': 'iso-lateral-low-row',
+    'shrug-machine': 'traps-machine', 'bicep-curl-dumbbell': 'db-curl', 'seated-bicep-curl-machine': 'seated-machine-curl',
+    'standing-bicep-curl-cable': 'cable-curl', 'hack-squat-machine': 'hack-squat', 'squat-smith-machine': 'smith-squat',
+    'leg-extension-machine': 'leg-extension', 'lying-leg-curl-machine': 'lying-leg-curl',
+    'hip-adductor-machine': 'hip-adductor', 'hip-abductor-machine': 'hip-abductor',
+    'standing-calf-raise-machine': 'standing-calf-raise', 'calf-press-leg-press': 'leg-press-calf-raise',
+    'seated-abs-machine': 'seated-ab-crunch', 'treadmill-incline-walk': 'incline-treadmill-walk'
+  };
+
+  const slug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  // Loose key: "Incline Bench Press (Dumbbell)" and "Incline DB Press" both -> "incline-db-press".
+  const loose = s => slug(String(s || '').toLowerCase()
+    .replace(/dumbbells?/g, 'db').replace(/barbell/g, 'bb').replace(/\bbiceps?\b/g, 'bicep')
+    .replace(/\((machine|cable|plate[- ]loaded|plate)\)/g, '').replace(/\bbench\b(?= press)/g, ''));
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const list = a => '<ul>' + a.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
+
+  function demoUrl(entry) {
+    if (!entry) return '';
+    if (entry.demo) return entry.demo;
+    return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(entry.name.replace(/\(.*?\)/g, '').trim() + ' proper form');
+  }
+
+  function create(guide) {
+    const exercises = (guide && guide.exercises) || [];
+    const byId = {}, byKey = {};
+    exercises.forEach(e => {
+      byId[e.id] = e;
+      [e.id, e.name].concat(e.loggedAs || []).forEach(n => {
+        if (!byKey[slug(n)]) byKey[slug(n)] = e;
+        if (!byKey['~' + loose(n)]) byKey['~' + loose(n)] = e;
+      });
+    });
+    Object.keys(ALIASES).forEach(k => { if (byId[ALIASES[k]]) byKey[k] = byId[ALIASES[k]]; });
+
+    const open = new Set();
+    let bound = false;
+
+    function find(idOrName) {
+      if (!idOrName) return null;
+      const s = slug(idOrName);
+      return byId[s] || byKey[s] || byKey['~' + loose(idOrName)] || null;
+    }
+
+    function muscles(entry) {
+      if (!entry) return '';
+      return '<p class="fc-muscles"><span class="fc-lbl">Muscles</span>' +
+        (entry.primary || []).map(m => '<span class="fc-chip p">' + esc(m) + '</span>').join('') +
+        (entry.secondary || []).map(m => '<span class="fc-chip">' + esc(m) + '</span>').join('') + '</p>';
+    }
+    const demo = entry => '<a class="fc-demo" href="' + esc(demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Watch a demo ↗</a>';
+
+    // Collapsed panel for the live workout card. `key` keeps it open across re-renders.
+    function inlineHtml(entry, key) {
+      if (!entry) return '';
+      key = key || entry.id;
+      return '<details class="fc-inline" data-fc="' + esc(key) + '"' + (open.has(key) ? ' open' : '') + '>' +
+        '<summary><span>Form cues</span><span class="fc-peek">' + esc((entry.cues || [])[0] || '') + '</span></summary>' +
+        '<div class="fc-body">' + list(entry.cues || []) +
+        ((entry.mistakes || []).length ? '<p class="fc-lbl warn">Watch for</p>' + list(entry.mistakes.slice(0, 2)) : '') +
+        (entry.note ? '<p class="fc-note">' + esc(entry.note) + '</p>' : '') +
+        muscles(entry) + demo(entry) + '</div></details>';
+    }
+
+    // Full section for the exercise detail sheet.
+    function detailHtml(entry) {
+      if (!entry) return '';
+      return '<section class="fc-detail"><h4>How to do it</h4>' + muscles(entry) +
+        (entry.equipment ? '<p class="fc-muted">' + esc(entry.equipment) + '</p>' : '') +
+        '<p class="fc-lbl">Cues</p>' + list(entry.cues || []) +
+        ((entry.setup || []).length ? '<p class="fc-lbl">Setup</p>' + list(entry.setup) : '') +
+        ((entry.steps || []).length ? '<p class="fc-lbl">The rep</p><ol>' + entry.steps.map(x => '<li>' + esc(x) + '</li>').join('') + '</ol>' : '') +
+        ((entry.mistakes || []).length ? '<p class="fc-lbl warn">Injury watch-outs</p>' + list(entry.mistakes) : '') +
+        (entry.note ? '<p class="fc-note">' + esc(entry.note) + '</p>' : '') + demo(entry) + '</section>';
+    }
+
+    // <details> toggle does not bubble, so listen in the capture phase once.
+    function attach(doc) {
+      doc = doc || (typeof document !== 'undefined' ? document : null);
+      if (!doc || bound) return;
+      bound = true;
+      doc.addEventListener('toggle', ev => {
+        const d = ev.target;
+        if (!d || !d.matches || !d.matches('details.fc-inline')) return;
+        const k = d.getAttribute('data-fc');
+        if (d.open) open.add(k); else open.delete(k);
+      }, true);
+    }
+
+    return { find, demoUrl, muscles, inlineHtml, detailHtml, attach, css, principles: (guide && guide.principles) || [], size: exercises.length };
+  }
+
+  const css = [
+    '.fc-inline{margin:.35rem 0 .5rem;border:1px solid var(--line);border-radius:var(--r,10px);background:var(--sunk)}',
+    '.fc-inline>summary{list-style:none;cursor:pointer;display:flex;gap:.5rem;align-items:baseline;padding:.45rem .65rem;font-size:.85rem;font-weight:600;color:var(--accent)}',
+    '.fc-inline>summary::-webkit-details-marker{display:none}',
+    '.fc-inline>summary::before{content:"▸";transition:transform .15s}.fc-inline[open]>summary::before{transform:rotate(90deg)}',
+    '.fc-peek{flex:1;min-width:0;font-weight:400;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.fc-inline[open] .fc-peek{display:none}',
+    '.fc-body{padding:0 .75rem .65rem;font-size:.85rem;color:var(--ink)}',
+    '.fc-body ul,.fc-detail ul,.fc-detail ol{margin:.2rem 0 .45rem;padding-left:1.15rem}.fc-body li,.fc-detail li{margin:.12rem 0}',
+    '.fc-lbl{margin:.45rem 0 .1rem;font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}',
+    '.fc-lbl.warn{color:var(--warn)}',
+    '.fc-muscles{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center;margin:.45rem 0}.fc-muscles .fc-lbl{margin:0 .2rem 0 0}',
+    '.fc-chip{font-size:.75rem;padding:.1rem .5rem;border-radius:999px;border:1px solid var(--line);color:var(--muted)}',
+    '.fc-chip.p{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}',
+    '.fc-note{margin:.4rem 0;padding:.4rem .55rem;border-left:3px solid var(--warn);background:var(--surface);font-size:.82rem}',
+    '.fc-demo{display:inline-block;margin-top:.25rem;font-size:.85rem;font-weight:600;color:var(--accent)}',
+    '.fc-detail{margin-top:1rem}.fc-detail h4{margin:0 0 .3rem}.fc-muted{color:var(--muted);font-size:.85rem;margin:.2rem 0}'
+  ].join('\n');
+
+  const api = { create, demoUrl, css, aliases: ALIASES, slug };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.FormCues = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* Photo or text food logger for the Aziz Cut Tracker (Food tab card "Log from a photo or description").
+ * Plain JS, no imports, no network of its own. Claude is reached through the page's `sample` capability,
+ * which the host passes in (declare capabilities: {sample: {images: true}} on the app).
+ * API:
+ *   PhotoFood.css                               -> string, inject once (uses the app's tokens)
+ *   PhotoFood.bind(root, opts)                  -> wire the card's events once (delegated on root, e.g. document)
+ *        opts = { getSample: () => Promise<sample|null>, getDay: date => day, onAdd: (date, items) => void,
+ *                 render: () => void, date: () => "YYYY-MM-DD" }
+ *   PhotoFood.html(date, day)                   -> HTML string for the card (state lives in the module, so re-renders keep it)
+ *   PhotoFood.prompt({text, hasImage})          -> the instruction sent to Claude
+ *   PhotoFood.parse(value)                      -> {items:[{name,portion,kcal,p,c,f,confidence,check}], note} (cleaned)
+ *   PhotoFood.toFoodItems(items, {slot, eaten, combine, uid}) -> days/{date}.food entries with est:true
+ *   PhotoFood.guessSlot(day)                    -> "Meal 1" | "Meal 2" | "Extra"
+ *   PhotoFood.totals(items)                     -> {kcal,p,c,f}
+ *   PhotoFood.errorText(code)                   -> what to tell Aziz for a sample error code
+ * Nothing is written until Aziz presses "Add"; every number stays editable first.
+ */
+const PhotoFood = (() => {
+  const SLOTS = ["Meal 1", "Meal 2", "Snack", "Breakfast", "Extra"];
+  const MAX_ITEMS = 12;
+  const r1 = n => Math.round(n * 10) / 10;
+  const num = v => { const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : +v; return isFinite(n) && n > 0 ? n : 0; };
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function prompt({ text, hasImage } = {}) {
+    const desc = String(text || "").trim().slice(0, 2000);
+    return [
+      "Estimate the calories and macros of the food " + (hasImage ? "in the attached photo" + (desc ? " and described below" : "") : "described below") + ".",
+      "Context: the eater is a 92 kg man in Kuwait on a 2,000 kcal cut. Most meals come from Nutreeze (a Kuwaiti meal-prep service) and often show a printed label; local food includes khubz, machboos, shawarma, mandi and similar.",
+      "Rules:",
+      "- If a nutrition label or menu card with numbers is readable, copy those numbers exactly and set confidence to \"high\".",
+      "- Otherwise estimate from visible portion sizes (plate size, utensils, hand) and typical recipes. Restaurant and Gulf home cooking use more oil than you might assume; count it.",
+      "- Split into separate items only when they are clearly separate foods (a meal and a drink, a main and a side). One mixed dish is one item.",
+      "- kcal should roughly equal 4*protein + 4*carbs + 9*fat.",
+      "- If there is no food, return an empty items list and say why in note.",
+      desc ? "Description from the eater: " + JSON.stringify(desc) : "",
+      "Reply with only JSON in this shape:",
+      '{"items":[{"name":"Chicken machboos","portion":"1 plate, ~300 g rice + 200 g chicken","kcal":820,"p":55,"c":95,"f":22,"confidence":"medium"}],"note":"One short sentence on the biggest uncertainty."}',
+      "name: short, as it would appear in a food log. confidence: low, medium or high. Numbers are grams (kcal for kcal), no units, no ranges."
+    ].filter(Boolean).join("\n");
+  }
+
+  function parse(value) {
+    let v = value;
+    if (typeof v === "string") { try { v = JSON.parse(v); } catch (e) { v = null; } }
+    if (Array.isArray(v)) v = { items: v };
+    if (!v || typeof v !== "object") return { items: [], note: "Claude's answer couldn't be read. Try again." };
+    const raw = Array.isArray(v.items) ? v.items : [];
+    const items = raw.filter(x => x && typeof x === "object").slice(0, MAX_ITEMS).map(x => {
+      const p = r1(Math.min(num(x.p ?? x.protein), 400)), c = r1(Math.min(num(x.c ?? x.carbs), 800)), f = r1(Math.min(num(x.f ?? x.fat), 300));
+      const fromMacros = 4 * p + 4 * c + 9 * f;
+      let kcal = Math.round(Math.min(num(x.kcal ?? x.calories), 5000));
+      if (!kcal && fromMacros) kcal = Math.round(fromMacros);
+      const conf = String(x.confidence || "").toLowerCase();
+      return {
+        name: String(x.name || "Food").replace(/\s+/g, " ").trim().slice(0, 80) || "Food",
+        portion: String(x.portion || "").replace(/\s+/g, " ").trim().slice(0, 120),
+        kcal, p, c, f,
+        confidence: ["low", "medium", "high"].includes(conf) ? conf : "medium",
+        check: kcal > 0 && fromMacros > 0 && Math.abs(fromMacros - kcal) / kcal > 0.25
+      };
+    }).filter(x => x.kcal > 0 || x.p || x.c || x.f);
+    return { items, note: String(v.note || "").trim().slice(0, 300) };
+  }
+
+  function totals(items) {
+    return (items || []).reduce((t, i) => ({ kcal: t.kcal + num(i.kcal), p: r1(t.p + num(i.p)), c: r1(t.c + num(i.c)), f: r1(t.f + num(i.f)) }), { kcal: 0, p: 0, c: 0, f: 0 });
+  }
+
+  function toFoodItems(items, { slot = "Extra", eaten = true, combine = false, uid } = {}) {
+    const id = uid || (() => Math.random().toString(36).slice(2, 9));
+    const keep = (items || []).filter(i => i && i.on !== false && (num(i.kcal) || num(i.p) || num(i.c) || num(i.f)));
+    if (!keep.length) return [];
+    const clean = i => ({ id: id(), name: String(i.name || "Food").trim().slice(0, 80) || "Food", slot, kcal: Math.round(num(i.kcal)), p: r1(num(i.p)), c: r1(num(i.c)), f: r1(num(i.f)), eaten: !!eaten, est: true });
+    if (!combine || keep.length === 1) return keep.map(clean);
+    const t = totals(keep);
+    let name = keep.map(i => String(i.name || "").trim()).filter(Boolean).join(" + ");
+    if (name.length > 80) name = name.slice(0, 77) + "...";
+    return [clean({ name, kcal: t.kcal, p: t.p, c: t.c, f: t.f })];
+  }
+
+  function guessSlot(day) {
+    const food = (day && day.food) || [];
+    if (!food.some(i => i.slot === "Meal 1")) return "Meal 1";
+    if (!food.some(i => i.slot === "Meal 2")) return "Meal 2";
+    return "Extra";
+  }
+
+  function errorText(code) {
+    switch (code) {
+      case "not_granted": case "sampling_disabled": case "not_declared": case "capability_disabled": case "capability_removed":
+        return "Claude isn't available on this page right now. Enter the numbers in the form above instead.";
+      case "images_unavailable": case "image_rejected":
+        return "That photo couldn't be sent. Try a JPG or PNG, or describe the food in words.";
+      case "rate_limited": return "Claude is busy for a moment. Wait a minute and try again.";
+      case "session_expired": return "You've been signed out. Reload the page and try again.";
+      case "refused": return "Claude couldn't help with that one. Try describing the food in words.";
+      case "invalid_json": case "empty_completion": return "Claude's answer couldn't be read. Try again, maybe with a shorter description.";
+      case "prompt_too_large": return "That description is too long. Shorten it and try again.";
+      default: return "Something went wrong reaching Claude. Try again.";
+    }
+  }
+
+  /* ---------- card ---------- */
+  const S = { text: "", image: null, imageUrl: "", busy: false, ctl: null, result: null, error: "", slot: "", eaten: true, combine: false, canImage: null, hidden: false, forDate: "" };
+  let O = null;
+
+  async function shrink(file, max = 1600) {
+    try {
+      if (typeof createImageBitmap !== "function") return file;
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      if (k === 1 && file.size < 1.5e6) return file;
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+      cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+      return await new Promise(res => cv.toBlob(b => res(b || file), "image/jpeg", 0.85));
+    } catch (e) { return file; }
+  }
+
+  function clearImage() { if (S.imageUrl) try { URL.revokeObjectURL(S.imageUrl); } catch (e) {} S.image = null; S.imageUrl = ""; }
+
+  async function estimate() {
+    if (S.busy) return;
+    const text = S.text.trim();
+    if (!text && !S.image) { S.error = "Add a photo or describe what you ate."; O.render(); return; }
+    const sample = await O.getSample();
+    if (!sample) { S.hidden = true; O.render(); return; }
+    S.busy = true; S.error = ""; S.result = null; S.ctl = new AbortController(); O.render();
+    try {
+      const opts = { signal: S.ctl.signal, modelTier: "default" };
+      if (S.image) opts.images = [S.image];
+      const v = await sample.json(prompt({ text, hasImage: !!S.image }), opts);
+      const res = parse(v);
+      S.result = res;
+      if (!res.items.length) S.error = res.note || "No food found. Try another photo or describe it in words.";
+    } catch (e) {
+      const code = e && e.code;
+      if (code !== "cancelled") {
+        S.error = errorText(code);
+        if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) S.hidden = true;
+        if (code === "images_unavailable") { S.canImage = false; clearImage(); }
+      }
+    }
+    S.busy = false; S.ctl = null; O.render();
+  }
+
+  function add() {
+    if (!S.result) return;
+    const date = O.date();
+    const items = toFoodItems(S.result.items, { slot: S.slot || guessSlot(O.getDay(date)), eaten: S.eaten, combine: S.combine });
+    if (!items.length) { S.error = "Nothing to add. Tick at least one item with numbers."; O.render(); return; }
+    O.onAdd(date, items);
+    S.text = ""; S.result = null; S.error = ""; S.slot = ""; clearImage();
+    O.render();
+  }
+
+  function bind(root, opts) {
+    O = opts;
+    O.getSample().then(async s => {
+      if (!s) { S.hidden = true; O.render(); return; }
+      const lim = await s.limits().catch(() => null);
+      S.canImage = !!(lim && lim.images);
+      if (S.canImage) S.accept = lim.images.mediaTypes.join(",");
+      O.render();
+    }).catch(() => { S.hidden = true; O.render(); });
+    root.addEventListener("click", e => {
+      const b = e.target.closest("[data-pf]"); if (!b) return;
+      const a = b.dataset.pf;
+      if (a === "go") estimate();
+      else if (a === "stop" && S.ctl) S.ctl.abort();
+      else if (a === "add") add();
+      else if (a === "clear") { S.result = null; S.error = ""; O.render(); }
+      else if (a === "noimg") { clearImage(); O.render(); }
+    });
+    root.addEventListener("input", e => {
+      const t = e.target;
+      if (t.id === "pfText") { S.text = t.value; return; }
+      const k = t.dataset && t.dataset.pfk, i = t.dataset && +t.dataset.pfi;
+      if (k && S.result && S.result.items[i]) {
+        const it = S.result.items[i];
+        if (k === "on") it.on = t.checked; else if (k === "name") it.name = t.value; else it[k] = num(t.value);
+        const tt = totals(S.result.items.filter(x => x.on !== false));
+        const el = document.getElementById("pfTotal");
+        if (el) el.textContent = `${Math.round(tt.kcal)} kcal · ${Math.round(tt.p)} P · ${Math.round(tt.c)} C · ${Math.round(tt.f)} F`;
+      }
+    });
+    root.addEventListener("change", async e => {
+      const t = e.target;
+      if (t.id === "pfSlot") S.slot = t.value;
+      else if (t.id === "pfEaten") S.eaten = t.checked;
+      else if (t.id === "pfCombine") S.combine = t.checked;
+      else if (t.id === "pfFile" && t.files && t.files[0]) {
+        clearImage();
+        S.image = await shrink(t.files[0]);
+        S.imageUrl = URL.createObjectURL(S.image);
+        S.result = null; S.error = "";
+        O.render();
+      }
+    });
+  }
+
+  function dayLabel(date) {
+    const [y, m, d] = String(date).split("-").map(Number);
+    return y && m && d ? new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "this day";
+  }
+
+  function html(date, day) {
+    if (S.hidden) return "";
+    if (S.forDate !== date) { S.forDate = date; S.slot = ""; }
+    const slot = S.slot || guessSlot(day);
+    const res = S.result, t = res ? totals(res.items.filter(x => x.on !== false)) : null;
+    const conf = { low: "Rough guess", medium: "Estimate", high: "From label" };
+    return `<div class="card pf">
+    <div class="spread"><h3>Log from a photo or description</h3><span class="muted" style="font-size:.85rem">Claude estimates, you check</span></div>
+    <textarea id="pfText" rows="2" placeholder="e.g. Half a chicken shawarma plate with garlic sauce, no fries" aria-label="Describe what you ate">${esc(S.text)}</textarea>
+    <div class="row">
+      ${S.canImage ? `<label class="btn ghost small pf-file">${S.image ? "Change photo" : "Add photo"}<input type="file" id="pfFile" accept="${esc(S.accept || "image/*")}" capture="environment" hidden></label>` : ""}
+      ${S.imageUrl ? `<span class="pf-thumb"><img src="${S.imageUrl}" alt="Your food photo"><button class="x" data-pf="noimg" aria-label="Remove photo">×</button></span>` : ""}
+      ${S.busy ? `<button class="btn" data-pf="stop">Stop</button><span class="muted" style="font-size:.88rem">Estimating…</span>` : `<button class="btn" data-pf="go">${res ? "Estimate again" : "Estimate"}</button>`}
+    </div>
+    ${S.error ? `<p class="note">${esc(S.error)}</p>` : ""}
+    ${res && res.items.length ? `<div class="pf-items">${res.items.map((i, n) => `<div class="pf-item">
+        <div class="row" style="flex-wrap:nowrap"><input type="checkbox" data-pfk="on" data-pfi="${n}" ${i.on !== false ? "checked" : ""} aria-label="Include"><input type="text" data-pfk="name" data-pfi="${n}" value="${esc(i.name)}" aria-label="Name" style="flex:1;min-width:0"><span class="pill ${i.confidence === "high" ? "good" : i.confidence === "low" ? "warn" : ""}">${conf[i.confidence]}</span></div>
+        ${i.portion ? `<small class="muted">${esc(i.portion)}</small>` : ""}
+        <div class="pf-mac">
+          <label class="field"><span class="label">kcal</span><input type="number" inputmode="decimal" step="1" data-pfk="kcal" data-pfi="${n}" value="${i.kcal}"></label>
+          <label class="field"><span class="label">Protein</span><input type="number" inputmode="decimal" step="0.1" data-pfk="p" data-pfi="${n}" value="${i.p}"></label>
+          <label class="field"><span class="label">Carbs</span><input type="number" inputmode="decimal" step="0.1" data-pfk="c" data-pfi="${n}" value="${i.c}"></label>
+          <label class="field"><span class="label">Fat</span><input type="number" inputmode="decimal" step="0.1" data-pfk="f" data-pfi="${n}" value="${i.f}"></label>
+        </div>
+        ${i.check ? `<small class="muted">The calories don't match the macros well. Check the numbers.</small>` : ""}
+      </div>`).join("")}</div>
+      ${res.note ? `<p class="muted" style="font-size:.88rem">${esc(res.note)}</p>` : ""}
+      <p class="num" style="margin:0"><b id="pfTotal">${Math.round(t.kcal)} kcal · ${Math.round(t.p)} P · ${Math.round(t.c)} C · ${Math.round(t.f)} F</b></p>
+      <div class="row">
+        <select id="pfSlot" aria-label="Slot">${SLOTS.map(s => `<option ${s === slot ? "selected" : ""}>${s}</option>`).join("")}</select>
+        <label class="row" style="font-size:.9rem;gap:6px"><input type="checkbox" id="pfEaten" ${S.eaten ? "checked" : ""}> Eaten</label>
+        ${res.items.length > 1 ? `<label class="row" style="font-size:.9rem;gap:6px"><input type="checkbox" id="pfCombine" ${S.combine ? "checked" : ""}> As one entry</label>` : ""}
+      </div>
+      <div class="row"><button class="btn" data-pf="add">Add to ${esc(dayLabel(date))}</button><button class="btn ghost small" data-pf="clear">Discard</button></div>
+      <p class="muted" style="font-size:.82rem;margin:0">Saved as an estimate. Nutreeze label numbers are always better when you have them.</p>` : ""}
+  </div>`;
+  }
+
+  const css = `
+.pf textarea{width:100%;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:8px;padding:8px;font:inherit;resize:vertical}
+.pf .pf-file{cursor:pointer}
+.pf .pf-thumb{position:relative;display:inline-block}
+.pf .pf-thumb img{width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block}
+.pf .pf-thumb .x{position:absolute;top:-8px;right:-8px}
+.pf .pf-items{display:flex;flex-direction:column;gap:10px}
+.pf .pf-item{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.pf .pf-mac{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.pf .pf-mac .field{min-width:0}
+.pf .pf-mac input{width:100%;min-width:0}
+`;
+
+  return { css, bind, html, prompt, parse, totals, toFoodItems, guessSlot, errorText, SLOTS };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = PhotoFood;
+</script>
+<script>
 /* ===================== Plan data (from Aziz's handoff, Oct 25 2026) ===================== */
 const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:220};
 const START = {date:"2026-10-25", kg:91.9}, GOAL_KG = 80;
@@ -3540,9 +6733,10 @@ function render(){
 }
 
 /* ---------- macro bars ---------- */
+function kcalTarget(d){ try{ return window.BudgetRecovery ? BudgetRecovery.targetFor(d, S.docs.days) : TARGET.kcal; }catch(e){ return TARGET.kcal; } }
 function macroBars(items){
-  const all=sum(items), eaten=sum(items.filter(i=>i.eaten));
-  const rows=[["Calories","kcal",TARGET.kcal*0.95,TARGET.kcal*1.05,2400,"kcal",""],["Protein","p",TARGET.pMin,TARGET.pMax,220,"p","g"],["Carbs","c",TARGET.cMin,TARGET.cMax,280,"c","g"],["Fat","f",TARGET.fMin,TARGET.fMax,100,"f","g"]];
+  const all=sum(items), eaten=sum(items.filter(i=>i.eaten)), KT=kcalTarget(view.date);
+  const rows=[["Calories","kcal",KT-100,KT+100,2400,"kcal",""],["Protein","p",TARGET.pMin,TARGET.pMax,220,"p","g"],["Carbs","c",TARGET.cMin,TARGET.cMax,280,"c","g"],["Fat","f",TARGET.fMin,TARGET.fMax,100,"f","g"]];
   return `<div class="macros">${rows.map(([lab,k,lo,hi,max,cls,u])=>`
     <div class="mrow"><span class="label">${lab}</span>
       <div class="mbar" aria-hidden="true"><span class="planned ${cls}" style="width:${Math.min(100,all[k]/max*100)}%"></span><span class="eaten ${cls}" style="width:${Math.min(100,eaten[k]/max*100)}%"></span><span class="zone" style="left:${lo/max*100}%;width:${(hi-lo)/max*100}%"></span></div>
@@ -3552,7 +6746,9 @@ function macroBars(items){
 function verdict(items){
   const t=sum(items); if(!items.length) return "";
   const msgs=[];
-  if(t.kcal<1850) msgs.push(["warn",`${r0(2000-t.kcal)} kcal under 2,000`]); else if(t.kcal>2100) msgs.push(["bad",`${r0(t.kcal-2000)} kcal over 2,000`]); else msgs.push(["good","Calories on target"]);
+  const KT=kcalTarget(view.date), KTs=KT.toLocaleString("en-US");
+  if(t.kcal<KT-150) msgs.push(["warn",`${r0(KT-t.kcal)} kcal under ${KTs}`]); else if(t.kcal>KT+100) msgs.push(["bad",`${r0(t.kcal-KT)} kcal over ${KTs}`]); else msgs.push(["good","Calories on target"]);
+  if(KT!==TARGET.kcal) msgs.push(["info",`Target today ${KTs} (spreading an earlier surplus)`]);
   if(t.p<TARGET.pMin) msgs.push(["warn",`Protein ${r0(TARGET.pMin-t.p)} g short`]); else msgs.push(["good","Protein hit"]);
   if(t.f>TARGET.fMax) msgs.push(["warn","Fat on the high side"]);
   return `<div class="row">${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
@@ -3591,9 +6787,12 @@ function vToday(){
         <div class="stat"><div class="v num">${a7?a7.toFixed(1):"—"}</div><span class="label">7-day avg</span></div>
         <div class="stat"><div class="v num">${(w.kg-GOAL_KG).toFixed(1)}</div><span class="label">kg to 80</span></div>
       </div>`:`<p class="muted">Weigh after the bathroom, before food or water. One reading means little; the weekly average is what counts.</p>`}
+      ${window.GoalDate?GoalDate.compact(S.docs.weights,{today:TODAY, trend:trendSeries()}):""}
       ${dayType(d)==="saturday"?`<p class="note">Saturday weigh-ins often run high after Friday's salty shrimp. Don't react to it.</p>`:""}
     </div>
   </section>
+  ${ramadanCard(d)}
+  ${window.DailyScore?DailyScore.html(S.docs, d, {today:TODAY, sessionFor:x=>sessionFor(x)?.session}):""}
   <section class="grid">
     <div class="card">
       <div class="spread"><h3>Food today</h3><button class="btn ghost small" data-act="gofood">Plan / log food</button></div>
@@ -3605,6 +6804,7 @@ function vToday(){
       <ul class="tl">${SCHEDULE[type].map(([t,x])=>`<li><span class="t">${t}</span><span>${x}</span></li>`).join("")}</ul>
     </div>
   </section>
+  ${recoveryCard(d)}
   <section class="grid">
     <div class="card">
       <div class="spread"><h3>Water</h3><span class="muted">Target ${waterTarget}</span></div>
@@ -3625,8 +6825,10 @@ function vToday(){
       <div class="items">
         ${SUPPS.map(([k,l])=>`<label class="item" style="grid-template-columns:auto 1fr"><input type="checkbox" data-act="supp" data-k="${k}" ${day.supps[k]?"checked":""}><span>${l}</span></label>`).join("")}
         ${training?`<label class="item" style="grid-template-columns:auto 1fr"><input type="checkbox" data-act="tread" ${day.treadmill?"checked":""}><span>30 min treadmill after lifting</span></label>`:""}
+        <label class="item" style="grid-template-columns:auto 1fr"><input type="number" id="sleepH" step="0.5" min="0" max="16" value="${day.sleep??""}" style="width:4.5em" aria-label="Hours slept last night"><span>Hours slept last night</span></label>
       </div>
     </div>
+    ${window.Steps?(()=>{ const g=Steps.stepGoal(S.docs.prefs.main||{}); return Steps.stepsCardHTML(day,{goal:g, week:Steps.weekSteps(getDay,d,g)}); })():""}
   </section>`;
 }
 
@@ -3736,6 +6938,7 @@ function vFood(){
     </div>
   </section>
   ${window.SavedMeals?SavedMeals.cardHTML(S.docs.meals,{day}):""}
+  ${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}
   ${pickerCard(d, training)}
   <div class="card">
     <div class="spread"><h3>Today's food</h3><span class="muted" style="font-size:.85rem">Tick when eaten</span></div>
@@ -3846,7 +7049,8 @@ function vProgress(){
   ws.forEach((w,i)=>{ const a=avg7(w.date); table.push({...w,n:diffDays(START.date,w.date)+1,ch:prev?w.kg-prev.kg:null,a}); prev=w; });
   table.reverse();
   const report = window.WeeklyReport ? WeeklyReport.html(S.docs, view.wrWeek==null?{}:{week:view.wrWeek}) : "";
-  return `${report}
+  let trendCard=""; try{ trendCard = window.TrendTDEE ? TrendTDEE.html(S.docs) : ""; }catch(e){}
+  return `${report}${trendCard}
   <div class="card hero">
     <div class="spread"><h2>${lastW?`${lastW.kg.toFixed(1)} kg`:"No weigh-ins yet"}</h2><span class="label">Goal 80 kg</span></div>
     <div class="prog" aria-label="Progress to goal"><i style="width:${pct}%"></i></div>
@@ -3864,6 +7068,7 @@ function vProgress(){
     <p style="font-size:.92rem"><b class="num">${logged}/14</b> weigh-ins logged. First 7-day average on <b>Sat, Oct 31</b>. Calorie review only after <b>Sat, Nov 7</b>, based on the trend. Don't cut to 1,800 or 1,700 because of one reading.</p>
   </div>
   <div class="card"><h3>Weight trend</h3>${weightChart()}</div>
+  ${window.GoalDate?GoalDate.html(S.docs.weights,{today:TODAY, trend:trendSeries()}):""}
   <div class="card"><h3>Weight log</h3>
     ${table.length?`<div class="tablewrap"><table><thead><tr><th>Day</th><th>Date</th><th class="n">Weight</th><th class="n">Change</th><th class="n">7-day avg</th><th class="n">To 80</th></tr></thead>
     <tbody>${table.map(r=>`<tr><td class="n">${r.n}</td><td>${fmt(r.date)}</td><td class="n">${r.kg.toFixed(1)}</td><td class="n">${r.ch===null?"—":(r.ch>0?"+":"")+r.ch.toFixed(1)}</td><td class="n">${r.a?r.a.toFixed(2):"—"}</td><td class="n">${(r.kg-GOAL_KG).toFixed(1)}</td></tr>`).join("")}</tbody></table></div>`:`<p class="muted">No entries yet.</p>`}
@@ -3954,6 +7159,8 @@ function saveDay(day,opts){ put("days",day.date,day,opts); }
 function addFood(item){ const day=getDay(view.date); day.food.push({id:uid(),eaten:false,...item}); saveDay(day); }
 
 main.addEventListener("click",e=>{
+  const rc=e.target.closest("[data-recover]");
+  if(rc){ const rd=rc.dataset.recoverDate; BudgetRecovery.apply(BudgetRecovery.plan(rd,S.docs.days), rc.dataset.recover).forEach(({date,patch})=>{ const cur=getDay(date); put("days",date,{...cur,...patch,budgetAdj:{...(cur.budgetAdj||{}),...(patch.budgetAdj||{})}},{quiet:true}); }); render(); toast(rc.dataset.recover==="skip"?"Let it go. The weekly average is what counts.":"Plan saved"); return; }
   const eff=e.target.closest("[data-effort]");
   if(eff){ const ed=eff.dataset.effortDate||view.date; put("workouts", ed, EffortDeload.withEffort(Object.assign({date:ed}, clone(S.docs.workouts[ed])), +eff.dataset.effort)); return; }
   const dlb=e.target.closest("[data-deload]");
@@ -3984,6 +7191,10 @@ main.addEventListener("click",e=>{
   else if(a==="delfood"){ const day=getDay(d); day.food=day.food.filter(i=>i.id!==el.dataset.id); saveDay(day); }
   else if(a==="copyday"){ const day=getDay(d), nd=addDays(d,1), next=getDay(nd); next.food=next.food.concat(day.food.map(i=>({...i,id:uid(),eaten:false}))); put("days",nd,next); view.date=nd; toast("Copied to "+fmt(nd)); }
   else if(a==="clearday"){ if(el.dataset.confirm){ const day=getDay(d); day.food=[]; saveDay(day); } else { el.dataset.confirm="1"; el.textContent="Tap again to clear"; } }
+  else if(a==="stepsadd"){ put("days", d, Steps.addSteps(getDay(d), +el.dataset.n)); }
+  else if(a==="stepsset"){ const n=Steps.parseSteps(document.getElementById("stepsInput").value)[0]; if(n) put("days", d, Steps.setSteps(getDay(d), n.steps)); else toast("Type a step count, e.g. 8450"); }
+  else if(a==="stepsimport"){ applyStepsText(document.getElementById("stepsText").value); }
+  else if(a==="stepsgoal"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.stepGoal=Steps.stepGoal({stepGoal:document.getElementById("stepsGoalInput").value}); put("prefs","main",p); }
   else if(a==="waterh"){ applyWaterHText(document.getElementById("waterhText").value); }
   else if(a==="tmode"){ view.trainMode=el.dataset.m; try{localStorage.setItem("aziz-cut-tmode",view.trainMode)}catch(_){} render(); }
   else if(a==="pick"){ runPicker(); }
@@ -3995,6 +7206,8 @@ main.addEventListener("click",e=>{
 main.addEventListener("change",e=>{
   const el=e.target, d=view.date;
   if(el.id==="strongFile" && el.files && el.files[0]){ importStrong(el.files[0]); return; }
+  if(el.id==="stepsFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyStepsText(String(fr.result)); fr.readAsText(el.files[0]); return; }
+  if(el.id==="sleepH"){ const day=getDay(d); const v=parseFloat(el.value); if(isFinite(v)&&v>=0&&v<=16) day.sleep=v; else delete day.sleep; saveDay(day,{quiet:true}); renderPending=true; return; }
   if(el.id==="waterhFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyWaterHText(String(fr.result)); fr.readAsText(el.files[0]); return; }
   if(el.dataset.act==="eat"){ const day=getDay(d); const it=day.food.find(i=>i.id===el.dataset.id); if(it) it.eaten=el.checked; saveDay(day); if(el.checked && window.FitMotion){ const c=main.querySelector(`[data-act="eat"][data-id="${el.dataset.id}"]`); if(c) FitMotion.pop(c); } }
   else if(el.dataset.act==="supp"){ const day=getDay(d); day.supps[el.dataset.k]=el.checked; saveDay(day); }
@@ -4040,6 +7253,24 @@ function importStrong(file){
   fr.readAsText(file);
 }
 
+function ramadanCard(d){
+  if(!window.Ramadan) return "";
+  try{ const pr=S.docs.prefs.main||{}; const cfg=pr.ramadanStart?{start:pr.ramadanStart}:{};
+    if(Ramadan.dayOf(d, cfg)<=0) return "";
+    return Ramadan.html(d,{dayType:pickerDayType(d), train:pr.ramadanTrain||"after-iftar", cfg}); }catch(e){ return ""; }
+}
+function trendSeries(){ try{ return window.TrendTDEE ? TrendTDEE.series(S.docs.weights,{today:TODAY}) : undefined; }catch(e){ return undefined; } }
+function recoveryCard(d){
+  if(!window.BudgetRecovery) return "";
+  if(!(d<TODAY || (d===TODAY && new Date().getHours()>=18))) return "";
+  try{ return BudgetRecovery.cardHtml(BudgetRecovery.plan(d, S.docs.days)); }catch(e){ return ""; }
+}
+function applyStepsText(text){
+  let rows=[]; try{ rows=Steps.parseSteps(text); }catch(e){}
+  if(!rows.length){ toast("No step counts found"); return; }
+  rows.forEach(r=>put("days", r.date, Steps.applySteps(getDay(r.date), r), {quiet:true}));
+  render(); toast(rows.length===1 ? `Steps: ${rows[0].steps.toLocaleString()} on ${fmt(rows[0].date)}` : `Steps imported for ${rows.length} days`);
+}
 function applyWaterHText(text){
   let rows=[]; try{ rows=WaterH.parseWaterH(text); }catch(e){}
   if(!rows.length){ toast("No water amounts found. Paste the Shortcut's line, e.g. WATERH 2026-10-25 2350 mL"); return; }
@@ -4063,6 +7294,7 @@ function syncLogger(){
   try{
     WorkoutLogger.mount(host, {
       storage,
+      formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE) : undefined,
       weights: { list: async()=>weightsSorted().map(w=>({date:w.date,kg:w.kg})), put: async(date,kg)=>put("weights",date,{date,kg:Math.round(kg*10)/10},{quiet:true}) },
       onFinish(workout, rec){
         if(!rec || !rec.date) return;
@@ -4089,5 +7321,14 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css; document.head.appendChild(st2); }catch(e){}
+["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+try{
+  const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
+  PhotoFood.bind(document, {
+    getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
+    getDay, date: () => view.date, render,
+    onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items); saveDay(day); toast(items.length===1 ? "Added as an estimate" : "Added "+items.length+" items as estimates"); }
+  });
+}catch(e){}
 initStore();
 </script>
