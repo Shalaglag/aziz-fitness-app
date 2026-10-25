@@ -1,10 +1,16 @@
-// Run: TZ=Asia/Kuwait node --test modules/steps/steps.test.mjs
+// Run: node --test modules/steps/steps.test.mjs
+// The module maps zoned timestamps to the *local* day, so the test pins the
+// zone to Aziz's (Asia/Kuwait, UTC+3) instead of depending on the machine's.
+// Node re-reads process.env.TZ at runtime on Linux/macOS; on Windows the
+// assignment is ignored, so the zone-dependent test skips there.
+process.env.TZ = "Asia/Kuwait";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as S from "./steps.js";
 
 const now = new Date(2026, 9, 25, 18, 0);
+const inKuwait = now.getTimezoneOffset() === -180;
 const file = f => readFileSync(new URL(f, import.meta.url), "utf8");
 
 test("bare numbers are today", () => {
@@ -23,7 +29,7 @@ test("daily CSV", () => {
   assert.deepEqual(r.map(x => [x.date, x.steps]), [["2026-10-22", 7412], ["2026-10-23", 10233], ["2026-10-24", 9050]]);
 });
 
-test("Health Connect records: local day, per-source sum, max across sources", () => {
+test("Health Connect records: local day, per-source sum, max across sources", { skip: !inKuwait && "needs TZ=Asia/Kuwait (set it in the shell on Windows)" }, () => {
   const r = S.parseSteps(file("samples/health-connect-records.csv"), now);
   // In Kuwait (UTC+3) 22:30Z on the 24th is 01:30 on the 25th.
   // Oct 24: phone 3200+4100 = 7300, watch 3350 -> 7300 (not 10650).

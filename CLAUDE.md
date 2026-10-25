@@ -15,9 +15,9 @@ Goal: same quality and pace, fewer tokens. These rules remove reading that never
 
 ## Tests
 - While working: `node --test modules/<name>/<name>.test.js`
-- Before a PR: `node --test --test-reporter=dot modules/*/*.test.js modules/*/*.test.mjs`
+- Before a PR: `npm test` (every test file under modules/; the same command runs in GitHub Actions on every PR)
 - On failure: `node --test <file> 2>&1 | grep -A8 "^not ok"`
-- Known: `modules/steps/steps.test.mjs` "Health Connect records" is red on main; not caused by your change unless you touched steps.
+- CI (`.github/workflows/tests.yml`) runs `npm test` on every PR and on main; a red check means the PR is not mergeable yet.
 
 ## Changing the app
 - Module threads change only their module folder. The app thread inlines modules into `app/index.html`.

@@ -4,7 +4,7 @@ Steps per day for the Today tab: type the count by hand, or import an export fro
 
 ## Files
 - `steps.js`: plain ES module, no imports, no network. Inline it the same way as `waterh-import.js` (strip `export`, wrap in an IIFE, expose `window.Steps`).
-- `steps.test.mjs`: `TZ=Asia/Kuwait node --test modules/steps/steps.test.mjs` (11 tests; the timezone matters because zoned timestamps go to the local day).
+- `steps.test.mjs`: `node --test modules/steps/steps.test.mjs` (11 tests; the file pins `TZ=Asia/Kuwait` itself because zoned timestamps go to the local day; on Windows set `TZ` in the shell or the zone test skips).
 - `samples/`: one example export per supported app, used by the tests.
 
 ## Data
