@@ -38,8 +38,15 @@ assert.strictEqual(P.xform({ x: 0, y: 0, s: 1 }), '');
 console.log('helpers ok');
 
 // ---------- browser ----------
+// Needs Playwright + Chromium (preinstalled in Claude's container; CI installs
+// it in .github/workflows/tests.yml). Without it the browser half is reported
+// as skipped rather than failing, so the helper tests above still count.
+let chromium;
+try { ({ chromium } = require('playwright')); } catch (e) {
+  console.log('browser tests skipped: playwright is not installed (npm i playwright && npx playwright install chromium)');
+  process.exit(0);
+}
 (async () => {
-  const { chromium } = require('playwright');
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 860 } });
   const page = await ctx.newPage();
