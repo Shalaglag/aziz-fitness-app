@@ -15,6 +15,7 @@ This folder holds the whole fitness app project: the main app, the feature modul
 | Folder | What it is |
 |---|---|
 | `app/index.html` | The main app (Today, Train, Food, Progress, Guide tabs). |
+| `build/` | Builds `app/index.html` from `build/shell.html` plus the modules (`node build/build.js`; `--check` verifies the committed app). |
 | `modules/` | Pieces built to plug into the app: cutting guide, Friday helper, hydration, meal preferences, progressive overload (double progression), sleep and recovery, and the Plate theme kit. The `.js` and `.json` files are what get inlined into the app. |
 | `tools/` | Standalone pages: food log, exercise form guide, Nutreeze meal picker, pre-workout check, today's schedule, strength log, Strong screenshot reader, supplement guide (plus `supplement-reminders.ics` to import into your calendar), weight tracker. |
 | `docs/` | `nutrition-training-handoff.md` (the full plan), `APP-SHELL.md` (how the app is built and its data model), the Nutreeze menu format, and the still-owed info list. |

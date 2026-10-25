@@ -521,7 +521,6 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 
   window.FitMotion = { reduced: reduced, countUp: countUp, pop: pop, celebrate: celebrate, switchView: switchView, setProgress: setProgress };
 })();
-
 </script>
 <script>
 /*
@@ -868,7 +867,6 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 
   return { toFoodItems, TARGETS, setTargets, targetsFrom, snackCat, SNACKS, ADONIS, GATORADE, SATURDAY_EGGS, NEVER, bannedReason, likeOf, parseMenu, pick, formatPlan, slotLabels };
 });
-
 </script>
 <script>
 /* Weekly progress report for the Aziz Cut Tracker ("Check progress").
@@ -884,7 +882,7 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
  * Week navigation buttons carry data-wr-week="<n>"; the host handles the click and re-renders.
  * Calories and protein count only food marked eaten (planned food is not counted).
  */
-const WeeklyReport = (() => {
+window.WeeklyReport = (() => {
   // Plan numbers; setTargets / opts.targets (an AppTargets object, plus optional startKg) replace them.
   const PLAN = { START: "2026-10-25", START_KG: 91.9, GOAL: 80, KCAL: 2000, KCAL_LO: 1850, KCAL_HI: 2150, PRO: 160, PRO_MAX: 170, REVIEW: "2026-11-07" };
   let START, START_KG, GOAL, KCAL, KCAL_LO, KCAL_HI, PRO, PRO_MAX, REVIEW;
@@ -1205,8 +1203,6 @@ const WeeklyReport = (() => {
 
   return { css, build, html, summary, weekOf, setTargets, get START() { return START; }, LIFTS };
 })();
-
-window.WeeklyReport=WeeklyReport;
 </script>
 <script>
 /* StrongCSV: turns a Strong app export (Settings > Export Strong Data > CSV) into
@@ -1226,7 +1222,7 @@ window.WeeklyReport=WeeklyReport;
  * Warm-up sets ("W") are dropped; drop ("D") and failure ("F") sets are kept. "Rest Timer" rows are ignored.
  * Weights are converted to the unit the program lists for that exercise (lb for the DB lifts).
  */
-const StrongCSV = (() => {
+window.StrongCSV = (() => {
   const LB = 0.45359237;
 
   function splitRows(text, delim) {
@@ -1445,8 +1441,6 @@ const StrongCSV = (() => {
   return { parse, toWorkouts, matchName, ALIASES };
 })();
 if (typeof module !== "undefined") module.exports = StrongCSV;
-
-window.StrongCSV=StrongCSV;
 </script>
 <script>
 window.WaterH=(function(){
@@ -1595,7 +1589,7 @@ function totalWater(day) {
   return (day && day.water || 0) + (day && day.waterh && day.waterh.ml || 0);
 }
 
-return {parseWaterH, applyWaterH, totalWater};
+return {localISODate,parseWaterH,applyWaterH,totalWater};
 })();
 </script>
 <script>
@@ -3543,8 +3537,8 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
  *                                                    carry data-deload="dismiss" | "start"
  * Host wiring: show pickerHtml after a workout is finished (Quick log save and the Full logger's
  * onFinish); on click put("workouts", date, EffortDeload.withEffort(doc, n)). Render nudgeHtml on
- * Train (and/or Today). "dismiss" stores prefs/main.deloadDismissedAt = today; "start" marks the
- * next 7 days' workouts with deload:true as they are logged (or just dismisses, host's choice).
+ * Train (and/or Today). "dismiss" stores prefs/main.deloadDismissedAt = today; "start" sets prefs/main.deloadFrom/deloadUntil (today..today+6)
+ * and workouts saved in that range get deload:true.
  *
  * The rule (rolling 7-day windows ending today: C = last 7 days, B = the 7 before, A = the 7 before that):
  *   effort rising  = avg(C) >= avg(B) >= avg(A) and avg(C) - avg(A) >= 1, or B and C both average >= 8.5
@@ -3553,7 +3547,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
  *   nudge          = both, with 2+ rated sessions in B and in C and 1+ in A,
  *                    no deload-marked workout in the last 21 days, and not dismissed in the last 14 days.
  */
-const EffortDeload = (() => {
+window.EffortDeload = (() => {
   const DAY = 864e5;
   const LEVELS = [
     [1, "Barely a workout"], [2, "Very easy"], [3, "Easy"], [4, "Comfortable"], [5, "Moderate"],
@@ -3679,8 +3673,6 @@ const EffortDeload = (() => {
 })();
 
 if (typeof module !== "undefined") module.exports = { EffortDeload };
-
-window.EffortDeload=EffortDeload;
 </script>
 <script>
 /* Over-budget day recovery for the Aziz Cut Tracker.
@@ -3710,7 +3702,7 @@ window.EffortDeload=EffortDeload;
  *   recommended: walk when the surplus fits inside it (<= 200 kcal), otherwise spread.
  *   Cuts come from carbs or fat; protein stays at 160 g+.
  */
-const BudgetRecovery = (() => {
+window.BudgetRecovery = (() => {
   // Plan numbers; setTargets(AppTargets object) replaces them: kcal -> TARGET, kcalLo -> FLOOR, proteinMin -> note.
   let TARGET = 2000;
   let FLOOR = 1850;            // lowest a recovery day may go
@@ -3846,8 +3838,6 @@ const BudgetRecovery = (() => {
 })();
 
 if (typeof module !== "undefined") module.exports = { BudgetRecovery };
-
-window.BudgetRecovery=BudgetRecovery;
 </script>
 <script>
 /* Daily score and streak for the Aziz Cut Tracker.
@@ -3871,7 +3861,7 @@ window.BudgetRecovery=BudgetRecovery;
  * session / sessionFor(date) is the planned session name (the app's sessionFor(d).session) so a rotation Rest day
  * without a workout doc still counts as rest. Without it, workouts/{date}.session is used.
  */
-const DailyScore = (() => {
+window.DailyScore = (() => {
   const START = "2026-10-25", GOOD = 80;
   const PRO = 160, PRO_FLOOR = 120, KCAL_LO = 1850, KCAL_HI = 2150, KCAL_SLACK = 300;
   const WATER_TRAIN = 3500, WATER_REST = 3000, SLEEP_OK = 7, SLEEP_FLOOR = 5;
@@ -3991,8 +3981,6 @@ const DailyScore = (() => {
   return { score, streak, html, css, GOOD, START };
 })();
 if (typeof module !== "undefined") module.exports = DailyScore;
-
-window.DailyScore=DailyScore;
 </script>
 <script>
 /* Goal date to 80 kg for the Aziz Cut Tracker.
@@ -4014,7 +4002,7 @@ window.DailyScore=DailyScore;
  *   status: "empty" | "plan" (too little data, dates use the 0.5–0.8 kg/wk plan pace)
  *           | "trend" (dates from the trend slope) | "stalled" (trend not going down) | "reached"
  */
-const GoalDate = (() => {
+window.GoalDate = (() => {
   const START = "2026-10-25", START_KG = 91.9, GOAL = 80, MILESTONES = [90, 85, 80];
   const ALPHA = 0.1, WINDOW = 28, MIN_SPAN = 14, MIN_POINTS = 5;
   const PLAN_FAST = 0.8, PLAN_SLOW = 0.5, WATER_FAST = 1.2, STALL = 0.1, RECENT = 14;
@@ -4190,8 +4178,6 @@ const GoalDate = (() => {
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = GoalDate;
-
-window.GoalDate=GoalDate;
 </script>
 <script>
 window.Steps=(function(){
@@ -4532,7 +4518,7 @@ return {DEFAULT_GOAL,STEP_SOURCES,localISODate,toCount,parseSteps,stepCount,setS
  * Food stays 2 Nutreeze meals + 2 snacks + Adonis (+ Gatorade on training days) at 2,000 kcal;
  * Ramadan only moves them. Each slot's `appSlot` is the Food tab slot name the item goes in.
  */
-const Ramadan = (() => {
+window.Ramadan = (() => {
   const DEFAULTS = {
     // 1 Ramadan 1448 AH is expected on Mon 8 Feb 2027 (astronomical estimate).
     // Kuwait confirms by moon sighting the night before; change `start` if it moves a day.
@@ -4763,8 +4749,6 @@ const Ramadan = (() => {
 })();
 
 if (typeof module !== "undefined") module.exports = Ramadan;
-
-window.Ramadan=Ramadan;
 </script>
 <script>
 /* Trend weight + adaptive calorie burn (TDEE) for the Aziz Cut Tracker.
@@ -4782,7 +4766,7 @@ window.Ramadan=Ramadan;
  * least-squares fit on raw weigh-ins over the last 28 days (min 14), ending yesterday so a
  * half-logged today never counts. Only food marked eaten is counted.
  */
-const TrendTDEE = (() => {
+window.TrendTDEE = (() => {
   const START = "2026-10-25", REVIEW = "2026-11-07", KCAL = 2000, FLOOR = 1700;
   const ALPHA = 0.1, KCAL_PER_KG = 7700, MIN_DAYS = 14, MAX_DAYS = 28, MIN_FOOD = 10, MIN_WEIGH = 8;
   const PACE_LO = 0.5, PACE_HI = 0.8; // kg per week, the plan band
@@ -4977,8 +4961,6 @@ const TrendTDEE = (() => {
   return { css, series, estimate, html, summary, START, REVIEW };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = TrendTDEE;
-
-window.TrendTDEE=window.TrendTDEE||(typeof TrendTDEE!=="undefined"?TrendTDEE:undefined);
 </script>
 <script>
 window.FORM_GUIDE={
@@ -6735,7 +6717,6 @@ window.FORM_GUIDE={
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.FormCues = api;
 })(typeof window !== 'undefined' ? window : globalThis);
-
 </script>
 <script>
 /* Photo or text food logger for the Aziz Cut Tracker (Food tab card "Log from a photo or description").
@@ -7196,7 +7177,6 @@ if (typeof module !== "undefined" && module.exports) module.exports = PhotoFood;
 
   return { TARGETS, CATALOG, DEFAULT_NEVER, isDisliked, remaining, suggest, summary, toFoodItems };
 });
-
 </script>
 <script>
 /* BarcodeFood: scan a packaged food's barcode, look it up on Open Food Facts and turn it
@@ -7221,7 +7201,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = PhotoFood;
  * Numbers are rounded the way the app shows them: kcal whole, macros to 0.1 g.
  * est is true when any macro was missing from Open Food Facts or kcal had to be derived.
  */
-const BarcodeFood = (() => {
+window.BarcodeFood = (() => {
   const OFF = "https://world.openfoodfacts.org/api/v2/product/";
   const FIELDS = "code,product_name,product_name_en,generic_name,brands,quantity,serving_size,serving_quantity,nutriments";
   const LS_KEY = "barcodeFood.library";
@@ -7532,8 +7512,6 @@ const BarcodeFood = (() => {
   return { clean, isValid, lookup, parseProduct, toFoodItem, canDetect, detect, mount, CSS, OFF_URL: OFF };
 })();
 if (typeof module !== "undefined") module.exports = BarcodeFood;
-
-window.BarcodeFood=BarcodeFood;
 </script>
 <script>
 /* ExerciseSwap: one-tap swaps when a machine is taken, plus a "this hurt" flag.
@@ -7885,7 +7863,6 @@ Hanging Leg Raise|Core|Reps only|Hanging Leg Raise|`;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ExerciseSwap = api;
 })(typeof window !== 'undefined' ? window : this);
-
 </script>
 <script>
 /* Progress photos for the Aziz Cut Tracker: weekly front / side / back photos, a before/after slider,
@@ -8596,7 +8573,6 @@ Hanging Leg Raise|Core|Reps only|Hanging Leg Raise|`;
   if (typeof module !== 'undefined' && module.exports) module.exports = ProgressPhotos;
   global.ProgressPhotos = ProgressPhotos;
 })(typeof window !== 'undefined' ? window : globalThis);
-
 </script>
 <script>
 /* Diet-break planner. Works for anyone; nothing about one person is built in.
@@ -8634,7 +8610,7 @@ Hanging Leg Raise|Core|Reps only|Hanging Leg Raise|`;
  *   DietBreak.estimateTdee(docs, today, breaks, profile) -> {kcal, source, confidence, ...}
  * Buttons carry data-db-action="<action>"; the host calls apply(), saves the state and re-renders.
  */
-const DietBreak = (() => {
+window.DietBreak = (() => {
   const KCAL_PER_KG = 7700, MIN_BLOCK = 8, MAX_BLOCK = 12;
   const DAY = 864e5;
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -9016,8 +8992,6 @@ const DietBreak = (() => {
 })();
 
 if (typeof module !== "undefined") module.exports = DietBreak;
-
-window.DietBreak=window.DietBreak||(typeof DietBreak!=="undefined"?DietBreak:undefined);
 </script>
 <script>
 /*
@@ -9149,7 +9123,6 @@ window.DietBreak=window.DietBreak||(typeof DietBreak!=="undefined"?DietBreak:und
 
   return { resolve, forKcal, lastDays, reviewWindow, validate, addDays, daysBetween };
 });
-
 </script>
 <script>
 /* Daily dashboard ("Today at a glance") and workout calendar for the Aziz Cut Tracker.
@@ -9832,7 +9805,6 @@ window.SuppDrinks = (() => {
     takeSupp, skipSupp, clearSupp, drinkTotals, totalFluid, suppStatus, adherence, saveDrinkLabel, savePlan, html, readForm, apply, summary };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = SuppDrinks;
-
 </script>
 <script>
 /* Recovery + fatigue tracker for the Aziz Cut Tracker.
@@ -10240,7 +10212,6 @@ window.RecoveryFatigue = (() => {
 })();
 
 if (typeof module !== "undefined") module.exports = { RecoveryFatigue };
-
 </script>
 <script>
 /* AI coach + 14-day progress review for the Aziz Cut Tracker.
@@ -10837,7 +10808,6 @@ window.Coach = (() => {
   return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, bind, errorText, TOPICS, _state: S };
 })();
 if (typeof module !== "undefined") module.exports = Coach;
-
 </script>
 <script>
 /* Cardio tracking for the Aziz Cut Tracker: treadmill sessions (and other machines) next to lifting.
@@ -11320,7 +11290,6 @@ window.Cardio = (() => {
 })();
 
 if (typeof module !== "undefined") module.exports = { Cardio };
-
 </script>
 <script>
 /* Strength & muscle analytics for the fitness app (Progress tab).
@@ -11824,7 +11793,6 @@ window.StrengthAnalytics = (() => {
 })();
 if (typeof window !== "undefined") window.StrengthAnalytics = StrengthAnalytics;
 if (typeof module !== "undefined" && module.exports) module.exports = StrengthAnalytics;
-
 </script>
 <script>
 /* DataIO: imports, backups and restore for the app shell.
@@ -12807,7 +12775,6 @@ window.DataIO = (() => {
   };
 })();
 if (typeof module !== "undefined") module.exports = DataIO;
-
 </script>
 <script>
 /*
@@ -13578,7 +13545,6 @@ if (typeof module !== "undefined") module.exports = DataIO;
 });
 </script>
 <script>
-/* ===================== PendingWrites (modules/pending-writes/pending-writes.js) ===================== */
 /* PendingWrites: a small outbox for the synced database.
  * Every write is recorded in localStorage before it is attempted, retried until it
  * succeeds, coalesced per document, and laid over incoming snapshots so a doc with
@@ -13679,7 +13645,6 @@ if (typeof module !== "undefined") module.exports = DataIO;
 
   return { create, changedFields, pick };
 });
-
 </script>
 <script>
 /* ===================== Plan data (from Aziz's handoff, Oct 25 2026) ===================== */

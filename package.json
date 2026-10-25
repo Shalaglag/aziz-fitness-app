@@ -3,6 +3,6 @@
   "private": true,
   "description": "Aziz's cut tracker: app/index.html plus the modules it inlines",
   "scripts": {
-    "test": "node --test --test-reporter=dot \"modules/**/*.test.js\" \"modules/**/*.test.mjs\" \"modules/**/test.js\""
+    "test": "node --test --test-reporter=dot \"modules/**/*.test.js\" \"modules/**/*.test.mjs\" \"modules/**/test.js\" build/build.test.js && node build/build.js --check"
   }
 }
