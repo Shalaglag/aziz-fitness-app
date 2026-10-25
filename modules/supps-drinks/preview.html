@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drinks and supplements preview</title>
+<link rel="stylesheet" href="../theme/theme.css">
+<style>
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);padding:16px;max-width:560px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0;margin-bottom:16px}
+.spread{display:flex;justify-content:space-between;align-items:baseline;gap:8px}h3{margin:0;font-family:var(--display);font-size:1.15rem}
+.muted{color:var(--muted)}.num{font-variant-numeric:tabular-nums}
+.chip,.btn{font:inherit;font-size:.85rem;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer}
+.btn{border-radius:8px}.btn.ghost{background:transparent}#toast{position:fixed;bottom:16px;left:16px;right:16px;max-width:520px;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:8px;display:none}
+</style></head><body>
+<div id="out"></div><div id="toast"></div>
+<script src="supps-drinks.js"></script>
+<script>
+// Stand-in for the app shell: one day doc + prefs in memory, wired the way the shell would wire it.
+let day = SuppDrinks.migrateDay({ date: new Date().toISOString().slice(0, 10), food: [{ id: "g0", name: "Gatorade 1 L", slot: "Fixed", kcal: 240, c: 60, eaten: false, est: true }], water: 750, waterh: { ml: 1200 }, supps: {} });
+let prefs = {};
+let n = 0; const uid = () => "p" + (++n);
+document.head.insertAdjacentHTML("beforeend", "<style>" + SuppDrinks.css + "</style>");
+const render = () => { document.getElementById("out").innerHTML = SuppDrinks.html(day, prefs, { training: true }); };
+const toast = m => { const t = document.getElementById("toast"); t.textContent = m; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 2600); };
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-sd]"); if (!el) return;
+  const a = el.dataset.sd, data = Object.assign({}, el.dataset, /save$/.test(a) ? SuppDrinks.readForm(document, el.dataset.key) : {});
+  const r = SuppDrinks.apply(a, data, day, prefs, { uid });
+  if (r.day) day = r.day; if (r.prefs) prefs = r.prefs; if (r.toast) toast(r.toast);
+  if (r.open) { const d = document.querySelector(".sd-card details"); if (d) d.open = true; }
+  if (r.day || r.prefs) render();
+});
+render();
+</script></body></html>
