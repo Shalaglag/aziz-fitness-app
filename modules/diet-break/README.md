@@ -7,14 +7,14 @@ With no data the plan is: cut Oct 25, 2026 → Jan 2, 2027, break Jan 3 → Jan 
 ## Files
 
 - `diet-break.js`: the module (global `DietBreak`, plain JS, no imports or network).
-- `diet-break.test.js`: `node modules/diet-break/diet-break.test.js` (13 tests).
+- `diet-break.test.js`: `node modules/diet-break/diet-break.test.js` (14 tests).
 - `preview.html`: the card with the app's styles; change the date to see each phase.
 
 ## How it works
 
 - **Break calories = maintenance (TDEE).** Uses `TrendTDEE.estimate(docs, {today})` from the trend-weight module when it is inlined (ready from ~Nov 8). Before that it uses its own estimate (eaten kcal minus the weight trend × 7,700, skipping week 1 water loss), and with too little data the plan's ~2,800.
 - **Break macros:** protein stays 160 g, fat ~70 g, the extra calories go to carbs.
-- **Breaks start on their own** on the planned date; `target()` switches the day's goal from 2,000 to maintenance and back.
+- **Automatic or manual.** By default (`auto: true`) breaks start on their own on the planned date and `target()` switches the day's goal from 2,000 to maintenance and back. With `auto: false` the target stays 2,000 until Aziz taps **Start break today**; once the planned date passes, the card shows the break as due.
 - **Early break:** from week 8 of a block, if raw weigh-ins dropped under 0.2 kg in 2 weeks while eating ≤2,150 kcal, the card suggests starting now. Stalls before week 8 are treated as water.
 - **No break before the goal** when the last stretch to 80 kg is shorter than a full block.
 
@@ -28,7 +28,7 @@ DietBreak.html(docs, state, {today})         // card HTML
 DietBreak.apply(state, action, today)        // new state; actions from data-db-action
 ```
 
-`docs` is `{days, weights}` from the app. `state` is stored by the host at `prefs/main.dietBreak` (`{}` to start): `{blockWeeks, breakWeeks, breaks:[{start,end}]}`.
+`docs` is `{days, weights}` from the app. `state` is stored by the host at `prefs/main.dietBreak` (`{}` to start): `{blockWeeks, breakWeeks, auto, breaks:[{start,end}]}`; actions `auto:on` / `auto:off` flip the mode.
 
 ## Integrating into the app
 

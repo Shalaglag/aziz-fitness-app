@@ -137,4 +137,20 @@ t("goal reached flips to maintain", () => {
   assert.strictEqual(p.plannedBreaks.length, 0);
 });
 
+t("manual mode (auto:false): no break until the user starts one", () => {
+  const st = { auto: false };
+  assert.strictEqual(DB.target({}, st, "2027-01-05").mode, "cut");
+  const p = DB.build({}, st, { today: "2027-01-05" });
+  assert.strictEqual(p.now.type, "cut");
+  assert.strictEqual(p.weekInBlock, 11);
+  const h = DB.html({}, st, { today: "2027-01-05" });
+  assert.ok(h.includes("break is due") && h.includes("Start break today"));
+  const s2 = DB.apply(st, "start", "2027-01-05");
+  assert.strictEqual(s2.auto, false);
+  assert.strictEqual(DB.target({}, s2, "2027-01-06").mode, "break");
+  assert.strictEqual(DB.target({}, s2, "2027-01-19").mode, "cut");
+  assert.strictEqual(DB.apply({}, "auto:off", "2026-11-01").auto, false);
+  assert.strictEqual(DB.build({}, {}, { today: "2026-11-01" }).state.auto, true, "default stays automatic");
+});
+
 console.log(n + " tests passed");

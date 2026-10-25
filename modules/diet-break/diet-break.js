@@ -6,9 +6,11 @@
  * Reads the app's own collections:
  *   docs = { days: {date: {food:[{kcal,p,eaten}]}}, weights: {date: {kg}} }
  * plus a small state object the host stores (suggested: `prefs/main.dietBreak`):
- *   state = { blockWeeks: 8–12, breakWeeks: 1|2, breaks: [{start, end}] }   (all optional; {} is fine)
- *   Planned breaks start on their own on the planned date (the day's target switches to
- *   maintenance). `breaks` records breaks the user started early, ended early or resized.
+ *   state = { blockWeeks: 8–12, breakWeeks: 1|2, auto: bool, breaks: [{start, end}] }   (all optional; {} is fine)
+ *   auto (default true): planned breaks start on their own on the planned date (the day's
+ *   target switches to maintenance). auto:false: the target stays at 2,000 until the user
+ *   taps Start; the card shows the break as due. `breaks` records breaks the user started,
+ *   ended early or resized.
  *
  * Maintenance (TDEE): uses TrendTDEE.estimate(docs, {today}) when that module is inlined
  * (or pass opts.tdee: a number or {kcal, lo, hi}). Without it the module
@@ -20,7 +22,7 @@
  *   DietBreak.build(docs, state, {today, tdee})-> plan object (phase now, next break, schedule, targets)
  *   DietBreak.target(docs, state, date, opts)  -> {mode:"cut"|"break"|"maintain", kcal, lo, hi, protein, carbs, fat}
  *   DietBreak.html(docs, state, opts)          -> HTML card for the Progress tab (or Today)
- *   DietBreak.apply(state, action, today)      -> new state; action = "start" | "end" | "length:1" | "length:2" | "block:<8-12>"
+ *   DietBreak.apply(state, action, today)      -> new state; action = "start" | "end" | "length:1" | "length:2" | "block:<8-12>" | "auto:on" | "auto:off"
  *   DietBreak.estimateTdee(docs, today)        -> {kcal, source, confidence, days, ratePerWeek} (fallback estimator)
  * Buttons carry data-db-action="<action>"; the host calls apply(), saves the state and re-renders.
  */
@@ -55,14 +57,14 @@ const DietBreak = (() => {
       .filter(b => b && /^\d{4}-\d{2}-\d{2}$/.test(b.start))
       .map(b => ({ start: b.start, end: /^\d{4}-\d{2}-\d{2}$/.test(b.end || "") ? b.end : add(b.start, breakWeeks * 7 - 1) }))
       .sort((a, b) => a.start < b.start ? -1 : 1);
-    return { blockWeeks, breakWeeks, breaks };
+    return { blockWeeks, breakWeeks, breaks, auto: state.auto !== false };
   }
 
   // Breaks start on their own on the planned date; apply() records changes the user makes.
   function apply(state, action, today) {
     const s = norm(state);
     today = today || localToday();
-    const out = { blockWeeks: s.blockWeeks, breakWeeks: s.breakWeeks, breaks: s.breaks.map(b => ({ ...b })) };
+    const out = { blockWeeks: s.blockWeeks, breakWeeks: s.breakWeeks, breaks: s.breaks.map(b => ({ ...b })), auto: s.auto };
     const ph = schedule(s, today, 999, 0.5).find(p => p.start <= today && (!p.end || today <= p.end));
     let cur = out.breaks.find(b => b.start <= today && today <= b.end);
     if (!cur && ph && ph.type === "break") { cur = { start: ph.start, end: ph.end }; out.breaks.push(cur); }
@@ -73,7 +75,8 @@ const DietBreak = (() => {
     } else if (/^length:[12]$/.test(action)) {
       out.breakWeeks = Number(action.slice(7));
       if (cur) cur.end = add(cur.start, out.breakWeeks * 7 - 1);
-    } else if (/^block:\d+$/.test(action)) out.blockWeeks = clamp(Number(action.slice(6)), MIN_BLOCK, MAX_BLOCK);
+    } else if (action === "auto:on" || action === "auto:off") out.auto = action === "auto:on";
+    else if (/^block:\d+$/.test(action)) out.blockWeeks = clamp(Number(action.slice(6)), MIN_BLOCK, MAX_BLOCK);
     out.breaks.sort((a, b) => a.start < b.start ? -1 : 1);
     return out;
   }
@@ -167,7 +170,9 @@ const DietBreak = (() => {
     const taken = st.breaks.slice();
     while (guard++ < 40) {
       const next = taken.find(b => b.start >= cursor);
-      const plannedStart = add(cursor, st.blockWeeks * 7);
+      // Manual mode: a planned break never starts by itself; the cut runs on until the user taps Start.
+      let plannedStart = add(cursor, st.blockWeeks * 7);
+      if (!st.auto && plannedStart <= today) plannedStart = add(today, 1);
       if (next && next.start <= plannedStart) {
         if (next.start > cursor) phases.push({ type: "cut", start: cursor, end: add(next.start, -1) });
         phases.push({ type: "break", start: next.start, end: next.end, taken: true });
@@ -301,16 +306,17 @@ const DietBreak = (() => {
       body = '<p>Projected at 80 kg. Eat ~' + fint(p.breakKcal) + ' kcal and hold the weight.</p>';
       actions = "";
     } else {
-      const due = p.weekInBlock > MAX_BLOCK;
+      const due = p.weekInBlock > (p.state.auto ? MAX_BLOCK : p.state.blockWeeks);
       head = pill(p.early || due ? "warn" : "good", p.early ? "Break suggested" : due ? "Break due" : "Cutting") +
         ' <b>Week ' + p.weekInBlock + ' of block ' + p.blockIdx + '</b>';
-      if (p.early) body = '<p>Trend weight dropped only ' + f1(p.early.loss) + ' kg in 2 weeks while eating ~' + fint(p.early.avgKcal) + ' kcal. You are past week 8, so start the maintenance break now instead of waiting.</p>';
+      if (due && !p.state.auto) body = '<p>Your planned maintenance break is due (' + p.state.blockWeeks + ' weeks of cutting done). Tap <b>Start break today</b> when you are ready; the target stays 2,000 until you do.</p>';
+      else if (p.early) body = '<p>Trend weight dropped only ' + f1(p.early.loss) + ' kg in 2 weeks while eating ~' + fint(p.early.avgKcal) + ' kcal. You are past week 8, so start the maintenance break now instead of waiting.</p>';
       else if (p.nextBreak) body = '<p>Next maintenance break: <b>' + short(p.nextBreak.start) + ' – ' + short(p.nextBreak.end) + '</b>' +
         (p.daysToBreak <= 14 ? ' (in ' + p.daysToBreak + ' day' + (p.daysToBreak === 1 ? "" : "s") + ')' : ' (in ' + Math.round(p.daysToBreak / 7) + ' weeks)') +
         ', at ~' + fint(p.breakKcal) + ' kcal a day. Until then stay at 2,000.</p>';
       else body = '<p>No more breaks planned: the last stretch to 80 kg is shorter than a full block.</p>';
       if (p.weekInBlock < MIN_BLOCK) body += '<p class="db-small">Stalls before week 8 are usually water. Ride them out rather than starting a break early.</p>';
-      actions = p.weekInBlock >= MIN_BLOCK ? btn("start", "Start break today", !p.early) : "";
+      actions = p.weekInBlock >= MIN_BLOCK ? btn("start", "Start break today", !(p.early || due)) : "";
     }
     const goal = p.goalDate ? 'Projected 80 kg around <b>' + longDate(p.goalDate) + '</b> at ~' + f1(p.rate) + ' kg/week (' + (p.rateSource === "trend" ? "your trend" : "from the deficit") + '), including ' + p.plannedBreaks.length + ' break' + (p.plannedBreaks.length === 1 ? "" : "s") + '.' : "";
     const list = p.phases.filter(x => x.type === "break").map(b =>
