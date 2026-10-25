@@ -397,6 +397,8 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 .lib{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr))}
 .lib .card{gap:6px}
 .lib .card ul{font-size:.92rem}
+.err-banner{background:var(--bad,#b3261e);color:#fff;padding:8px 14px;font-size:.9rem;display:flex;gap:10px;align-items:center;justify-content:space-between}.err-banner button{background:transparent;border:1px solid rgba(255,255,255,.6);color:#fff;border-radius:6px;padding:2px 8px;cursor:pointer}
+.card.broken{border-style:dashed;opacity:.85}.card.broken details{font-size:.8rem}.card.broken pre{white-space:pre-wrap;font-size:.75rem;margin:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;z-index:20;font-size:.9rem;display:flex;gap:12px;align-items:center;max-width:calc(100vw - 24px)}
 .toast .undo{background:none;border:0;color:var(--accent,#7cc4ff);font:inherit;font-weight:700;padding:0;cursor:pointer}
 @media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
@@ -425,6 +427,7 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
     </nav>
   </div>
 </header>
+<div class="wrap err-banner" id="errBanner" hidden role="alert"></div>
 <main class="wrap" id="main"></main>
 <div class="wrap" id="lbHost" hidden></div>
 <div class="wrap" id="ppHost" hidden></div>
@@ -13962,12 +13965,9 @@ function render(){
   document.getElementById("dateLabel").textContent = fmt(view.date) + (view.date===TODAY?" · today":"");
   document.getElementById("goToday").hidden = view.date===TODAY;
   const y = window.scrollY;
-  main.innerHTML = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,guide:vGuide})[view.tab]();
-  syncLogger();
-  mountBarcode();
-  mountSwapNotice();
-  syncPhotos();
-  syncDataCard();
+  const tabFn = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,guide:vGuide})[view.tab] || vToday;
+  main.innerHTML = safe(view.tab+" tab", tabFn);
+  [["Workout logger",syncLogger],["Barcode scanner",mountBarcode],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
   if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); lastTab=view.tab; }
   window.scrollTo(0,y);
 }
@@ -14008,11 +14008,22 @@ function ddOpts(){ return {today:TODAY, selected:view.date, targets:ddTargets(),
 const CARDIO_DEFAULT = {kind:"treadmill", min:30, speed:4.0, incline:3};
 let cardioOpts = {};
 function cdDocs(){ const m=S.docs.prefs.main||{}; return {...S.docs, prefs:{...S.docs.prefs, main:{...m, cardio:{...CARDIO_DEFAULT, ...(m.cardio||{})}}}}; }
-function cdSafe(fn){ try{ return window.Cardio ? fn() : ""; }catch(e){ return ""; } }
+/* Error guard: one broken card never freezes a tab. safe(label, fn) renders a small "couldn't load" box and lights the banner. */
+const brokenCards=[];
+function cardFail(label,e){ try{ console.error("[card] "+label, e); brokenCards.push(label); showErrBanner(); }catch(_){}
+  return `<div class="card broken"><span class="label">${esc(label)}</span><p class="muted">This card couldn't load. The rest of the app still works.</p><details><summary>Details</summary><pre class="num">${esc(String(e&&e.message||e))}</pre></details></div>`; }
+function safe(label, fn){ try{ const h=fn(); return h==null?"":h; }catch(e){ return cardFail(label,e); } }
+function safeMod(name, fn){ return window[name] ? safe(name.replace(/([a-z])([A-Z])/g,"$1 $2"), fn) : ""; }
+function showErrBanner(msg){ const b=document.getElementById("errBanner"); if(!b) return; const list=[...new Set(brokenCards)];
+  b.innerHTML=`<span>${esc(msg||(list.length?"Couldn't load: "+list.join(", ")+".":"Something went wrong."))} Tabs still work; try again after a reload. If it keeps happening, back up your data from Guide.</span><button type="button" id="errDismiss">Dismiss</button>`;
+  b.hidden=false; document.getElementById("errDismiss").onclick=()=>{ b.hidden=true; brokenCards.length=0; }; }
+window.addEventListener("error", e=>{ if(e && e.error) showErrBanner("Something went wrong: "+(e.error.message||e.message||"error")+"."); });
+window.addEventListener("unhandledrejection", e=>{ const r=e && e.reason; showErrBanner("Something went wrong: "+((r&&r.message)||r||"error")+"."); });
+function cdSafe(fn){ return safeMod("Cardio", fn); }
 function latestKg(){ const ws=weightsSorted(); return ws.length ? ws[ws.length-1].kg : undefined; }
 function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
-function rfSafe(fn){ try{ return window.RecoveryFatigue ? fn() : ""; }catch(e){ return ""; } }
+function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
 let coachPending=null, weightPending=null;
 // >5% off the average of the last 7 days of weigh-ins (needs 3+) needs a second tap. Catches 91.9 typed as 99.1 or 81.9.
 function weightOutlier(date,kg){ const ws=weightsSorted().filter(w=>w.date!==date && w.date<=date && diffDays(w.date,date)<=7); if(ws.length<3) return null; const avg=ws.reduce((a,w)=>a+w.kg,0)/ws.length; const pct=(kg-avg)/avg*100; return Math.abs(pct)>5 ? {avg,pct} : null; }
@@ -14020,9 +14031,9 @@ function coachOpts(){ const o={today:TODAY, targets:APPT, rules:{floor:1800}, kc
   try{ if(window.EffortDeload) o.effort=EffortDeload.analyze(S.docs.workouts,{today:TODAY, dismissedAt:S.docs.prefs.main?.deloadDismissedAt}); }catch(e){}
   try{ if(window.TrendTDEE) o.tdee=TrendTDEE.estimate(S.docs,{today:TODAY}); }catch(e){}
   return o; }
-function coachSafe(fn){ try{ return window.Coach ? fn() : ""; }catch(e){ return ""; } }
-function ddGlance(d){ try{ return window.DailyDashboard ? DailyDashboard.glanceHtml(S.docs, d, ddOpts()) : ""; }catch(e){ return ""; } }
-function ddCalendar(d){ try{ return window.DailyDashboard ? DailyDashboard.calendarHtml(S.docs, view.calYm||d.slice(0,7), ddOpts()) : ""; }catch(e){ return ""; } }
+function coachSafe(fn){ return safeMod("Coach", fn); }
+function ddGlance(d){ return safeMod("DailyDashboard", ()=>DailyDashboard.glanceHtml(S.docs, d, ddOpts())); }
+function ddCalendar(d){ return safeMod("DailyDashboard", ()=>DailyDashboard.calendarHtml(S.docs, view.calYm||d.slice(0,7), ddOpts())); }
 function vToday(){
   const d=view.date, day=getDay(d), type=dayType(d), ses=sessionFor(d), w=S.docs.weights[d];
   const strictDay = diffDays(STRICT.from,d)+1;
@@ -14057,7 +14068,7 @@ function vToday(){
         <div class="stat"><div class="v num">${a7?a7.toFixed(1):"—"}</div><span class="label">7-day avg</span></div>
         <div class="stat"><div class="v num">${(w.kg-GOAL_KG).toFixed(1)}</div><span class="label">kg to ${GOAL_KG}</span></div>
       </div>`:`<p class="muted">Weigh after the bathroom, before food or water. One reading means little; the weekly average is what counts.</p>`}
-      ${window.GoalDate?GoalDate.compact(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}):""}
+      ${safeMod("GoalDate",()=>GoalDate.compact(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}))}
       ${dayType(d)==="saturday"?`<p class="note">Saturday weigh-ins often run high after Friday's salty shrimp. Don't react to it.</p>`:""}
     </div>
   </section>
@@ -14081,8 +14092,8 @@ function vToday(){
       ${verdict(day.food)}
     </div>
   </section>
-  ${ramadanCard(d)}
-  ${window.DailyScore?DailyScore.html(S.docs, d, {today:TODAY, sessionFor:x=>sessionFor(x)?.session, targets:dayTargets}):""}
+  ${safe("Ramadan",()=>ramadanCard(d))}
+  ${safeMod("DailyScore",()=>DailyScore.html(S.docs, d, {today:TODAY, sessionFor:x=>sessionFor(x)?.session, targets:dayTargets}))}
   ${ddCalendar(d)}
   <section class="grid">
     <div class="card">
@@ -14097,11 +14108,11 @@ function vToday(){
         <label class="item" style="grid-template-columns:auto 1fr"><input type="number" id="sleepH" step="0.5" min="0" max="16" value="${day.sleep??""}" style="width:4.5em" aria-label="Hours slept last night"><span>Hours slept last night</span></label>
       </div>
     </div>
-    ${window.Steps?(()=>{ const g=Steps.stepGoal(S.docs.prefs.main||{}); return Steps.stepsCardHTML(day,{goal:g, week:Steps.weekSteps(getDay,d,g)}); })():""}
+    ${safeMod("Steps",()=>{ const g=Steps.stepGoal(S.docs.prefs.main||{}); return Steps.stepsCardHTML(day,{goal:g, week:Steps.weekSteps(getDay,d,g)}); })}
   </section>
-  ${recoveryCard(d)}
+  ${safe("Budget recovery",()=>recoveryCard(d))}
   ${rfSafe(()=>RecoveryFatigue.checkinHtml(S.docs, {date:d, ...rfOpts()}))}
-  ${(()=>{ try{ return window.SuppDrinks ? SuppDrinks.html(day, S.docs.prefs.main||{}, {date:d, today:TODAY, training}) : ""; }catch(e){ return ""; } })()}`;
+  ${safeMod("SuppDrinks",()=>SuppDrinks.html(day, S.docs.prefs.main||{}, {date:d, today:TODAY, training}))}`;
 }
 
 /* ---------- TRAIN ---------- */
@@ -14113,10 +14124,10 @@ function effortBits(){
   const d=view.date, w=S.docs.workouts[d];
   let nudge=""; try{ nudge=EffortDeload.nudgeHtml(EffortDeload.analyze(S.docs.workouts,{today:TODAY, dismissedAt:S.docs.prefs.main?.deloadDismissedAt})); }catch(e){}
   const has = w && w.session!=="Rest" && w.sets && Object.values(w.sets).some(a=>(a||[]).some(x=>x.w||x.r));
-  const picker = has ? EffortDeload.pickerHtml(d, w.effort) : "";
+  const picker = has ? safe("Effort", ()=>EffortDeload.pickerHtml(d, w.effort)) : "";
   return {nudge, picker};
 }
-function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocs(), cardioOpts)}</div>`); return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + vTrainBody() + eb.picker + cardio; }
+function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocs(), cardioOpts)}</div>`); return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + cardio; }
 function vTrainBody(){ return view.trainMode==="full" ? `<div class="card">${trainSwitch()}<p class="muted" style="font-size:.88rem">Templates, live workout with rest timer, PRs, plate calculator and history. Finished workouts also land in Today, Progress and the weekly report.</p></div>` : `<div>${trainSwitch()}</div>` + vTrainSession() + otherLogged() + strongCard(); }
 function otherLogged(){
   const d=view.date, wk=S.docs.workouts[d]; if(!wk||!wk.sets) return "";
@@ -14211,7 +14222,7 @@ function vFood(){
       <div class="spread"><h2>${fmt(d,{weekday:"long",month:"short",day:"numeric"})}</h2><span class="label">${training?"Training day":"No training"}</span></div>
       ${macroBars(day.food)}
       ${verdict(day.food)}
-      ${proteinGapHtml(day)}
+      ${safe("Protein gap",()=>proteinGapHtml(day))}
       ${meals.length?`<p class="${mealP<135?"note":"muted"}" style="font-size:.9rem">The 2 meals carry <b class="num">${r0(mealP)} g</b> protein. They need ~135–145 g combined, because snacks add 6 g or less.</p>`:""}
     </div>
     <div class="card">
@@ -14238,7 +14249,7 @@ function vFood(){
       </div>
     </div>
   </section>
-  ${window.SavedMeals?SavedMeals.cardHTML(S.docs.meals,{day}):""}
+  ${safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day}))}
   ${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}
   <div id="bcHost"></div>
   ${window.MenuImport ? MenuImport.html(d) : pickerCard(d, training)}
@@ -14350,8 +14361,8 @@ function vProgress(){
   let table=[], prev=null;
   ws.forEach((w,i)=>{ const a=avg7(w.date); table.push({...w,n:diffDays(START.date,w.date)+1,ch:prev?w.kg-prev.kg:null,a}); prev=w; });
   table.reverse();
-  const report = window.WeeklyReport ? WeeklyReport.html(S.docs, view.wrWeek==null?{}:{week:view.wrWeek}) : "";
-  let trendCard=""; try{ trendCard = window.TrendTDEE ? TrendTDEE.html(S.docs) : ""; }catch(e){}
+  const report = safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, view.wrWeek==null?{}:{week:view.wrWeek}));
+  const trendCard = safeMod("TrendTDEE", ()=>TrendTDEE.html(S.docs));
   const co=coachOpts();
   return `${coachSafe(()=>Coach.reviewHtml(S.docs, co))}${coachSafe(()=>Coach.chatHtml(S.docs, co))}
   <div class="card hero">
@@ -14365,7 +14376,7 @@ function vProgress(){
     </div>
     ${rate!==null?`<p class="${rate<=-0.4&&rate>=-1?"muted":"note"}" style="font-size:.9rem">Expected at 2,000 kcal: about −0.5 to −0.8 kg a week (0.5–1% of body weight). ${rate>-0.3?"Slower than expected, but judge it over 2 weeks before changing calories.":rate<-1.0?"Faster than expected. Normal in week 1 (water and glycogen).":"Right on track."}</p>`:`<p class="muted" style="font-size:.9rem">Expected at 2,000 kcal: about −0.5 to −0.8 kg a week. Week 1 usually drops faster from water and glycogen.</p>`}
     ${weightChart()}
-    ${window.GoalDate?GoalDate.html(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}):""}
+    ${safeMod("GoalDate",()=>GoalDate.html(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}))}
     <details data-keep="wlog" ${view.open.wlog?"open":""}><summary>Weight log${TODAY<=addDays(STRICT.to,7)?" and 14-day tracking":""}</summary>
       ${TODAY<=addDays(STRICT.to,7)?`<div class="spread" style="margin-top:8px"><h3>14-day strict tracking</h3><span class="muted">${fmt(STRICT.from,{month:"short",day:"numeric"})} → ${fmt(STRICT.to,{month:"short",day:"numeric"})}</span></div>
       <div class="days14">${strictDays.map(d=>`<span class="${S.docs.weights[d]?"has":""} ${d===TODAY?"today":""}" title="${fmt(d)}">${parse(d).getDate()}</span>`).join("")}</div>
@@ -14376,7 +14387,7 @@ function vProgress(){
     </details>
   </div>
   ${trendCard}
-  ${(()=>{ try{ return window.StrengthAnalytics ? StrengthAnalytics.html(S.docs, strengthOpts()) : ""; }catch(e){ return ""; } })()}
+  ${safeMod("StrengthAnalytics",()=>StrengthAnalytics.html(S.docs, strengthOpts()))}
   ${window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
     <div class="tablewrap"><table><thead><tr><th>Lift</th><th class="n">Baseline</th><th class="n">Latest best set</th><th>Status</th></tr></thead><tbody>
     ${MAIN_LIFTS.map(n=>{ const base=Object.values(PROGRAM).flat().find(e=>e[0]===n); const h=liftHistory(n); const l=h[h.length-1];
@@ -14387,7 +14398,7 @@ function vProgress(){
   </div>`}
   ${cdSafe(()=>Cardio.progressHTML(cdDocs(), {today:TODAY}))}
   ${rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts()))}
-  ${(()=>{ try{ return window.DietBreak ? DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}) : ""; }catch(e){ return ""; } })()}
+  ${safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}))}
   ${report?`<div class="card"><details data-keep="wr" ${view.open.wr?"open":""}><summary>Weekly report (week by week: weight, food, lifts)</summary>${report}</details></div>`:""}
   ${foodDays.length?`<div class="card"><h3>Calories eaten</h3>
     ${foodDays.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th class="n">kcal</th><th class="n">Protein</th><th>Status</th></tr></thead><tbody>
