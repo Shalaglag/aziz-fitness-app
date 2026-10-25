@@ -387,7 +387,8 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 .lib{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr))}
 .lib .card{gap:6px}
 .lib .card ul{font-size:.92rem}
-.toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;z-index:20;font-size:.9rem}
+.toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;z-index:20;font-size:.9rem;display:flex;gap:12px;align-items:center;max-width:calc(100vw - 24px)}
+.toast .undo{background:none;border:0;color:var(--accent,#7cc4ff);font:inherit;font-weight:700;padding:0;cursor:pointer}
 @media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
 </style>
 
@@ -13731,6 +13732,8 @@ const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">
 const r0 = n => Math.round(n), r1 = n => Math.round(n*10)/10;
 const uid = () => Math.random().toString(36).slice(2,9);
 function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2600); }
+let undoToastEl=null;
+function undoToast(msg, onUndo){ if(undoToastEl) undoToastEl.remove(); const t=document.createElement("div"); t.className="toast"; t.setAttribute("role","status"); const b=document.createElement("button"); b.type="button"; b.className="undo"; b.textContent="Undo"; t.append(document.createTextNode(msg), b); document.body.appendChild(t); undoToastEl=t; const done=()=>{ clearTimeout(tm); t.remove(); if(undoToastEl===t) undoToastEl=null; }; const tm=setTimeout(done,5000); b.onclick=()=>{ done(); try{ onUndo(); }catch(e){ toast("Could not undo: "+(e.message||e)); } }; }
 function totalWater(day){ return window.WaterH ? WaterH.totalWater(day) : (day.water||0); }
 function getDay(d){ const day=Object.assign({date:d,food:[],water:0,supps:{},treadmill:false}, clone(S.docs.days[d])); try{ return window.SuppDrinks ? SuppDrinks.migrateDay(day, S.docs.prefs.main||{}) : day; }catch(e){ return day; } }
 function dayFluid(day){ try{ return window.SuppDrinks ? SuppDrinks.totalFluid(day) : totalWater(day); }catch(e){ return totalWater(day); } }
@@ -13824,7 +13827,9 @@ function latestKg(){ const ws=weightsSorted(); return ws.length ? ws[ws.length-1
 function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ try{ return window.RecoveryFatigue ? fn() : ""; }catch(e){ return ""; } }
-let coachPending=null;
+let coachPending=null, weightPending=null;
+// >5% off the average of the last 7 days of weigh-ins (needs 3+) needs a second tap. Catches 91.9 typed as 99.1 or 81.9.
+function weightOutlier(date,kg){ const ws=weightsSorted().filter(w=>w.date!==date && w.date<=date && diffDays(w.date,date)<=7); if(ws.length<3) return null; const avg=ws.reduce((a,w)=>a+w.kg,0)/ws.length; const pct=(kg-avg)/avg*100; return Math.abs(pct)>5 ? {avg,pct} : null; }
 function coachOpts(){ const o={today:TODAY, targets:APPT, rules:{floor:1800}, kcalTarget};
   try{ if(window.EffortDeload) o.effort=EffortDeload.analyze(S.docs.workouts,{today:TODAY, dismissedAt:S.docs.prefs.main?.deloadDismissedAt}); }catch(e){}
   try{ if(window.TrendTDEE) o.tdee=TrendTDEE.estimate(S.docs,{today:TODAY}); }catch(e){}
@@ -14310,15 +14315,15 @@ main.addEventListener("click",e=>{
   else if(a==="gofood"){ view.tab="food"; render(); window.scrollTo(0,0); }
   else if(a==="setses"){ const idx=+el.dataset.idx; const w=clone(S.docs.workouts[d]); put("workouts",d,{date:d,sets:{},...w,session:ROTATION[idx],idx}); }
   else if(a==="water"){ const day=getDay(d); day.water=Math.max(0,(day.water||0)+(+el.dataset.ml)); saveDay(day); }
-  else if(a==="delweight"){ remove("weights",d); }
+  else if(a==="delweight"){ const old=S.docs.weights[d]; remove("weights",d); if(old) undoToast("Weigh-in removed", ()=>put("weights",d,old)); }
   else if(a==="timer"){ startTimer(+el.dataset.s); }
   else if(a==="addset"){ const n=el.dataset.n; const w=Object.assign({date:d,sets:{}},clone(S.docs.workouts[d])); const ses=sessionFor(d); if(!w.session){w.session=ses.session;w.idx=ses.idx;} const base=PROGRAM[w.session].find(x=>x[0]===n); const arr=w.sets[n]||[]; while(arr.length<(base?base[3]:0)) arr.push({}); arr.push({}); w.sets[n]=arr; put("workouts",d,w); }
   else if(a==="fixed"){ const day=getDay(d); const type=dayType(d), ses=sessionFor(d); const training=type!=="friday"&&!(ses&&ses.session==="Rest"); const keys=training?["adonis","gatorade"]:["adonis"]; let out=day; keys.forEach(k=>{ const f=FIXED.find(x=>x.key===k); if(out.food.some(i=>i.name===f.name || (k==="gatorade" && i.drink && i.drink.key==="gatorade"))) return; if(k==="gatorade" && window.SuppDrinks){ const r=SuppDrinks.planDrink(out,"gatorade",S.docs.prefs.main||{},{uid}); if(r.day){ out=r.day; return; } } out.food.push({id:uid(),eaten:false,...f}); }); saveDay(out); }
   else if(a==="quick"){ const f=FIXED.find(x=>x.key===el.dataset.k); addFood({...f}); }
   else if(a==="snack"){ const s=SNACKS[+el.dataset.i]; addFood({name:s[1],slot:"Snack",kcal:s[2],p:s[3],c:s[4],f:s[5]}); }
   else if(a==="meal-add"){ const m=S.docs.meals[el.dataset.id]; if(!m) return; const r=SavedMeals.applyToDay(getDay(d),m,{uid}); put("meals",m.id,SavedMeals.markUsed(m),{quiet:true}); if(r.added.length){ saveDay(r.day); toast("Added "+m.name+(r.skipped.length?" ("+r.skipped.length+" already on the day)":"")+". Tick items as you eat them."); } else toast("Everything in "+m.name+" is already on this day"); }
-  else if(a==="meal-del"){ if(el.dataset.confirm){ remove("meals",el.dataset.id); } else { el.dataset.confirm="1"; el.textContent="Delete?"; el.classList.add("confirm"); } }
-  else if(a==="delfood"){ const day=getDay(d); day.food=day.food.filter(i=>i.id!==el.dataset.id); saveDay(day); }
+  else if(a==="meal-del"){ if(el.dataset.confirm){ const mid=el.dataset.id, old=S.docs.meals[mid]; remove("meals",mid); if(old) undoToast("Deleted "+(old.name||"meal"), ()=>put("meals",mid,old)); } else { el.dataset.confirm="1"; el.textContent="Delete?"; el.classList.add("confirm"); } }
+  else if(a==="delfood"){ const day=getDay(d), idx=day.food.findIndex(i=>i.id===el.dataset.id), item=day.food[idx]; day.food=day.food.filter(i=>i.id!==el.dataset.id); saveDay(day); if(item) undoToast("Removed "+(item.name||"item"), ()=>{ const cur=getDay(d); if(cur.food.some(i=>i.id===item.id)) return; cur.food=cur.food.slice(); cur.food.splice(Math.min(idx,cur.food.length),0,item); saveDay(cur); }); }
   else if(a==="copyday"){ const day=getDay(d), nd=addDays(d,1), next=getDay(nd); next.food=next.food.concat(day.food.map(i=>({...i,id:uid(),eaten:false}))); put("days",nd,next); view.date=nd; toast("Copied to "+fmt(nd)); }
   else if(a==="clearday"){ if(el.dataset.confirm){ const day=getDay(d); day.food=[]; saveDay(day); } else { el.dataset.confirm="1"; el.textContent="Tap again to clear"; } }
   else if(a==="swap"){ openSwap(el.dataset.n); }
@@ -14357,7 +14362,9 @@ main.addEventListener("change",e=>{
 main.addEventListener("input",e=>{ if(e.target.id==="libq"){ view.q=e.target.value; const pos=e.target.selectionStart; render(); const s=document.getElementById("libq"); s.focus(); try{s.setSelectionRange(pos,pos)}catch(_){} } });
 main.addEventListener("submit",e=>{
   e.preventDefault(); const f=e.target.dataset.form, d=view.date;
-  if(f==="weight"){ const kg=parseFloat(document.getElementById("wkg").value); if(!(kg>30&&kg<250)){ toast("Enter your weight in kg, e.g. 91.4"); return; } document.activeElement.blur(); put("weights",d,{date:d,kg:Math.round(kg*10)/10}); }
+  if(f==="weight"){ const kg=parseFloat(document.getElementById("wkg").value); if(!(kg>30&&kg<250)){ toast("Enter your weight in kg, e.g. 91.4"); return; } const kg1=Math.round(kg*10)/10, out=weightOutlier(d,kg1);
+    if(out && !(weightPending && weightPending.date===d && weightPending.kg===kg1 && Date.now()-weightPending.at<15000)){ weightPending={date:d,kg:kg1,at:Date.now()}; toast(`${kg1.toFixed(1)} kg is ${Math.abs(out.pct).toFixed(0)}% ${out.pct>0?"above":"below"} your 7-day average (${out.avg.toFixed(1)} kg). Check the number, then tap again to save.`); return; }
+    weightPending=null; document.activeElement.blur(); put("weights",d,{date:d,kg:kg1}); }
   else if(f==="food"){
     const name=document.getElementById("fname").value.trim(); if(!name) return;
     const item={name,slot:document.getElementById("fslot").value,kcal:+document.getElementById("fk").value||0,p:+document.getElementById("fp").value||0,c:+document.getElementById("fc").value||0,f:+document.getElementById("ff").value||0,eaten:document.getElementById("featen").checked};
