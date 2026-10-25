@@ -13731,7 +13731,7 @@ const iso = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const parse = s => { const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); };
 const addDays = (s,n) => { const d=parse(s); d.setDate(d.getDate()+n); return iso(d); };
 const diffDays = (a,b) => Math.round((parse(b)-parse(a))/864e5);
-const TODAY = iso(new Date());
+let TODAY = iso(new Date());
 const fmt = (s,opt={weekday:"short",month:"short",day:"numeric"}) => parse(s).toLocaleDateString("en-US",opt);
 function dayType(s){ const w=parse(s).getDay(); return w===5?"friday":w===6?"saturday":"training"; }
 const DAYTYPE_LABEL = {training:"Training day (Sun–Thu)",saturday:"Saturday · train 10 am",friday:"Friday · free day"};
@@ -13769,6 +13769,22 @@ function dropping(name){ const h=liftHistory(name); if(h.length<3) return false;
 
 /* ===================== UI state ===================== */
 const view = {tab:"today", date:TODAY, q:"", timer:null, trainMode:"quick"};
+/* Keep TODAY current when the app stays open past midnight (local time, not UTC).
+   If the user was looking at today, follow them onto the new day. */
+function refreshToday(){
+  const now=iso(new Date()); if(now===TODAY) return false;
+  const wasToday=view.date===TODAY; TODAY=now; if(wasToday) view.date=TODAY;
+  try{ render(); }catch(e){}
+  return true;
+}
+function scheduleMidnight(){
+  const n=new Date(), next=new Date(n.getFullYear(),n.getMonth(),n.getDate()+1,0,0,2);
+  setTimeout(()=>{ refreshToday(); scheduleMidnight(); }, Math.max(1000, next-n));
+}
+scheduleMidnight();
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") refreshToday(); });
+window.addEventListener("focus",refreshToday);
+window.addEventListener("pageshow",refreshToday);
 try{ const m=localStorage.getItem("aziz-cut-tmode"); if(m) view.trainMode=m; }catch(e){}
 try{ const t=localStorage.getItem("aziz-cut-tab"); if(t) view.tab=t; }catch(e){}
 if(["today","train","food","progress","guide"].includes(location.hash.slice(1))) view.tab=location.hash.slice(1);
