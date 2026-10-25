@@ -70,3 +70,11 @@ test("html is empty outside Ramadan and a card inside", () => {
   assert.match(h, /Suhoor ends/);
   assert.ok(R.css.includes("--surface"));
 });
+
+test("targets option changes the target wording only", () => {
+  const d = "2027-02-15";
+  const base = R.plan(d, {}), t = R.plan(d, { targets: { kcal: 2200, proteinMin: 175, proteinMax: 185 } });
+  assert.ok(base.notes[0].includes("2,000") && base.notes[0].includes("160–170 g"));
+  assert.ok(t.notes[0].includes("2,200") && t.notes[0].includes("175–185 g"));
+  assert.deepStrictEqual(t.slots, base.slots);
+});
