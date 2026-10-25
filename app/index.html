@@ -8678,9 +8678,156 @@ if (typeof module !== "undefined") module.exports = DietBreak;
 window.DietBreak=window.DietBreak||(typeof DietBreak!=="undefined"?DietBreak:undefined);
 </script>
 <script>
+/*
+ * AppTargets: one place that turns the "Your numbers" profile into the targets every card uses.
+ * Plain JS, no imports, no network. Browser global (window.AppTargets) or CommonJS.
+ *
+ * Why: calories, protein, fat, carbs, the goal weight and the review window used to be constants
+ * inside each module (picker, protein gap, daily score, weekly report, budget recovery, Ramadan,
+ * logger). Editing "Your numbers" only reached diet breaks and goal date. Modules should take the
+ * object from AppTargets.resolve() as an option instead of hard-coding numbers.
+ *
+ *   AppTargets.resolve(profile, defaults) -> targets
+ *     profile  = prefs/main.profile {start, startKg, goalKg, cutKcal, maintenance, protein, fat}, any field optional
+ *     defaults = the host's plan numbers, same keys as the result (the module ships none of its own)
+ *     targets  = {kcal, kcalLo, kcalHi, proteinMin, proteinMax, fatLo, fatHi, carbsLo, carbsHi,
+ *                 goalKg, start, reviewDays, reviewDate, source:{<field>:"profile"|"default"|"derived"|"none"}}
+ *   AppTargets.forKcal(targets, kcal)     -> same targets with a different calorie target (e.g. a diet-break day);
+ *                                            carbs re-derived, protein kept
+ *   AppTargets.lastDays(today, days)      -> {from, to} for the last `days` days ending today, inclusive
+ *   AppTargets.reviewWindow(targets, today) -> {from, to, day, days, done} for the strict-tracking review
+ *   AppTargets.validate(profile)          -> {clean, errors:[{field, msg}]}
+ *
+ * Never invents numbers: a field with no profile value and no default comes back null.
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.AppTargets = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const DAY = 864e5;
+  const DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const KCAL_BAND = 150, FAT_BAND = 7.5, CARB_BAND = 20, PROTEIN_SPAN = 10, REVIEW_DAYS = 14;
+  const LIMITS = {
+    cutKcal: [1000, 6000, 'Calories should be between 1,000 and 6,000'],
+    maintenance: [1000, 7000, 'Maintenance should be between 1,000 and 7,000'],
+    protein: [40, 400, 'Protein should be between 40 and 400 g'],
+    fat: [20, 250, 'Fat should be between 20 and 250 g'],
+    goalKg: [30, 300, 'Goal weight should be between 30 and 300 kg'],
+    startKg: [30, 300, 'Start weight should be between 30 and 300 kg'],
+  };
+
+  const isNum = v => v !== null && v !== '' && v !== undefined && isFinite(+v);
+  const r5 = v => Math.round(v / 5) * 5;
+  const r1 = v => Math.round(v * 10) / 10;
+  const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * DAY).toISOString().slice(0, 10);
+  const daysBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / DAY);
+  const realDate = s => DATE.test(s || '') && !isNaN(Date.parse(s + 'T00:00:00Z')) && new Date(Date.parse(s + 'T00:00:00Z')).toISOString().slice(0, 10) === s;
+
+  function validate(profile) {
+    const P = profile || {}, clean = {}, errors = [];
+    Object.keys(LIMITS).forEach(k => {
+      if (!isNum(P[k])) return;
+      const v = +P[k], [lo, hi, msg] = LIMITS[k];
+      if (v < lo || v > hi) errors.push({ field: k, msg });
+      else clean[k] = v;
+    });
+    if (P.start) { if (realDate(P.start)) clean.start = P.start; else errors.push({ field: 'start', msg: 'Start date should look like 2026-10-25' }); }
+    return { clean, errors };
+  }
+
+  function carbsFor(kcal, protein, fatMid) {
+    if (!isNum(kcal) || !isNum(protein) || !isNum(fatMid)) return null;
+    const mid = (kcal - protein * 4 - fatMid * 9) / 4;
+    return mid > 0 ? r5(mid) : 0;
+  }
+
+  function resolve(profile, defaults) {
+    const P = validate(profile).clean, D = defaults || {}, source = {};
+    const pick = (key, profVal) => {
+      if (isNum(profVal)) { source[key] = 'profile'; return +profVal; }
+      if (isNum(D[key])) { source[key] = 'default'; return +D[key]; }
+      source[key] = 'none'; return null;
+    };
+    const t = {};
+    t.kcal = pick('kcal', P.cutKcal);
+    if (source.kcal === 'profile' || !isNum(D.kcalLo) || !isNum(D.kcalHi)) {
+      t.kcalLo = t.kcal != null ? t.kcal - KCAL_BAND : null; t.kcalHi = t.kcal != null ? t.kcal + KCAL_BAND : null;
+      source.kcalBand = t.kcal != null ? 'derived' : 'none';
+    } else { t.kcalLo = +D.kcalLo; t.kcalHi = +D.kcalHi; source.kcalBand = 'default'; }
+
+    t.proteinMin = pick('proteinMin', P.protein);
+    t.proteinMax = source.proteinMin === 'profile' ? t.proteinMin + PROTEIN_SPAN : isNum(D.proteinMax) ? +D.proteinMax : t.proteinMin != null ? t.proteinMin + PROTEIN_SPAN : null;
+
+    if (isNum(P.fat)) { t.fatLo = r1(P.fat - FAT_BAND); t.fatHi = r1(P.fat + FAT_BAND); source.fat = 'profile'; }
+    else if (isNum(D.fatLo) && isNum(D.fatHi)) { t.fatLo = +D.fatLo; t.fatHi = +D.fatHi; source.fat = 'default'; }
+    else { t.fatLo = t.fatHi = null; source.fat = 'none'; }
+
+    // Carbs: keep the plan's range unless a profile number moved the others; then fill the remainder.
+    const moved = source.kcal === 'profile' || source.proteinMin === 'profile' || source.fat === 'profile';
+    if (!moved && isNum(D.carbsLo) && isNum(D.carbsHi)) { t.carbsLo = +D.carbsLo; t.carbsHi = +D.carbsHi; source.carbs = 'default'; }
+    else {
+      const mid = carbsFor(t.kcal, t.proteinMin, t.fatLo != null ? (t.fatLo + t.fatHi) / 2 : null);
+      t.carbsLo = mid != null ? Math.max(0, mid - CARB_BAND) : null; t.carbsHi = mid != null ? mid + CARB_BAND : null;
+      source.carbs = mid != null ? 'derived' : 'none';
+    }
+
+    t.goalKg = pick('goalKg', P.goalKg);
+    t.maintenance = pick('maintenance', P.maintenance);
+    t.start = P.start || (realDate(D.start) ? D.start : null);
+    source.start = P.start ? 'profile' : t.start ? 'default' : 'none';
+    t.reviewDays = isNum(D.reviewDays) ? +D.reviewDays : REVIEW_DAYS;
+    t.reviewDate = t.start ? addDays(t.start, t.reviewDays - 1) : null;
+    t.source = source;
+    return t;
+  }
+
+  function forKcal(targets, kcal) {
+    const t = Object.assign({}, targets, { source: Object.assign({}, targets.source) });
+    if (!isNum(kcal)) return t;
+    t.kcal = +kcal; t.kcalLo = t.kcal - KCAL_BAND; t.kcalHi = t.kcal + KCAL_BAND;
+    const mid = carbsFor(t.kcal, t.proteinMin, t.fatLo != null ? (t.fatLo + t.fatHi) / 2 : null);
+    if (mid != null) { t.carbsLo = Math.max(0, mid - CARB_BAND); t.carbsHi = mid + CARB_BAND; t.source.carbs = 'derived'; }
+    t.source.kcal = 'day'; t.source.kcalBand = 'derived';
+    return t;
+  }
+
+  function lastDays(today, days) {
+    if (!realDate(today) || !(days >= 1)) return null;
+    return { from: addDays(today, -(Math.floor(days) - 1)), to: today };
+  }
+
+  function reviewWindow(targets, today) {
+    if (!targets || !targets.start || !realDate(today)) return null;
+    const days = targets.reviewDays || REVIEW_DAYS;
+    const day = daysBetween(targets.start, today) + 1;
+    return { from: targets.start, to: addDays(targets.start, days - 1), day: Math.max(0, Math.min(day, days)), days, done: day >= days, notStarted: day < 1 };
+  }
+
+  return { resolve, forKcal, lastDays, reviewWindow, validate, addDays, daysBetween };
+});
+
+</script>
+<script>
 /* ===================== Plan data (from Aziz's handoff, Oct 25 2026) ===================== */
 const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:220};
-const START = {date:"2026-10-25", kg:91.9}, GOAL_KG = 80;
+const START = {date:"2026-10-25", kg:91.9}; let GOAL_KG = 80;
+// Plan defaults; "Your numbers" (prefs/main.profile) overrides them through AppTargets.
+const PLAN = {kcal:2000, kcalLo:1850, kcalHi:2150, proteinMin:160, proteinMax:170, fatLo:55, fatHi:70, carbsLo:180, carbsHi:220, goalKg:80, start:"2026-10-25"};
+const PLAN_START_KG = 91.9;
+let APPT = null;
+function applyTargets(){
+  const prof = S.docs.prefs.main?.profile || {};
+  try{ APPT = window.AppTargets ? AppTargets.resolve(prof, PLAN) : null; }catch(e){ APPT=null; }
+  const t = APPT || {kcal:PLAN.kcal, proteinMin:PLAN.proteinMin, proteinMax:PLAN.proteinMax, fatLo:PLAN.fatLo, fatHi:PLAN.fatHi, carbsLo:PLAN.carbsLo, carbsHi:PLAN.carbsHi, goalKg:PLAN.goalKg, start:PLAN.start};
+  Object.assign(TARGET, {kcal:t.kcal??PLAN.kcal, pMin:t.proteinMin??PLAN.proteinMin, pMax:t.proteinMax??PLAN.proteinMax, fMin:t.fatLo??PLAN.fatLo, fMax:t.fatHi??PLAN.fatHi, cMin:t.carbsLo??PLAN.carbsLo, cMax:t.carbsHi??PLAN.carbsHi});
+  GOAL_KG = t.goalKg ?? PLAN.goalKg;
+  START.date = t.start || PLAN.start;
+  START.kg = +prof.startKg || PLAN_START_KG;
+  let rw=null; try{ rw = APPT && AppTargets.reviewWindow(APPT, TODAY); }catch(e){}
+  STRICT.from = rw ? rw.from : START.date; STRICT.to = rw ? rw.to : addDays(START.date,13); STRICT.firstAvg = addDays(STRICT.from,6);
+}
 const STRICT = {from:"2026-10-25", to:"2026-11-07", firstAvg:"2026-10-31"};
 const ROTATION = ["Push A","Pull A","Lower A","Rest","Push B","Pull B","Lower B","Rest"];
 // [name, baseline weight, reps, sets, unit, note]
@@ -8849,6 +8996,7 @@ function applyAccent(a){ if(["red","blue","yellow","green"].includes(a)) documen
 let lastTab=null;
 function render(){
   renderPending=false;
+  applyTargets();
   applyAccent(currentAccent());
   document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-current", b.dataset.tab===view.tab?"page":"false"));
   document.getElementById("dateLabel").textContent = fmt(view.date) + (view.date===TODAY?" · today":"");
@@ -8870,7 +9018,9 @@ function dbProfile(){ const pr=S.docs.prefs.main?.profile||{}; const o={}; ["sta
 function dietBreakTarget(d){ try{ return window.DietBreak ? DietBreak.target(dbDocs(), dbState(), d, {profile:dbProfile()}) : null; }catch(e){ return null; } }
 function kcalTarget(d){
   const t=dietBreakTarget(d); if(t && t.mode==="break") return Math.round(t.kcal);
-  try{ return window.BudgetRecovery ? BudgetRecovery.targetFor(d, S.docs.days) : TARGET.kcal; }catch(e){ return TARGET.kcal; } }
+  // Over-budget recovery cuts (days/{date}.budgetAdj) apply on top of the profile target, never more than 150 below it.
+  const adj=Object.values(S.docs.days[d]?.budgetAdj||{}).reduce((x,v)=>x+(Math.min(0,+v||0)),0);
+  return Math.max(TARGET.kcal-150, TARGET.kcal+adj); }
 function macroBars(items){
   const all=sum(items), eaten=sum(items.filter(i=>i.eaten)), KT=kcalTarget(view.date);
   const rows=[["Calories","kcal",KT-100,KT+100,2400,"kcal",""],["Protein","p",TARGET.pMin,TARGET.pMax,220,"p","g"],["Carbs","c",TARGET.cMin,TARGET.cMax,280,"c","g"],["Fat","f",TARGET.fMin,TARGET.fMax,100,"f","g"]];
@@ -8922,9 +9072,9 @@ function vToday(){
         <div class="stat"><div class="v num">${w.kg.toFixed(1)}</div><span class="label">kg today</span></div>
         <div class="stat"><div class="v num">${prev?((w.kg-prev.kg>0?"+":"")+(w.kg-prev.kg).toFixed(1)):"—"}</div><span class="label">vs last weigh-in</span></div>
         <div class="stat"><div class="v num">${a7?a7.toFixed(1):"—"}</div><span class="label">7-day avg</span></div>
-        <div class="stat"><div class="v num">${(w.kg-GOAL_KG).toFixed(1)}</div><span class="label">kg to 80</span></div>
+        <div class="stat"><div class="v num">${(w.kg-GOAL_KG).toFixed(1)}</div><span class="label">kg to ${GOAL_KG}</span></div>
       </div>`:`<p class="muted">Weigh after the bathroom, before food or water. One reading means little; the weekly average is what counts.</p>`}
-      ${window.GoalDate?GoalDate.compact(S.docs.weights,{today:TODAY, trend:trendSeries()}):""}
+      ${window.GoalDate?GoalDate.compact(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}):""}
       ${dayType(d)==="saturday"?`<p class="note">Saturday weigh-ins often run high after Friday's salty shrimp. Don't react to it.</p>`:""}
     </div>
   </section>
@@ -9219,11 +9369,11 @@ function vProgress(){
   let trendCard=""; try{ trendCard = window.TrendTDEE ? TrendTDEE.html(S.docs) : ""; }catch(e){}
   return `${report}${trendCard}
   <div class="card hero">
-    <div class="spread"><h2>${lastW?`${lastW.kg.toFixed(1)} kg`:"No weigh-ins yet"}</h2><span class="label">Goal 80 kg</span></div>
+    <div class="spread"><h2>${lastW?`${lastW.kg.toFixed(1)} kg`:"No weigh-ins yet"}</h2><span class="label">Goal ${GOAL_KG} kg</span></div>
     <div class="prog" aria-label="Progress to goal"><i style="width:${pct}%"></i></div>
     <div class="stats">
-      <div class="stat"><div class="v num">${lastW?(lost>=0?"−":"+")+Math.abs(lost).toFixed(1):"—"}</div><span class="label">kg since 91.9</span></div>
-      <div class="stat"><div class="v num">${lastW?(lastW.kg-GOAL_KG).toFixed(1):"11.9"}</div><span class="label">kg to go</span></div>
+      <div class="stat"><div class="v num">${lastW?(lost>=0?"−":"+")+Math.abs(lost).toFixed(1):"—"}</div><span class="label">kg since ${START.kg}</span></div>
+      <div class="stat"><div class="v num">${lastW?(lastW.kg-GOAL_KG).toFixed(1):(START.kg-GOAL_KG).toFixed(1)}</div><span class="label">kg to go</span></div>
       <div class="stat"><div class="v num">${wkNow?wkNow.avg.toFixed(1):"—"}</div><span class="label">Avg, last 7 days${wkNow?` (${wkNow.n})`:""}</span></div>
       <div class="stat"><div class="v num">${rate!==null?(rate>0?"+":"")+rate.toFixed(2):"—"}</div><span class="label">kg / week</span></div>
     </div>
@@ -9232,13 +9382,13 @@ function vProgress(){
   <div class="card">
     <div class="spread"><h3>14-day strict tracking</h3><span class="muted">${fmt(STRICT.from,{month:"short",day:"numeric"})} → ${fmt(STRICT.to,{month:"short",day:"numeric"})}</span></div>
     <div class="days14">${strictDays.map(d=>`<span class="${S.docs.weights[d]?"has":""} ${d===TODAY?"today":""}" title="${fmt(d)}">${parse(d).getDate()}</span>`).join("")}</div>
-    <p style="font-size:.92rem"><b class="num">${logged}/14</b> weigh-ins logged. First 7-day average on <b>Sat, Oct 31</b>. Calorie review only after <b>Sat, Nov 7</b>, based on the trend. Don't cut to 1,800 or 1,700 because of one reading.</p>
+    <p style="font-size:.92rem"><b class="num">${logged}/14</b> weigh-ins logged. First 7-day average on <b>${fmt(STRICT.firstAvg)}</b>. Calorie review only after <b>${fmt(STRICT.to)}</b>, based on the trend. Don't cut to 1,800 or 1,700 because of one reading.</p>
   </div>
   <div class="card"><h3>Weight trend</h3>${weightChart()}</div>
-  ${window.GoalDate?GoalDate.html(S.docs.weights,{today:TODAY, trend:trendSeries()}):""}
+  ${window.GoalDate?GoalDate.html(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}):""}
   ${(()=>{ try{ return window.DietBreak ? DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}) : ""; }catch(e){ return ""; } })()}
   <div class="card"><h3>Weight log</h3>
-    ${table.length?`<div class="tablewrap"><table><thead><tr><th>Day</th><th>Date</th><th class="n">Weight</th><th class="n">Change</th><th class="n">7-day avg</th><th class="n">To 80</th></tr></thead>
+    ${table.length?`<div class="tablewrap"><table><thead><tr><th>Day</th><th>Date</th><th class="n">Weight</th><th class="n">Change</th><th class="n">7-day avg</th><th class="n">To ${GOAL_KG}</th></tr></thead>
     <tbody>${table.map(r=>`<tr><td class="n">${r.n}</td><td>${fmt(r.date)}</td><td class="n">${r.kg.toFixed(1)}</td><td class="n">${r.ch===null?"—":(r.ch>0?"+":"")+r.ch.toFixed(1)}</td><td class="n">${r.a?r.a.toFixed(2):"—"}</td><td class="n">${(r.kg-GOAL_KG).toFixed(1)}</td></tr>`).join("")}</tbody></table></div>`:`<p class="muted">No entries yet.</p>`}
   </div>
   <div class="card"><h3>Main lifts</h3>
@@ -9309,7 +9459,7 @@ function vGuide(){
     <div class="lib">${libNames.map(n=>`<div class="card"><b>${n}</b><span class="label">${LIB[n][0]}</span><ul>${LIB[n][1].map(c=>`<li>${c}</li>`).join("")}</ul><p style="font-size:.9rem"><b>Avoid:</b> ${LIB[n][2]}</p></div>`).join("")||`<p class="muted">No exercise matches "${esc(view.q)}".</p>`}</div>
   </div>
   <div class="card"><h3>Your numbers</h3>
-    <p class="muted" style="font-size:.9rem">Diet-break planning uses these. Leave a box empty and the app works it out from your logs (start = first logged day, calories = your average intake, maintenance = your trend).</p>
+    <p class="muted" style="font-size:.9rem">Your calorie, protein, fat and goal-weight targets across the app come from these. Leave a box empty to keep your plan's value (${PLAN.kcal.toLocaleString("en-US")} kcal, ${PLAN.proteinMin} g protein, ${PLAN.goalKg} kg goal, start ${fmt(PLAN.start)}). Maintenance is worked out from your logs when empty.</p>
     <form data-form="profile" style="display:flex;flex-direction:column;gap:10px">
       <div class="row">${[["start","Start date","date",""],["startKg","Start weight (kg)","number","0.1"],["goalKg","Goal weight (kg)","number","0.1"],["cutKcal","Cut calories","number","10"],["maintenance","Maintenance kcal","number","10"],["protein","Protein (g)","number","1"],["fat","Fat (g)","number","1"]].map(([k,l,t,st])=>`<label class="field"><span class="label">${l}</span><input type="${t}" id="pf_${k}" ${st?`step="${st}"`:""} value="${esc((S.docs.prefs.main?.profile||{})[k]??"")}" placeholder="${k==="cutKcal"?TARGET.kcal:"auto"}" style="${t==="date"?"":"width:7em"}"></label>`).join("")}</div>
       <div><button class="btn small" type="submit">Save</button></div>
@@ -9412,7 +9562,9 @@ main.addEventListener("submit",e=>{
     document.activeElement.blur(); addFood(item);
   }
   else if(f==="meal-save"){ const nm=document.getElementById("mealName").value; const m=SavedMeals.fromItems(getDay(d).food,{name:nm,existing:S.docs.meals}); if(!m) return; document.activeElement.blur(); put("meals",m.id,m); toast("Saved "+m.name+". Add it to any day with one tap."); }
-  else if(f==="profile"){ const p=Object.assign({},clone(S.docs.prefs.main)); const pr={}; ["start","startKg","goalKg","cutKcal","maintenance","protein","fat"].forEach(k=>{ const v=document.getElementById("pf_"+k).value.trim(); if(v) pr[k]= k==="start"?v:+v; }); p.profile=pr; document.activeElement.blur(); put("prefs","main",p); toast("Saved"); }
+  else if(f==="profile"){ const p=Object.assign({},clone(S.docs.prefs.main)); const pr={}; ["start","startKg","goalKg","cutKcal","maintenance","protein","fat"].forEach(k=>{ const v=document.getElementById("pf_"+k).value.trim(); if(v) pr[k]= k==="start"?v:+v; }); let v=null; try{ v=window.AppTargets?AppTargets.validate(pr):null; }catch(e){}
+    if(v && v.errors && v.errors.length){ toast(v.errors.map(x=>x.msg).join(". ")); return; }
+    p.profile = v && v.clean ? v.clean : pr; document.activeElement.blur(); put("prefs","main",p); toast("Saved. Targets updated across the app."); }
   else if(f==="dislike"){ const v=document.getElementById("dislike").value.trim(); if(!v) return; const p=Object.assign({dislikes:[]},clone(S.docs.prefs.main)); p.dislikes=[...(p.dislikes||[]),v]; document.activeElement.blur(); put("prefs","main",p); }
 });
 
@@ -9441,7 +9593,7 @@ function ramadanCard(d){
     return Ramadan.html(d,{dayType:pickerDayType(d), train:pr.ramadanTrain||"after-iftar", cfg}); }catch(e){ return ""; }
 }
 function trendSeries(){ try{ return window.TrendTDEE ? TrendTDEE.series(S.docs.weights,{today:TODAY}) : undefined; }catch(e){ return undefined; } }
-function proteinGapRes(day){ try{ return (window.ProteinGap && day.food.length) ? ProteinGap.suggest(day.food,{dislikes:S.docs.prefs.main?.dislikes||[]}) : null; }catch(e){ return null; } }
+function proteinGapRes(day){ try{ return (window.ProteinGap && day.food.length) ? ProteinGap.suggest(day.food,{dislikes:S.docs.prefs.main?.dislikes||[], targets:{kcal:kcalTarget(day.date||view.date), proteinMin:TARGET.pMin, proteinMax:TARGET.pMax}}) : null; }catch(e){ return null; } }
 function proteinGapHtml(day){
   if(day.food.filter(i=>/Meal/.test(i.slot)).length<2) return "";
   const r=proteinGapRes(day); if(!r || r.status==="met") return "";
