@@ -1,0 +1,1622 @@
+{
+  "schemaVersion": 1,
+  "title": "Exercise form guide",
+  "owner": "Aziz",
+  "updated": "2026-10-25",
+  "source": "Training plan, section 10 (Strong templates, Oct 2026)",
+  "principles": [
+    {
+      "title": "Warm up the first lift, not every lift",
+      "text": "Ramp up on the first big press, row or squat of the day with 2–4 lighter sets of falling reps (your bench ramp of bar, 40, 60, 70 kg is a good model). Later exercises for the same muscles need one light feeler set at most."
+    },
+    {
+      "title": "Stop 1–2 reps short of failure",
+      "text": "Most working sets should end when you could do 1–2 more clean reps. Isolation and machine moves (laterals, curls, leg extensions) can go to failure on the last set. Keep barbell bench and hack squat a rep shy so form holds."
+    },
+    {
+      "title": "Control the lowering",
+      "text": "Take about 2–3 seconds on the way down and lift with intent. A controlled negative keeps tension on the muscle and makes reps comparable from week to week."
+    },
+    {
+      "title": "Full range first, then load",
+      "text": "A rep only counts if it hits the same depth and lockout as last time. Add weight or reps only when the range stays the same. This is how your Strong numbers stay honest."
+    },
+    {
+      "title": "Rest long enough on big lifts",
+      "text": "Rest about 2.5–3 minutes on bench, incline press, OHP, rows, pulldowns and hack squat, and 1–2 minutes on isolation work. Short rests cost reps, and reps are what you're trying to keep during a cut."
+    },
+    {
+      "title": "Brace on anything heavy",
+      "text": "Breathe into your belly, tighten your midsection as if about to be poked, then do the rep. Breathe out near the top. This protects your lower back, which matters because your program avoids hinge lifts."
+    },
+    {
+      "title": "During the cut",
+      "text": "Keep loads heavy and form identical. If a main lift drops two sessions in a row, check sleep, pre-workout food and volume before changing technique or calories."
+    },
+    {
+      "title": "Log the setup, not just the weight",
+      "text": "Seat heights, foot placement and which machine you used change how heavy a weight feels. Add them to the exercise notes in Strong once so every session starts from the same position."
+    }
+  ],
+  "days": [
+    {
+      "id": "push-a",
+      "name": "Push A",
+      "group": "push",
+      "exercises": [
+        "bench-press",
+        "lateral-raise",
+        "incline-db-press",
+        "cable-crossover",
+        "cable-overhead-triceps-extension",
+        "straight-bar-pushdown",
+        "machine-lateral-raise"
+      ]
+    },
+    {
+      "id": "pull-a",
+      "name": "Pull A",
+      "group": "pull",
+      "exercises": [
+        "wide-lat-pulldown",
+        "single-arm-lat-pulldown",
+        "seated-cable-row",
+        "machine-pullover",
+        "db-curl",
+        "seated-machine-curl",
+        "reverse-fly-machine"
+      ]
+    },
+    {
+      "id": "lower-a",
+      "name": "Lower A",
+      "group": "lower",
+      "focus": "quads",
+      "exercises": [
+        "leg-extension",
+        "hack-squat",
+        "smith-squat",
+        "lying-leg-curl",
+        "hip-adductor",
+        "standing-calf-raise",
+        "seated-ab-crunch"
+      ]
+    },
+    {
+      "id": "push-b",
+      "name": "Push B",
+      "group": "push",
+      "exercises": [
+        "gundam-chest-press",
+        "seated-db-ohp",
+        "lateral-raise",
+        "reverse-fly-machine",
+        "front-raise-db",
+        "rope-pushdown",
+        "straight-bar-pushdown"
+      ]
+    },
+    {
+      "id": "pull-b",
+      "name": "Pull B",
+      "group": "pull",
+      "exercises": [
+        "t-bar-row",
+        "single-arm-lat-pulldown",
+        "iso-lateral-low-row",
+        "seated-cable-row",
+        "traps-machine",
+        "cable-curl"
+      ]
+    },
+    {
+      "id": "lower-b",
+      "name": "Lower B",
+      "group": "lower",
+      "focus": "hamstrings",
+      "exercises": [
+        "lying-leg-curl",
+        "leg-extension",
+        "hack-squat",
+        "smith-squat",
+        "hip-abductor",
+        "leg-press-calf-raise",
+        "seated-ab-crunch"
+      ]
+    },
+    {
+      "id": "cardio",
+      "name": "After every lift",
+      "group": "cardio",
+      "exercises": [
+        "incline-treadmill-walk"
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "bench-press",
+      "name": "Bench Press (Barbell)",
+      "loggedAs": [
+        "Bench Press (Barbell)"
+      ],
+      "equipment": "Barbell, flat bench",
+      "category": "Chest",
+      "main": true,
+      "primary": [
+        "Chest"
+      ],
+      "secondary": [
+        "Front delts",
+        "Triceps"
+      ],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "90 kg × 8, 2 sets (35 kg/side)"
+        }
+      ],
+      "setup": [
+        "Lie with your eyes under the bar. Feet flat and planted, a little behind your knees.",
+        "Grip just outside shoulder width so your forearms are vertical at the bottom. Squeeze the bar hard.",
+        "Pull your shoulder blades back and down into the bench and keep a small arch in your upper back. Butt stays on the bench.",
+        "Unrack with straight arms and bring the bar over your shoulders."
+      ],
+      "steps": [
+        "Take a breath and brace.",
+        "Lower the bar under control to your lower chest, around nipple line. Elbows about 45–70° from your body, not flared straight out.",
+        "Touch the chest lightly. No bounce.",
+        "Press up and slightly back toward your face so the bar finishes over your shoulders. Drive your feet into the floor."
+      ],
+      "cues": [
+        "Bend the bar",
+        "Shoulder blades in your back pockets",
+        "Push yourself away from the bar",
+        "Same touch point every rep"
+      ],
+      "mistakes": [
+        "Elbows flared to 90°, which loads the front of the shoulder.",
+        "Shoulder blades drifting apart as the set gets hard.",
+        "Bouncing off the chest or lifting the butt to finish a rep.",
+        "Touching higher on the chest each rep as you tire."
+      ],
+      "note": "Bench without a spotter only inside a rack with safeties set just below chest height, or stop a full rep short of failure.",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "incline-db-press",
+      "name": "Incline Dumbbell Press",
+      "loggedAs": [
+        "Incline DB Press"
+      ],
+      "equipment": "Dumbbells, adjustable bench",
+      "category": "Chest",
+      "main": true,
+      "primary": [
+        "Upper chest"
+      ],
+      "secondary": [
+        "Front delts",
+        "Triceps"
+      ],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "65 lb × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the bench to about 30°. Steeper than 45° turns it into a shoulder press.",
+        "Sit with the dumbbells on your thighs, then kick them up one knee at a time as you lie back.",
+        "Shoulder blades back and down, chest up, feet planted."
+      ],
+      "steps": [
+        "Start with the dumbbells over your upper chest, palms forward or turned slightly in.",
+        "Lower slowly until the handles are level with your chest and you feel a stretch. Elbows stay under your wrists, about 45° out.",
+        "Press up and slightly together, finishing over the upper chest. Don't clank the bells."
+      ],
+      "cues": [
+        "Chest up to the ceiling",
+        "Wrists stacked over elbows",
+        "Deep stretch, smooth turnaround"
+      ],
+      "mistakes": [
+        "Bench set too steep, so the shoulders do the work.",
+        "Cutting the range short as the weight goes up.",
+        "Dropping the dumbbells sideways at the end instead of bringing them back to the thighs."
+      ],
+      "note": "To finish safely, bring the dumbbells to your chest, tuck your knees up, and rock back up to sitting with them on your thighs.",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "gundam-chest-press",
+      "name": "Gundam Chest Press (machine)",
+      "loggedAs": [
+        "Gundam (chest machine)"
+      ],
+      "equipment": "Chest press machine",
+      "category": "Chest",
+      "main": true,
+      "primary": [
+        "Chest"
+      ],
+      "secondary": [
+        "Front delts",
+        "Triceps"
+      ],
+      "baseline": [
+        {
+          "day": "push-b",
+          "value": "60 kg × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the seat so the handles line up with your mid to lower chest, not your neck.",
+        "Sit tall with your back on the pad, shoulder blades pulled back and down, feet flat.",
+        "If the machine has a start-position lever or foot bar, use it to get the handles into place without straining your shoulders."
+      ],
+      "steps": [
+        "Brace and press the handles forward until your arms are almost straight.",
+        "Let them come back slowly until you feel a good stretch across the chest. Keep your shoulder blades pinned.",
+        "Pause briefly in the stretch, then press again."
+      ],
+      "cues": [
+        "Shoulders stay down and back",
+        "Press through the palms",
+        "Slow on the way back"
+      ],
+      "mistakes": [
+        "Seat too low, so the handles sit near the neck and the shoulders take over.",
+        "Shoulders rolling forward at lockout.",
+        "Letting the stack bang between reps."
+      ],
+      "note": "Use the same seat setting every time and note it in Strong so your numbers compare across weeks.",
+      "days": [
+        "push-b"
+      ]
+    },
+    {
+      "id": "cable-crossover",
+      "name": "Cable Crossover",
+      "loggedAs": [
+        "Cable Crossover"
+      ],
+      "equipment": "Cable station, D-handles",
+      "category": "Chest",
+      "main": false,
+      "primary": [
+        "Chest"
+      ],
+      "secondary": [
+        "Front delts"
+      ],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "16.5 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set both pulleys at about shoulder height, or a little higher.",
+        "Step forward into a split stance with a slight forward lean. Chest up.",
+        "Soft bend in the elbows. Keep that bend fixed for the whole set."
+      ],
+      "steps": [
+        "Start with your arms out wide and a stretch across the chest.",
+        "Hug the handles together in an arc in front of your lower chest, as if wrapping a big tree.",
+        "Squeeze for a second, then let the arms open slowly back to the stretch."
+      ],
+      "cues": [
+        "Hug the tree",
+        "Elbows lead, hands follow",
+        "Squeeze, then slow return"
+      ],
+      "mistakes": [
+        "Bending and straightening the elbows, which turns it into a press.",
+        "Going so heavy that you have to lean and swing.",
+        "Short range: not opening up into the stretch."
+      ],
+      "note": "",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "seated-db-ohp",
+      "name": "Seated Dumbbell Overhead Press",
+      "loggedAs": [
+        "Seated DB Overhead Press"
+      ],
+      "equipment": "Dumbbells, bench with back support",
+      "category": "Shoulders",
+      "main": true,
+      "primary": [
+        "Front and side delts"
+      ],
+      "secondary": [
+        "Triceps",
+        "Upper chest"
+      ],
+      "baseline": [
+        {
+          "day": "push-b",
+          "value": "60 lb × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the backrest upright or one notch back from vertical.",
+        "Kick the dumbbells up from your thighs to shoulder height.",
+        "Back flat against the pad, feet planted wide, ribs down."
+      ],
+      "steps": [
+        "Start with the dumbbells at about ear to chin height, palms forward, elbows slightly in front of your body.",
+        "Brace and press up until your arms are straight and the bells are over your head.",
+        "Lower under control back to ear height."
+      ],
+      "cues": [
+        "Ribs down",
+        "Head through the window at the top",
+        "Elbows under the wrists"
+      ],
+      "mistakes": [
+        "Arching the lower back off the pad to finish reps.",
+        "Stopping above ear height, so the range shrinks as you tire.",
+        "Elbows flared straight out to the sides."
+      ],
+      "note": "",
+      "days": [
+        "push-b"
+      ]
+    },
+    {
+      "id": "lateral-raise",
+      "name": "Lateral Raise (cable or dumbbell)",
+      "loggedAs": [
+        "Lateral Raise (Cable)",
+        "Side Delts"
+      ],
+      "equipment": "Cable with D-handle, or dumbbells",
+      "category": "Shoulders",
+      "main": false,
+      "primary": [
+        "Side delts"
+      ],
+      "secondary": [
+        "Upper traps"
+      ],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "7.5 kg × 10, 3 sets (cable)"
+        },
+        {
+          "day": "push-b",
+          "value": "7.5 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Cable: set the pulley at hand or hip height. Stand side-on and hold the handle in the far hand so the cable runs across or behind your body.",
+        "Dumbbell: stand tall or lean slightly forward, bells by your sides.",
+        "Slight bend in the elbow. Shoulders down, away from your ears."
+      ],
+      "steps": [
+        "Raise the arm out to the side, leading with the elbow, until it reaches about shoulder height.",
+        "Pause briefly at the top.",
+        "Lower slowly. Don't let the weight drop."
+      ],
+      "cues": [
+        "Push the weight out, not up",
+        "Elbow leads the hand",
+        "Shoulders stay out of your ears"
+      ],
+      "mistakes": [
+        "Shrugging, which moves the work into the traps.",
+        "Swinging the body to start the rep.",
+        "Going too heavy. This muscle responds to clean reps, not big weights."
+      ],
+      "note": "Your plan logs both Lateral Raise (Cable) on Push A and Side Delts on Push B at 7.5 kg. If Push B is dumbbells, the form is the same.",
+      "days": [
+        "push-a",
+        "push-b"
+      ]
+    },
+    {
+      "id": "machine-lateral-raise",
+      "name": "Standing Side Delt Machine",
+      "loggedAs": [
+        "Standing Side Delts (machine)"
+      ],
+      "equipment": "Lateral raise machine",
+      "category": "Shoulders",
+      "main": false,
+      "primary": [
+        "Side delts"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "66 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Line your shoulder joint up with the machine's pivot point.",
+        "Place the pads on the outside of your upper arms or elbows. Chest against the pad if there is one.",
+        "Stand tall, shoulders down."
+      ],
+      "steps": [
+        "Push the pads out and up with your elbows until your upper arms are about level with your shoulders.",
+        "Pause, then lower slowly to the start."
+      ],
+      "cues": [
+        "Push out with the elbows",
+        "Shoulders down",
+        "Slow lower"
+      ],
+      "mistakes": [
+        "Shoulder not lined up with the pivot, which makes the movement feel jerky.",
+        "Shrugging or leaning away from the machine to move more weight."
+      ],
+      "note": "This replaced the front raise on Push A.",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "front-raise-db",
+      "name": "Front Raise (dumbbell)",
+      "loggedAs": [
+        "Front Raise (DB)"
+      ],
+      "equipment": "Dumbbells",
+      "category": "Shoulders",
+      "main": false,
+      "primary": [
+        "Front delts"
+      ],
+      "secondary": [
+        "Upper chest"
+      ],
+      "baseline": [
+        {
+          "day": "push-b",
+          "value": "30 lb × 10, 1 set"
+        }
+      ],
+      "setup": [
+        "Stand tall with the dumbbells in front of your thighs, palms facing your legs or each other.",
+        "Soft knees, braced midsection, slight bend in the elbows."
+      ],
+      "steps": [
+        "Raise the dumbbells straight in front of you to about shoulder height.",
+        "Pause, then lower slowly to the thighs."
+      ],
+      "cues": [
+        "No swing",
+        "Stop at eye level at most",
+        "Slow down"
+      ],
+      "mistakes": [
+        "Leaning back and using momentum.",
+        "Raising far above the head."
+      ],
+      "note": "Your front delts already get plenty of work from bench, incline and overhead press. If you ever revisit Push B, this is the slot the plan suggests swapping for more laterals.",
+      "days": [
+        "push-b"
+      ]
+    },
+    {
+      "id": "reverse-fly-machine",
+      "name": "Reverse Fly (machine)",
+      "loggedAs": [
+        "Reverse Fly (Machine)"
+      ],
+      "equipment": "Pec deck / rear delt machine",
+      "category": "Shoulders",
+      "main": false,
+      "primary": [
+        "Rear delts"
+      ],
+      "secondary": [
+        "Mid traps",
+        "Rhomboids"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "61 kg × 10"
+        },
+        {
+          "day": "push-b",
+          "value": "61 kg × 10, 2–3 sets"
+        }
+      ],
+      "setup": [
+        "Sit facing the pad. Set the seat so the handles are at shoulder height.",
+        "Set the handles so your arms start in front with a stretch in the back of the shoulders.",
+        "Neutral grip (palms facing in) or palms down, slight bend in the elbows."
+      ],
+      "steps": [
+        "Sweep the arms out and back in a wide arc until they are in line with your body.",
+        "Pause briefly, then return slowly."
+      ],
+      "cues": [
+        "Reach wide, not back",
+        "Pinkies lead",
+        "Chest stays on the pad"
+      ],
+      "mistakes": [
+        "Squeezing the shoulder blades hard together, which turns it into an upper-back move.",
+        "Pulling the chest off the pad and using the back.",
+        "Bending the elbows more as the set goes on."
+      ],
+      "note": "",
+      "days": [
+        "pull-a",
+        "push-b"
+      ]
+    },
+    {
+      "id": "cable-overhead-triceps-extension",
+      "name": "Cable Triceps Extension",
+      "loggedAs": [
+        "Triceps Extension (Cable)"
+      ],
+      "equipment": "Cable, rope or bar",
+      "category": "Triceps",
+      "main": false,
+      "primary": [
+        "Triceps (long head)"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "15 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Overhead version: set the pulley low, face away from the stack, and bring the rope over your head. Staggered stance, slight lean forward.",
+        "Elbows point forward, about head width apart."
+      ],
+      "steps": [
+        "Start with the elbows bent and your hands behind your head, feeling a stretch in the back of the arms.",
+        "Straighten the arms fully by moving only the forearms.",
+        "Return slowly to the stretch."
+      ],
+      "cues": [
+        "Elbows stay still",
+        "Big stretch behind the head",
+        "Lock out fully"
+      ],
+      "mistakes": [
+        "Elbows flaring wide as the set gets hard.",
+        "Moving the upper arm, which turns it into a pullover.",
+        "Cutting the stretch short."
+      ],
+      "note": "Your log doesn't say whether this is done overhead. If you do it as a pushdown or across the body, use the pushdown cues and keep the elbows pinned.",
+      "days": [
+        "push-a"
+      ]
+    },
+    {
+      "id": "straight-bar-pushdown",
+      "name": "Triceps Pushdown (straight bar)",
+      "loggedAs": [
+        "Triceps Pushdown (Straight bar)",
+        "Triceps Pushdown"
+      ],
+      "equipment": "Cable, straight bar",
+      "category": "Triceps",
+      "main": false,
+      "primary": [
+        "Triceps"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "push-a",
+          "value": "32.5 kg × 10, 2 sets"
+        },
+        {
+          "day": "push-b",
+          "value": "32.5 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the pulley high. Grip the bar overhand about shoulder width.",
+        "Stand close, slight forward lean, elbows tucked at your sides."
+      ],
+      "steps": [
+        "Push the bar down until your arms are fully straight.",
+        "Squeeze for a moment.",
+        "Let the bar rise until your forearms are just past parallel to the floor, elbows still at your sides."
+      ],
+      "cues": [
+        "Elbows glued to your ribs",
+        "Only the forearms move",
+        "Full lockout"
+      ],
+      "mistakes": [
+        "Elbows drifting forward and the shoulders helping.",
+        "Leaning over the bar and pushing with body weight.",
+        "Letting the bar ride up to the face."
+      ],
+      "note": "",
+      "days": [
+        "push-a",
+        "push-b"
+      ]
+    },
+    {
+      "id": "rope-pushdown",
+      "name": "Triceps Rope Pushdown",
+      "loggedAs": [
+        "Triceps Rope"
+      ],
+      "equipment": "Cable, rope",
+      "category": "Triceps",
+      "main": false,
+      "primary": [
+        "Triceps"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "push-b",
+          "value": "15 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the pulley high and hold the rope with palms facing each other, thumbs up near the knobs.",
+        "Elbows at your sides, slight forward lean."
+      ],
+      "steps": [
+        "Push the rope down and spread the ends apart at the bottom so your hands finish beside your thighs.",
+        "Squeeze, then let the rope rise slowly until your forearms pass parallel."
+      ],
+      "cues": [
+        "Pull the rope apart at the bottom",
+        "Elbows stay pinned",
+        "Slow up"
+      ],
+      "mistakes": [
+        "Elbows coming forward on the way up.",
+        "Short reps that never reach lockout."
+      ],
+      "note": "",
+      "days": [
+        "push-b"
+      ]
+    },
+    {
+      "id": "wide-lat-pulldown",
+      "name": "Lat Pulldown (wide grip)",
+      "loggedAs": [
+        "Lat Pulldown, Wide"
+      ],
+      "equipment": "Pulldown station, long bar",
+      "category": "Back",
+      "main": true,
+      "primary": [
+        "Lats"
+      ],
+      "secondary": [
+        "Upper back",
+        "Biceps",
+        "Rear delts"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "80 kg × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the thigh pad so your legs are locked in snugly.",
+        "Grip the bar overhand, a little wider than shoulder width.",
+        "Sit down with arms fully straight and a stretch in your lats. Chest up, slight lean back (about 10–20°)."
+      ],
+      "steps": [
+        "Start by pulling your shoulders down, away from your ears.",
+        "Drive your elbows down toward your back pockets until the bar reaches your upper chest.",
+        "Pause, then let the bar rise slowly all the way to a full stretch."
+      ],
+      "cues": [
+        "Elbows to back pockets",
+        "Chest up to meet the bar",
+        "Full stretch at the top"
+      ],
+      "mistakes": [
+        "Leaning far back and rowing the weight with body swing.",
+        "Pulling the bar behind the neck.",
+        "Stopping short of the full stretch at the top."
+      ],
+      "note": "",
+      "days": [
+        "pull-a"
+      ]
+    },
+    {
+      "id": "single-arm-lat-pulldown",
+      "name": "Single-Arm Lat Pulldown",
+      "loggedAs": [
+        "Lat Pulldown, Single Arm"
+      ],
+      "equipment": "Pulldown machine or cable, single handle",
+      "category": "Back",
+      "main": false,
+      "primary": [
+        "Lats"
+      ],
+      "secondary": [
+        "Biceps",
+        "Rear delts"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "60 kg × 10, 3 sets"
+        },
+        {
+          "day": "pull-b",
+          "value": "60 kg × 8–10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Sit or kneel so the handle is directly overhead or slightly in front, with the arm fully stretched.",
+        "Neutral grip (palm facing in) usually feels best.",
+        "Brace with the free hand on your thigh or the machine."
+      ],
+      "steps": [
+        "Let the arm reach up and slightly across so you feel a deep stretch down the side of your back.",
+        "Pull the elbow down and in toward your hip.",
+        "Pause, then return slowly to the full stretch."
+      ],
+      "cues": [
+        "Elbow to hip",
+        "Reach long at the top",
+        "Don't twist the torso"
+      ],
+      "mistakes": [
+        "Rotating the body to move the weight.",
+        "Pulling with the biceps by curling the hand down.",
+        "Skipping the stretch at the top, which is where this variation pays off."
+      ],
+      "note": "Do all reps on your weaker side first, then match the same reps on the other side.",
+      "days": [
+        "pull-a",
+        "pull-b"
+      ]
+    },
+    {
+      "id": "seated-cable-row",
+      "name": "Seated Cable Row",
+      "loggedAs": [
+        "Seated Row (Cable)"
+      ],
+      "equipment": "Low cable row, V-handle or bar",
+      "category": "Back",
+      "main": true,
+      "primary": [
+        "Mid back",
+        "Lats"
+      ],
+      "secondary": [
+        "Rear delts",
+        "Biceps"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "95 kg × 8, 2 sets"
+        },
+        {
+          "day": "pull-b",
+          "value": "90 kg × 8, 2 sets"
+        }
+      ],
+      "setup": [
+        "Sit with feet on the platform and knees slightly bent.",
+        "Grab the handle and sit tall, chest up, back neutral.",
+        "Start with your arms straight and shoulders allowed to reach forward a little."
+      ],
+      "steps": [
+        "Pull your shoulders back, then row the handle to your lower ribs or upper stomach.",
+        "Squeeze the shoulder blades together for a moment.",
+        "Return slowly, letting the arms straighten and the shoulders reach forward, without rounding your lower back."
+      ],
+      "cues": [
+        "Chest tall",
+        "Elbows past your ribs",
+        "Reach, don't slump"
+      ],
+      "mistakes": [
+        "Rocking the torso back and forth by 30° or more to move the weight.",
+        "Rounding the lower back at the start of each rep.",
+        "Shrugging the handle toward the neck."
+      ],
+      "note": "A small torso movement (about 10–15°) is fine. If you need more than that, the weight is too heavy for 8 clean reps.",
+      "days": [
+        "pull-a",
+        "pull-b"
+      ]
+    },
+    {
+      "id": "machine-pullover",
+      "name": "Pullover Machine",
+      "loggedAs": [
+        "Pullover (Machine)"
+      ],
+      "equipment": "Pullover machine",
+      "category": "Back",
+      "main": false,
+      "primary": [
+        "Lats"
+      ],
+      "secondary": [
+        "Long head of triceps",
+        "Chest"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "61 kg × 8, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the seat so your shoulder joint lines up with the machine's pivot.",
+        "Put the pads on the back of your upper arms, hands lightly on the bar.",
+        "Belt or brace your hips so you stay seated."
+      ],
+      "steps": [
+        "Start with arms up and back and a strong stretch in the lats.",
+        "Drive the elbows down in an arc until the bar reaches your stomach.",
+        "Return slowly to the stretch."
+      ],
+      "cues": [
+        "Push with the elbows, not the hands",
+        "Ribs down",
+        "Big stretch at the top"
+      ],
+      "mistakes": [
+        "Pulling with the hands, which brings in the arms.",
+        "Arching the back at the top."
+      ],
+      "note": "",
+      "days": [
+        "pull-a"
+      ]
+    },
+    {
+      "id": "t-bar-row",
+      "name": "T-Bar Row",
+      "loggedAs": [
+        "T-Bar Row"
+      ],
+      "equipment": "T-bar row (landmine or plate-loaded)",
+      "category": "Back",
+      "main": true,
+      "primary": [
+        "Mid back",
+        "Lats"
+      ],
+      "secondary": [
+        "Rear delts",
+        "Biceps",
+        "Lower back (holding position)"
+      ],
+      "baseline": [
+        {
+          "day": "pull-b",
+          "value": "50 kg × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "If your gym has a chest-supported T-bar, use it. Lie on the pad and grip the handles.",
+        "Free-standing version: straddle the bar, hinge forward to about 45°, knees soft, back flat and braced.",
+        "Close or neutral grip handle."
+      ],
+      "steps": [
+        "Start with arms straight and a stretch through the upper back.",
+        "Row the handle toward your lower chest or upper stomach, elbows about 45° from your body.",
+        "Squeeze, then lower under control. Keep your torso angle the same throughout."
+      ],
+      "cues": [
+        "Lock the torso angle",
+        "Elbows back and in",
+        "Squeeze before lowering"
+      ],
+      "mistakes": [
+        "Standing up more each rep to use momentum.",
+        "Rounding the lower back.",
+        "Short, choppy reps with a heavy load."
+      ],
+      "note": "Your program leaves out hinge lifts, and the free-standing T-bar row loads the lower back. Use the chest-supported version if you can, or swap to a heavier Iso-Lateral Low Row on days your back feels tired.",
+      "days": [
+        "pull-b"
+      ]
+    },
+    {
+      "id": "iso-lateral-low-row",
+      "name": "Iso-Lateral Low Row (plate-loaded)",
+      "loggedAs": [
+        "Iso-Lateral Low Row (plate)"
+      ],
+      "equipment": "Plate-loaded row machine",
+      "category": "Back",
+      "main": false,
+      "primary": [
+        "Lats",
+        "Mid back"
+      ],
+      "secondary": [
+        "Biceps",
+        "Rear delts"
+      ],
+      "baseline": [
+        {
+          "day": "pull-b",
+          "value": "70 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Set the seat so the handles are in line with the bottom of your chest or a bit lower.",
+        "Chest against the pad, feet braced."
+      ],
+      "steps": [
+        "Reach forward for a full stretch.",
+        "Pull the elbows back low and close to the body, toward your hips.",
+        "Pause, then return slowly. You can train one arm at a time."
+      ],
+      "cues": [
+        "Elbows to hips",
+        "Chest stays on the pad",
+        "Full reach forward"
+      ],
+      "mistakes": [
+        "Lifting the chest off the pad to finish reps.",
+        "Shortening the reach at the front."
+      ],
+      "note": "",
+      "days": [
+        "pull-b"
+      ]
+    },
+    {
+      "id": "traps-machine",
+      "name": "Shrug Machine",
+      "loggedAs": [
+        "Traps Machine"
+      ],
+      "equipment": "Shrug / traps machine",
+      "category": "Back",
+      "main": false,
+      "primary": [
+        "Upper traps"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "pull-b",
+          "value": "80 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Stand or sit under the pads or handles with arms straight and the load hanging.",
+        "Stand tall, chin neutral."
+      ],
+      "steps": [
+        "Shrug your shoulders straight up toward your ears.",
+        "Hold the top for a second.",
+        "Lower all the way down for a full stretch."
+      ],
+      "cues": [
+        "Straight up, straight down",
+        "Pause at the top",
+        "Arms are just hooks"
+      ],
+      "mistakes": [
+        "Rolling the shoulders in circles.",
+        "Bending the elbows to pull.",
+        "Bouncing short reps."
+      ],
+      "note": "",
+      "days": [
+        "pull-b"
+      ]
+    },
+    {
+      "id": "db-curl",
+      "name": "Dumbbell Curl",
+      "loggedAs": [
+        "DB Curl"
+      ],
+      "equipment": "Dumbbells",
+      "category": "Biceps",
+      "main": false,
+      "primary": [
+        "Biceps"
+      ],
+      "secondary": [
+        "Forearms"
+      ],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "30 lb × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Stand tall with the dumbbells at your sides, palms forward or turning forward as you lift.",
+        "Elbows by your sides, shoulders back."
+      ],
+      "steps": [
+        "Curl the dumbbells up, turning the palms up, until the forearms are close to vertical.",
+        "Squeeze, then lower slowly all the way to straight arms."
+      ],
+      "cues": [
+        "Elbows stay put",
+        "Pinky slightly higher than thumb at the top",
+        "Straight arms at the bottom"
+      ],
+      "mistakes": [
+        "Swinging from the hips.",
+        "Elbows drifting forward so the shoulders lift the weight.",
+        "Half reps at the bottom."
+      ],
+      "note": "",
+      "days": [
+        "pull-a"
+      ]
+    },
+    {
+      "id": "seated-machine-curl",
+      "name": "Seated Biceps Curl (machine)",
+      "loggedAs": [
+        "Seated Bicep Curl"
+      ],
+      "equipment": "Preacher-style curl machine",
+      "category": "Biceps",
+      "main": false,
+      "primary": [
+        "Biceps"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "pull-a",
+          "value": "25 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the seat so your armpits sit at the top edge of the pad.",
+        "Line your elbows up with the machine's pivot point."
+      ],
+      "steps": [
+        "Curl the handles up until the biceps are fully shortened.",
+        "Lower slowly to almost straight arms."
+      ],
+      "cues": [
+        "Armpits to the pad",
+        "Elbows on the pivot",
+        "Slow at the bottom"
+      ],
+      "mistakes": [
+        "Lifting your elbows off the pad.",
+        "Dropping fast into the bottom, which stresses the elbow."
+      ],
+      "note": "",
+      "days": [
+        "pull-a"
+      ]
+    },
+    {
+      "id": "cable-curl",
+      "name": "Standing Cable Curl",
+      "loggedAs": [
+        "Cable Standing Biceps"
+      ],
+      "equipment": "Low cable, straight bar, EZ bar or handles",
+      "category": "Biceps",
+      "main": false,
+      "primary": [
+        "Biceps"
+      ],
+      "secondary": [
+        "Forearms"
+      ],
+      "baseline": [
+        {
+          "day": "pull-b",
+          "value": "16 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Set the pulley low. Stand facing the stack, a small step back so the cable pulls slightly forward.",
+        "Underhand grip, elbows by your sides."
+      ],
+      "steps": [
+        "Curl up until your hands reach shoulder height.",
+        "Squeeze, then lower slowly to straight arms."
+      ],
+      "cues": [
+        "Elbows still",
+        "Squeeze at the top",
+        "Fight it on the way down"
+      ],
+      "mistakes": [
+        "Leaning back to finish reps.",
+        "Letting the stack pull the arms down fast."
+      ],
+      "note": "",
+      "days": [
+        "pull-b"
+      ]
+    },
+    {
+      "id": "hack-squat",
+      "name": "Hack Squat",
+      "loggedAs": [
+        "Hack Squat"
+      ],
+      "equipment": "Hack squat machine",
+      "category": "Legs",
+      "main": true,
+      "primary": [
+        "Quads"
+      ],
+      "secondary": [
+        "Glutes",
+        "Adductors"
+      ],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "70 kg × 8, 2 sets"
+        },
+        {
+          "day": "lower-b",
+          "value": "70 kg × 8, 2 sets"
+        }
+      ],
+      "setup": [
+        "Back and hips flat against the pad, shoulders snug under the shoulder pads.",
+        "Feet shoulder width, middle of the platform. Toes slightly turned out.",
+        "Brace before you release the safety handles."
+      ],
+      "steps": [
+        "Lower slowly, letting your knees travel forward over your toes.",
+        "Go as deep as you can while your hips stay on the pad. Aim for thighs at least parallel to the platform.",
+        "Drive up through your whole foot to just short of locking the knees."
+      ],
+      "cues": [
+        "Knees follow the toes",
+        "Hips glued to the pad",
+        "Same depth every rep"
+      ],
+      "mistakes": [
+        "Knees caving inward on the way up.",
+        "Heels lifting.",
+        "Hips peeling off the pad at the bottom, which rounds the lower back.",
+        "Cutting depth as the weight goes up."
+      ],
+      "note": "Lower foot placement puts more work on the quads. Use the same placement every session so numbers compare.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "smith-squat",
+      "name": "Smith Machine Squat",
+      "loggedAs": [
+        "Smith Squat"
+      ],
+      "equipment": "Smith machine",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondary": [
+        "Adductors"
+      ],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "40 kg × 7, 1 set"
+        },
+        {
+          "day": "lower-b",
+          "value": "40 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Bar across your upper back, not your neck. Grip just outside your shoulders.",
+        "Feet shoulder width, slightly in front of the bar so you sit straight down.",
+        "Set the safety stops just below your lowest squat depth."
+      ],
+      "steps": [
+        "Brace and unrack by twisting the bar.",
+        "Sit down between your heels until the thighs are at least parallel to the floor.",
+        "Drive up through the whole foot."
+      ],
+      "cues": [
+        "Chest tall",
+        "Sit between the heels",
+        "Push the floor away"
+      ],
+      "mistakes": [
+        "Feet too far forward, which loads the lower back.",
+        "Knees caving in.",
+        "Bouncing off the bottom."
+      ],
+      "note": "Smith machines vary in how heavy the bar is. Log the same machine every time.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "leg-extension",
+      "name": "Leg Extension",
+      "loggedAs": [
+        "Leg Extension"
+      ],
+      "equipment": "Leg extension machine",
+      "category": "Legs",
+      "main": true,
+      "primary": [
+        "Quads"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "122 kg × 8, 3 sets"
+        },
+        {
+          "day": "lower-b",
+          "value": "122 kg × 8, 2 sets"
+        }
+      ],
+      "setup": [
+        "Line your knee joint up with the machine's pivot.",
+        "Ankle pad sits just above the ankle, on the front of the shin.",
+        "Back against the pad, hold the side handles hard. Lean back slightly if the seat allows."
+      ],
+      "steps": [
+        "Kick up until the legs are straight and squeeze the quads for a second.",
+        "Lower slowly until your knees are bent past 90°."
+      ],
+      "cues": [
+        "Squeeze at the top",
+        "Slow down",
+        "Butt stays in the seat"
+      ],
+      "mistakes": [
+        "Kicking the weight up and letting it drop.",
+        "Hips lifting off the seat as the weight gets heavy.",
+        "Short reps that skip the bottom stretch."
+      ],
+      "note": "At 122 kg you are near the top of most stacks. When you max out the stack, add a pause at the top or slow down the lowering instead.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "lying-leg-curl",
+      "name": "Lying Leg Curl",
+      "loggedAs": [
+        "Lying Leg Curl"
+      ],
+      "equipment": "Lying leg curl machine",
+      "category": "Legs",
+      "main": true,
+      "primary": [
+        "Hamstrings"
+      ],
+      "secondary": [
+        "Calves"
+      ],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "63 kg × 8, 2 sets"
+        },
+        {
+          "day": "lower-b",
+          "value": "63 kg × 8, 3 sets"
+        }
+      ],
+      "setup": [
+        "Lie face down with your knees just off the end of the pad, lined up with the pivot.",
+        "Pad just above the heels.",
+        "Hold the handles and press your hips into the bench."
+      ],
+      "steps": [
+        "Curl your heels toward your butt as far as you can.",
+        "Squeeze, then lower slowly to almost straight legs."
+      ],
+      "cues": [
+        "Hips down",
+        "Heels to butt",
+        "Slow to straight"
+      ],
+      "mistakes": [
+        "Hips lifting off the bench, which lets the lower back help.",
+        "Stopping halfway up.",
+        "Letting the weight crash down."
+      ],
+      "note": "This is your only direct hamstring exercise, so treat every rep seriously. Your plan mentions adding seated leg curls later if you want more hamstring work.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "hip-adductor",
+      "name": "Hip Adductor Machine",
+      "loggedAs": [
+        "Hip Adductor"
+      ],
+      "equipment": "Adductor machine (legs squeeze in)",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Inner thighs (adductors)"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "85 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Sit tall with the pads on the inside of your knees.",
+        "Open the legs to a range that gives a stretch without pain."
+      ],
+      "steps": [
+        "Squeeze the legs together until the pads meet.",
+        "Pause, then open slowly back to the stretch."
+      ],
+      "cues": [
+        "Sit tall",
+        "Control the opening",
+        "Squeeze, don't slam"
+      ],
+      "mistakes": [
+        "Starting with a stretch that is too wide on the first set.",
+        "Letting the pads fly open."
+      ],
+      "note": "Adductors help a lot in squats. Increase the starting width gradually over a few sessions.",
+      "days": [
+        "lower-a"
+      ]
+    },
+    {
+      "id": "hip-abductor",
+      "name": "Hip Abductor Machine",
+      "loggedAs": [
+        "Hip Abductor"
+      ],
+      "equipment": "Abductor machine (legs push out)",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Outer glutes (glute medius)"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-b",
+          "value": "135 kg × 20, 3 sets"
+        }
+      ],
+      "setup": [
+        "Sit with the pads on the outside of your knees.",
+        "Sit tall, or lean forward slightly to feel more of the glutes."
+      ],
+      "steps": [
+        "Push the knees out as wide as you can.",
+        "Pause, then return slowly. Don't let the plates touch between reps."
+      ],
+      "cues": [
+        "Knees out",
+        "Pause wide",
+        "Keep tension at the start"
+      ],
+      "mistakes": [
+        "Rocking the torso to push out.",
+        "Short, fast reps with heavy weight."
+      ],
+      "note": "135 kg × 20 is likely the full stack. Make sets harder with a 2-second pause at the widest point instead of adding reps.",
+      "days": [
+        "lower-b"
+      ]
+    },
+    {
+      "id": "standing-calf-raise",
+      "name": "Standing Calf Raise",
+      "loggedAs": [
+        "Standing Calf Raise"
+      ],
+      "equipment": "Standing calf machine",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Calves (gastrocnemius)"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "60 kg × 10, 3 sets"
+        }
+      ],
+      "setup": [
+        "Pads on your shoulders, balls of your feet on the edge of the step.",
+        "Knees straight but not locked hard."
+      ],
+      "steps": [
+        "Lower your heels as far as they go and hold the stretch for 1–2 seconds.",
+        "Rise as high as you can onto your toes.",
+        "Pause at the top, then lower slowly."
+      ],
+      "cues": [
+        "Pause in the stretch",
+        "Up onto the big toe",
+        "No bouncing"
+      ],
+      "mistakes": [
+        "Bouncing quick half reps.",
+        "Bending the knees to push."
+      ],
+      "note": "",
+      "days": [
+        "lower-a"
+      ]
+    },
+    {
+      "id": "leg-press-calf-raise",
+      "name": "Calf Press on Seated Leg Press",
+      "loggedAs": [
+        "Calf Press on Seated Leg Press"
+      ],
+      "equipment": "Seated leg press",
+      "category": "Legs",
+      "main": false,
+      "primary": [
+        "Calves"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "lower-b",
+          "value": "65 kg × 10, 2 sets"
+        }
+      ],
+      "setup": [
+        "Sit in the leg press and put the balls of your feet on the bottom edge of the platform. Heels hang off.",
+        "Legs almost straight, knees soft."
+      ],
+      "steps": [
+        "Let the platform push your toes back for a deep stretch. Hold 1–2 seconds.",
+        "Press through the balls of your feet as far as you can.",
+        "Lower slowly."
+      ],
+      "cues": [
+        "Stretch, pause, press",
+        "Knees stay still",
+        "Feet planted"
+      ],
+      "mistakes": [
+        "Feet slipping off the edge. Keep your shoes firmly on the platform.",
+        "Bending the knees to move the platform."
+      ],
+      "note": "Keep the safety handles within reach and never remove your feet with the platform unlocked.",
+      "days": [
+        "lower-b"
+      ]
+    },
+    {
+      "id": "seated-ab-crunch",
+      "name": "Seated Ab Crunch (machine)",
+      "loggedAs": [
+        "Seated Abs"
+      ],
+      "equipment": "Ab crunch machine",
+      "category": "Core",
+      "main": false,
+      "primary": [
+        "Abs"
+      ],
+      "secondary": [
+        "Obliques"
+      ],
+      "baseline": [
+        {
+          "day": "lower-a",
+          "value": "5 kg × 100 (as logged, to confirm)"
+        },
+        {
+          "day": "lower-b",
+          "value": "5 kg × 100 (as logged, to confirm)"
+        }
+      ],
+      "setup": [
+        "Set the seat so the handles or pads sit at chest or shoulder level.",
+        "Hook your feet under the rollers if there are any."
+      ],
+      "steps": [
+        "Breathe out and curl your ribcage toward your hips, rounding your spine.",
+        "Squeeze for a second.",
+        "Return slowly until you feel a stretch in the abs."
+      ],
+      "cues": [
+        "Ribs to hips",
+        "Breathe out as you crunch",
+        "Round, don't hinge"
+      ],
+      "mistakes": [
+        "Pulling with the arms.",
+        "Bending at the hips instead of curling the spine.",
+        "Very light weight for very high reps."
+      ],
+      "note": "Your plan still has this down as 5 kg × 100, to confirm. Abs grow like other muscles: pick a weight you can curl for 10–20 controlled reps.",
+      "days": [
+        "lower-a",
+        "lower-b"
+      ]
+    },
+    {
+      "id": "incline-treadmill-walk",
+      "name": "Incline Treadmill Walk",
+      "loggedAs": [
+        "Treadmill (30 min)"
+      ],
+      "equipment": "Treadmill",
+      "category": "Cardio",
+      "main": false,
+      "primary": [
+        "Low-intensity cardio"
+      ],
+      "secondary": [],
+      "baseline": [
+        {
+          "day": "cardio",
+          "value": "30 min at about 4.0 km/h, incline about 3"
+        }
+      ],
+      "setup": [
+        "Set the speed to about 4.0 km/h and the incline to about 3.",
+        "Have your Gatorade within reach."
+      ],
+      "steps": [
+        "Walk tall with your normal stride and let your arms swing.",
+        "Keep the pace where you can still talk in full sentences."
+      ],
+      "cues": [
+        "Hands off the rails",
+        "Tall posture",
+        "Easy, steady pace"
+      ],
+      "mistakes": [
+        "Holding the handrails, which cuts the work by a lot.",
+        "Leaning far forward."
+      ],
+      "note": "This is for burning calories while recovering. If your legs are trashed after Lower A or B, keep the time and lower the incline.",
+      "days": [
+        "cardio"
+      ]
+    }
+  ]
+}
