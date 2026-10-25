@@ -11853,7 +11853,7 @@ window.DataIO = (() => {
   // Collections the shell and its mounted modules keep. Unknown collections found in a snapshot are backed up too.
   const COLLECTIONS = {
     days: "Days (food, water, steps, sleep)", weights: "Weigh-ins", workouts: "Workouts", prefs: "Settings",
-    meals: "Saved meals", barcodes: "Scanned foods", photos: "Progress photo records",
+    meals: "Saved meals", barcodes: "Scanned foods", photos: "Progress photo records", menus: "Imported menus",
     lb_workouts: "Full-logger workouts", lb_templates: "Workout templates", lb_exercises: "Custom exercises",
     lb_measures: "Body measurements", lb_meta: "Logger settings", cardio: "Cardio sessions",
   };
@@ -12668,6 +12668,18 @@ window.DataIO = (() => {
     ["Any spreadsheet", "A CSV with a date column plus weight, waist/chest/hips…, food + calories, or exercise + reps."],
   ];
 
+  // Age of the last backup from prefs/main. `due` after DUE_DAYS (7) or when there has never been one.
+  const DUE_DAYS = 7;
+  function backupStatus(prefsMain, { now, dueDays } = {}) {
+    const lastBackup = (prefsMain || {}).lastBackup || null;
+    const t = lastBackup ? new Date(lastBackup).getTime() : NaN;
+    const ageDays = Number.isFinite(t) ? Math.max(0, Math.floor(((now || Date.now()) - t) / 86400000)) : null;
+    const limit = dueDays == null ? DUE_DAYS : dueDays;
+    const due = ageDays == null || ageDays >= limit;
+    const label = ageDays == null ? "No backup yet" : ageDays === 0 ? "Backed up today" : ageDays === 1 ? "Last backup yesterday" : `Last backup ${ageDays} days ago`;
+    return { lastBackup: Number.isFinite(t) ? lastBackup : null, ageDays, due, label };
+  }
+
   function mount(host, opts) {
     opts = opts || {};
     if (!document.getElementById("dio-style")) { const st = document.createElement("style"); st.id = "dio-style"; st.textContent = CSS; document.head.appendChild(st); }
@@ -12682,7 +12694,7 @@ window.DataIO = (() => {
       return true;
     }
 
-    function lastBackup() { const p = (opts.snapshot().prefs || {}).main || {}; return p.lastBackup || null; }
+    function lastBackup() { return backupStatus((opts.snapshot().prefs || {}).main).lastBackup; }
 
     function planHtml(p) {
       const c = p.counts, n = p.writes.length + p.deletes.length;
@@ -12701,13 +12713,12 @@ window.DataIO = (() => {
     }
 
     function render() {
-      const lb = lastBackup();
-      const age = lb ? Math.floor((Date.now() - new Date(lb).getTime()) / 86400000) : null;
+      const bs = backupStatus((opts.snapshot().prefs || {}).main), lb = bs.lastBackup, age = bs.ageDays;
       host.innerHTML = `<section class="card dio" aria-label="Your data">
         <div><h3>Your data</h3>
           <p class="dio-muted">Back up everything, bring in history from other apps, or export spreadsheets.</p></div>
         <div>
-          <p><b>Backup</b> · ${lb ? `last one ${age === 0 ? "today" : age === 1 ? "yesterday" : age + " days ago"}` : "<span class=\"dio-warn\">no backup yet</span>"}${age != null && age >= 14 ? ` <span class="dio-warn">(time for a new one)</span>` : ""}</p>
+          <p><b>Backup</b> · ${lb ? `last one ${age === 0 ? "today" : age === 1 ? "yesterday" : age + " days ago"}` : "<span class=\"dio-warn\">no backup yet</span>"}${lb && bs.due ? ` <span class="dio-warn">(time for a new one)</span>` : ""}</p>
           <div class="dio-row">
             <button class="dio-btn primary" data-dio="backup" ${ui.busy ? "disabled" : ""}>Download backup</button>
             <label class="dio-btn">Restore or import a file<input type="file" data-dio="file" accept=".json,.csv,.txt,.xml,.tsv,application/json,text/csv,text/plain,text/xml"></label>
@@ -12787,6 +12798,7 @@ window.DataIO = (() => {
   return {
     FORMAT, SCHEMA, COLLECTIONS, KINDS, MIGRATIONS,
     makeBackup, backupFilename, readBackup, planRestore, detect, importText, applyPlan, toCsv, mount,
+    backupStatus, DUE_DAYS,
     parseWhen, parseWeights, parseFood, parseMeasures, toStrongCsv, readCsv,
   };
 })();
@@ -13675,20 +13687,44 @@ async function put(col,id,data,{quiet}={}){
 }
 /* Your data (DataIO): backups, restore, imports, mounted once under the Guide tab */
 let dioInst=null;
+const lbCols=["lb_workouts","lb_templates","lb_exercises","lb_measures","lb_meta"];
+const lbCache={};                       // the logger's collections aren't in S.docs; read for backups
+const loadLb=async()=>{ if(!S.db) return; for(const c of lbCols){ try{ const qs=await S.db.collection(c).get(); lbCache[c]=Object.fromEntries(qs.docs.map(d=>[d.id,d.data()])); }catch(e){} } };
+const dioSnapshot=()=>{ const o={}; COLS.forEach(c=>o[c]=clone(S.docs[c])); return Object.assign(o, clone(lbCache)); };
+async function dioDownload(filename,data){ const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(()=>null) : null; if(dl) return dl.save({filename,data}); toast("Downloads aren't available here."); return false; }
+/* One-tap backup (Today nudge): same file as the Your data card, stamps prefs/main.lastBackup */
+async function backupNow(){
+  if(!window.DataIO){ toast("Backup isn't available here."); return; }
+  try{
+    await loadLb();
+    if(await dioDownload(DataIO.backupFilename(), JSON.stringify(DataIO.makeBackup(dioSnapshot(), {}), null, 1))===false) return;
+    const main={...clone(S.docs.prefs.main), lastBackup:new Date().toISOString()}; delete main.backupSnoozeUntil;
+    await put("prefs","main",main); toast("Backup saved.");
+  }catch(e){ toast("Backup failed: "+(e.message||e)); }
+}
+function backupNudge(){
+  if(!window.DataIO || S.mode==="loading") return "";
+  const main=S.docs.prefs.main||{}, bs=DataIO.backupStatus(main);
+  if(!bs.due || (main.backupSnoozeUntil && main.backupSnoozeUntil>TODAY)) return "";
+  const n=Object.values(S.docs).reduce((a,c)=>a+Object.keys(c||{}).length,0);
+  if(!bs.lastBackup && n<10) return "";          // nothing worth backing up yet
+  return `<div class="card" id="backupNudge">
+    <div class="spread"><span class="label">Backup</span><span class="pill warn">${esc(bs.label)}</span></div>
+    <p class="muted">${bs.lastBackup?`Everything you log lives in this app's database. A fresh file every week keeps it safe.`:`Your food, weights, workouts and settings are only in this app. Save a copy to your phone.`}</p>
+    <div class="row"><button class="btn small" data-act="backup">Download backup</button><button class="btn ghost small" data-act="backupsnooze">Remind me in a week</button></div>
+  </div>`;
+}
 function syncDataCard(){
   const host=document.getElementById("dioHost"); host.hidden = view.tab!=="guide";
   if(view.tab!=="guide" || S.mode==="loading" || !window.DataIO) return;
   if(dioInst){ try{ dioInst.refresh(); }catch(e){} return; }
-  const lbCols=["lb_workouts","lb_templates","lb_exercises","lb_measures","lb_meta"];
-  const lbCache={};
-  const loadLb=async()=>{ if(!S.db) return; for(const c of lbCols){ try{ const qs=await S.db.collection(c).get(); lbCache[c]=Object.fromEntries(qs.docs.map(d=>[d.id,d.data()])); }catch(e){} } };
   loadLb();
   try{
     dioInst = DataIO.mount(host, {
-      snapshot: () => { const o={}; COLS.forEach(c=>o[c]=clone(S.docs[c])); return Object.assign(o, clone(lbCache)); },
+      snapshot: dioSnapshot,
       put: async (c,id,doc) => { if(COLS.includes(c)) await put(c,id,doc,{quiet:true}); else { (lbCache[c]=lbCache[c]||{})[id]=doc; if(S.db) await S.db.collection(c).doc(id).set(doc); } },
       remove: async (c,id) => { if(COLS.includes(c)) await remove(c,id); else { delete (lbCache[c]||{})[id]; if(S.db) await S.db.collection(c).doc(id).delete(); } },
-      download: async (filename,data) => { const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(()=>null) : null; if(dl) return dl.save({filename,data}); toast("Downloads aren't available here."); },
+      download: dioDownload,
       program: PROGRAM, rotation: ROTATION, deps: { StrongCSV: window.StrongCSV, Steps: window.Steps, WaterH: window.WaterH },
       today: () => TODAY, kcalTarget: d => kcalTarget(d), proteinMin: TARGET.pMin,
       onDone: () => { render(); loadLb(); }
@@ -13877,6 +13913,7 @@ function vToday(){
       <div class="row">${ROTATION.map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}">${s}</button>`).join("")}</div>`;
   return `
   ${ddGlance(d)}
+  ${backupNudge()}
   <section class="grid">
     <div class="card hero">
       <div class="spread"><span class="label">${DAYTYPE_LABEL[type]}</span>${strictDay>=1&&strictDay<=14?`<span class="pill info">Strict tracking · day ${strictDay} of 14</span>`:""}</div>
@@ -14340,6 +14377,8 @@ main.addEventListener("click",e=>{
   if(a==="caldate"){ view.date=el.dataset.d; view.calYm=null; render(); window.scrollTo(0,0); return; }
   if(a==="calmonth"){ view.calYm=el.dataset.ym; render(); return; }
   if(a==="dd-focus"){ const t=document.getElementById(el.dataset.target); if(t){ t.scrollIntoView({behavior:"smooth",block:"center"}); t.focus({preventScroll:true}); } return; }
+  if(a==="backup"){ el.disabled=true; backupNow(); return; }
+  if(a==="backupsnooze"){ put("prefs","main",{...clone(S.docs.prefs.main), backupSnoozeUntil:addDays(TODAY,7)}); toast("Okay, I'll ask again in a week."); return; }
   if(a==="gotrain"){ view.tab="train"; render(); window.scrollTo(0,0); }
   else if(a==="gofood"){ view.tab="food"; render(); window.scrollTo(0,0); }
   else if(a==="setses"){ const idx=+el.dataset.idx; const w=clone(S.docs.workouts[d]); put("workouts",d,{date:d,sets:{},...w,session:ROTATION[idx],idx}); }
