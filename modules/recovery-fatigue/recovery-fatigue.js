@@ -3,7 +3,7 @@
  *
  * Reads the app's own docs (S.docs):
  *   days/{date}.sleep        hours slept the night before (the app's existing Today input)
- *   days/{date}.recovery     {quality, soreness, energy, joints:{<area>:1|2|3}, note}  <- new, written by this module
+ *   days/{date}.readiness     {quality, soreness, energy, joints:{<area>:1|2|3}, note}  <- new, written by this module
  *                              quality/energy 1-5 (5 = best), soreness 1-5 (5 = not sore), joints 1 mild, 2 moderate, 3 sharp
  *   lb_workouts/{id}         full logger sessions {start (ms), exercises:[{exId, unit:"kg"|"lb", sets:[{t, w, r, done}]}]}, read first
  *   workouts/{date}          {session, sets:{"<exercise>":[{w,r}]}, effort 1-10, deload}; sets used for dates the logger has no session
@@ -66,7 +66,7 @@ const RecoveryFatigue = (() => {
   function scale(v) { const n = num(v); return n == null ? null : clamp(Math.round(n), 1, 5); }
   function sleepOf(day) { const n = num(day && day.sleep); return n != null && n >= 0 && n <= 16 ? n : null; }
   function rec(day) {
-    const r = (day && day.recovery) || {};
+    const r = (day && day.readiness) || {};
     const joints = {};
     Object.entries(r.joints || {}).forEach(([k, v]) => { const n = num(v); if (n >= 1) joints[k] = clamp(Math.round(n), 1, 3); });
     return { quality: scale(r.quality), soreness: scale(r.soreness), energy: scale(r.energy), joints };
@@ -282,16 +282,16 @@ const RecoveryFatigue = (() => {
     const d = b.dataset.rfDate || date;
     if (!isDate(d)) return null;
     const day = Object.assign({ date: d }, ((docs && docs.days) || {})[d]);
-    const r = Object.assign({}, day.recovery || {});
+    const r = Object.assign({}, day.readiness || {});
     r.joints = Object.assign({}, r.joints || {});
     const kind = b.dataset.rf, v = b.dataset.rfV;
     if (SCALES[kind]) { const n = scale(v); if (r[kind] === n) delete r[kind]; else r[kind] = n; }
     else if (kind === "joint") { if (!JOINTS.some(j => j.id === v)) return null; const lv = ((num(r.joints[v]) || 0) + 1) % 4; if (lv) r.joints[v] = lv; else delete r.joints[v]; }
-    else if (kind === "clear") { delete day.recovery; return { collection: "days", id: d, doc: day }; }
+    else if (kind === "clear") { delete day.readiness; return { collection: "days", id: d, doc: day }; }
     else return null;
     if (!Object.keys(r.joints).length) delete r.joints;
     r.at = new Date().toISOString();
-    day.recovery = r;
+    day.readiness = r;
     return { collection: "days", id: d, doc: day };
   }
 
