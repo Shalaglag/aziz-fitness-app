@@ -13768,7 +13768,7 @@ function liftHistory(name){
 function dropping(name){ const h=liftHistory(name); if(h.length<3) return false; const [a,b,c]=h.slice(-3); return b.best.v<a.best.v && c.best.v<b.best.v; }
 
 /* ===================== UI state ===================== */
-const view = {tab:"today", date:TODAY, q:"", timer:null, trainMode:"quick"};
+const view = {tab:"today", date:TODAY, q:"", timer:null, trainMode:"quick", open:{}};
 /* Keep TODAY current when the app stays open past midnight (local time, not UTC).
    If the user was looking at today, follow them onto the new day. */
 function refreshToday(){
@@ -13899,25 +13899,9 @@ function vToday(){
       ${dayType(d)==="saturday"?`<p class="note">Saturday weigh-ins often run high after Friday's salty shrimp. Don't react to it.</p>`:""}
     </div>
   </section>
-  ${ramadanCard(d)}
-  ${window.DailyScore?DailyScore.html(S.docs, d, {today:TODAY, sessionFor:x=>sessionFor(x)?.session, targets:dayTargets}):""}
-  ${ddCalendar(d)}
   <section class="grid">
     <div class="card">
-      <div class="spread"><h3>Food today</h3><button class="btn ghost small" data-act="gofood">Plan / log food</button></div>
-      ${macroBars(day.food)}
-      ${verdict(day.food)}
-    </div>
-    <div class="card">
-      <h3>Schedule</h3>
-      <ul class="tl">${SCHEDULE[type].map(([t,x])=>`<li><span class="t">${t}</span><span>${x}</span></li>`).join("")}</ul>
-    </div>
-  </section>
-  ${recoveryCard(d)}
-  <section class="grid">
-    <div class="card">
-      <div class="spread"><h3>Water</h3><span class="muted">Target ${waterTarget}</span></div>
-      <div class="row"><span class="bigk num">${(dayFluid(day)/1000).toFixed(2)}</span><span class="muted">litres</span></div>
+      <div class="spread"><h3>Water</h3><span class="muted"><span class="num">${(dayFluid(day)/1000).toFixed(2)} L</span> · target ${waterTarget}</span></div>
       ${day.waterh?`<p class="muted" style="font-size:.85rem">WaterH ${(day.waterh.ml/1000).toFixed(2)} L · synced ${new Date(day.waterh.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${day.water?` · manual ${(day.water/1000).toFixed(2)} L`:""}</p>`:""}
       <div class="row"><button class="chip" data-act="water" data-ml="250">+250 ml</button><button class="chip" data-act="water" data-ml="500">+500 ml</button><button class="chip" data-act="water" data-ml="1000">+1 L</button><button class="chip" data-act="water" data-ml="-250">−250</button></div>
       <details><summary>Sync WaterH bottle</summary>
@@ -13927,7 +13911,21 @@ function vToday(){
           <div class="row"><button class="btn small" data-act="waterh">Apply</button><label class="btn ghost small" style="cursor:pointer">Choose file<input type="file" id="waterhFile" accept=".csv,.xml,.txt" hidden></label></div>
         </div>
       </details>
-      <p class="muted" style="font-size:.88rem">Confirmed drinks from the Drinks card count here. Drink to thirst, aim for pale-yellow urine, no more than ~1 L per hour. Keep it similar day to day so the scale stays readable.</p>
+      <details><summary>Tips</summary><p class="muted" style="font-size:.88rem">Confirmed drinks from the Drinks card count here. Drink to thirst, aim for pale-yellow urine, no more than ~1 L per hour. Keep it similar day to day so the scale stays readable.</p></details>
+    </div>
+    <div class="card">
+      <div class="spread"><h3>Food today</h3><button class="btn ghost small" data-act="gofood">Plan / log food</button></div>
+      ${macroBars(day.food)}
+      ${verdict(day.food)}
+    </div>
+  </section>
+  ${ramadanCard(d)}
+  ${window.DailyScore?DailyScore.html(S.docs, d, {today:TODAY, sessionFor:x=>sessionFor(x)?.session, targets:dayTargets}):""}
+  ${ddCalendar(d)}
+  <section class="grid">
+    <div class="card">
+      <h3>Schedule</h3>
+      <ul class="tl">${SCHEDULE[type].map(([t,x])=>`<li><span class="t">${t}</span><span>${x}</span></li>`).join("")}</ul>
     </div>
     <div class="card">
       <h3>Checklist</h3>
@@ -13939,6 +13937,7 @@ function vToday(){
     </div>
     ${window.Steps?(()=>{ const g=Steps.stepGoal(S.docs.prefs.main||{}); return Steps.stepsCardHTML(day,{goal:g, week:Steps.weekSteps(getDay,d,g)}); })():""}
   </section>
+  ${recoveryCard(d)}
   ${rfSafe(()=>RecoveryFatigue.checkinHtml(S.docs, {date:d, ...rfOpts()}))}
   ${(()=>{ try{ return window.SuppDrinks ? SuppDrinks.html(day, S.docs.prefs.main||{}, {date:d, today:TODAY, training}) : ""; }catch(e){ return ""; } })()}`;
 }
@@ -14192,7 +14191,7 @@ function vProgress(){
   const report = window.WeeklyReport ? WeeklyReport.html(S.docs, view.wrWeek==null?{}:{week:view.wrWeek}) : "";
   let trendCard=""; try{ trendCard = window.TrendTDEE ? TrendTDEE.html(S.docs) : ""; }catch(e){}
   const co=coachOpts();
-  return `${coachSafe(()=>Coach.reviewHtml(S.docs, co))}${coachSafe(()=>Coach.chatHtml(S.docs, co))}${report}${trendCard}${(()=>{ try{ return window.StrengthAnalytics ? StrengthAnalytics.html(S.docs, strengthOpts()) : ""; }catch(e){ return ""; } })()}${cdSafe(()=>Cardio.progressHTML(cdDocs(), {today:TODAY}))}${rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts()))}
+  return `${coachSafe(()=>Coach.reviewHtml(S.docs, co))}${coachSafe(()=>Coach.chatHtml(S.docs, co))}
   <div class="card hero">
     <div class="spread"><h2>${lastW?`${lastW.kg.toFixed(1)} kg`:"No weigh-ins yet"}</h2><span class="label">Goal ${GOAL_KG} kg</span></div>
     <div class="prog" aria-label="Progress to goal"><i style="width:${pct}%"></i></div>
@@ -14203,32 +14202,36 @@ function vProgress(){
       <div class="stat"><div class="v num">${rate!==null?(rate>0?"+":"")+rate.toFixed(2):"—"}</div><span class="label">kg / week</span></div>
     </div>
     ${rate!==null?`<p class="${rate<=-0.4&&rate>=-1?"muted":"note"}" style="font-size:.9rem">Expected at 2,000 kcal: about −0.5 to −0.8 kg a week (0.5–1% of body weight). ${rate>-0.3?"Slower than expected, but judge it over 2 weeks before changing calories.":rate<-1.0?"Faster than expected. Normal in week 1 (water and glycogen).":"Right on track."}</p>`:`<p class="muted" style="font-size:.9rem">Expected at 2,000 kcal: about −0.5 to −0.8 kg a week. Week 1 usually drops faster from water and glycogen.</p>`}
-  </div>
-  <div class="card">
-    <div class="spread"><h3>14-day strict tracking</h3><span class="muted">${fmt(STRICT.from,{month:"short",day:"numeric"})} → ${fmt(STRICT.to,{month:"short",day:"numeric"})}</span></div>
-    <div class="days14">${strictDays.map(d=>`<span class="${S.docs.weights[d]?"has":""} ${d===TODAY?"today":""}" title="${fmt(d)}">${parse(d).getDate()}</span>`).join("")}</div>
-    <p style="font-size:.92rem"><b class="num">${logged}/14</b> weigh-ins logged. First 7-day average on <b>${fmt(STRICT.firstAvg)}</b>. Calorie review only after <b>${fmt(STRICT.to)}</b>, based on the trend. Don't cut to 1,800 or 1,700 because of one reading.</p>
-  </div>
-  <div class="card"><h3>Weight trend</h3>${weightChart()}</div>
-  ${window.GoalDate?GoalDate.html(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}):""}
-  ${(()=>{ try{ return window.DietBreak ? DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}) : ""; }catch(e){ return ""; } })()}
-  <div class="card"><h3>Weight log</h3>
+    ${weightChart()}
+    ${window.GoalDate?GoalDate.html(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}):""}
+    <details data-keep="wlog" ${view.open.wlog?"open":""}><summary>Weight log${TODAY<=addDays(STRICT.to,7)?" and 14-day tracking":""}</summary>
+      ${TODAY<=addDays(STRICT.to,7)?`<div class="spread" style="margin-top:8px"><h3>14-day strict tracking</h3><span class="muted">${fmt(STRICT.from,{month:"short",day:"numeric"})} → ${fmt(STRICT.to,{month:"short",day:"numeric"})}</span></div>
+      <div class="days14">${strictDays.map(d=>`<span class="${S.docs.weights[d]?"has":""} ${d===TODAY?"today":""}" title="${fmt(d)}">${parse(d).getDate()}</span>`).join("")}</div>
+      <p style="font-size:.92rem"><b class="num">${logged}/14</b> weigh-ins logged. First 7-day average on <b>${fmt(STRICT.firstAvg)}</b>. Calorie review only after <b>${fmt(STRICT.to)}</b>, based on the trend. Don't cut to 1,800 or 1,700 because of one reading.</p>`:""}
+      <h3 style="margin-top:8px">Weight log</h3>
     ${table.length?`<div class="tablewrap"><table><thead><tr><th>Day</th><th>Date</th><th class="n">Weight</th><th class="n">Change</th><th class="n">7-day avg</th><th class="n">To ${GOAL_KG}</th></tr></thead>
     <tbody>${table.map(r=>`<tr><td class="n">${r.n}</td><td>${fmt(r.date)}</td><td class="n">${r.kg.toFixed(1)}</td><td class="n">${r.ch===null?"—":(r.ch>0?"+":"")+r.ch.toFixed(1)}</td><td class="n">${r.a?r.a.toFixed(2):"—"}</td><td class="n">${(r.kg-GOAL_KG).toFixed(1)}</td></tr>`).join("")}</tbody></table></div>`:`<p class="muted">No entries yet.</p>`}
+    </details>
   </div>
-  <div class="card"><h3>Main lifts</h3>
+  ${trendCard}
+  ${(()=>{ try{ return window.StrengthAnalytics ? StrengthAnalytics.html(S.docs, strengthOpts()) : ""; }catch(e){ return ""; } })()}
+  ${window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
     <div class="tablewrap"><table><thead><tr><th>Lift</th><th class="n">Baseline</th><th class="n">Latest best set</th><th>Status</th></tr></thead><tbody>
     ${MAIN_LIFTS.map(n=>{ const base=Object.values(PROGRAM).flat().find(e=>e[0]===n); const h=liftHistory(n); const l=h[h.length-1];
       const st = !l?`<span class="muted">Not logged yet</span>`:dropping(n)?`<span class="pill bad">Dropping</span>`:l.best.v>=e1rm(base[1],base[2])-0.01?`<span class="pill good">Holding</span>`:`<span class="pill warn">Below baseline</span>`;
       return `<tr><td>${n}</td><td class="n">${base[1]} ${base[4]} × ${base[2]}</td><td class="n">${l?`${l.best.w} × ${l.best.r}`:"—"}</td><td>${st}</td></tr>`; }).join("")}
     </tbody></table></div>
     <p class="muted" style="font-size:.88rem">Goal on a cut: hold these. If one drops for 2+ sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>
-  </div>
-  <div class="card"><h3>Calories eaten</h3>
+  </div>`}
+  ${cdSafe(()=>Cardio.progressHTML(cdDocs(), {today:TODAY}))}
+  ${rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts()))}
+  ${(()=>{ try{ return window.DietBreak ? DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}) : ""; }catch(e){ return ""; } })()}
+  ${report?`<div class="card"><details data-keep="wr" ${view.open.wr?"open":""}><summary>Weekly report (week by week: weight, food, lifts)</summary>${report}</details></div>`:""}
+  ${foodDays.length?`<div class="card"><h3>Calories eaten</h3>
     ${foodDays.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th class="n">kcal</th><th class="n">Protein</th><th>Status</th></tr></thead><tbody>
     ${foodDays.map(x=>{ const t=sum(x.food.filter(i=>i.eaten)); const ok=t.kcal>=1850&&t.kcal<=2100&&t.p>=160; return `<tr><td>${fmt(x.date)}</td><td class="n">${r0(t.kcal)}</td><td class="n">${r0(t.p)} g</td><td>${ok?`<span class="pill good">On target</span>`:`<span class="pill warn">${t.kcal>2100?"Over":t.kcal<1850?"Under":"Low protein"}</span>`}</td></tr>`; }).join("")}
     </tbody></table></div>`:`<p class="muted">Tick food as eaten on the Food tab and your daily totals show up here.</p>`}
-  </div>`;
+  </div>`:""}`;
 }
 
 /* ---------- GUIDE ---------- */
@@ -14308,6 +14311,7 @@ document.getElementById("goToday").onclick=()=>{ view.date=TODAY; render(); };
 function saveDay(day,opts){ put("days",day.date,day,opts); }
 function addFood(item){ const day=getDay(view.date); day.food.push({id:uid(),eaten:false,...item}); saveDay(day); }
 
+main.addEventListener("toggle",e=>{ const k=e.target && e.target.dataset && e.target.dataset.keep; if(k) view.open[k]=e.target.open; }, true);
 main.addEventListener("click",e=>{
   if(window.Cardio && e.target.closest("[data-cardio]")){ try{ if(Cardio.handle(e.target, {docs:cdDocs(), date:view.date, toast, weightKg:latestKg(), put:(c,id,doc)=>{ cardioOpts={}; put(c,id,doc); }, rerender:o=>{ cardioOpts=o||{}; render(); }})) return; }catch(err){ toast("Cardio: "+err.message); return; } }
   const rfw=window.RecoveryFatigue && e.target.closest("[data-rf]") ? RecoveryFatigue.handle(e.target, S.docs, view.date) : null;
