@@ -30,3 +30,5 @@ Current published source: /mnt/project-files/fitness-app/app/aziz-cut-tracker.ht
 - v4: weekly report "Too early" fix re-inlined.
 - v5: StrongCSV "Import from Strong" card on Train (+ "Other exercises logged" for unmatched names). WaterH sync in the Water card on Today (paste line or file; clipboard reading is blocked inside Artifacts). `days/{date}.waterh = {ml, at, source}`; total water = water + waterh.ml.
 - v6: WorkoutLogger (Liftbook) as "Full logger" mode on Train, mounted once in #lbHost; db-backed lb_* collections; onFinish merges into workouts/{date} and days treadmill; downloads capability declared for its CSV/JSON export.
+- v7: WorkoutLogger re-inlined with plan exercise names in shellRecord.
+- v8: EffortDeload (effort picker under Train when the day has logged sets; lighter-week nudge at top of Train; `workouts/{date}.effort`, `.deload`; `prefs/main.deloadFrom/deloadUntil/deloadDismissedAt`; workouts saved inside the window get `deload:true`). SavedMeals via apply-patch.js (new synced `meals` collection, card under the add form on Food).

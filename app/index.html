@@ -1695,7 +1695,7 @@ Stair Climber|Cardio|Cardio|`;
     ['Push B', [
       ['Gundam Chest Press (Machine)', 'kg', 60, 8, 3, 'Main lift.'],
       ['Seated Overhead Press (Dumbbell)', 'lb', 60, 8, 3, 'Main lift.'],
-      ['Lateral Raise (Cable)', 'kg', 7.5, 10, 3, 'Logged as "Side Delts" in Strong. Swap if it was dumbbells.'],
+      ['Lateral Raise (Dumbbell)', 'kg', 7.5, 10, 3, 'Logged as "Side Delts" in Strong. Replace with the cable version if that is what you use.'],
       ['Reverse Fly (Machine)', 'kg', 61, 10, 3, '2–3 sets.'],
       ['Front Raise (Dumbbell)', 'lb', 30, 10, 1],
       ['Triceps Rope Pushdown (Cable)', 'kg', 15, 10, 2],
@@ -1719,6 +1719,18 @@ Stair Climber|Cardio|Cardio|`;
       ['Seated Abs (Machine)', 'kg', 5, 100, 1, '5 kg × 100 as logged in Strong. Check this.'],
       TREAD]]
   ];
+  // Exercise names the app shell (and its weekly report / quick log) uses, from the plan doc.
+  const SHELL_NAMES = {
+    'incline-bench-press-dumbbell': 'Incline DB Press', 'triceps-pushdown-straight-bar': 'Triceps Pushdown (Straight bar)',
+    'standing-lateral-raise-machine': 'Standing Side Delts (Machine)', 'lat-pulldown-wide-grip-cable': 'Lat Pulldown, Wide',
+    'lat-pulldown-single-arm-cable': 'Lat Pulldown, Single Arm', 'bicep-curl-dumbbell': 'DB Curl', 'seated-bicep-curl-machine': 'Seated Bicep Curl',
+    'leg-extension-machine': 'Leg Extension', 'hack-squat-machine': 'Hack Squat', 'squat-smith-machine': 'Smith Squat',
+    'lying-leg-curl-machine': 'Lying Leg Curl', 'hip-adductor-machine': 'Hip Adductor', 'standing-calf-raise-machine': 'Standing Calf Raise',
+    'seated-abs-machine': 'Seated Abs', 'gundam-chest-press-machine': 'Gundam (Chest Machine)', 'seated-overhead-press-dumbbell': 'Seated DB Overhead Press',
+    'lateral-raise-dumbbell': 'Side Delts', 'front-raise-dumbbell': 'Front Raise (DB)', 'triceps-rope-pushdown-cable': 'Triceps Rope',
+    'iso-lateral-low-row-plate-loaded': 'Iso-Lateral Low Row', 'shrug-machine': 'Traps Machine', 'standing-bicep-curl-cable': 'Cable Standing Biceps',
+    'hip-abductor-machine': 'Hip Abductor', 'calf-press-leg-press': 'Calf Press on Seated Leg Press'
+  };
   const ROTATION = ['Push A', 'Pull A', 'Lower A', 'Rest', 'Push B', 'Pull B', 'Lower B', 'Rest'];
   const MAIN_LIFTS = ['Bench Press (Barbell)', 'Incline Bench Press (Dumbbell)', 'Gundam Chest Press (Machine)', 'Seated Overhead Press (Dumbbell)', 'Lat Pulldown - Wide Grip (Cable)', 'Seated Row (Cable)', 'T-Bar Row', 'Hack Squat (Machine)', 'Leg Extension (Machine)', 'Lying Leg Curl (Machine)'].map(slug);
 
@@ -2776,7 +2788,7 @@ Stair Climber|Cardio|Cardio|`;
   }
   function toShellRecord(w) {
     const sets = {}; let treadmill = false;
-    w.exercises.forEach(e => { const ex = getEx(e.exId); if (ex.cat === 'Cardio') { if (/treadmill/i.test(ex.name)) treadmill = true; return; } sets[ex.name] = working(e).map(s => ({ w: num(s.w), r: num(s.r), unit: e.unit })); });
+    w.exercises.forEach(e => { const ex = getEx(e.exId); if (ex.cat === 'Cardio') { if (/treadmill/i.test(ex.name)) treadmill = true; return; } sets[SHELL_NAMES[e.exId] || ex.name] = working(e).map(s => ({ w: num(s.w), r: num(s.r), unit: e.unit })); });
     const idx = ROTATION.indexOf(w.templateName);
     return { date: isoDate(w.start), session: w.templateName || w.name, idx: idx >= 0 ? idx : null, sets, treadmill, durationMin: Math.round((w.end - w.start) / 6e4) };
   }
@@ -3050,6 +3062,301 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
 
 </script>
 <script>
+/*
+ * Saved meals: keep a food combo (for example a usual Nutreeze day) and add it
+ * back to any day with one tap. Pure logic plus one HTML card builder, no DOM
+ * access, no imports, no network. Works as a browser global (window.SavedMeals)
+ * or as a CommonJS module.
+ *
+ * Stored as one doc per combo in the app's `meals` collection, keyed by id:
+ *   meals/{id}: { id, name, items:[{name,slot,kcal,p,c,f,est}], created, lastUsed, uses }
+ * Items use the same shape as days/{date}.food[] minus the per-day id/eaten.
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.SavedMeals = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const MAX_ITEMS = 30;
+  const num = v => { const n = +v; return isFinite(n) ? Math.round(n * 10) / 10 : 0; };
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const key = i => String(i.slot || '').toLowerCase() + '|' + String(i.name || '').trim().toLowerCase();
+
+  function slug(s) {
+    return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'meal';
+  }
+
+  // Strip a food item down to what a combo stores.
+  function cleanItem(i) {
+    const o = { name: String(i.name || '').trim(), slot: String(i.slot || 'Extra'), kcal: num(i.kcal), p: num(i.p), c: num(i.c), f: num(i.f) };
+    if (i.est) o.est = true;
+    return o;
+  }
+
+  function totals(items) {
+    return (items || []).reduce((t, i) => ({ kcal: t.kcal + num(i.kcal), p: t.p + num(i.p), c: t.c + num(i.c), f: t.f + num(i.f) }), { kcal: 0, p: 0, c: 0, f: 0 });
+  }
+
+  // A default name from the day's main meals, e.g. "French Tacos Chicken + Chicken Biryani".
+  function suggestName(items) {
+    const meals = (items || []).filter(i => /meal/i.test(i.slot)).map(i => String(i.name).split(' (')[0]);
+    if (meals.length) return meals.slice(0, 2).join(' + ');
+    return (items && items[0] && String(items[0].name).split(' (')[0]) || 'My usual day';
+  }
+
+  // Build a combo from a day's food (or any list of food items).
+  // opts: { name, id, onlyEaten, now (ms), existing (meals map, for unique ids) }
+  function fromItems(items, opts) {
+    opts = opts || {};
+    let list = (items || []).filter(i => i && String(i.name || '').trim());
+    if (opts.onlyEaten) list = list.filter(i => i.eaten);
+    list = list.slice(0, MAX_ITEMS).map(cleanItem);
+    if (!list.length) return null;
+    const name = String(opts.name || '').trim() || suggestName(list);
+    let id = opts.id || slug(name);
+    const taken = opts.existing || {};
+    if (!opts.id) { let n = 2, base = id; while (taken[id]) id = base + '-' + n++; }
+    return { id, name, items: list, created: opts.now || Date.now(), lastUsed: 0, uses: 0 };
+  }
+
+  // Add a combo to a day. Returns { day, added, skipped } and never mutates its input.
+  // opts: { uid: () => string (required for unique item ids), eaten: bool,
+  //         mode: 'append' (default) | 'replace' (drop the day's planned items, keep eaten ones),
+  //         allowDuplicates: bool (default false: skip items already on the day, same name + slot) }
+  function applyToDay(day, combo, opts) {
+    opts = opts || {};
+    const uid = opts.uid || (() => 'm' + Math.random().toString(36).slice(2, 10));
+    const base = Object.assign({ food: [] }, day);
+    let food = (base.food || []).slice();
+    if (opts.mode === 'replace') food = food.filter(i => i.eaten);
+    const have = new Set(food.map(key));
+    const added = [], skipped = [];
+    (combo && combo.items || []).forEach(it => {
+      const k = key(it);
+      if (!opts.allowDuplicates && have.has(k)) { skipped.push(it.name); return; }
+      have.add(k);
+      const o = Object.assign({ id: uid() }, cleanItem(it), { eaten: !!opts.eaten });
+      food.push(o); added.push(o);
+    });
+    return { day: Object.assign({}, base, { food }), added, skipped };
+  }
+
+  // Bump usage stats after a combo was added. Returns a new combo object.
+  function markUsed(combo, now) {
+    return Object.assign({}, combo, { uses: (combo.uses || 0) + 1, lastUsed: now || Date.now() });
+  }
+
+  // meals map or array -> array, most used first, then most recent, then name.
+  function sorted(meals) {
+    const arr = Array.isArray(meals) ? meals.slice() : Object.values(meals || {});
+    return arr.filter(m => m && m.items && m.items.length)
+      .sort((a, b) => (b.uses || 0) - (a.uses || 0) || (b.lastUsed || 0) - (a.lastUsed || 0) || String(a.name).localeCompare(String(b.name)));
+  }
+
+  function rename(combo, name) {
+    name = String(name || '').trim();
+    return name ? Object.assign({}, combo, { name }) : combo;
+  }
+
+  // Read a combo from JSON text (export/import, or a pasted share). Returns null if invalid.
+  function parse(text, opts) {
+    let o; try { o = typeof text === 'string' ? JSON.parse(text) : text; } catch (e) { return null; }
+    if (!o || !Array.isArray(o.items)) return null;
+    return fromItems(o.items, Object.assign({ name: o.name }, opts));
+  }
+
+  // The Food tab card. Buttons use the app's data-act click convention:
+  //   data-act="meal-add"  data-id   one-tap add to the selected day
+  //   data-act="meal-del"  data-id   delete (first tap asks to confirm via data-confirm)
+  //   data-act="meal-save"           save the selected day's food as a new combo
+  //   form data-form="meal-save" with input #mealName (optional name)
+  // opts: { day (the selected day's doc), open (id of combo to expand, optional) }
+  function cardHTML(meals, opts) {
+    opts = opts || {};
+    const list = sorted(meals);
+    const dayFood = (opts.day && opts.day.food) || [];
+    const r0 = n => Math.round(n).toLocaleString('en-US');
+    const rows = list.map(m => {
+      const t = totals(m.items);
+      const names = m.items.map(i => esc(String(i.name).split(' (')[0])).join(', ');
+      return '<div class="item sm-row">' +
+        '<div class="nm"><b>' + esc(m.name) + '</b><small>' + m.items.length + ' items · ' + names + '</small></div>' +
+        '<div class="mac">' + r0(t.kcal) + ' kcal<br><span style="color:var(--protein)">' + r0(t.p) + 'P</span> <span style="color:var(--carbs)">' + r0(t.c) + 'C</span> <span style="color:var(--fat)">' + r0(t.f) + 'F</span></div>' +
+        '<button class="btn small" data-act="meal-add" data-id="' + esc(m.id) + '" aria-label="Add ' + esc(m.name) + '">Add</button>' +
+        '<button class="x" data-act="meal-del" data-id="' + esc(m.id) + '" aria-label="Delete saved meal">×</button>' +
+        '</div>';
+    }).join('');
+    const save = dayFood.length
+      ? '<form data-form="meal-save" class="row" style="margin-top:10px">' +
+        '<input type="text" id="mealName" placeholder="' + esc(suggestName(dayFood)) + '" style="flex:1;min-width:10em" aria-label="Name for this combo" maxlength="60">' +
+        '<button class="btn ghost small" type="submit">Save this day as a combo</button></form>'
+      : '';
+    return '<div class="card sm-card">' +
+      '<div class="spread"><h3>Saved meals</h3><span class="muted" style="font-size:.85rem">One tap adds the whole combo as planned</span></div>' +
+      (rows ? '<div class="items">' + rows + '</div>' : '<p class="muted">No saved combos yet. Plan a day you like, then save it here to add it again with one tap.</p>') +
+      save + '</div>';
+  }
+
+  return { fromItems, applyToDay, markUsed, sorted, totals, suggestName, rename, parse, cardHTML, cleanItem, slug, MAX_ITEMS };
+});
+</script>
+<script>
+/* Workout effort rating + deload nudge for the Aziz Cut Tracker.
+ * Plain JS, no imports, no network. Reads and writes the app's own workouts/{date} docs:
+ *   {date, session, idx, sets:{"<exercise>":[{w,r}]}, effort: 1-10, deload: true (optional)}
+ * API:
+ *   EffortDeload.css                              -> string, inject once (uses the app's tokens)
+ *   EffortDeload.LEVELS                           -> [{n, label}] for 1..10
+ *   EffortDeload.clean(value)                     -> integer 1..10 or null
+ *   EffortDeload.withEffort(workoutDoc, n)        -> copy of the doc with effort set (null clears it)
+ *   EffortDeload.pickerHtml(date, current)        -> "How hard was it?" card, buttons carry
+ *                                                    data-effort="<n>" data-effort-date="<date>"
+ *   EffortDeload.analyze(workouts, {today, dismissedAt}) -> {nudge, reason, text, weeks, lifts}
+ *   EffortDeload.nudgeHtml(result)                -> lighter-week card ("" when no nudge); its buttons
+ *                                                    carry data-deload="dismiss" | "start"
+ * Host wiring: show pickerHtml after a workout is finished (Quick log save and the Full logger's
+ * onFinish); on click put("workouts", date, EffortDeload.withEffort(doc, n)). Render nudgeHtml on
+ * Train (and/or Today). "dismiss" stores prefs/main.deloadDismissedAt = today; "start" marks the
+ * next 7 days' workouts with deload:true as they are logged (or just dismisses, host's choice).
+ *
+ * The rule (rolling 7-day windows ending today: C = last 7 days, B = the 7 before, A = the 7 before that):
+ *   effort rising  = avg(C) >= avg(B) >= avg(A) and avg(C) - avg(A) >= 1, or B and C both average >= 8.5
+ *   e1RM stalled   = across lifts logged in A..C, fewer than a third set a best in B or C that beats
+ *                    their best from the 4 weeks before B by more than 1% (needs 2+ lifts)
+ *   nudge          = both, with 2+ rated sessions in B and in C and 1+ in A,
+ *                    no deload-marked workout in the last 21 days, and not dismissed in the last 14 days.
+ */
+const EffortDeload = (() => {
+  const DAY = 864e5;
+  const LEVELS = [
+    [1, "Barely a workout"], [2, "Very easy"], [3, "Easy"], [4, "Comfortable"], [5, "Moderate"],
+    [6, "Solid work"], [7, "Hard"], [8, "Very hard"], [9, "Near my limit"], [10, "Everything I had"],
+  ].map(([n, label]) => ({ n, label }));
+
+  const ms = s => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  const add = (s, n) => iso(ms(s) + n * DAY);
+  const localToday = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const num = v => { const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v; return typeof n === "number" && isFinite(n) ? n : null; };
+  const mean = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+  const f1 = n => (Math.round(n * 10) / 10).toFixed(1);
+  const e1rm = (w, r) => w * (1 + Math.min(r, 30) / 30);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+  function clean(v) {
+    const n = num(v);
+    return n == null ? null : Math.min(10, Math.max(1, Math.round(n)));
+  }
+
+  function withEffort(doc, n) {
+    const out = Object.assign({}, doc);
+    const e = clean(n);
+    if (e == null) delete out.effort; else out.effort = e;
+    return out;
+  }
+
+  // workouts: {date: doc} or [doc]
+  function list(workouts) {
+    const arr = Array.isArray(workouts) ? workouts : Object.values(workouts || {});
+    return arr.filter(w => w && isDate(w.date) && w.session !== "Rest");
+  }
+
+  function bestByLift(ws) {
+    const out = {};
+    ws.forEach(w => Object.entries(w.sets || {}).forEach(([name, sets]) => (sets || []).forEach(s => {
+      const wt = num(s && s.w), r = num(s && s.r);
+      if (wt > 0 && r > 0) { const e = e1rm(wt, r); if (!out[name] || e > out[name]) out[name] = e; }
+    })));
+    return out;
+  }
+
+  function analyze(workouts, opts = {}) {
+    const today = isDate(opts.today) ? opts.today : localToday();
+    const ws = list(workouts).filter(w => w.date <= today);
+    const win = (from, to) => ws.filter(w => w.date >= from && w.date <= to);
+    // C: today-6..today, B: today-13..today-7, A: today-20..today-14, prior: 4 weeks before B
+    const bounds = { A: [add(today, -20), add(today, -14)], B: [add(today, -13), add(today, -7)], C: [add(today, -6), today] };
+    const weeks = ["A", "B", "C"].map(k => {
+      const rated = win(...bounds[k]).map(w => clean(w.effort)).filter(e => e != null);
+      return { key: k, from: bounds[k][0], to: bounds[k][1], sessions: win(...bounds[k]).length, rated: rated.length, avg: mean(rated) };
+    });
+    const [A, B, C] = weeks;
+
+    const prior = bestByLift(win(add(today, -41), add(today, -14)));
+    const recent = bestByLift(win(bounds.B[0], today));
+    const lifts = Object.keys(recent).filter(n => prior[n]).map(name => {
+      const change = recent[name] / prior[name] - 1;
+      return { name, before: prior[name], recent: recent[name], change, progressed: change > 0.01 };
+    }).sort((a, b) => a.change - b.change);
+    const progressed = lifts.filter(l => l.progressed).length;
+
+    const enough = A.rated >= 1 && B.rated >= 2 && C.rated >= 2;
+    const rising = enough && ((C.avg >= B.avg && B.avg >= A.avg && C.avg - A.avg >= 1) || (B.avg >= 8.5 && C.avg >= 8.5));
+    const stalled = lifts.length >= 2 && progressed < lifts.length / 3;
+    const recentDeload = ws.some(w => w.deload && w.date >= add(today, -20));
+    const dismissed = isDate(opts.dismissedAt) && opts.dismissedAt > add(today, -14) && opts.dismissedAt <= today;
+
+    let reason;
+    if (!enough) reason = "not-enough-ratings";
+    else if (!rising) reason = "effort-ok";
+    else if (lifts.length < 2) reason = "not-enough-lifts";
+    else if (!stalled) reason = "still-progressing";
+    else if (recentDeload) reason = "recent-deload";
+    else if (dismissed) reason = "dismissed";
+    else reason = "deload";
+    const nudge = reason === "deload";
+
+    const text = nudge
+      ? `Effort is up from ${f1(A.avg)} to ${f1(C.avg)} out of 10 over 2 weeks while your lifts have stalled (${progressed} of ${lifts.length} improved). ` +
+        "Take a lighter week: same exercises, one less set each, about 90% of your usual weights, and stop 3 or more reps before failure. Keep protein and steps as normal. Then go back to your normal loads."
+      : "";
+    return { nudge, reason, text, today, weeks, lifts, rising: !!rising, stalled };
+  }
+
+  function pickerHtml(date, current) {
+    const cur = clean(current);
+    const lab = cur ? LEVELS[cur - 1].label : "Tap a number";
+    return `<div class="card ed-card"><div class="ed-head"><b>How hard was it?</b><span class="ed-lab">${cur ? cur + " · " : ""}${esc(lab)}</span></div>` +
+      `<div class="ed-scale" role="group" aria-label="Effort from 1 to 10">` +
+      LEVELS.map(l => `<button type="button" class="ed-n${l.n === cur ? " on" : ""}${l.n >= 9 ? " hi" : ""}" data-effort="${l.n}" data-effort-date="${esc(date)}" aria-pressed="${l.n === cur}" title="${esc(l.label)}">${l.n}</button>`).join("") +
+      `</div><div class="ed-ends"><span>Easy</span><span>Max</span></div></div>`;
+  }
+
+  function nudgeHtml(res) {
+    if (!res || !res.nudge) return "";
+    const C = res.weeks[2], A = res.weeks[0];
+    const top = res.lifts.slice(0, 3).map(l => `<li>${esc(l.name)} <span class="ed-muted">${l.change >= 0 ? "+" : "−"}${f1(Math.abs(l.change) * 100)}%</span></li>`).join("");
+    return `<div class="card ed-nudge"><div class="ed-head"><b>Time for a lighter week?</b><span class="ed-lab">Effort ${f1(A.avg)} → ${f1(C.avg)}</span></div>` +
+      `<p>${esc(res.text)}</p>${top ? `<ul class="ed-lifts">${top}</ul>` : ""}` +
+      `<div class="ed-row"><button type="button" class="ed-btn" data-deload="start">Start lighter week</button><button type="button" class="ed-btn ghost" data-deload="dismiss">Not now</button></div></div>`;
+  }
+
+  const css = `
+.ed-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px}
+.ed-lab,.ed-muted{color:var(--muted);font-size:.85em}
+.ed-scale{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+.ed-n{min-height:44px;border:1px solid var(--line);border-radius:calc(var(--r,12px)*.6);background:var(--sunk);color:var(--ink);font:600 15px var(--mono,monospace);cursor:pointer;padding:0}
+.ed-n.hi{color:var(--warn)}
+.ed-n.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.ed-ends{display:flex;justify-content:space-between;color:var(--muted);font-size:.75em;margin-top:4px}
+.ed-nudge{border-left:4px solid var(--warn)}
+.ed-nudge p{margin:0 0 8px}
+.ed-lifts{margin:0 0 10px;padding-left:18px}
+.ed-row{display:flex;gap:8px;flex-wrap:wrap}
+.ed-btn{min-height:44px;padding:0 16px;border-radius:calc(var(--r,12px)*.6);border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:600;cursor:pointer}
+.ed-btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+`;
+
+  return { css, LEVELS, clean, withEffort, pickerHtml, analyze, nudgeHtml };
+})();
+
+if (typeof module !== "undefined") module.exports = { EffortDeload };
+
+window.EffortDeload=EffortDeload;
+</script>
+<script>
 /* ===================== Plan data (from Aziz's handoff, Oct 25 2026) ===================== */
 const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:220};
 const START = {date:"2026-10-25", kg:91.9}, GOAL_KG = 80;
@@ -3129,12 +3436,13 @@ const LIB = {
 };
 
 /* ===================== Store (synced db when available, else this browser) ===================== */
-const COLS = ["days","weights","workouts","prefs"];
-const S = {docs:{days:{},weights:{},workouts:{},prefs:{}}, db:null, mode:"loading"};
+const COLS = ["days","weights","workouts","prefs","meals"];
+const S = {docs:{days:{},weights:{},workouts:{},prefs:{},meals:{}}, db:null, mode:"loading"};
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
 function saveLocal(){ try{ localStorage.setItem("aziz-cut", JSON.stringify(S.docs)); }catch(e){} }
 async function put(col,id,data,{quiet}={}){
+  const dl=S.docs.prefs.main; if(col==="workouts" && dl && dl.deloadUntil && dl.deloadFrom && id>=dl.deloadFrom && id<=dl.deloadUntil && data && !data.deload) data={...data,deload:true};
   S.docs[col] = {...S.docs[col],[id]:data};
   if(!quiet) render();
   if(S.db){ try{ await S.db.collection(col).doc(id).set(data); }catch(e){ toast("Not saved: "+(e.message||e.code)); } }
@@ -3326,7 +3634,16 @@ function vToday(){
 function trainSwitch(){
   return `<div class="row" role="group" aria-label="Logger style"><button class="chip" data-act="tmode" data-m="quick" aria-pressed="${view.trainMode==="quick"}">Quick log</button><button class="chip" data-act="tmode" data-m="full" aria-pressed="${view.trainMode==="full"}">Full logger (Strong-style)</button></div>`;
 }
-function vTrain(){ return view.trainMode==="full" ? `<div class="card">${trainSwitch()}<p class="muted" style="font-size:.88rem">Templates, live workout with rest timer, PRs, plate calculator and history. Finished workouts also land in Today, Progress and the weekly report.</p></div>` : `<div>${trainSwitch()}</div>` + vTrainSession() + otherLogged() + strongCard(); }
+function effortBits(){
+  if(!window.EffortDeload) return {nudge:"",picker:""};
+  const d=view.date, w=S.docs.workouts[d];
+  let nudge=""; try{ nudge=EffortDeload.nudgeHtml(EffortDeload.analyze(S.docs.workouts,{today:TODAY, dismissedAt:S.docs.prefs.main?.deloadDismissedAt})); }catch(e){}
+  const has = w && w.session!=="Rest" && w.sets && Object.values(w.sets).some(a=>(a||[]).some(x=>x.w||x.r));
+  const picker = has ? EffortDeload.pickerHtml(d, w.effort) : "";
+  return {nudge, picker};
+}
+function vTrain(){ const eb=effortBits(); return eb.nudge + vTrainBody() + eb.picker; }
+function vTrainBody(){ return view.trainMode==="full" ? `<div class="card">${trainSwitch()}<p class="muted" style="font-size:.88rem">Templates, live workout with rest timer, PRs, plate calculator and history. Finished workouts also land in Today, Progress and the weekly report.</p></div>` : `<div>${trainSwitch()}</div>` + vTrainSession() + otherLogged() + strongCard(); }
 function otherLogged(){
   const d=view.date, wk=S.docs.workouts[d]; if(!wk||!wk.sets) return "";
   const known=new Set((PROGRAM[wk.session]||[]).map(e=>e[0]));
@@ -3418,6 +3735,7 @@ function vFood(){
       </div>
     </div>
   </section>
+  ${window.SavedMeals?SavedMeals.cardHTML(S.docs.meals,{day}):""}
   ${pickerCard(d, training)}
   <div class="card">
     <div class="spread"><h3>Today's food</h3><span class="muted" style="font-size:.85rem">Tick when eaten</span></div>
@@ -3636,6 +3954,13 @@ function saveDay(day,opts){ put("days",day.date,day,opts); }
 function addFood(item){ const day=getDay(view.date); day.food.push({id:uid(),eaten:false,...item}); saveDay(day); }
 
 main.addEventListener("click",e=>{
+  const eff=e.target.closest("[data-effort]");
+  if(eff){ const ed=eff.dataset.effortDate||view.date; put("workouts", ed, EffortDeload.withEffort(Object.assign({date:ed}, clone(S.docs.workouts[ed])), +eff.dataset.effort)); return; }
+  const dlb=e.target.closest("[data-deload]");
+  if(dlb){ const p=Object.assign({},clone(S.docs.prefs.main));
+    if(dlb.dataset.deload==="dismiss"){ p.deloadDismissedAt=TODAY; put("prefs","main",p); }
+    else if(dlb.dataset.deload==="start"){ p.deloadFrom=TODAY; p.deloadUntil=addDays(TODAY,6); p.deloadDismissedAt=TODAY; put("prefs","main",p); toast("Lighter week on until "+fmt(p.deloadUntil)+". One less set each, ~90% weights."); }
+    return; }
   const wr=e.target.closest("[data-wr-week],[data-wr-copy]");
   if(wr){
     if(wr.hasAttribute("data-wr-copy")){ const t=WeeklyReport.summary(S.docs, view.wrWeek==null?{}:{week:view.wrWeek}); navigator.clipboard.writeText(t).then(()=>toast("Summary copied"),()=>toast("Copy blocked. Select the text in the report instead.")); }
@@ -3654,6 +3979,8 @@ main.addEventListener("click",e=>{
   else if(a==="fixed"){ const day=getDay(d); const type=dayType(d), ses=sessionFor(d); const training=type!=="friday"&&!(ses&&ses.session==="Rest"); const keys=training?["adonis","gatorade"]:["adonis"]; keys.forEach(k=>{ const f=FIXED.find(x=>x.key===k); if(!day.food.some(i=>i.name===f.name)) day.food.push({id:uid(),eaten:false,...f}); }); saveDay(day); }
   else if(a==="quick"){ const f=FIXED.find(x=>x.key===el.dataset.k); addFood({...f}); }
   else if(a==="snack"){ const s=SNACKS[+el.dataset.i]; addFood({name:s[1],slot:"Snack",kcal:s[2],p:s[3],c:s[4],f:s[5]}); }
+  else if(a==="meal-add"){ const m=S.docs.meals[el.dataset.id]; if(!m) return; const r=SavedMeals.applyToDay(getDay(d),m,{uid}); put("meals",m.id,SavedMeals.markUsed(m),{quiet:true}); if(r.added.length){ saveDay(r.day); toast("Added "+m.name+(r.skipped.length?" ("+r.skipped.length+" already on the day)":"")+". Tick items as you eat them."); } else toast("Everything in "+m.name+" is already on this day"); }
+  else if(a==="meal-del"){ if(el.dataset.confirm){ remove("meals",el.dataset.id); } else { el.dataset.confirm="1"; el.textContent="Delete?"; el.classList.add("confirm"); } }
   else if(a==="delfood"){ const day=getDay(d); day.food=day.food.filter(i=>i.id!==el.dataset.id); saveDay(day); }
   else if(a==="copyday"){ const day=getDay(d), nd=addDays(d,1), next=getDay(nd); next.food=next.food.concat(day.food.map(i=>({...i,id:uid(),eaten:false}))); put("days",nd,next); view.date=nd; toast("Copied to "+fmt(nd)); }
   else if(a==="clearday"){ if(el.dataset.confirm){ const day=getDay(d); day.food=[]; saveDay(day); } else { el.dataset.confirm="1"; el.textContent="Tap again to clear"; } }
@@ -3691,6 +4018,7 @@ main.addEventListener("submit",e=>{
     if(isNever(name)) toast("Heads up: that's on your never-pick list");
     document.activeElement.blur(); addFood(item);
   }
+  else if(f==="meal-save"){ const nm=document.getElementById("mealName").value; const m=SavedMeals.fromItems(getDay(d).food,{name:nm,existing:S.docs.meals}); if(!m) return; document.activeElement.blur(); put("meals",m.id,m); toast("Saved "+m.name+". Add it to any day with one tap."); }
   else if(f==="dislike"){ const v=document.getElementById("dislike").value.trim(); if(!v) return; const p=Object.assign({dislikes:[]},clone(S.docs.prefs.main)); p.dislikes=[...(p.dislikes||[]),v]; document.activeElement.blur(); put("prefs","main",p); }
 });
 
@@ -3745,7 +4073,7 @@ function syncLogger(){
         w.source = w.source || "logger";
         put("workouts", rec.date, w, {quiet:true});
         if(rec.treadmill){ const day=getDay(rec.date); day.treadmill=true; put("days", rec.date, day, {quiet:true}); }
-        toast("Workout saved");
+        view.date=rec.date; render(); toast("Workout saved. Rate how hard it was below.");
       }
     });
   }catch(e){ lbMounted=false; host.innerHTML='<div class="card"><p>The full logger could not start. Use Quick log for now.</p></div>'; }
@@ -3760,5 +4088,6 @@ function startTimer(sec){
 }
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
+try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css; document.head.appendChild(st2); }catch(e){}
 initStore();
 </script>
