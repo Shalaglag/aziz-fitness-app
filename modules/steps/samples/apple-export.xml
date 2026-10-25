@@ -1,0 +1,6 @@
+<HealthData>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="iPhone" unit="count" startDate="2026-10-24 08:00:00 +0300" endDate="2026-10-24 08:10:00 +0300" value="900"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="iPhone" unit="count" startDate="2026-10-24 18:00:00 +0300" endDate="2026-10-24 18:20:00 +0300" value="2100"/>
+ <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Apple Watch" unit="count" startDate="2026-10-24 08:00:00 +0300" endDate="2026-10-24 08:10:00 +0300" value="950"/>
+ <Record type="HKQuantityTypeIdentifierDietaryWater" sourceName="WaterH" unit="mL" startDate="2026-10-24 08:00:00 +0300" value="500"/>
+</HealthData>
