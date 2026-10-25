@@ -13,8 +13,8 @@
  *                                                    carry data-deload="dismiss" | "start"
  * Host wiring: show pickerHtml after a workout is finished (Quick log save and the Full logger's
  * onFinish); on click put("workouts", date, EffortDeload.withEffort(doc, n)). Render nudgeHtml on
- * Train (and/or Today). "dismiss" stores prefs/main.deloadDismissedAt = today; "start" marks the
- * next 7 days' workouts with deload:true as they are logged (or just dismisses, host's choice).
+ * Train (and/or Today). "dismiss" stores prefs/main.deloadDismissedAt = today; "start" sets prefs/main.deloadFrom/deloadUntil (today..today+6)
+ * and workouts saved in that range get deload:true.
  *
  * The rule (rolling 7-day windows ending today: C = last 7 days, B = the 7 before, A = the 7 before that):
  *   effort rising  = avg(C) >= avg(B) >= avg(A) and avg(C) - avg(A) >= 1, or B and C both average >= 8.5

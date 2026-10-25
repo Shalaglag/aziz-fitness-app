@@ -39,9 +39,9 @@ const res = EffortDeload.analyze(S.docs.workouts, { today, dismissedAt: S.docs.p
 html += EffortDeload.nudgeHtml(res);
 
 // data-deload="dismiss" -> prefs/main.deloadDismissedAt = today
-// data-deload="start"   -> prefs/main.deloadUntil = today + 6 days; mark workouts saved until then with deload:true
+// data-deload="start"   -> prefs/main.deloadFrom = today, deloadUntil = today + 6 days; workouts saved between them get deload:true
 ```
 
-New fields: `workouts/{date}.effort` (1–10), `workouts/{date}.deload` (bool), `prefs/main.deloadDismissedAt`, `prefs/main.deloadUntil` (ISO dates).
+New fields: `workouts/{date}.effort` (1–10), `workouts/{date}.deload` (bool), `prefs/main.deloadDismissedAt`, `prefs/main.deloadFrom`, `prefs/main.deloadUntil` (ISO dates). Live in the app since v8..
 
 Tests: `node --test modules/effort-deload/effort-deload.test.js` (12 cases: the nudge firing, still progressing, flat effort, high plateau, too few ratings, rest/unrated ignored, deload and dismiss quiet periods, future dates, picker HTML, empty data).
