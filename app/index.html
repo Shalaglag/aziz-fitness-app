@@ -294,6 +294,7 @@ nav.tabs{display:flex;gap:4px;padding-bottom:8px}
 nav.tabs button{border:0;background:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-family:var(--display);font-size:1.1rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
 nav.tabs button[aria-current="page"]{background:var(--ink);color:var(--bg)}
 .sync{font-size:.75rem;color:var(--muted)}
+.unsaved{margin-left:8px;border:1px solid var(--warn,#c77d00);color:var(--warn,#c77d00);background:transparent;border-radius:999px;padding:1px 8px;font:inherit;font-size:.72rem;font-weight:600;cursor:pointer}
 @media (max-width:720px){
   nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:9;background:var(--surface);border-top:1px solid var(--line);justify-content:space-around;padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
   nav.tabs button{padding:8px 6px;font-size:1rem;flex:1}
@@ -406,7 +407,7 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
     <div class="toprow">
       <div>
         <div class="brand">Aziz <span>Cut</span> Tracker</div>
-        <div class="sync" id="sync">Loading your data…</div>
+        <div class="sync"><span id="sync">Loading your data…</span><button class="unsaved" id="unsaved" hidden></button></div>
       </div>
       <div class="datepick">
         <button class="iconbtn" id="prevDay" aria-label="Previous day">‹</button>
@@ -13574,6 +13575,110 @@ if (typeof module !== "undefined") module.exports = DataIO;
 });
 </script>
 <script>
+/* ===================== PendingWrites (modules/pending-writes/pending-writes.js) ===================== */
+/* PendingWrites: a small outbox for the synced database.
+ * Every write is recorded in localStorage before it is attempted, retried until it
+ * succeeds, coalesced per document, and laid over incoming snapshots so a doc with
+ * an unsent local change is never replaced by the server copy.
+ *
+ *   const q = PendingWrites.create({ storage: localStorage, key: "aziz-cut-pending",
+ *     mergeCols: ["days","prefs"], exec: async w => {...}, onChange: n => {...} });
+ *   q.load();                                 // read what a previous visit left behind
+ *   q.put(col, id, data, before);             // before = the doc as last seen (or undefined)
+ *   q.remove(col, id);
+ *   q.overlay(col, docsFromSnapshot);         // returns the map with pending docs applied
+ *   q.retryAll();                             // on reconnect / visibility / timer / db ready
+ *   q.size(); q.list();
+ *
+ * A write w is {col,id,op:"set"|"delete",data,fields?,at,err?}. `fields` is set when the
+ * col is in mergeCols and `before` exists: only those top-level keys changed, so exec can
+ * send a field merge (db update) instead of replacing the whole doc. exec must throw on
+ * failure; it may fall back from update to set itself (see PendingWrites.pick).
+ */
+(function (root, factory) {
+  if (typeof module === "object" && module.exports) module.exports = factory();
+  else root.PendingWrites = factory();
+})(typeof self !== "undefined" ? self : this, function () {
+  const same = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+
+  /* Top-level keys of `after` that differ from `before`; null when a key was removed
+   * (a field merge can't drop a key, so the caller must replace the whole doc). */
+  function changedFields(before, after) {
+    if (!before || typeof before !== "object" || !after || typeof after !== "object") return null;
+    for (const k of Object.keys(before)) if (!(k in after)) return null;
+    return Object.keys(after).filter(k => !same(before[k], after[k]));
+  }
+  function pick(data, fields) { const o = {}; fields.forEach(k => { if (k in data) o[k] = data[k]; }); return o; }
+
+  function create(opts) {
+    const storage = opts.storage, key = opts.key || "pending-writes";
+    const mergeCols = opts.mergeCols || [];
+    const exec = opts.exec, onChange = opts.onChange || (() => {});
+    const now = opts.now || Date.now;
+    let pending = {}, chains = {}, enabled = true;
+
+    function save() { try { if (storage) storage.setItem(key, JSON.stringify(pending)); } catch (e) {} onChange(size(), pending); }
+    function load() { try { const j = storage && JSON.parse(storage.getItem(key) || "null"); pending = j && typeof j === "object" ? j : {}; } catch (e) { pending = {}; } onChange(size(), pending); return size(); }
+    function size() { return Object.keys(pending).length; }
+    function list() { return Object.values(pending); }
+    const keyOf = (col, id) => col + "/" + id;
+
+    function queue(w) {
+      const k = keyOf(w.col, w.id), p = pending[k];
+      if (p) {
+        if (w.op === "set" && p.op === "set" && p.fields && w.fields) w.fields = Array.from(new Set(p.fields.concat(w.fields)));
+        else delete w.fields;                        // older full write still unsent: send the whole doc
+        w.told = p.told;
+      }
+      pending[k] = w; save();
+      return flush(k);
+    }
+    function flush(k) {
+      chains[k] = (chains[k] || Promise.resolve()).then(async () => {
+        const w = pending[k];
+        if (!w || !enabled) return;
+        try {
+          await exec(w);
+          if (pending[k] === w) { delete pending[k]; save(); }
+        } catch (e) {
+          w.err = String((e && (e.message || e.code)) || e);
+          const first = !w.told; w.told = true; save();
+          if (first && opts.onFail) opts.onFail(w, e);
+        }
+      });
+      return chains[k];
+    }
+
+    function put(col, id, data, before) {
+      const w = { col, id, op: "set", data, at: now() };
+      if (mergeCols.includes(col) && before !== undefined) {
+        const f = changedFields(before, data);
+        if (f && !f.length && !pending[keyOf(col, id)]) return Promise.resolve();   // nothing changed, nothing to send
+        if (f) w.fields = f;
+      }
+      return queue(w);
+    }
+    function remove(col, id) { return queue({ col, id, op: "delete", at: now() }); }
+    function overlay(col, docs) {
+      for (const k in pending) {
+        const w = pending[k]; if (w.col !== col) continue;
+        if (w.op === "delete") delete docs[w.id];
+        else if (w.fields && docs[w.id]) docs[w.id] = Object.assign({}, docs[w.id], pick(w.data, w.fields));
+        else docs[w.id] = w.data;
+      }
+      return docs;
+    }
+    function retryAll() { return Promise.all(Object.keys(pending).map(flush)); }
+    function setEnabled(v) { enabled = !!v; if (v) retryAll(); }
+
+    return { load, put, remove, overlay, retryAll, flush: (col, id) => flush(keyOf(col, id)), size, list, setEnabled, has: (col, id) => !!pending[keyOf(col, id)] };
+  }
+
+  return { create, changedFields, pick };
+});
+
+</script>
+<script>
 /* ===================== Plan data (from Aziz's handoff, Oct 25 2026) ===================== */
 const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:220};
 const START = {date:"2026-10-25", kg:91.9}; let GOAL_KG = 80;
@@ -13678,11 +13783,26 @@ const LB_READ = ["lb_workouts","lb_exercises"];
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
 function saveLocal(){ try{ const o={}; COLS.forEach(c=>o[c]=S.docs[c]); localStorage.setItem("aziz-cut", JSON.stringify(o)); }catch(e){} }
+/* Outbox: every synced write is kept in localStorage until the db confirms it, retried on reconnect,
+ * and days/prefs docs are sent as field merges so phone and PC edits to the same day don't erase each other. */
+const outbox = PendingWrites.create({
+  storage: window.localStorage, key: "aziz-cut-pending", mergeCols: ["days","prefs"],
+  exec: async w => {
+    const ref = S.db.collection(w.col).doc(w.id);
+    if(w.op==="delete") return ref.delete();
+    if(w.fields){ try{ return await ref.update(PendingWrites.pick(w.data, w.fields)); }catch(e){ if(!(e && e.code==="invalid_argument")) throw e; } }
+    return ref.set(w.data);
+  },
+  onChange: n => { const b=document.getElementById("unsaved"); if(!b) return; b.hidden=!n; b.textContent = n+(n===1?" change":" changes")+" not saved yet · tap to retry"; },
+  onFail: () => toast("Couldn't reach the server. Kept on this device, will retry.")
+});
 async function put(col,id,data,{quiet}={}){
   const dl=S.docs.prefs.main; if(col==="workouts" && dl && dl.deloadUntil && dl.deloadFrom && id>=dl.deloadFrom && id<=dl.deloadUntil && data && !data.deload) data={...data,deload:true};
+  // the doc as last seen; a day not yet stored counts as the empty default so only the touched fields go out
+  const before = S.docs[col][id] ?? (col==="days" ? getDay(id) : col==="prefs" ? {} : undefined);
   S.docs[col] = {...S.docs[col],[id]:data};
   if(!quiet) render();
-  if(S.db){ try{ await S.db.collection(col).doc(id).set(data); }catch(e){ toast("Not saved: "+(e.message||e.code)); } }
+  if(S.db) await outbox.put(col,id,data,before);
   else saveLocal();
 }
 /* Your data (DataIO): backups, restore, imports, mounted once under the Guide tab */
@@ -13733,7 +13853,7 @@ function syncDataCard(){
 }
 async function remove(col,id){
   const o = {...S.docs[col]}; delete o[id]; S.docs[col]=o; render();
-  if(S.db){ try{ await S.db.collection(col).doc(id).delete(); }catch(e){ toast("Not deleted: "+(e.message||e.code)); } } else saveLocal();
+  if(S.db) await outbox.remove(col,id); else saveLocal();
 }
 const clone = o => JSON.parse(JSON.stringify(o||{}));
 
@@ -13745,9 +13865,14 @@ async function initStore(){
   S.db = db; S.mode="sync"; COLS.forEach(c=>S.docs[c]={});
   COLS.forEach(c=>{
     db.collection(c).onSnapshot(qs=>{
-      const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=o; scheduleRender();
+      const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=outbox.overlay(c,o); scheduleRender();
     }, err=>{ toast("Sync problem: "+err.message); });
   });
+  outbox.load(); COLS.forEach(c=>outbox.overlay(c,S.docs[c])); outbox.retryAll();
+  window.addEventListener("online", ()=>outbox.retryAll());
+  document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") outbox.retryAll(); });
+  setInterval(()=>{ if(outbox.size()) outbox.retryAll(); }, 30000);
+  document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>toast(outbox.size()?"Still can't reach the server. Your changes are kept on this device.":"All changes saved")); });
   LB_READ.forEach(c=>{ try{ db.collection(c).onSnapshot(qs=>{ const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=o; if(view.tab!=="train") scheduleRender(); }, ()=>{}); }catch(e){} });
   setSync();
 }
