@@ -1,11 +1,11 @@
 # Daily steps
 
-Steps per day for the Today tab: type the count by hand, or import a Health Connect CSV (Aziz is on Android). A goal card shows the count, a progress bar, what's left, and the 7-day average.
+Steps per day for the Today tab: type the count by hand, or import an export from Health Connect or from the step app itself (Samsung Health, Fitbit, Garmin, Google Fit, Apple Health). Aziz is on Android, so Health Connect is the main hub. A goal card shows the count, a progress bar, what's left, and the 7-day average.
 
 ## Files
 - `steps.js`: plain ES module, no imports, no network. Inline it the same way as `waterh-import.js` (strip `export`, wrap in an IIFE, expose `window.Steps`).
-- `steps.test.mjs`: `TZ=Asia/Kuwait node --test modules/steps/steps.test.mjs` (8 tests).
-- `sample-daily.csv`, `sample-health-connect-records.csv`: example exports used by the tests.
+- `steps.test.mjs`: `TZ=Asia/Kuwait node --test modules/steps/steps.test.mjs` (11 tests; the timezone matters because zoned timestamps go to the local day).
+- `samples/`: one example export per supported app, used by the tests.
 
 ## Data
 - `days/{date}.steps = {count, at, source}`, where source is `"manual"`, `"csv"` or `"line"`. `stepCount(day)` also reads a bare number.
@@ -41,7 +41,19 @@ function applyStepsText(text){
 ```
 Note: the bare-number path of `parseSteps` dates the count *today*; for the Set button use the selected `date` as above.
 
-## Android: getting the CSV
-1. Make sure the phone's step counter (Google Fit, Samsung Health, or the watch app) writes Steps to Health Connect: Settings → Health Connect → App permissions.
-2. Install a Health Connect exporter (e.g. "Health Data Export" on Play), export **Steps** as CSV, and pick the file in **Import from Health Connect** on the Steps card.
-3. Day to day, typing the number from the phone's step widget into the card is quicker.
+## Supported apps and formats
+The format is detected from the file; there is no app picker. `STEP_SOURCES` holds the how-to text the card shows for each.
+
+| App | Best route | Direct file it reads |
+|---|---|---|
+| Any app that syncs to Health Connect (Google Fit, Fitbit, Samsung Health, Garmin, Mi Fitness, Zepp, Oura, …) | Turn on Health Connect sync in the app, export Steps with a Health Connect exporter app | Exporter CSV: daily `Date,Steps`, records `start_time,end_time,count,data_origin`, or long `time,type,value` |
+| Samsung Health | Settings → Download personal data | `com.samsung.shealth.step_daily_trend.*.csv` (uses the combined row), or `com.samsung.health.step_count.*.csv` (UTC times + `time_offset`) |
+| Fitbit | Data export / Google Takeout → Fitbit | `steps-YYYY-MM-DD.json` (per-minute, summed), account export CSV (`Activities` section) |
+| Garmin Connect | Web → Reports → Steps → Export | Report CSV `,Actual,Goal`, or `UDSFile_*.json` (`calendarDate`, `totalSteps`) |
+| Google Fit | Google Takeout → Fit | `Daily activity metrics.csv` (`Step count`) |
+| Apple Health | Export All Health Data | `export.xml` |
+
+Zip files must be unzipped first (no decompression in the module). Menu names in these apps move around between versions; the file formats are what the parser keys on.
+
+## Day to day on Android
+Typing the number from the phone's step widget is quickest. Use a file import for back-fill or a weekly catch-up.

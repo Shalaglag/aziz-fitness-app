@@ -1,0 +1,5 @@
+com.samsung.health.step_count,6315001,4
+com.samsung.health.step_count.start_time,com.samsung.health.step_count.count,run_step,walk_step,com.samsung.health.step_count.time_offset,com.samsung.health.step_count.deviceuuid,com.samsung.health.step_count.end_time
+2026-10-24 05:00:00.000,3000,0,3000,UTC+0300,phoneA1,2026-10-24 05:30:00.000
+2026-10-24 22:30:00.000,500,0,500,UTC+0300,phoneA1,2026-10-24 22:40:00.000
+2026-10-24 05:00:00.000,2800,0,2800,UTC+0300,watchB2,2026-10-24 05:30:00.000
