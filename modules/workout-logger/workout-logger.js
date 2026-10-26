@@ -9,6 +9,8 @@
  * weights: optional { list() -> Promise<[{date:'YYYY-MM-DD', kg}]>, put(date, kg) -> Promise }
  *   so body weight logs go to the shell's own weights collection.
  * formCues: optional FormCues.create(guide) instance (form cues + demo links).
+ * anim: optional ExerciseAnim.create() instance. Exercises it has get a built-in 3D animated demo in Gym
+ *   mode and the exercise sheet, and the Demo button opens it full screen.
  * demos: optional ExerciseDemos.create(data, {library}) instance. When given, every exercise gets a
  *   Demo button (a checked video, else a YouTube search) and the sheet lists its demo videos.
  * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
@@ -776,7 +778,8 @@ Stair Climber|Cardio|Cardio|`;
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
   // Demo button: ExerciseDemos (opts.demos) when given, else the form cues link for exercises in the guide.
   function demoBtn(id, entry) {
-    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues;
+    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues, an = S.opts && S.opts.anim;
+    if (an && an.has(id)) return '<button type="button" class="lb-btn small ghost" data-ea-open="' + esc(id) + '">Demo</button>';
     const l = dm ? dm.link(id, getEx(id).name) : (fc && entry ? { href: fc.demoUrl(entry), label: 'Demo ↗' } : null);
     return l ? '<a class="lb-btn small ghost" href="' + esc(l.href) + '" target="_blank" rel="noopener noreferrer">' + esc(l.label) + '</a>' : '';
   }
@@ -793,7 +796,7 @@ Stair Climber|Cardio|Cardio|`;
   function exDetail(id) {
     const ex = getEx(id), ss = sessions(id), R = records(id), weighted = isWeighted(ex);
     if (exTab === 'about') {
-      return '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div></div>' +
+      return (S.opts.anim ? S.opts.anim.cardHtml(id) : '') + '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div></div>' +
         (ex.avoided ? '<p class="lb-warnbox">Your plan avoids this lift (no deadlifts, RDLs, hip thrusts, back extensions, glute-ham raises, reverse hypers or cable pull-throughs). Pick a machine-based option instead.</p>' : '') +
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
@@ -1278,6 +1281,7 @@ Stair Climber|Cardio|Cardio|`;
       '<div class="lb-gym-top"><span>Exercise ' + (ei + 1) + ' of ' + d.exercises.length + '</span>' +
       (e.ss ? '<span class="lb-gym-ss ss' + (ssIds.indexOf(e.ss) % 4) + '">Superset ' + String.fromCharCode(65 + ssIds.indexOf(e.ss)) + ' · ' + (partners.findIndex(o => o.k === ei) + 1) + '/' + partners.length + '</span>' : '') + '</div>' +
       '<div class="lb-gym-headrow"><button class="lb-gym-name" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + ei + '" aria-label="Exercise options">•••</button></div>' +
+      (S.opts.anim ? S.opts.anim.cardHtml(e.exId) : '') +
       (e.ss ? '<p class="lb-muted small">Alternate with ' + esc(partners.filter(o => o.k !== ei).map(o => getEx(o.x.exId).name).join(', ')) + ', rest after the round.</p>' : '') +
       '<div class="lb-gym-tools">' + demoBtn(e.exId, entry) +
       '<button class="lb-btn small ghost" data-a="exOpen" data-id="' + e.exId + '">How to</button><button class="lb-btn small ghost" data-a="restEdit" data-ei="' + ei + '">Rest ' + restLabel(restOf(e)) + '</button>' +
@@ -1845,6 +1849,14 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     opts = opts || {};
     S.opts = opts; S.storage = opts.storage || localStorageAdapter('lb:');
     if (!document.getElementById('lb-style')) { const st = document.createElement('style'); st.id = 'lb-style'; st.textContent = CSS; document.head.appendChild(st); }
+    if (opts.anim) {
+      opts.anim.info = id => {
+        const g = opts.formCues ? opts.formCues.find(id) || opts.formCues.find(getEx(id).name) : null;
+        const l = opts.demos ? opts.demos.link(id, getEx(id).name) : null;
+        return { title: getEx(id).name, cues: g ? g.cues : [], steps: g ? g.steps : [], video: l ? { href: l.href, label: l.verified ? 'Watch a video ↗' : 'Search videos ↗' } : null };
+      };
+      opts.anim.attach(document);
+    }
     if (opts.demos && !document.getElementById('ed-style')) { const st = document.createElement('style'); st.id = 'ed-style'; st.textContent = opts.demos.css; document.head.appendChild(st); }
     if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
     root = el; root.classList.add('lb');
