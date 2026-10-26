@@ -29,6 +29,7 @@
     { "file": "modules/recovery-fatigue/recovery-fatigue.js", "expose": ["RecoveryFatigue"] },
     { "file": "modules/coach/coach.js", "expose": ["Coach"] },
     { "file": "modules/cardio/cardio.js", "expose": ["Cardio"] },
+    { "file": "modules/run-tracker/run-tracker.js", "expose": ["RunTracker"] },
     { "file": "modules/strength-analytics/strength-analytics.js", "expose": ["StrengthAnalytics"] },
     { "file": "modules/data-io/data-io.js", "expose": ["DataIO"] },
     { "file": "modules/menu-import/menu-import.js" },

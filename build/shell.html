@@ -534,8 +534,8 @@ const LIB = {
 };
 
 /* ===================== Store (synced db when available, else this browser) ===================== */
-const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio"];
-const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading"};
+const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio","runs"];
+const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},runs:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading"};
 const LB_READ = ["lb_workouts","lb_exercises"];
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
@@ -774,6 +774,7 @@ function showErrBanner(msg){ const b=document.getElementById("errBanner"); if(!b
 window.addEventListener("error", e=>{ if(e && e.error) showErrBanner("Something went wrong: "+(e.error.message||e.message||"error")+"."); });
 window.addEventListener("unhandledrejection", e=>{ const r=e && e.reason; showErrBanner("Something went wrong: "+((r&&r.message)||r||"error")+"."); });
 function cdSafe(fn){ return safeMod("Cardio", fn); }
+function rtCtx(){ return {docs:S.docs, date:view.date, toast, weightKg:latestKg(), put:(c,id,doc)=>put(c,id,doc,{quiet:true}), rerender:()=>render()}; }
 function latestKg(){ const ws=weightsSorted(); return ws.length ? ws[ws.length-1].kg : undefined; }
 function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
@@ -881,7 +882,7 @@ function effortBits(){
   const picker = has ? safe("Effort", ()=>EffortDeload.pickerHtml(d, w.effort)) : "";
   return {nudge, picker};
 }
-function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocs(), cardioOpts)}</div>`); return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + cardio; }
+function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocs(), cardioOpts)}</div>`); const run = safeMod("RunTracker",()=>RunTracker.cardHTML(view.date, S.docs)); return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + cardio + run; }
 function vTrainBody(){ return view.trainMode==="full" ? `<div class="card">${trainSwitch()}<p class="muted" style="font-size:.88rem">Templates, live workout with rest timer, PRs, plate calculator and history. Finished workouts also land in Today, Progress and the weekly report.</p></div>` : `<div>${trainSwitch()}</div>` + vTrainSession() + otherLogged() + strongCard(); }
 function otherLogged(){
   const d=view.date, wk=S.docs.workouts[d]; if(!wk||!wk.sets) return "";
@@ -1151,6 +1152,7 @@ function vProgress(){
     <p class="muted" style="font-size:.88rem">Goal on a cut: hold these. If one drops for 2+ sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>
   </div>`}
   ${cdSafe(()=>Cardio.progressHTML(cdDocs(), {today:TODAY}))}
+  ${safeMod("RunTracker",()=>RunTracker.progressHTML(S.docs, {today:TODAY}))}
   ${rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts()))}
   ${safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}))}
   ${report?`<div class="card"><details data-keep="wr" ${view.open.wr?"open":""}><summary>Weekly report (week by week: weight, food, lifts)</summary>${report}</details></div>`:""}
@@ -1240,6 +1242,7 @@ function addFood(item){ const day=getDay(view.date); day.food.push({id:uid(),eat
 
 main.addEventListener("toggle",e=>{ const k=e.target && e.target.dataset && e.target.dataset.keep; if(k) view.open[k]=e.target.open; }, true);
 main.addEventListener("click",e=>{
+  if(window.RunTracker && e.target.closest("[data-run]")){ try{ if(RunTracker.handle(e.target, rtCtx())) return; }catch(err){ toast("Run: "+err.message); return; } }
   if(window.Cardio && e.target.closest("[data-cardio]")){ try{ if(Cardio.handle(e.target, {docs:cdDocs(), date:view.date, toast, weightKg:latestKg(), put:(c,id,doc)=>{ cardioOpts={}; put(c,id,doc); }, rerender:o=>{ cardioOpts=o||{}; render(); }})) return; }catch(err){ toast("Cardio: "+err.message); return; } }
   const rfw=window.RecoveryFatigue && e.target.closest("[data-rf]") ? RecoveryFatigue.handle(e.target, S.docs, view.date) : null;
   if(rfw){ put(rfw.collection, rfw.id, rfw.doc, {quiet:true}); render(); return; }
@@ -1458,7 +1461,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
