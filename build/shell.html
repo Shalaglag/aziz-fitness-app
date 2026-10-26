@@ -933,6 +933,15 @@ function mountSwapNotice(){
     onSwap:(exercise,opt)=>{ doSwap(typeof exercise==="string"?exercise:exercise[0]||exercise.name, opt.name, "hurt"); },
     onKeep:exercise=>{ put("prefs","swaps", ExerciseSwap.clearHurt(swapState(), typeof exercise==="string"?exercise:exercise[0]||exercise.name)); } }); }catch(e){}
 }
+/* Travel workout: dumbbell / band / bodyweight version of today's session (TravelWorkout module). */
+function travelCard(session, wk){
+  return safeMod("TravelWorkout", ()=>TravelWorkout.cardHtml({session, exercises:PROGRAM[session], kit:view.twKit||"dumbbell", active:TravelWorkout.active(wk), open:!!view.twOpen, workouts:S.docs.workouts}));
+}
+function travelApply(kit){
+  const d=view.date, w=workoutDoc(d), items=TravelWorkout.convert(PROGRAM[w.session]||[], {kit, workouts:S.docs.workouts});
+  put("workouts", d, TravelWorkout.apply(w, items, kit)); view.twOpen=false;
+  toast(`Travel version on. Sets log under the ${TravelWorkout.kitOf(kit).label.toLowerCase()} moves; history stays with the plan lift.`);
+}
 function vTrainSession(){
   const d=view.date, ses=sessionFor(d), wk=S.docs.workouts[d]||{};
   const cur = ses ? ses.session : null;
@@ -948,6 +957,7 @@ function vTrainSession(){
     <div class="row"><span class="label">Rest timer</span><button class="chip" data-act="timer" data-s="90">1:30</button><button class="chip" data-act="timer" data-s="150">2:30</button><button class="chip" data-act="timer" data-s="180">3:00</button></div>
     <p class="muted" style="font-size:.88rem">Big compounds: rest 2.5–3 min. Work in 8–12 reps, 1–2 reps short of failure. Keep loads heavy during the cut.</p>
   </div>
+  ${travelCard(cur, wk)}
   <div class="card">
     ${ex.map(([planName,bw,br,bs,unit,note])=>{
       const swappedTo = usedFor(wk, planName), name = swappedTo || planName;
@@ -1302,6 +1312,9 @@ main.addEventListener("click",e=>{
   else if(a==="clearday"){ if(el.dataset.confirm){ const day=getDay(d); day.food=[]; saveDay(day); } else { el.dataset.confirm="1"; el.textContent="Tap again to clear"; } }
   else if(a==="swap"){ openSwap(el.dataset.n); }
   else if(a==="unswap"){ doSwap(el.dataset.n, null); }
+  else if(a==="twkit"){ view.twKit=el.dataset.kit; view.twOpen=true; render(); }
+  else if(a==="twapply"){ travelApply(el.dataset.kit||view.twKit||"dumbbell"); }
+  else if(a==="twclear"){ put("workouts", view.date, TravelWorkout.clear(workoutDoc(view.date))); toast("Back to the gym plan."); }
   else if(a==="pgadd"){ const day=getDay(d); const r=proteinGapRes(day); if(r&&r.best){ day.food=day.food.concat(ProteinGap.toFoodItems(r.best).map(it=>({...it,id:uid(),slot:"Extra",eaten:false}))); saveDay(day); toast("Added as planned. Tick it when you have it."); } }
   else if(a==="stepsadd"){ put("days", d, Steps.addSteps(getDay(d), +el.dataset.n)); }
   else if(a==="stepsset"){ const n=Steps.parseSteps(document.getElementById("stepsInput").value)[0]; if(n) put("days", d, Steps.setSteps(getDay(d), n.steps)); else toast("Type a step count, e.g. 8450"); }
@@ -1475,7 +1488,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
