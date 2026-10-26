@@ -17704,7 +17704,10 @@ const lbCols=["lb_workouts","lb_templates","lb_exercises","lb_measures","lb_meta
 const lbCache={};                       // the logger's collections aren't in S.docs; read for backups
 const loadLb=async()=>{ if(!S.db) return; for(const c of lbCols){ try{ const qs=await S.db.collection(c).get(); lbCache[c]=Object.fromEntries(qs.docs.map(d=>[d.id,d.data()])); }catch(e){} } };
 const dioSnapshot=()=>{ const o={}; COLS.forEach(c=>o[c]=clone(S.docs[c])); return Object.assign(o, clone(lbCache)); };
-async function dioDownload(filename,data){ const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(()=>null) : null; if(dl) return dl.save({filename,data}); toast("Downloads aren't available here."); return false; }
+async function dioDownload(filename,data){ const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(()=>null) : null; if(dl) return dl.save({filename,data});
+  // Own website: a plain browser download.
+  if(!window.claude && typeof data==="string"){ const type=/\.ics$/i.test(filename)?"text/calendar":/\.json$/i.test(filename)?"application/json":"text/plain"; const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([data],{type})); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),10000); return true; }
+  toast("Downloads aren't available here."); return false; }
 /* One-tap backup (Today nudge): same file as the Your data card, stamps prefs/main.lastBackup */
 async function backupNow(){
   if(!window.DataIO){ toast("Backup isn't available here."); return; }
