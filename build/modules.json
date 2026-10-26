@@ -20,6 +20,7 @@
     { "file": "modules/photo-food/photo-food.js" },
     { "file": "modules/protein-gap/protein-gap.js" },
     { "file": "modules/barcode-scanner/barcode-food.js", "expose": ["BarcodeFood"] },
+    { "file": "modules/label-scan/label-scan.js", "expose": ["LabelScan"] },
     { "file": "modules/exercise-swap/exercise-swap.js" },
     { "file": "modules/progress-photos/progress-photos.js" },
     { "file": "modules/diet-break/diet-break.js", "expose": ["DietBreak"] },
