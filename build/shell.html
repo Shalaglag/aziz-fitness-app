@@ -1030,6 +1030,7 @@ function vFood(){
       </div>
     </div>
   </section>
+  ${typeof MacroTarget !== "undefined" ? MacroTarget.html(d) : ""}
   ${safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day}))}
   ${window.VoiceLog && typeof PhotoFood !== "undefined" ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : ""}
   ${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}
@@ -1506,6 +1507,8 @@ try{
     onApply: ch=>{ if(!ch || ch.key!=="profile.cutKcal" || !(+ch.to>0)) return;
       if(!coachPending || coachPending.to!==ch.to || Date.now()-coachPending.at>10000){ coachPending={to:ch.to, at:Date.now()}; toast(`Tap again to change your calorie target from ${Math.round(ch.from).toLocaleString("en-US")} to ${Math.round(ch.to).toLocaleString("en-US")} kcal.`); return; }
       coachPending=null; const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), cutKcal:+ch.to}; put("prefs","main",p); toast(`Calorie target is now ${Math.round(ch.to).toLocaleString("en-US")} kcal. Change it any time in Guide, Your numbers.`); } });
+  if(window.MacroTarget){ const mst=document.createElement("style"); mst.textContent=MacroTarget.css; document.head.appendChild(mst);
+    MacroTarget.bind(document, { date: () => view.date, render, onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items.map(it=>({id:uid(),eaten:false,...it}))); saveDay(day); toast("Added "+items[0].name+(items[0].eaten?"":". Tick it when you eat it.")); } }); }
   PhotoFood.bind(document, {
     getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
     getDay, date: () => view.date, render,
