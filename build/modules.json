@@ -24,6 +24,7 @@
     { "file": "modules/exercise-anim/exercise-anim.js" },
     { "file": "modules/photo-food/photo-food.js" },
     { "file": "modules/macro-target/macro-target.js", "expose": ["MacroTarget"] },
+    { "file": "modules/meal-grade/meal-grade.js" },
     { "file": "modules/protein-gap/protein-gap.js" },
     { "file": "modules/barcode-scanner/barcode-food.js", "expose": ["BarcodeFood"] },
     { "file": "modules/exercise-swap/exercise-swap.js" },

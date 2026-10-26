@@ -690,6 +690,8 @@
 .mi .mi-it.off .mi-nums,.mi .mi-it.off .mi-top input{opacity:.5}
 .mi .mi-top{display:flex;gap:6px;align-items:center}
 .mi .mi-top input{flex:1;min-width:0}
+.mi .mi-top .mg{margin-right:2px}
+.mi li .mg{margin-left:-1.4em;margin-right:.2em}
 .mi .mi-nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.3fr);gap:6px;margin-top:6px}
 .mi .mi-nums label{display:flex;flex-direction:column;font-size:.72rem;color:var(--muted);gap:2px}
 .mi input.mi-in,.mi select.mi-in{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:6px;padding:6px;font:inherit;font-size:.9rem}
@@ -699,14 +701,21 @@
 .mi .mi-sub{font-size:.85rem}
 `;
 
-  function itemsTable(items, dislikes) {
+  // A–D grade pill from the MealGrade module when it is inlined; '' otherwise.
+  function gradeOf(it, kind, T) {
+    const MG = (typeof root !== 'undefined' && root.MealGrade) || (typeof window !== 'undefined' && window.MealGrade);
+    if (!MG) return '';
+    try { return MG.badge(MG.gradeItem(it, { kind, targets: T }), { small: true }); } catch (e) { return ''; }
+  }
+
+  function itemsTable(items, dislikes, T) {
     const tagged = annotate(items, { bannedReason: makeBanned(H.engine, dislikes), likeOf: H.engine.likeOf });
     const flagged = tagged.filter(it => it.needsCheck && !it.banned).length;
     const rows = tagged.map((it, i) => {
       const cls = it.banned ? 'off' : it.needsCheck ? 'flag' : '';
       const n = (k, label) => `<label>${label}<input class="mi-in n" inputmode="decimal" data-mik="${k}" data-i="${i}" value="${it[k] == null ? '' : esc(it[k])}" aria-label="${label} for ${esc(it.name)}"></label>`;
       return `<div class="mi-it ${cls}">
-        <div class="mi-top"><input class="mi-in" data-mik="name" data-i="${i}" value="${esc(it.name)}" aria-label="Name">
+        <div class="mi-top">${it.banned || it.skip ? '' : gradeOf(it, ['meal', 'salad', 'soup'].includes(it.section) ? 'meal' : 'snack', T)}<input class="mi-in" data-mik="name" data-i="${i}" value="${esc(it.name)}" aria-label="Name">
           ${!it.banned && it.needsCheck && complete(it) ? `<button class="btn small" data-mi="ok" data-i="${i}" title="The numbers match the menu">OK</button>` : ''}
           <button class="btn ghost small" data-mi="skip" data-i="${i}" title="${it.skip ? 'Use it again' : 'Leave it out'}" aria-label="${it.skip ? 'Use it again' : 'Leave it out'}">${it.skip ? 'Use' : '✕'}</button></div>
         <div class="mi-nums">${n('kcal', 'kcal')}${n('protein', 'Protein')}${n('carbs', 'Carbs')}${n('fat', 'Fat')}
@@ -719,16 +728,16 @@
       ${flagged ? `<p class="mi-sub"><b>${flagged} item${flagged > 1 ? 's need' : ' needs'} a check.</b> Compare with the menu and tap OK, or fix the number. <button class="btn ghost small" data-mi="okall">All match the menu</button></p>` : ''}`;
   }
 
-  function resultHtml(res) {
+  function resultHtml(res, T) {
     if (!res) return '';
-    const line = it => `<li>${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r0(it.p)} P</span>${it.needsCheck ? ' <span class="pill warn">unconfirmed</span>' : ''}</li>`;
+    const line = (it, kind) => `<li>${gradeOf(it, kind, T)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r0(it.p)} P</span>${it.needsCheck ? ' <span class="pill warn">unconfirmed</span>' : ''}</li>`;
     const fixedLines = (res.fixed || []).map(x => `<li class="muted">${esc(x.name)} <span class="num" style="font-size:.85rem">${r0(x.kcal)} kcal · ${r0(x.p)} P${x.estimate ? ' (estimate)' : ''}</span></li>`).join('');
     return `${res.notes.length ? `<p class="muted mi-sub">${res.notes.map(esc).join(' ')}</p>` : ''}
       ${res.skipped.length ? `<p class="muted mi-sub">Left out: ${res.skipped.map(s => `${esc(s.name)} (${esc(s.reason)})`).join(', ')}</p>` : ''}
       ${res.error ? `<p class="note">${esc(res.error)}</p>` : ''}
       ${res.options.map((o, i) => `<div class="ex">
         <div class="spread"><b>${i === 0 ? 'Best option' : 'Option ' + (i + 1)}</b><span class="pill ${o.check.fits ? 'good' : 'warn'}">${o.check.fits ? 'Fits' : 'Closest'}</span></div>
-        <ul style="margin:0;padding-left:1.1em">${line(o.meal1)}${line(o.meal2)}${o.snacks.map(line).join('')}${fixedLines}</ul>
+        <ul style="margin:0;padding-left:1.1em">${line(o.meal1, 'meal')}${line(o.meal2, 'meal')}${o.snacks.map(s => line(s, 'snack')).join('')}${fixedLines}</ul>
         <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small" data-mi="use" data-i="${i}">Plan this day</button></div>
         <p class="muted mi-sub">${esc(o.check.verdict)}</p>
       </div>`).join('')}`;
@@ -752,13 +761,13 @@
       ${ST.busy ? `<p class="muted mi-sub" aria-live="polite">${esc(ST.busy)} ${ST.ctl ? '<button class="btn ghost small" data-mi="stop">Stop</button>' : ''}</p>` : ''}
       ${ST.error ? `<p class="note">${esc(ST.error)}</p>` : ''}
       ${ST.warnings.length ? `<p class="muted mi-sub">${ST.warnings.map(esc).join(' ')}</p>` : ''}
-      ${ST.items && ST.items.length ? `${itemsTable(ST.items, bans)}
+      ${ST.items && ST.items.length ? `${itemsTable(ST.items, bans, T)}
         <div class="row" style="flex-wrap:wrap;gap:12px">
           <label class="mi-sub"><input type="checkbox" id="miAdonis"${ST.opts.adonis ? ' checked' : ''}> Adonis cookie dough</label>
           <label class="mi-sub"><input type="checkbox" id="miConfirmed"${ST.opts.onlyConfirmed ? ' checked' : ''}> Only use checked numbers</label>
           <button class="btn" data-mi="go">Find the best combo</button>
         </div>
-        ${resultHtml(ST.result)}` : ''}
+        ${resultHtml(ST.result, T)}` : ''}
     </div>`;
   }
 
