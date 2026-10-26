@@ -1004,6 +1004,7 @@ function vFood(){
     </div>
   </section>
   ${safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day}))}
+  ${window.VoiceLog && typeof PhotoFood !== "undefined" ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : ""}
   ${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}
   <div id="bcHost"></div>
   ${window.MenuImport ? MenuImport.html(d) : pickerCard(d, training)}
@@ -1472,6 +1473,11 @@ try{
     getDay, date: () => view.date, render,
     onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items); saveDay(day); toast(items.length===1 ? "Added as an estimate" : "Added "+items.length+" items as estimates"); }
   });
+  if(window.VoiceLog){
+    const vst=document.createElement("style"); vst.textContent=VoiceLog.css; document.head.appendChild(vst);
+    // Spoken meals go through the photo/description card: fill its box and press Estimate.
+    VoiceLog.bindFood(document, { onText: text => { if(!VoiceLog.toPhotoFood(document, text)) toast("The photo and description card isn't available here, so speech can't be estimated."); } });
+  }
 }catch(e){}
 try{
   const st=document.createElement("style"); st.textContent=MenuImport.css; document.head.appendChild(st);
