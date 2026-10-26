@@ -1951,6 +1951,234 @@ window.VoiceLog = (() => {
 if (typeof module !== "undefined" && module.exports) module.exports = VoiceLog;
 </script>
 <script>
+/* Workout share card: a finished workout as WhatsApp-ready text and as a PNG image.
+ * Plain JS, no imports, no network. Generic: works for any Liftbook-style workout doc.
+ *
+ * Input (summarize): a workout doc from lb_workouts
+ *   {id, name, start, end, notes, exercises:[{exId, unit, sets:[{t:'w'|'n'|'d'|'f', w, r, km, min, sec, done, pr:[...]}]}]}
+ * plus getEx(exId) -> {name, cat, unit} (cat: Bodyweight | Reps only | Duration | Cardio | anything else = weighted).
+ *
+ * API:
+ *   WorkoutShare.summarize(workout, getEx)        -> plain summary (below), safe to store or pass around
+ *   WorkoutShare.text(summary, {footer})          -> WhatsApp text (*bold*, emoji, one line per exercise, PR list)
+ *   WorkoutShare.layout(summary, {width})         -> {width, height, rows} the image draws; pure, used by draw and tests
+ *   WorkoutShare.draw(summary, {canvas, theme, width, footer}) -> the canvas, painted (creates one when none is passed)
+ *   WorkoutShare.share(summary, {canvas, filename, title, footer}) -> Promise<'shared'|'shared-text'|'copied'|'saved'>
+ *        navigator.share with the PNG + text when files are supported, else share text, else copy text and download the PNG.
+ *   WorkoutShare.compact(sets)                    -> "3 × 8 @ 80 kg" / "80×8, 80×7, 75×8" for a list of working sets
+ *
+ * Summary shape:
+ *   { name, start, end, durationMin, volumeKg, sets, prCount, notes,
+ *     exercises: [{ name, cat, unit, sets: [{label, text, w, r, pr:[...]}], warmups, compact, best, volumeKg }],
+ *     prs: [{ exercise, text, kinds: [...] }] }
+ */
+window.WorkoutShare = (() => {
+  const LB = 0.45359237;
+  const num = v => (v === '' || v == null || isNaN(+v)) ? null : +v;
+  const toKg = (w, unit) => unit === 'lb' ? w * LB : w;
+  const fmtN = (n, d = 0) => (Math.round(n * 10 ** d) / 10 ** d).toLocaleString('en-US', { maximumFractionDigits: d });
+  const mmss = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+  const fieldsFor = cat => ({ Bodyweight: ['r'], 'Reps only': ['r'], Duration: ['sec'], Cardio: ['km', 'min'] }[cat] || ['w', 'r']);
+  const fmtDate = (ms, o) => { try { return new Date(ms).toLocaleDateString('en-GB', o || { weekday: 'short', day: 'numeric', month: 'short' }); } catch (e) { return new Date(ms).toDateString(); } };
+  const fmtDur = min => min >= 60 ? Math.floor(min / 60) + 'h ' + (min % 60) + 'm' : min + ' min';
+
+  function setText(s, cat, unit) {
+    const f = fieldsFor(cat);
+    if (f[0] === 'km') return [num(s.km) != null ? fmtN(+s.km, 2) + ' km' : '', num(s.min) != null ? fmtN(+s.min) + ' min' : ''].filter(Boolean).join(' · ');
+    if (f[0] === 'sec') return num(s.sec) != null ? mmss(+s.sec) : '';
+    if (f[0] === 'r') return num(s.r) != null ? s.r + ' reps' : '';
+    if (num(s.w) == null && num(s.r) == null) return '';
+    return fmtN(num(s.w) || 0, 2) + ' ' + (unit || 'kg') + (num(s.r) != null ? ' × ' + s.r : '');
+  }
+
+  // "3 × 8 @ 80 kg" when every working set matches, otherwise "80×8, 80×7, 75×8" (weighted) or "12, 10, 8 reps".
+  function compact(sets, unit) {
+    const ws = sets.filter(s => s.text);
+    if (!ws.length) return '';
+    const weighted = ws.every(s => s.w != null);
+    if (weighted) {
+      const same = ws.every(s => s.w === ws[0].w && s.r === ws[0].r);
+      if (same && ws[0].r != null) return ws.length + ' × ' + ws[0].r + ' @ ' + fmtN(ws[0].w, 2) + ' ' + (unit || 'kg');
+      return ws.map(s => fmtN(s.w, 2) + (s.r != null ? '×' + s.r : '')).join(', ') + ' ' + (unit || 'kg');
+    }
+    if (ws.every(s => s.r != null && s.w == null && !/km|min|:/.test(s.text))) {
+      const same = ws.every(s => s.r === ws[0].r);
+      return same ? ws.length + ' × ' + ws[0].r + ' reps' : ws.map(s => s.r).join(', ') + ' reps';
+    }
+    return ws.map(s => s.text).join(', ');
+  }
+
+  function summarize(w, getEx) {
+    getEx = getEx || (id => ({ name: id }));
+    const start = +w.start || Date.now(), end = +w.end || Date.now();
+    let volumeKg = 0, setCount = 0;
+    const prs = [];
+    const exercises = (w.exercises || []).map(e => {
+      const ex = getEx(e.exId) || { name: e.exId };
+      const cat = ex.cat || 'Machine', unit = e.unit || ex.unit || 'kg';
+      const weighted = fieldsFor(cat)[0] === 'w';
+      let n = 0, warmups = 0, exVol = 0, best = null;
+      const sets = [];
+      (e.sets || []).forEach(s => {
+        if (s.done === false) return;
+        if (s.t === 'w') { warmups++; return; }
+        const text = setText(s, cat, unit);
+        if (!text) return;
+        n++; setCount++;
+        const row = { label: s.t === 'n' || !s.t ? String(n) : String(s.t).toUpperCase(), text, w: weighted ? num(s.w) : null, r: num(s.r), pr: (s.pr || []).slice() };
+        if (weighted) { const v = toKg(num(s.w) || 0, unit) * (num(s.r) || 0); exVol += v; if (!best || v > best.v || (v === best.v && (num(s.w) || 0) > (best.w || 0))) best = { v, w: num(s.w) || 0, text }; }
+        if (row.pr.length) prs.push({ exercise: ex.name, text, kinds: row.pr });
+        sets.push(row);
+      });
+      volumeKg += exVol;
+      return { name: ex.name, cat, unit, sets, warmups, compact: compact(sets, unit), best: best ? best.text : (sets.length ? sets[0].text : ''), volumeKg: Math.round(exVol) };
+    }).filter(e => e.sets.length);
+    return {
+      name: w.name || w.templateName || 'Workout', start, end, durationMin: Math.max(0, Math.round((end - start) / 6e4)),
+      volumeKg: Math.round(volumeKg), sets: setCount, prCount: prs.length, notes: (w.notes || '').trim(), exercises, prs
+    };
+  }
+
+  function text(sum, opts) {
+    opts = opts || {};
+    const lines = [];
+    lines.push('🏋️ *' + sum.name + '* — ' + fmtDate(sum.start));
+    const stats = ['⏱ ' + fmtDur(sum.durationMin), '🔢 ' + sum.sets + ' sets'];
+    if (sum.volumeKg) stats.splice(1, 0, '📦 ' + fmtN(sum.volumeKg) + ' kg');
+    if (sum.prCount) stats.push('🏆 ' + sum.prCount + ' PR' + (sum.prCount > 1 ? 's' : ''));
+    lines.push(stats.join(' · '));
+    lines.push('');
+    sum.exercises.forEach(e => lines.push((e.sets.some(s => s.pr.length) ? '🏆 ' : '• ') + '*' + e.name + '* ' + e.compact));
+    if (sum.prs.length) {
+      lines.push('');
+      lines.push('🏆 *New records*');
+      sum.prs.forEach(p => lines.push('• ' + p.exercise + ' ' + p.text + ' (' + p.kinds.join(', ') + ')'));
+    }
+    if (sum.notes) { lines.push(''); lines.push('📝 ' + sum.notes); }
+    if (opts.footer) { lines.push(''); lines.push(opts.footer); }
+    return lines.join('\n');
+  }
+
+  // ---------- Image ----------
+  const THEME = { bg: '#14161b', card: '#1d2027', ink: '#f4f5f7', muted: '#9aa1ad', accent: '#1F5FD1', good: '#2fb36b', line: '#2b2f38' };
+  function themeFromCss(root) {
+    try {
+      const cs = getComputedStyle(root || document.documentElement);
+      const get = (k, d) => { const v = cs.getPropertyValue(k).trim(); return v && !/var\(/.test(v) ? v : d; };
+      return { bg: get('--bg', THEME.bg), card: get('--surface', THEME.card), ink: get('--ink', THEME.ink), muted: get('--muted', THEME.muted), accent: get('--accent', THEME.accent), good: get('--good', THEME.good), line: get('--line', THEME.line) };
+    } catch (e) { return THEME; }
+  }
+
+  // Rows the card draws, top to bottom, with y offsets. Pure, so the height is known before a canvas exists.
+  function layout(sum, opts) {
+    opts = opts || {};
+    const W = opts.width || 1080, P = 64, rows = [];
+    let y = P;
+    rows.push({ type: 'title', y, text: sum.name }); y += 92;
+    rows.push({ type: 'sub', y, text: fmtDate(sum.start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) }); y += 70;
+    const tiles = [[fmtDur(sum.durationMin), 'Duration'], [fmtN(sum.volumeKg), 'Volume kg'], [String(sum.sets), 'Sets'], [String(sum.prCount), sum.prCount === 1 ? 'Record' : 'Records']];
+    rows.push({ type: 'tiles', y, tiles }); y += 190;
+    const maxEx = opts.maxExercises || 12;
+    const shown = sum.exercises.slice(0, maxEx);
+    shown.forEach(e => { rows.push({ type: 'exercise', y, name: e.name, detail: e.compact, pr: e.sets.some(s => s.pr.length), best: e.best }); y += 78; });
+    if (sum.exercises.length > shown.length) { rows.push({ type: 'more', y, text: '+ ' + (sum.exercises.length - shown.length) + ' more exercises' }); y += 60; }
+    if (sum.prs.length) {
+      y += 20; rows.push({ type: 'heading', y, text: 'New records' }); y += 64;
+      sum.prs.slice(0, 6).forEach(p => { rows.push({ type: 'pr', y, text: p.exercise + ' · ' + p.text, kinds: p.kinds.join(', ') }); y += 60; });
+    }
+    y += 30; rows.push({ type: 'footer', y, text: opts.footer || '' }); y += 70;
+    return { width: W, height: y + P / 2, pad: P, rows };
+  }
+
+  function fit(ctx, s, max) {
+    if (ctx.measureText(s).width <= max) return s;
+    let t = s;
+    while (t.length > 1 && ctx.measureText(t + '…').width > max) t = t.slice(0, -1);
+    return t + '…';
+  }
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  function draw(sum, opts) {
+    opts = opts || {};
+    const L = layout(sum, opts);
+    const cv = opts.canvas || document.createElement('canvas');
+    cv.width = L.width; cv.height = L.height;
+    const ctx = cv.getContext('2d');
+    const T = Object.assign({}, THEME, opts.theme || (typeof document !== 'undefined' ? themeFromCss() : {}));
+    const F = opts.font || 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    const P = L.pad, W = L.width, inner = W - P * 2;
+    ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, L.height);
+    ctx.fillStyle = T.accent; ctx.fillRect(0, 0, W, 14);
+    ctx.textBaseline = 'top';
+    L.rows.forEach(r => {
+      if (r.type === 'title') { ctx.fillStyle = T.ink; ctx.font = '800 72px ' + F; ctx.fillText(fit(ctx, r.text, inner), P, r.y); }
+      else if (r.type === 'sub') { ctx.fillStyle = T.muted; ctx.font = '500 32px ' + F; ctx.fillText(r.text, P, r.y); }
+      else if (r.type === 'tiles') {
+        const gap = 20, tw = (inner - gap * 3) / 4;
+        r.tiles.forEach(([v, lab], i) => {
+          const x = P + i * (tw + gap);
+          ctx.fillStyle = T.card; roundRect(ctx, x, r.y, tw, 150, 22); ctx.fill();
+          ctx.fillStyle = lab.startsWith('Record') && +v > 0 ? T.good : T.ink; ctx.font = '800 54px ' + F; ctx.fillText(fit(ctx, v, tw - 32), x + 20, r.y + 26);
+          ctx.fillStyle = T.muted; ctx.font = '500 26px ' + F; ctx.fillText(lab, x + 20, r.y + 98);
+        });
+      }
+      else if (r.type === 'exercise') {
+        ctx.fillStyle = T.line; ctx.fillRect(P, r.y + 70, inner, 2);
+        ctx.fillStyle = r.pr ? T.good : T.ink; ctx.font = '700 34px ' + F;
+        const name = (r.pr ? '★ ' : '') + r.name;
+        ctx.fillText(fit(ctx, name, inner * 0.55), P, r.y + 14);
+        ctx.fillStyle = T.muted; ctx.font = '500 30px ' + F; ctx.textAlign = 'right';
+        ctx.fillText(fit(ctx, r.detail, inner * 0.43), W - P, r.y + 16); ctx.textAlign = 'left';
+      }
+      else if (r.type === 'more') { ctx.fillStyle = T.muted; ctx.font = '500 28px ' + F; ctx.fillText(r.text, P, r.y + 12); }
+      else if (r.type === 'heading') { ctx.fillStyle = T.good; ctx.font = '800 30px ' + F; ctx.fillText(r.text.toUpperCase(), P, r.y + 10); }
+      else if (r.type === 'pr') {
+        ctx.fillStyle = T.ink; ctx.font = '600 30px ' + F; ctx.fillText(fit(ctx, '🏆 ' + r.text, inner * 0.62), P, r.y + 8);
+        ctx.fillStyle = T.good; ctx.font = '600 26px ' + F; ctx.textAlign = 'right'; ctx.fillText(fit(ctx, r.kinds, inner * 0.36), W - P, r.y + 12); ctx.textAlign = 'left';
+      }
+      else if (r.type === 'footer') {
+        ctx.fillStyle = T.line; ctx.fillRect(P, r.y, inner, 2);
+        ctx.fillStyle = T.muted; ctx.font = '500 26px ' + F;
+        ctx.fillText(r.text || fmtDate(sum.start, { day: 'numeric', month: 'short', year: 'numeric' }), P, r.y + 24);
+        ctx.textAlign = 'right'; ctx.fillText(fmtDur(sum.durationMin) + ' · ' + sum.sets + ' sets', W - P, r.y + 24); ctx.textAlign = 'left';
+      }
+    });
+    return cv;
+  }
+
+  const toBlob = cv => new Promise(res => cv.toBlob ? cv.toBlob(b => res(b), 'image/png') : res(null));
+  const safeName = s => (s || 'workout').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase();
+  function download(url, name) { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 0); }
+
+  async function share(sum, opts) {
+    opts = opts || {};
+    const txt = text(sum, opts);
+    const cv = opts.canvas || draw(sum, opts);
+    const name = opts.filename || safeName(sum.name) + '-' + new Date(sum.start).toISOString().slice(0, 10) + '.png';
+    const nav = typeof navigator !== 'undefined' ? navigator : {};
+    const blob = await toBlob(cv);
+    if (blob && nav.share && typeof File !== 'undefined') {
+      const file = new File([blob], name, { type: 'image/png' });
+      const data = { files: [file], title: opts.title || sum.name, text: txt };
+      if (!nav.canShare || nav.canShare(data)) {
+        try { await nav.share(data); return 'shared'; } catch (e) { if (e && e.name === 'AbortError') return 'cancelled'; }
+      }
+    }
+    if (nav.share) { try { await nav.share({ title: opts.title || sum.name, text: txt }); return 'shared-text'; } catch (e) { if (e && e.name === 'AbortError') return 'cancelled'; } }
+    let copied = false;
+    try { await nav.clipboard.writeText(txt); copied = true; } catch (e) { }
+    try { download(blob ? URL.createObjectURL(blob) : cv.toDataURL('image/png'), name); } catch (e) { return copied ? 'copied' : 'failed'; }
+    return copied ? 'copied' : 'saved';
+  }
+
+  return { summarize, text, compact, layout, draw, share, themeFromCss, download, THEME, _fmt: { setText, fmtN, fmtDur } };
+})();
+
+if (typeof module !== 'undefined') module.exports = { WorkoutShare };
+</script>
+<script>
 /* Liftbook: Strong-style workout logger for Aziz's fitness app.
  * Plain JS, no imports, no network. Mount with:
  *   WorkoutLogger.mount(element, { storage, onFinish, weights })
@@ -1962,6 +2190,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = VoiceLog;
  * weights: optional { list() -> Promise<[{date:'YYYY-MM-DD', kg}]>, put(date, kg) -> Promise }
  *   so body weight logs go to the shell's own weights collection.
  * formCues: optional FormCues.create(guide) instance (form cues + demo links).
+ * demos: optional ExerciseDemos.create(data, {library}) instance. When given, every exercise gets a
+ *   Demo button (a checked video, else a YouTube search) and the sheet lists its demo videos.
  * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
  *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
@@ -2603,7 +2833,7 @@ Stair Climber|Cardio|Cardio|`;
         const st = workoutStats(w);
         return '<p class="lb-muted">' + fmtDate(w.start, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + ' · ' + fmtTime(w.start) + '</p><div class="lb-tiles"><div><b>' + fmtDur(st.dur) + '</b><span>Duration</span></div><div><b>' + fmtN(st.vol, 0) + '</b><span>Volume kg</span></div><div><b>' + st.sets + '</b><span>Sets</span></div><div><b>' + st.prs + '</b><span>PRs</span></div></div>' + (w.notes ? '<p class="lb-note">' + esc(w.notes) + '</p>' : '') +
           w.exercises.map(e => { const ex = getEx(e.exId); let n = 0; return '<div class="lb-hex"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button>' + (e.notes ? '<p class="lb-muted small">' + esc(e.notes) + '</p>' : '') + '<table class="lb-tbl"><tbody>' + e.sets.map(s => '<tr><td class="lb-settag ' + s.t + '">' + (s.t === 'n' ? ++n : s.t.toUpperCase()) + '</td><td>' + esc(fmtSet(s, e, ex)) + (s.rpe ? ' <span class="lb-muted">@' + s.rpe + '</span>' : '') + (num(s.rir) != null ? ' <span class="lb-muted">RIR ' + s.rir + '</span>' : '') + '</td><td class="r">' + (isWeighted(ex) && s.t !== 'w' && num(s.r) ? '<span class="lb-muted small">1RM ' + fmtN(e1rm(+s.w, +s.r), 1) + '</span>' : '') + (s.pr && s.pr.length ? ' <span class="lb-pr" title="' + esc(s.pr.join(', ')) + '">PR</span>' : '') + '</td></tr>').join('') + '</tbody></table></div>'; }).join('') +
-          '<div class="lb-row"><button class="lb-btn primary" data-a="again" data-id="' + id + '">Perform again</button><button class="lb-btn ghost" data-a="editWorkout" data-id="' + id + '">Edit</button><button class="lb-btn ghost" data-a="saveAsTpl" data-id="' + id + '">Save as template</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + id + '">Copy summary</button><button class="lb-btn ghost danger" data-a="askDelW">Delete</button></div><div class="lb-confirm" id="lb-delw" hidden><p>Delete this workout from your history? This can’t be undone.</p><button class="lb-btn danger" data-a="delW" data-id="' + id + '">Delete workout</button></div>';
+          '<div class="lb-row"><button class="lb-btn primary" data-a="again" data-id="' + id + '">Perform again</button><button class="lb-btn ghost" data-a="editWorkout" data-id="' + id + '">Edit</button><button class="lb-btn ghost" data-a="saveAsTpl" data-id="' + id + '">Save as template</button><button class="lb-btn ghost" data-a="shareWorkout" data-id="' + id + '">Share</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + id + '">Copy summary</button><button class="lb-btn ghost danger" data-a="askDelW">Delete</button></div><div class="lb-confirm" id="lb-delw" hidden><p>Delete this workout from your history? This can’t be undone.</p><button class="lb-btn danger" data-a="delW" data-id="' + id + '">Delete workout</button></div>';
       }
     });
   });
@@ -2626,6 +2856,41 @@ Stair Climber|Cardio|Cardio|`;
     }
   }
   on('copySummary', t => copyText(summaryText(S.data.workouts[t.dataset.id])));
+
+  // Share: WhatsApp-ready text + PNG card via the WorkoutShare module (opts.share or window.WorkoutShare).
+  // Without the module, Share falls back to copying the plain summary.
+  function shareModule() { return S.opts.share || (typeof window !== 'undefined' && window.WorkoutShare) || null; }
+  function shareWorkout(w) {
+    const WS = shareModule();
+    if (!w) return;
+    if (!WS) return copyText(summaryText(w));
+    let sum, cv;
+    try { sum = WS.summarize(w, getEx); cv = WS.draw(sum, { footer: S.opts.shareFooter || '' }); }
+    catch (e) { return copyText(summaryText(w)); }
+    const txt = WS.text(sum, { footer: S.opts.shareFooter || '' });
+    const canFiles = typeof navigator !== 'undefined' && !!navigator.share;
+    openSheet({
+      title: 'Share workout',
+      body: () => '<div class="lb-share"><img alt="' + esc(sum.name) + ' workout card"></div>' +
+        '<div class="lb-row"><button class="lb-btn primary" data-a="shareSend">' + (canFiles ? 'Share…' : 'Save image') + '</button><button class="lb-btn ghost" data-a="shareCopy">Copy text</button>' + (canFiles ? '<button class="lb-btn ghost" data-a="shareSave">Save image</button>' : '') + '</div>' +
+        '<details class="lb-share-text"><summary class="lb-muted small">Preview the text</summary><pre>' + esc(txt) + '</pre></details>',
+      mount: el => { const img = el.querySelector('img'); try { img.src = cv.toDataURL('image/png'); } catch (e) { img.remove(); } }
+    });
+    shareCtx = { sum, cv, txt, WS };
+  }
+  let shareCtx = null;
+  on('shareWorkout', t => shareWorkout(S.data.workouts[t.dataset.id]));
+  on('shareSend', async () => {
+    if (!shareCtx) return;
+    const r = await shareCtx.WS.share(shareCtx.sum, { canvas: shareCtx.cv, footer: S.opts.shareFooter || '' });
+    if (r === 'shared') toast('Shared'); else if (r === 'shared-text') toast('Shared the text (this browser can\u2019t share images)'); else if (r === 'copied') toast('Text copied, image downloaded'); else if (r === 'saved') toast('Image downloaded'); else if (r === 'failed') copyText(shareCtx.txt);
+  });
+  on('shareCopy', () => { if (shareCtx) copyText(shareCtx.txt); });
+  on('shareSave', () => {
+    if (!shareCtx) return;
+    const name = (shareCtx.sum.name || 'workout').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-' + isoDate(shareCtx.sum.start) + '.png';
+    try { shareCtx.WS.download(shareCtx.cv.toDataURL('image/png'), name); toast('Image downloaded'); } catch (e) { toast('Could not save the image'); }
+  });
 
   // Exercises tab
   function filteredExercises() {
@@ -2690,6 +2955,12 @@ Stair Climber|Cardio|Cardio|`;
   let exTab = 'about';
   // Form cues (optional FormCues instance passed as opts.formCues).
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
+  // Demo button: ExerciseDemos (opts.demos) when given, else the form cues link for exercises in the guide.
+  function demoBtn(id, entry) {
+    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues;
+    const l = dm ? dm.link(id, getEx(id).name) : (fc && entry ? { href: fc.demoUrl(entry), label: 'Demo ↗' } : null);
+    return l ? '<a class="lb-btn small ghost" href="' + esc(l.href) + '" target="_blank" rel="noopener noreferrer">' + esc(l.label) + '</a>' : '';
+  }
   on('exOpen', t => {
     const id = t.dataset.id; exTab = 'about';
     openSheet({
@@ -2708,7 +2979,8 @@ Stair Climber|Cardio|Cardio|`;
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
         (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '') +
-        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '');
+        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '') +
+        (S.opts.demos ? S.opts.demos.sheetHtml(id, ex.name) : '');
     }
     if (!ss.length) return '<div class="lb-empty">No sets logged for this exercise yet.</div>';
     if (exTab === 'history') {
@@ -3188,7 +3460,7 @@ Stair Climber|Cardio|Cardio|`;
       (e.ss ? '<span class="lb-gym-ss ss' + (ssIds.indexOf(e.ss) % 4) + '">Superset ' + String.fromCharCode(65 + ssIds.indexOf(e.ss)) + ' · ' + (partners.findIndex(o => o.k === ei) + 1) + '/' + partners.length + '</span>' : '') + '</div>' +
       '<div class="lb-gym-headrow"><button class="lb-gym-name" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + ei + '" aria-label="Exercise options">•••</button></div>' +
       (e.ss ? '<p class="lb-muted small">Alternate with ' + esc(partners.filter(o => o.k !== ei).map(o => getEx(o.x.exId).name).join(', ')) + ', rest after the round.</p>' : '') +
-      '<div class="lb-gym-tools">' + (fc && entry ? '<a class="lb-btn small ghost" href="' + esc(fc.demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Demo ↗</a>' : '') +
+      '<div class="lb-gym-tools">' + demoBtn(e.exId, entry) +
       '<button class="lb-btn small ghost" data-a="exOpen" data-id="' + e.exId + '">How to</button><button class="lb-btn small ghost" data-a="restEdit" data-ei="' + ei + '">Rest ' + restLabel(restOf(e)) + '</button>' +
       (isWeighted(ex) ? '<button class="lb-btn small ghost" data-a="exPlates" data-ei="' + ei + '">Plates</button>' : '') + '</div>' +
       (fc && entry ? fc.inlineHtml(entry, e.exId) : '') +
@@ -3457,7 +3729,7 @@ Stair Climber|Cardio|Cardio|`;
         (prs.length ? '<h4>New records</h4><ul class="lb-prlist">' + prs.map(p => '<li><b>' + esc(p.ex) + '</b> ' + esc(fmtSet(p.s, p.e)) + ' <span class="lb-pr">' + esc(p.s.pr.join(', ')) + '</span></li>').join('') + '</ul>' : '') +
         (drops.length ? '<p class="lb-warnbox">' + esc(drops.map(x => x.name).join(', ')) + ' dropped 2 sessions in a row. Check sleep, pre-workout food and volume before changing calories.</p>' : '') +
         (tread ? '' : '<p class="lb-note">Don’t forget your 30 min treadmill (about 4.0 km/h, incline 3).</p>') +
-        '<div class="lb-row"><button class="lb-btn ghost" data-a="copySummary" data-id="' + w.id + '">Copy summary</button><button class="lb-btn ghost" data-a="histOpen" data-id="' + w.id + '">View details</button></div>'
+        '<div class="lb-row"><button class="lb-btn primary" data-a="shareWorkout" data-id="' + w.id + '">Share</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + w.id + '">Copy summary</button><button class="lb-btn ghost" data-a="histOpen" data-id="' + w.id + '">View details</button></div>'
     });
   }
 
@@ -3740,6 +4012,7 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-rest-next b{color:var(--lb-ink)}
 @media (max-width:360px){.lb-gym-field{grid-template-columns:60px minmax(0,1fr) 60px}.lb-gym-num{font-size:2.5rem}.lb-gym-name{font-size:1.8rem}.lb-live.gym .lb-rest-row{gap:6px}.lb-live.gym .lb-rest-time{font-size:2.6rem;min-width:5rem}.lb-live.gym .lb-rest-row .lb-btn{min-width:52px;padding:6px 8px}}
 .lb-done-hero{text-align:center;padding:10px 0 14px} .lb-done-hero b{display:block;font-family:var(--lb-display);font-size:1.9rem} .lb-done-hero span{color:var(--lb-muted)}
+.lb-share{background:var(--lb-sunk);border-radius:var(--lb-r);padding:8px;margin-bottom:10px} .lb-share img{display:block;width:100%;height:auto;border-radius:calc(var(--lb-r)*.7);box-shadow:0 6px 24px rgba(0,0,0,.18)} .lb-share-text{margin-top:10px} .lb-share-text pre{white-space:pre-wrap;font:inherit;font-size:.9rem;background:var(--lb-sunk);padding:10px;border-radius:var(--lb-r);margin:6px 0 0}
 .lb-prlist{list-style:none;padding:0;margin:0} .lb-prlist li{padding:6px 0;border-bottom:1px solid var(--lb-line)}
 .lb-toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--lb-ink);color:var(--lb-surface);padding:10px 16px;border-radius:999px;font-weight:600;font-size:.9rem;opacity:0;transition:opacity .2s,transform .2s;z-index:40;max-width:calc(100% - 32px);text-align:center;pointer-events:none}
 .lb-toast.show{opacity:1;transform:translate(-50%,0)}
@@ -3753,6 +4026,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     opts = opts || {};
     S.opts = opts; S.storage = opts.storage || localStorageAdapter('lb:');
     if (!document.getElementById('lb-style')) { const st = document.createElement('style'); st.id = 'lb-style'; st.textContent = CSS; document.head.appendChild(st); }
+    if (opts.demos && !document.getElementById('ed-style')) { const st = document.createElement('style'); st.id = 'ed-style'; st.textContent = opts.demos.css; document.head.appendChild(st); }
     if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
     root = el; root.classList.add('lb');
     overlay = document.querySelector('.lb-overlay') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'lb-overlay' }));
@@ -7008,6 +7282,20 @@ window.FORM_GUIDE={
   const loose = s => slug(String(s || '').toLowerCase()
     .replace(/dumbbells?/g, 'db').replace(/barbell/g, 'bb').replace(/\bbiceps?\b/g, 'bicep')
     .replace(/\((machine|cable|plate[- ]loaded|plate)\)/g, '').replace(/\bbench\b(?= press)/g, ''));
+  // Equipment named in a logger name or id: "Seated Row (Machine)" / "seated-row-machine" -> "machine".
+  const EQUIP = { 'smith-machine': 'smith', 'plate-loaded': 'plate', 'ez-bar': 'ez', machine: 'machine', cable: 'cable', dumbbell: 'db', barbell: 'bb' };
+  const equipOf = s => {
+    const m = String(s || '').match(/\(([^)]*)\)\s*$/), k = m ? slug(m[1]) : slug(s);
+    const hit = Object.keys(EQUIP).find(e => m ? k === e : k.endsWith('-' + e));
+    return hit ? EQUIP[hit] : null;
+  };
+  // A loose match only counts when the entry was written for that equipment, so a machine row never gets cable row cues.
+  const equipFits = (input, e) => {
+    const want = equipOf(input);
+    if (!want) return true;
+    const text = loose([e.name].concat(e.loggedAs || [], e.equipment || '').join(' ').replace(/\(([^)]*)\)/g, ' $1 '));
+    return new RegExp('(^|-)' + want + '(-|$)').test(text) || (want === 'plate' && /plate/.test(text));
+  };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const list = a => '<ul>' + a.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
 
@@ -7017,7 +7305,9 @@ window.FORM_GUIDE={
     return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(entry.name.replace(/\(.*?\)/g, '').trim() + ' proper form');
   }
 
-  function create(guide) {
+  // opts.demoLinks false hides "Watch a demo" (the host shows ExerciseDemos links instead).
+  function create(guide, opts) {
+    const showDemo = !(opts && opts.demoLinks === false);
     const exercises = (guide && guide.exercises) || [];
     const byId = {}, byKey = {};
     exercises.forEach(e => {
@@ -7035,7 +7325,9 @@ window.FORM_GUIDE={
     function find(idOrName) {
       if (!idOrName) return null;
       const s = slug(idOrName);
-      return byId[s] || byKey[s] || byKey['~' + loose(idOrName)] || null;
+      if (byId[s] || byKey[s]) return byId[s] || byKey[s];
+      const e = byKey['~' + loose(idOrName)];
+      return e && equipFits(idOrName, e) ? e : null;
     }
 
     function muscles(entry) {
@@ -7044,7 +7336,7 @@ window.FORM_GUIDE={
         (entry.primary || []).map(m => '<span class="fc-chip p">' + esc(m) + '</span>').join('') +
         (entry.secondary || []).map(m => '<span class="fc-chip">' + esc(m) + '</span>').join('') + '</p>';
     }
-    const demo = entry => '<a class="fc-demo" href="' + esc(demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Watch a demo ↗</a>';
+    const demo = entry => !showDemo ? '' : '<a class="fc-demo" href="' + esc(demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Watch a demo ↗</a>';
 
     // Collapsed panel for the live workout card. `key` keeps it open across re-renders.
     function inlineHtml(entry, key) {
@@ -7108,6 +7400,1632 @@ window.FORM_GUIDE={
   const api = { create, demoUrl, css, aliases: ALIASES, slug };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.FormCues = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
+window.EXERCISE_DEMOS={
+  "schemaVersion": 1,
+  "updated": "2026-10-25",
+  "note": "Keyed by workout-logger exercise id. An item shows in the app only when status is verified, checkedBy and checkedAt are set, and the entry equipment matches the logger library. Never add a URL nobody has opened.",
+  "demos": {
+    "hip-adductor-machine": {
+      "name": "Hip Adductor (Machine)",
+      "equipment": "Machine",
+      "muscle": "Adductors",
+      "pattern": "Hip ab/adduction",
+      "priority": 1,
+      "aliases": [
+        "Hip Adductor"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=ScqpbvOZWe8",
+          "angle": null,
+          "title": "Hip Adduction Machine: How To",
+          "source": "Hammer Fitness (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "iso-lateral-low-row-plate-loaded": {
+      "name": "Iso-Lateral Low Row (Plate-loaded)",
+      "equipment": "Plate-loaded",
+      "muscle": "Back",
+      "pattern": "Horizontal pull",
+      "priority": 1,
+      "aliases": [
+        "Iso-Lateral Low Row (plate)"
+      ],
+      "note": "Plate-loaded machines differ by brand (Hammer Strength style). Match the machine type, not just the name.",
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=k2S4G14cmts",
+          "angle": null,
+          "title": "Iso-Lateral Low Row - Plate Loaded - Hammer Strength",
+          "source": "Hammer Strength (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. From the machine maker; check it matches the machine at your gym."
+        }
+      ]
+    },
+    "lat-pulldown-single-arm-cable": {
+      "name": "Lat Pulldown - Single Arm (Cable)",
+      "equipment": "Cable",
+      "muscle": "Back",
+      "pattern": "Vertical pull",
+      "priority": 1,
+      "aliases": [
+        "Lat Pulldown, Single Arm"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=GJwgug4jytc",
+          "angle": null,
+          "title": "Single Arm Lat Pulldown: Fix Imbalances & Feel Your Lats",
+          "source": "Mike | J2FIT Strength & Conditioning (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "lat-pulldown-wide-grip-cable": {
+      "name": "Lat Pulldown - Wide Grip (Cable)",
+      "equipment": "Cable",
+      "muscle": "Back",
+      "pattern": "Vertical pull",
+      "priority": 1,
+      "aliases": [
+        "Lat Pulldown, Wide"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=j6KuKd_N8uU",
+          "angle": null,
+          "title": "How to Do Wide Grip Lat Pulldowns Correctly",
+          "source": "Cuirim Sports Recovery (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "pullover-machine": {
+      "name": "Pullover (Machine)",
+      "equipment": "Machine",
+      "muscle": "Back",
+      "pattern": "Shoulder extension (lats)",
+      "priority": 1,
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=pl8D87hN7vs",
+          "angle": null,
+          "title": "Lat Pullover Machine - Set Up & Execution",
+          "source": "Charlie Cuthbert (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "seated-row-cable": {
+      "name": "Seated Row (Cable)",
+      "equipment": "Cable",
+      "muscle": "Back",
+      "pattern": "Horizontal pull",
+      "priority": 1,
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=oFtfkSElE0s",
+          "angle": null,
+          "title": "Seated Cable Row: How to",
+          "source": "Hammer Fitness (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "shrug-machine": {
+      "name": "Shrug (Machine)",
+      "equipment": "Machine",
+      "muscle": "Back",
+      "pattern": "Shrug",
+      "priority": 1,
+      "aliases": [
+        "Traps Machine"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=HdoeBEuuS1c",
+          "angle": null,
+          "title": "Machine Shrugs | Proper Form Tutorial for Upper Traps",
+          "source": "FIT.nl (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "t-bar-row": {
+      "name": "T-Bar Row",
+      "equipment": "Plate-loaded",
+      "muscle": "Back",
+      "pattern": "Horizontal pull",
+      "priority": 1,
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=rvbjGSQ2tVE",
+          "angle": null,
+          "title": "How to perform T Bar Row - Back Exercise Tutorial",
+          "source": "Buff Dudes (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Check whether it shows a landmine or a plate-loaded machine and that it matches your gym."
+        }
+      ]
+    },
+    "bicep-curl-dumbbell": {
+      "name": "Bicep Curl (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 1,
+      "aliases": [
+        "DB Curl"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=ykJmrZ5v0Oo",
+          "angle": null,
+          "title": "How to Do a Dumbbell Biceps Curl | Arm Workout",
+          "source": "Howcast (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "seated-bicep-curl-machine": {
+      "name": "Seated Bicep Curl (Machine)",
+      "equipment": "Machine",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 1,
+      "aliases": [
+        "Seated Bicep Curl"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=g7hiWfUH6i8",
+          "angle": null,
+          "title": "How To Do A MACHINE SEATED PREACHER CURL | Exercise Demonstration Video and Guide",
+          "source": "Live Lean TV Daily Exercises (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "standing-bicep-curl-cable": {
+      "name": "Standing Bicep Curl (Cable)",
+      "equipment": "Cable",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 1,
+      "aliases": [
+        "Cable Standing Biceps"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=_hRnRorKRWs",
+          "angle": null,
+          "title": "How To Do A STANDING BICEP CABLE CURL WITH STRAIGHT BAR | Exercise Demonstration Video and Guide",
+          "source": "Live Lean TV Daily Exercises (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "calf-press-leg-press": {
+      "name": "Calf Press (Leg Press)",
+      "equipment": "Machine",
+      "muscle": "Calves",
+      "pattern": "Calf raise",
+      "priority": 1,
+      "aliases": [
+        "Calf Press on Seated Leg Press"
+      ],
+      "note": "Seated leg press calf press. Don't use a 45° sled or standing calf clip.",
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=OMUvfMZOcSA",
+          "angle": null,
+          "title": "Exercise Tutorial: Calf Raise On Leg Press Machine",
+          "source": "Travis Tarrant (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Your plan uses a seated leg press; check the clip is not a 45° sled."
+        }
+      ]
+    },
+    "standing-calf-raise-machine": {
+      "name": "Standing Calf Raise (Machine)",
+      "equipment": "Machine",
+      "muscle": "Calves",
+      "pattern": "Calf raise",
+      "priority": 1,
+      "aliases": [
+        "Standing Calf Raise"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=ucy86plaufg",
+          "angle": null,
+          "title": "How to: Machine Standing Calf Raise",
+          "source": "MenoMojo (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "treadmill-incline-walk": {
+      "name": "Treadmill (Incline Walk)",
+      "equipment": "Cardio",
+      "muscle": "Cardio",
+      "pattern": "Cardio",
+      "priority": 1,
+      "aliases": [
+        "Treadmill (30 min)"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=9ccVxEvWtpA",
+          "angle": null,
+          "title": "How to properly walk on incline on a treadmill",
+          "source": "VIVEHealthandFitness (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "bench-press-barbell": {
+      "name": "Bench Press (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Chest",
+      "pattern": "Horizontal push",
+      "priority": 1,
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=rT7DgCr-3pg",
+          "angle": null,
+          "title": "How To: Barbell Bench Press",
+          "source": "ScottHermanFitness (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "cable-crossover": {
+      "name": "Cable Crossover",
+      "equipment": "Cable",
+      "muscle": "Chest",
+      "pattern": "Chest fly",
+      "priority": 1,
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=50BDseX8lTY",
+          "angle": null,
+          "title": "Cable Crossover - Technique, Benefits, Rep Ranges, and Common Mistakes",
+          "source": "Mike | J2FIT Strength & Conditioning (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "gundam-chest-press-machine": {
+      "name": "Gundam Chest Press (Machine)",
+      "equipment": "Machine",
+      "muscle": "Chest",
+      "pattern": "Horizontal push",
+      "priority": 1,
+      "aliases": [
+        "Gundam (chest machine)"
+      ],
+      "note": "Brand/nickname. Best covered by a clip of the machine at your gym; generic chest-press videos may not match.",
+      "items": []
+    },
+    "incline-bench-press-dumbbell": {
+      "name": "Incline Bench Press (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Chest",
+      "pattern": "Incline push",
+      "priority": 1,
+      "aliases": [
+        "Incline DB Press"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=5iACxPVXKGg",
+          "angle": null,
+          "title": "Incline Dumbbell Press Correct Form & Technique | Build Massive Upper Chest | Gym",
+          "source": "Fit Abhay (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "seated-abs-machine": {
+      "name": "Seated Abs (Machine)",
+      "equipment": "Machine",
+      "muscle": "Core",
+      "pattern": "Core",
+      "priority": 1,
+      "aliases": [
+        "Seated Abs"
+      ],
+      "note": "Machine crunch. Don't use a cable crunch clip.",
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=0kLWho-pEdQ",
+          "angle": null,
+          "title": "Machine Ab Crunch: How To",
+          "source": "Hammer Fitness (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "hip-abductor-machine": {
+      "name": "Hip Abductor (Machine)",
+      "equipment": "Machine",
+      "muscle": "Glutes",
+      "pattern": "Hip ab/adduction",
+      "priority": 1,
+      "aliases": [
+        "Hip Abductor"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=5O_Y9l__iao",
+          "angle": null,
+          "title": "Seated Hip Abduction Machine: How To",
+          "source": "Hammer Fitness (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "lying-leg-curl-machine": {
+      "name": "Lying Leg Curl (Machine)",
+      "equipment": "Machine",
+      "muscle": "Hamstrings",
+      "pattern": "Knee flexion",
+      "priority": 1,
+      "aliases": [
+        "Lying Leg Curl"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=NlZeAGZ_YJw",
+          "angle": null,
+          "title": "How to do a Lying Leg Curl",
+          "source": "Blackstone Labs (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "hack-squat-machine": {
+      "name": "Hack Squat (Machine)",
+      "equipment": "Machine",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 1,
+      "aliases": [
+        "Hack Squat"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=-lAnEGH2blE",
+          "angle": null,
+          "title": "How to Do the Hack Squat | Build Stronger Legs with Proper Form",
+          "source": "Physio Plus Fitness (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Check it is the machine hack squat, not a barbell hack squat."
+        }
+      ]
+    },
+    "leg-extension-machine": {
+      "name": "Leg Extension (Machine)",
+      "equipment": "Machine",
+      "muscle": "Quads",
+      "pattern": "Knee extension",
+      "priority": 1,
+      "aliases": [
+        "Leg Extension"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=MXvSzXEBOTI",
+          "angle": null,
+          "title": "Leg Extension - Proper Form & Technique [4K]",
+          "source": "Steev (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "squat-smith-machine": {
+      "name": "Squat (Smith Machine)",
+      "equipment": "Smith machine",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 1,
+      "aliases": [
+        "Smith Squat"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=iAcRGCsG_PY",
+          "angle": null,
+          "title": "Exercise Tutorial: Smith Machine Squat",
+          "source": "Travis Tarrant (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "front-raise-dumbbell": {
+      "name": "Front Raise (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Shoulders",
+      "pattern": "Shoulder isolation",
+      "priority": 1,
+      "aliases": [
+        "Front Raise (DB)"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=wp_TDRF2Bug",
+          "angle": null,
+          "title": "Dumbbell Front Raise | Front Delt (Shoulder) Exercise | Proper Form Guide",
+          "source": "Lean Physique Lab (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "lateral-raise-cable": {
+      "name": "Lateral Raise (Cable)",
+      "equipment": "Cable",
+      "muscle": "Shoulders",
+      "pattern": "Shoulder isolation",
+      "priority": 1,
+      "note": "Shares one cues entry with the dumbbell raise. Needs its own cable demo (single-arm, low pulley).",
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=TamcQzxCe7o",
+          "angle": null,
+          "title": "How to Do Single Arm Cable Lateral Raises",
+          "source": "Mike P (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "lateral-raise-dumbbell": {
+      "name": "Lateral Raise (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Shoulders",
+      "pattern": "Shoulder isolation",
+      "priority": 1,
+      "note": "Shares one cues entry with the cable raise. Needs its own dumbbell demo. \"Side Delts\" is not mapped: it could mean the cable or the dumbbell raise.",
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=OK1k6NdNo1I",
+          "angle": null,
+          "title": "Dumbbell Lateral Raise - Proper Form",
+          "source": "Germain Craddock's EVA (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "reverse-fly-machine": {
+      "name": "Reverse Fly (Machine)",
+      "equipment": "Machine",
+      "muscle": "Shoulders",
+      "pattern": "Rear-delt isolation",
+      "priority": 1,
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=BWtVn4DpxUI",
+          "angle": null,
+          "title": "How To Do Rear Delt Flys on the Pec Deck (Perfect Form Guide)",
+          "source": "Marcus Savard (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "seated-overhead-press-dumbbell": {
+      "name": "Seated Overhead Press (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Shoulders",
+      "pattern": "Vertical push",
+      "priority": 1,
+      "aliases": [
+        "Seated DB Overhead Press"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=WKEl69bIGus",
+          "angle": null,
+          "title": "How to Do the Seated Dumbbell Shoulder Press | Perfect Form in 30 Seconds",
+          "source": "All Strength Training (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "standing-lateral-raise-machine": {
+      "name": "Standing Lateral Raise (Machine)",
+      "equipment": "Machine",
+      "muscle": "Shoulders",
+      "pattern": "Shoulder isolation",
+      "priority": 1,
+      "aliases": [
+        "Standing Side Delts (machine)"
+      ],
+      "note": "Standing side-delt machine, not the seated lateral raise machine.",
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=NG4vKphYYuU",
+          "angle": null,
+          "title": "Standing Lateral Raise Machine in 60 seconds",
+          "source": "Ascendancy Fitness (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Check it is a standing machine like yours, not a seated one."
+        }
+      ]
+    },
+    "triceps-extension-cable": {
+      "name": "Triceps Extension (Cable)",
+      "equipment": "Cable",
+      "muscle": "Triceps",
+      "pattern": "Elbow extension",
+      "priority": 1,
+      "note": "Guide assumes overhead cable extension (not yet confirmed). Confirm before matching a video.",
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=8WC7rIOkhi0",
+          "angle": null,
+          "title": "How to: Cable Overhead Tricep Extension",
+          "source": "Core Blend Training (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Assumes your cable extension is overhead (not yet confirmed)."
+        }
+      ]
+    },
+    "triceps-pushdown-straight-bar": {
+      "name": "Triceps Pushdown (Straight Bar)",
+      "equipment": "Cable",
+      "muscle": "Triceps",
+      "pattern": "Elbow extension",
+      "priority": 1,
+      "aliases": [
+        "Triceps Pushdown"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=aUMD6SwvELU",
+          "angle": null,
+          "title": "How To: Triceps Straight Bar Pushdown",
+          "source": "Ignore Limits (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "triceps-rope-pushdown-cable": {
+      "name": "Triceps Rope Pushdown (Cable)",
+      "equipment": "Cable",
+      "muscle": "Triceps",
+      "pattern": "Elbow extension",
+      "priority": 1,
+      "aliases": [
+        "Triceps Rope"
+      ],
+      "items": [
+        {
+          "kind": "link",
+          "url": "https://www.youtube.com/watch?v=K--j4Qh9d2s",
+          "angle": null,
+          "title": "Cable Rope Triceps Pushdown - Proper Form",
+          "source": "Germain Craddock's EVA (YouTube)",
+          "status": "review",
+          "checkedBy": null,
+          "checkedAt": null,
+          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
+        }
+      ]
+    },
+    "swap-cable-adduction": {
+      "name": "Cable Adduction",
+      "equipment": "Cable",
+      "muscle": "Adductors",
+      "pattern": "Hip ab/adduction",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "swap-copenhagen-plank": {
+      "name": "Copenhagen Plank",
+      "equipment": "Duration",
+      "muscle": "Adductors",
+      "pattern": "Core",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "assisted-pull-up-machine": {
+      "name": "Assisted Pull Up (Machine)",
+      "equipment": "Assisted",
+      "muscle": "Back",
+      "pattern": "Vertical pull",
+      "priority": 2,
+      "items": []
+    },
+    "chest-supported-row-machine": {
+      "name": "Chest-Supported Row (Machine)",
+      "equipment": "Machine",
+      "muscle": "Back",
+      "pattern": "Horizontal pull",
+      "priority": 2,
+      "items": []
+    },
+    "iso-lateral-high-row-plate-loaded": {
+      "name": "Iso-Lateral High Row (Plate-loaded)",
+      "equipment": "Plate-loaded",
+      "muscle": "Back",
+      "pattern": "Horizontal pull",
+      "priority": 2,
+      "items": []
+    },
+    "lat-pulldown-close-grip-cable": {
+      "name": "Lat Pulldown - Close Grip (Cable)",
+      "equipment": "Cable",
+      "muscle": "Back",
+      "pattern": "Vertical pull",
+      "priority": 2,
+      "items": []
+    },
+    "lat-pulldown-machine": {
+      "name": "Lat Pulldown (Machine)",
+      "equipment": "Machine",
+      "muscle": "Back",
+      "pattern": "Vertical pull",
+      "priority": 2,
+      "items": []
+    },
+    "seated-row-machine": {
+      "name": "Seated Row (Machine)",
+      "equipment": "Machine",
+      "muscle": "Back",
+      "pattern": "Horizontal pull",
+      "priority": 2,
+      "items": []
+    },
+    "shrug-barbell": {
+      "name": "Shrug (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Back",
+      "pattern": "Shrug",
+      "priority": 2,
+      "items": []
+    },
+    "shrug-dumbbell": {
+      "name": "Shrug (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Back",
+      "pattern": "Shrug",
+      "priority": 2,
+      "items": []
+    },
+    "straight-arm-pulldown-cable": {
+      "name": "Straight-Arm Pulldown (Cable)",
+      "equipment": "Cable",
+      "muscle": "Back",
+      "pattern": "Shoulder extension (lats)",
+      "priority": 2,
+      "items": []
+    },
+    "bayesian-curl-cable": {
+      "name": "Bayesian Curl (Cable)",
+      "equipment": "Cable",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 2,
+      "items": []
+    },
+    "bicep-curl-barbell": {
+      "name": "Bicep Curl (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 2,
+      "items": []
+    },
+    "hammer-curl-dumbbell": {
+      "name": "Hammer Curl (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 2,
+      "items": []
+    },
+    "preacher-curl-ez-bar": {
+      "name": "Preacher Curl (EZ Bar)",
+      "equipment": "Barbell",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 2,
+      "items": []
+    },
+    "preacher-curl-machine": {
+      "name": "Preacher Curl (Machine)",
+      "equipment": "Machine",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 2,
+      "items": []
+    },
+    "seated-calf-raise-machine": {
+      "name": "Seated Calf Raise (Machine)",
+      "equipment": "Machine",
+      "muscle": "Calves",
+      "pattern": "Calf raise",
+      "priority": 2,
+      "items": []
+    },
+    "swap-smith-standing-calf-raise": {
+      "name": "Smith Standing Calf Raise",
+      "equipment": "Smith machine",
+      "muscle": "Calves",
+      "pattern": "Calf raise",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "bench-press-dumbbell": {
+      "name": "Bench Press (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Chest",
+      "pattern": "Horizontal push",
+      "priority": 2,
+      "items": []
+    },
+    "bench-press-smith-machine": {
+      "name": "Bench Press (Smith Machine)",
+      "equipment": "Smith machine",
+      "muscle": "Chest",
+      "pattern": "Horizontal push",
+      "priority": 2,
+      "items": []
+    },
+    "chest-fly-dumbbell": {
+      "name": "Chest Fly (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Chest",
+      "pattern": "Chest fly",
+      "priority": 2,
+      "items": []
+    },
+    "chest-press-machine": {
+      "name": "Chest Press (Machine)",
+      "equipment": "Machine",
+      "muscle": "Chest",
+      "pattern": "Horizontal push",
+      "priority": 2,
+      "items": []
+    },
+    "incline-bench-press-barbell": {
+      "name": "Incline Bench Press (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Chest",
+      "pattern": "Incline push",
+      "priority": 2,
+      "items": []
+    },
+    "incline-bench-press-smith-machine": {
+      "name": "Incline Bench Press (Smith Machine)",
+      "equipment": "Smith machine",
+      "muscle": "Chest",
+      "pattern": "Incline push",
+      "priority": 2,
+      "items": []
+    },
+    "incline-chest-press-machine": {
+      "name": "Incline Chest Press (Machine)",
+      "equipment": "Machine",
+      "muscle": "Chest",
+      "pattern": "Incline push",
+      "priority": 2,
+      "items": []
+    },
+    "low-to-high-cable-fly": {
+      "name": "Low-to-High Cable Fly",
+      "equipment": "Cable",
+      "muscle": "Chest",
+      "pattern": "Chest fly",
+      "priority": 2,
+      "items": []
+    },
+    "pec-deck-machine": {
+      "name": "Pec Deck (Machine)",
+      "equipment": "Machine",
+      "muscle": "Chest",
+      "pattern": "Chest fly",
+      "priority": 2,
+      "items": []
+    },
+    "cable-crunch": {
+      "name": "Cable Crunch",
+      "equipment": "Cable",
+      "muscle": "Core",
+      "pattern": "Core",
+      "priority": 2,
+      "items": []
+    },
+    "decline-crunch": {
+      "name": "Decline Crunch",
+      "equipment": "Reps only",
+      "muscle": "Core",
+      "pattern": "Core",
+      "priority": 2,
+      "items": []
+    },
+    "hanging-leg-raise": {
+      "name": "Hanging Leg Raise",
+      "equipment": "Reps only",
+      "muscle": "Core",
+      "pattern": "Core",
+      "priority": 2,
+      "items": []
+    },
+    "swap-cable-abduction": {
+      "name": "Cable Abduction",
+      "equipment": "Cable",
+      "muscle": "Glutes",
+      "pattern": "Hip ab/adduction",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "glute-kickback-machine": {
+      "name": "Glute Kickback (Machine)",
+      "equipment": "Machine",
+      "muscle": "Glutes",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 2,
+      "items": []
+    },
+    "seated-leg-curl-machine": {
+      "name": "Seated Leg Curl (Machine)",
+      "equipment": "Machine",
+      "muscle": "Hamstrings",
+      "pattern": "Knee flexion",
+      "priority": 2,
+      "items": []
+    },
+    "swap-single-leg-lying-curl": {
+      "name": "Single-Leg Lying Curl",
+      "equipment": "Machine",
+      "muscle": "Hamstrings",
+      "pattern": "Knee flexion",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "standing-leg-curl-machine": {
+      "name": "Standing Leg Curl (Machine)",
+      "equipment": "Machine",
+      "muscle": "Hamstrings",
+      "pattern": "Knee flexion",
+      "priority": 2,
+      "items": []
+    },
+    "swap-chest-supported-db-row": {
+      "name": "Chest-Supported DB Row",
+      "equipment": "Dumbbell",
+      "muscle": "Mid back",
+      "pattern": "Horizontal pull",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "swap-chest-supported-t-bar-row": {
+      "name": "Chest-Supported T-Bar Row",
+      "equipment": "Plate-loaded",
+      "muscle": "Mid back",
+      "pattern": "Horizontal pull",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "swap-belt-squat": {
+      "name": "Belt Squat",
+      "equipment": "Machine",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "leg-press-machine": {
+      "name": "Leg Press (Machine)",
+      "equipment": "Machine",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 2,
+      "items": []
+    },
+    "pendulum-squat-machine": {
+      "name": "Pendulum Squat (Machine)",
+      "equipment": "Machine",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 2,
+      "items": []
+    },
+    "swap-single-leg-extension": {
+      "name": "Single-Leg Extension",
+      "equipment": "Machine",
+      "muscle": "Quads",
+      "pattern": "Knee extension",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "swap-smith-split-squat": {
+      "name": "Smith Split Squat",
+      "equipment": "Smith machine",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "arnold-press-dumbbell": {
+      "name": "Arnold Press (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Shoulders",
+      "pattern": "Vertical push",
+      "priority": 2,
+      "items": []
+    },
+    "face-pull-cable": {
+      "name": "Face Pull (Cable)",
+      "equipment": "Cable",
+      "muscle": "Shoulders",
+      "pattern": "Shoulder isolation",
+      "priority": 2,
+      "items": []
+    },
+    "front-raise-cable": {
+      "name": "Front Raise (Cable)",
+      "equipment": "Cable",
+      "muscle": "Shoulders",
+      "pattern": "Shoulder isolation",
+      "priority": 2,
+      "items": []
+    },
+    "lateral-raise-machine": {
+      "name": "Lateral Raise (Machine)",
+      "equipment": "Machine",
+      "muscle": "Shoulders",
+      "pattern": "Shoulder isolation",
+      "priority": 2,
+      "items": []
+    },
+    "reverse-fly-dumbbell": {
+      "name": "Reverse Fly (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Shoulders",
+      "pattern": "Rear-delt isolation",
+      "priority": 2,
+      "items": []
+    },
+    "shoulder-press-machine": {
+      "name": "Shoulder Press (Machine)",
+      "equipment": "Machine",
+      "muscle": "Shoulders",
+      "pattern": "Vertical push",
+      "priority": 2,
+      "items": []
+    },
+    "swap-smith-seated-press": {
+      "name": "Smith Seated Press",
+      "equipment": "Smith machine",
+      "muscle": "Shoulders (press)",
+      "pattern": "Vertical push",
+      "priority": 2,
+      "note": "Only appears as a swap suggestion; not in the logger library yet.",
+      "items": []
+    },
+    "overhead-triceps-extension-dumbbell": {
+      "name": "Overhead Triceps Extension (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Triceps",
+      "pattern": "Elbow extension",
+      "priority": 2,
+      "items": []
+    },
+    "single-arm-pushdown-cable": {
+      "name": "Single-Arm Pushdown (Cable)",
+      "equipment": "Cable",
+      "muscle": "Triceps",
+      "pattern": "Elbow extension",
+      "priority": 2,
+      "items": []
+    },
+    "skull-crusher-ez-bar": {
+      "name": "Skull Crusher (EZ Bar)",
+      "equipment": "Barbell",
+      "muscle": "Triceps",
+      "pattern": "Elbow extension",
+      "priority": 2,
+      "items": []
+    },
+    "triceps-dip-machine": {
+      "name": "Triceps Dip (Machine)",
+      "equipment": "Machine",
+      "muscle": "Triceps",
+      "pattern": "Elbow extension",
+      "priority": 2,
+      "items": []
+    },
+    "bent-over-row-barbell": {
+      "name": "Bent Over Row (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Back",
+      "pattern": "Horizontal pull",
+      "priority": 3,
+      "items": []
+    },
+    "chin-up": {
+      "name": "Chin Up",
+      "equipment": "Bodyweight",
+      "muscle": "Back",
+      "pattern": "Vertical pull",
+      "priority": 3,
+      "items": []
+    },
+    "one-arm-row-dumbbell": {
+      "name": "One-Arm Row (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Back",
+      "pattern": "Horizontal pull",
+      "priority": 3,
+      "items": []
+    },
+    "pull-up": {
+      "name": "Pull Up",
+      "equipment": "Bodyweight",
+      "muscle": "Back",
+      "pattern": "Vertical pull",
+      "priority": 3,
+      "items": []
+    },
+    "concentration-curl-dumbbell": {
+      "name": "Concentration Curl (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 3,
+      "items": []
+    },
+    "incline-curl-dumbbell": {
+      "name": "Incline Curl (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Biceps",
+      "pattern": "Elbow flexion",
+      "priority": 3,
+      "items": []
+    },
+    "elliptical": {
+      "name": "Elliptical",
+      "equipment": "Cardio",
+      "muscle": "Cardio",
+      "pattern": "Cardio",
+      "priority": 3,
+      "items": []
+    },
+    "rowing-machine": {
+      "name": "Rowing Machine",
+      "equipment": "Cardio",
+      "muscle": "Cardio",
+      "pattern": "Cardio",
+      "priority": 3,
+      "items": []
+    },
+    "stair-climber": {
+      "name": "Stair Climber",
+      "equipment": "Cardio",
+      "muscle": "Cardio",
+      "pattern": "Cardio",
+      "priority": 3,
+      "items": []
+    },
+    "stationary-bike": {
+      "name": "Stationary Bike",
+      "equipment": "Cardio",
+      "muscle": "Cardio",
+      "pattern": "Cardio",
+      "priority": 3,
+      "items": []
+    },
+    "treadmill-run": {
+      "name": "Treadmill Run",
+      "equipment": "Cardio",
+      "muscle": "Cardio",
+      "pattern": "Cardio",
+      "priority": 3,
+      "items": []
+    },
+    "chest-dip": {
+      "name": "Chest Dip",
+      "equipment": "Bodyweight",
+      "muscle": "Chest",
+      "pattern": "Horizontal push",
+      "priority": 3,
+      "items": []
+    },
+    "decline-bench-press-barbell": {
+      "name": "Decline Bench Press (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Chest",
+      "pattern": "Horizontal push",
+      "priority": 3,
+      "items": []
+    },
+    "push-up": {
+      "name": "Push Up",
+      "equipment": "Bodyweight",
+      "muscle": "Chest",
+      "pattern": "Horizontal push",
+      "priority": 3,
+      "items": []
+    },
+    "ab-wheel-rollout": {
+      "name": "Ab Wheel Rollout",
+      "equipment": "Reps only",
+      "muscle": "Core",
+      "pattern": "Core",
+      "priority": 3,
+      "items": []
+    },
+    "plank": {
+      "name": "Plank",
+      "equipment": "Duration",
+      "muscle": "Core",
+      "pattern": "Core",
+      "priority": 3,
+      "items": []
+    },
+    "russian-twist": {
+      "name": "Russian Twist",
+      "equipment": "Reps only",
+      "muscle": "Core",
+      "pattern": "Core",
+      "priority": 3,
+      "items": []
+    },
+    "reverse-curl-ez-bar": {
+      "name": "Reverse Curl (EZ Bar)",
+      "equipment": "Barbell",
+      "muscle": "Forearms",
+      "pattern": "Forearm",
+      "priority": 3,
+      "items": []
+    },
+    "wrist-curl-dumbbell": {
+      "name": "Wrist Curl (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Forearms",
+      "pattern": "Forearm",
+      "priority": 3,
+      "items": []
+    },
+    "glute-kickback-cable": {
+      "name": "Glute Kickback (Cable)",
+      "equipment": "Cable",
+      "muscle": "Glutes",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 3,
+      "items": []
+    },
+    "nordic-curl": {
+      "name": "Nordic Curl",
+      "equipment": "Reps only",
+      "muscle": "Hamstrings",
+      "pattern": "Knee flexion",
+      "priority": 3,
+      "items": []
+    },
+    "bulgarian-split-squat-dumbbell": {
+      "name": "Bulgarian Split Squat (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 3,
+      "items": []
+    },
+    "front-squat-barbell": {
+      "name": "Front Squat (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 3,
+      "items": []
+    },
+    "goblet-squat-dumbbell": {
+      "name": "Goblet Squat (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 3,
+      "items": []
+    },
+    "squat-barbell": {
+      "name": "Squat (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 3,
+      "items": []
+    },
+    "walking-lunge-dumbbell": {
+      "name": "Walking Lunge (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Quads",
+      "pattern": "Squat / knee-dominant",
+      "priority": 3,
+      "items": []
+    },
+    "overhead-press-barbell": {
+      "name": "Overhead Press (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Shoulders",
+      "pattern": "Vertical push",
+      "priority": 3,
+      "items": []
+    },
+    "upright-row-cable": {
+      "name": "Upright Row (Cable)",
+      "equipment": "Cable",
+      "muscle": "Shoulders",
+      "pattern": "Shoulder isolation",
+      "priority": 3,
+      "items": []
+    },
+    "close-grip-bench-press-barbell": {
+      "name": "Close-Grip Bench Press (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Triceps",
+      "pattern": "Horizontal push",
+      "priority": 3,
+      "items": []
+    },
+    "back-extension": {
+      "name": "Back Extension",
+      "equipment": "Bodyweight",
+      "muscle": "Back",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 4,
+      "items": []
+    },
+    "deadlift-barbell": {
+      "name": "Deadlift (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Back",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 4,
+      "items": []
+    },
+    "cable-pull-through": {
+      "name": "Cable Pull-Through",
+      "equipment": "Cable",
+      "muscle": "Glutes",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 4,
+      "items": []
+    },
+    "hip-thrust-barbell": {
+      "name": "Hip Thrust (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Glutes",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 4,
+      "items": []
+    },
+    "hip-thrust-machine": {
+      "name": "Hip Thrust (Machine)",
+      "equipment": "Machine",
+      "muscle": "Glutes",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 4,
+      "items": []
+    },
+    "reverse-hyper-machine": {
+      "name": "Reverse Hyper (Machine)",
+      "equipment": "Machine",
+      "muscle": "Glutes",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 4,
+      "items": []
+    },
+    "glute-ham-raise": {
+      "name": "Glute-Ham Raise",
+      "equipment": "Bodyweight",
+      "muscle": "Hamstrings",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 4,
+      "items": []
+    },
+    "romanian-deadlift-barbell": {
+      "name": "Romanian Deadlift (Barbell)",
+      "equipment": "Barbell",
+      "muscle": "Hamstrings",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 4,
+      "items": []
+    },
+    "romanian-deadlift-dumbbell": {
+      "name": "Romanian Deadlift (Dumbbell)",
+      "equipment": "Dumbbell",
+      "muscle": "Hamstrings",
+      "pattern": "Hip hinge / hip extension",
+      "priority": 4,
+      "items": []
+    }
+  }
+};
+</script>
+<script>
+/* ExerciseDemos: one demo registry for every exercise, keyed by workout-logger exercise id.
+   Plain JS, no imports, no network. A demo is shown only when a person checked it and its
+   equipment matches the exercise, so a cable clip never stands in for a machine or dumbbell lift.
+   Usage: const demos = ExerciseDemos.create(window.EXERCISE_DEMOS, { library: WorkoutLogger.library });
+          demos.link('seated-row-machine') -> { href, label, verified } */
+(function (root) {
+  'use strict';
+
+  const STATUSES = ['verified', 'review', 'missing', 'incorrect', 'replace'];
+  const ITEM_STATUSES = ['verified', 'review', 'incorrect', 'replace'];
+  const slug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const norm = s => String(s || '').trim().toLowerCase();
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const isHttps = u => /^https:\/\/[^\s"'<>]+$/.test(String(u || ''));
+  // Self-hosted clips are published next to the app, so a relative path is fine for videos.
+  const isLocal = u => /^[a-z0-9][a-z0-9._\/-]*\.(mp4|webm)$/i.test(String(u || ''));
+  const okUrl = it => it && (isHttps(it.url) || (it.kind === 'video' && isLocal(it.url)));
+  const checked = it => !!(it && it.status === 'verified' && it.checkedBy && it.checkedAt && okUrl(it));
+
+  function searchUrl(name) {
+    // Keep the equipment words ("Seated Row Machine") so results show the right variation.
+    const q = String(name || '').replace(/[()]/g, ' ').replace(/\s+-\s+/g, ' ').replace(/\s+/g, ' ').trim();
+    return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q + ' proper form');
+  }
+
+  function create(data, opts) {
+    opts = opts || {};
+    const demos = (data && data.demos) || {};
+    const library = opts.library || {};
+    const byKey = {};
+    Object.keys(demos).forEach(id => {
+      const e = demos[id];
+      [id, e.name].forEach(n => { if (n) byKey[slug(n)] = id; });
+    });
+    // Aliases are exact alternative names (Strong / plan names). They never override a real id or name.
+    Object.keys(demos).forEach(id => (demos[id].aliases || []).forEach(a => { if (!byKey[slug(a)]) byKey['@' + norm(a)] = id; }));
+
+    // Exact matches only: id, name, or a listed alias. No fuzzy matching.
+    function id(idOrName) {
+      if (!idOrName) return null;
+      if (demos[idOrName]) return idOrName;
+      return byKey[slug(idOrName)] || byKey['@' + norm(idOrName)] || null;
+    }
+    const entry = idOrName => { const k = id(idOrName); return k ? demos[k] : null; };
+
+    // The entry's equipment must agree with the logger library (when the library has the exercise).
+    function equipOk(k) {
+      const e = demos[k], lib = library[k];
+      return !!e && (!lib || norm(lib.cat) === norm(e.equipment));
+    }
+
+    function status(idOrName) {
+      const k = id(idOrName), e = k && demos[k];
+      if (!e) return 'missing';
+      const items = e.items || [];
+      if (items.some(it => it.status === 'incorrect')) return 'incorrect';
+      if (items.some(checked) && equipOk(k)) return 'verified';
+      if (items.some(it => it.status === 'replace')) return 'replace';
+      if (items.some(it => it.status === 'review' || it.status === 'verified')) return 'review';
+      return 'missing';
+    }
+
+    // Verified items only, and only when equipment matches. `angle` picks front/side when there is one.
+    function verified(idOrName) {
+      const k = id(idOrName);
+      if (!k || !equipOk(k) || status(k) === 'incorrect') return [];
+      return (demos[k].items || []).filter(checked);
+    }
+    function best(idOrName, angle) {
+      const v = verified(idOrName);
+      return (angle && v.find(it => it.angle === angle)) || v.find(it => it.kind === 'video') || v[0] || null;
+    }
+    // Links someone found but nobody has checked yet. Never presented as a demo.
+    function candidates(idOrName) {
+      const k = id(idOrName);
+      return k ? (demos[k].items || []).filter(it => it.status === 'review' && okUrl(it)) : [];
+    }
+
+    // What the "Demo" button should do for an exercise. `name` is used when the id is unknown (custom lifts).
+    function link(idOrName, name) {
+      const b = best(idOrName);
+      if (b) return { href: b.url, label: 'Demo ↗', verified: true, item: b };
+      const e = entry(idOrName);
+      return { href: searchUrl((e && e.name) || name || idOrName), label: 'Search demos ↗', verified: false, item: null };
+    }
+
+    function summary() {
+      const out = { total: 0 };
+      STATUSES.forEach(s => { out[s] = 0; });
+      Object.keys(demos).forEach(k => { out.total++; out[status(k)]++; });
+      return out;
+    }
+
+    // Problems a person must fix before a demo can be trusted.
+    function validate() {
+      const problems = [];
+      const urlOwners = {};
+      Object.keys(library).forEach(k => { if (!demos[k]) problems.push({ id: k, problem: 'Library exercise has no registry entry' }); });
+      Object.keys(demos).forEach(k => {
+        const e = demos[k];
+        if (!STATUSES.includes(e.status || 'missing')) problems.push({ id: k, problem: 'Unknown entry status ' + e.status });
+        if (!equipOk(k)) problems.push({ id: k, problem: 'Equipment "' + e.equipment + '" does not match the library ("' + library[k].cat + '")' });
+        (e.items || []).forEach((it, i) => {
+          const at = k + ' item ' + (i + 1);
+          if (!ITEM_STATUSES.includes(it.status)) problems.push({ id: k, problem: at + ': unknown status ' + it.status });
+          if (!okUrl(it)) problems.push({ id: k, problem: at + ': URL must be https (or a local .mp4/.webm clip)' });
+          if (it.status === 'verified' && !(it.checkedBy && it.checkedAt)) problems.push({ id: k, problem: at + ': verified without checkedBy and checkedAt' });
+          if (it.kind === 'video' && !it.licence) problems.push({ id: k, problem: at + ': video file without a licence' });
+          if (it.url && it.status !== 'incorrect') (urlOwners[it.url] = urlOwners[it.url] || []).push(k);
+        });
+      });
+      Object.keys(urlOwners).forEach(u => {
+        const owners = [...new Set(urlOwners[u])];
+        const equips = [...new Set(owners.map(k => norm(demos[k].equipment)))];
+        if (equips.length > 1) problems.push({ id: owners.join(', '), problem: 'Same URL used for different equipment: ' + u });
+      });
+      return problems;
+    }
+
+    // Small block for the exercise sheet: verified demos, then unchecked finds, then the search.
+    function sheetHtml(idOrName, name) {
+      const k = id(idOrName), v = verified(idOrName), c = candidates(idOrName), st = status(idOrName);
+      const row = (it, cls, tag) => '<li><a class="ed-link ' + cls + '" href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer">' +
+        esc(it.title || it.source || 'Video') + ' ↗</a><small>' + esc([it.angle ? it.angle + ' view' : '', it.source, tag].filter(Boolean).join(' · ')) + '</small></li>';
+      return '<section class="ed-sheet"><h4>Demo video</h4>' +
+        (v.length ? '<ul>' + v.map(it => row(it, 'ok', 'checked ' + it.checkedAt)).join('') + '</ul>'
+          : '<p class="ed-muted">' + (st === 'incorrect' ? 'The saved video was marked wrong for this exercise.' : 'No checked video for this exercise yet.') + '</p>') +
+        (c.length ? '<p class="ed-lbl">Found, not checked yet</p><ul>' + c.map(it => row(it, 'unchecked', 'check equipment and range of motion')).join('') + '</ul>' : '') +
+        '<a class="ed-link" href="' + esc(searchUrl((k && demos[k].name) || name || idOrName)) + '" target="_blank" rel="noopener noreferrer">Search YouTube ↗</a></section>';
+    }
+
+    return { id, entry, status, verified, best, candidates, link, summary, validate, sheetHtml, searchUrl, css, size: Object.keys(demos).length };
+  }
+
+  const css = [
+    '.ed-sheet{margin-top:1rem}.ed-sheet h4{margin:0 0 .3rem}',
+    '.ed-sheet ul{margin:.2rem 0 .5rem;padding-left:1.15rem}.ed-sheet li{margin:.2rem 0}',
+    '.ed-sheet small{display:block;color:var(--muted);font-size:.78rem}',
+    '.ed-link{font-size:.85rem;font-weight:600;color:var(--accent)}',
+    '.ed-link.unchecked{color:var(--ink)}',
+    '.ed-lbl{margin:.45rem 0 .1rem;font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--warn)}',
+    '.ed-muted{color:var(--muted);font-size:.85rem;margin:.2rem 0}'
+  ].join('\n');
+
+  const api = { create, searchUrl, slug, STATUSES };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.ExerciseDemos = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <script>
@@ -9384,6 +11302,167 @@ window.DietBreak = (() => {
 })();
 
 if (typeof module !== "undefined") module.exports = DietBreak;
+</script>
+<script>
+/* Calorie cycling: eat more on lifting days, less on rest days, same weekly total.
+ * Plain JS, no imports, no network. Generic: every number comes from the AppTargets object
+ * and the saved state; nothing about one person is built in.
+ *
+ * State (host stores it at prefs/main.cycling):  {on, delta, trainDays:[weekday 0-6]}
+ *   on        -> false by default: the target stays flat until the person turns it on
+ *   delta     -> kcal added on a training day (default 150, step 50, 50-400)
+ *   trainDays -> weekdays that lift (default Sun-Thu + Sat = everything but Friday)
+ *
+ * API
+ *   CalorieCycling.css
+ *   CalorieCycling.defaults(opts)                 -> a fresh state
+ *   CalorieCycling.normalize(state, opts)         -> state with every field valid
+ *   CalorieCycling.plan(targets, state, opts)     -> {on, base, weekKcal, nTrain, nRest, delta, restDelta,
+ *                                                     trainKcal, restKcal, trainCarbs:[lo,hi], restCarbs:[lo,hi],
+ *                                                     trainDays, restDays, clamped, reason}
+ *   CalorieCycling.isTraining(date, state, opts)  -> true | false  (opts.training(date) may answer first)
+ *   CalorieCycling.target(targets, date, state, opts) -> {kcal, kind:"train"|"rest"|"flat", delta, carbsLo, carbsHi}
+ *   CalorieCycling.apply(state, action, opts)     -> new state; actions from data-cc-action:
+ *                                                     on | off | more | less | day:<0-6>
+ *   CalorieCycling.html(targets, state, opts)     -> card HTML ("" when targets.kcal is unknown)
+ *
+ * The rule: the week keeps the same calories. Training days get +delta, rest days give it back
+ * (delta * nTrain / nRest). Protein and fat never move; carbs carry the whole swing (4 kcal/g).
+ * A rest day never drops more than MAX_REST_DROP below the base target: delta is clamped so the
+ * week still balances, and the card says so.
+ */
+window.CalorieCycling = (() => {
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const DEFAULT_DELTA = 150, STEP = 50, MIN_DELTA = 50, MAX_DELTA = 400, MAX_REST_DROP = 300;
+  const DEFAULT_TRAIN = [0, 1, 2, 3, 4, 6];
+
+  const css = `
+.cc .ccdays{display:flex;flex-wrap:wrap;gap:6px}
+.cc .ccdays .chip{min-width:3.2em;text-align:center;padding:5px 0}
+.cc .ccrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cc .ccnum{font-variant-numeric:tabular-nums;font-weight:600}
+.cc table td.n,.cc table th.n{text-align:right}
+`;
+
+  function weekday(date) {
+    if (typeof date === "number") return ((date % 7) + 7) % 7;
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(date || ""));
+    if (!m) return null;
+    return new Date(+m[1], +m[2] - 1, +m[3]).getDay();
+  }
+
+  function defaults(opts = {}) {
+    const td = Array.isArray(opts.trainDays) && opts.trainDays.length ? opts.trainDays : DEFAULT_TRAIN;
+    return { on: false, delta: DEFAULT_DELTA, trainDays: cleanDays(td) };
+  }
+  function cleanDays(list) {
+    return [...new Set((list || []).map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6))].sort((a, b) => a - b);
+  }
+  function normalize(state, opts = {}) {
+    const d = defaults(opts), s = Object.assign({}, state || {});
+    const out = { on: !!s.on, delta: d.delta, trainDays: d.trainDays };
+    const delta = Math.round(+s.delta);
+    if (Number.isFinite(delta)) out.delta = Math.min(MAX_DELTA, Math.max(MIN_DELTA, Math.round(delta / STEP) * STEP));
+    if (Array.isArray(s.trainDays)) out.trainDays = cleanDays(s.trainDays);
+    return out;
+  }
+
+  function plan(targets, state, opts = {}) {
+    const st = normalize(state, opts);
+    const base = targets && targets.kcal != null && Number.isFinite(+targets.kcal) && +targets.kcal > 0 ? Math.round(+targets.kcal) : null;
+    const nTrain = st.trainDays.length, nRest = 7 - nTrain;
+    const restDays = [0, 1, 2, 3, 4, 5, 6].filter(d => !st.trainDays.includes(d));
+    const out = { on: st.on, base, weekKcal: base === null ? null : base * 7, nTrain, nRest, delta: st.delta, restDelta: 0,
+      trainKcal: base, restKcal: base, trainCarbs: null, restCarbs: null, trainDays: st.trainDays, restDays, clamped: false, reason: null };
+    if (base === null) { out.reason = "no-target"; return out; }
+    if (nRest === 0 || nTrain === 0) { out.reason = nRest === 0 ? "no-rest-days" : "no-train-days"; out.delta = 0; return out; }
+    let delta = st.delta;
+    // Rest days give back delta * nTrain / nRest. Keep that under MAX_REST_DROP.
+    const maxDelta = Math.floor(MAX_REST_DROP * nRest / nTrain / STEP) * STEP;
+    if (delta > maxDelta) { delta = Math.max(MIN_DELTA, maxDelta); out.clamped = true; }
+    const restDelta = Math.round(delta * nTrain / nRest);
+    out.delta = delta; out.restDelta = restDelta;
+    out.trainKcal = base + delta; out.restKcal = base - restDelta;
+    // Fix rounding so the week really sums to base*7.
+    const diff = base * 7 - (out.trainKcal * nTrain + out.restKcal * nRest);
+    if (diff) out.restKcal += Math.round(diff / nRest);
+    const cLo = Number.isFinite(+targets.carbsLo) ? +targets.carbsLo : null, cHi = Number.isFinite(+targets.carbsHi) ? +targets.carbsHi : null;
+    if (cLo !== null && cHi !== null) {
+      out.trainCarbs = [Math.round(cLo + delta / 4), Math.round(cHi + delta / 4)];
+      out.restCarbs = [Math.max(0, Math.round(cLo - restDelta / 4)), Math.max(0, Math.round(cHi - restDelta / 4))];
+    }
+    return out;
+  }
+
+  function isTraining(date, state, opts = {}) {
+    if (typeof opts.training === "function") { try { const v = opts.training(date); if (v === true || v === false) return v; } catch (e) {} }
+    const wd = weekday(date);
+    return wd === null ? false : normalize(state, opts).trainDays.includes(wd);
+  }
+
+  function target(targets, date, state, opts = {}) {
+    const p = plan(targets, state, opts);
+    const flat = { kcal: p.base, kind: "flat", delta: 0, carbsLo: targets && targets.carbsLo != null ? +targets.carbsLo : null, carbsHi: targets && targets.carbsHi != null ? +targets.carbsHi : null };
+    if (!p.on || p.base === null || p.reason) return flat;
+    const train = isTraining(date, state, opts);
+    const carbs = train ? p.trainCarbs : p.restCarbs;
+    return { kcal: train ? p.trainKcal : p.restKcal, kind: train ? "train" : "rest", delta: train ? p.delta : -p.restDelta,
+      carbsLo: carbs ? carbs[0] : flat.carbsLo, carbsHi: carbs ? carbs[1] : flat.carbsHi };
+  }
+
+  function apply(state, action, opts = {}) {
+    const st = normalize(state, opts);
+    const a = String(action || "");
+    if (a === "on") st.on = true;
+    else if (a === "off") st.on = false;
+    else if (a === "more") st.delta = Math.min(MAX_DELTA, st.delta + STEP);
+    else if (a === "less") st.delta = Math.max(MIN_DELTA, st.delta - STEP);
+    else if (/^day:[0-6]$/.test(a)) { const d = +a.slice(4); st.trainDays = st.trainDays.includes(d) ? st.trainDays.filter(x => x !== d) : cleanDays(st.trainDays.concat(d)); }
+    return st;
+  }
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const n = v => Math.round(v).toLocaleString("en-US");
+
+  function html(targets, state, opts = {}) {
+    const p = plan(targets, state, opts);
+    if (p.base === null) return "";
+    const st = normalize(state, opts);
+    const days = DAYS.map((lab, i) => `<button type="button" class="chip${st.trainDays.includes(i) ? "" : " rest"}" aria-pressed="${st.trainDays.includes(i)}" data-cc-action="day:${i}" title="${st.trainDays.includes(i) ? "Lift day" : "Rest day"}">${lab}</button>`).join("");
+    let body;
+    if (p.reason === "no-rest-days") body = `<p class="muted">Every day is a lift day, so there is nothing to shift. Mark at least one rest day.</p>`;
+    else if (p.reason === "no-train-days") body = `<p class="muted">Mark the days you lift to move calories onto them.</p>`;
+    else {
+      const carbs = (c, base) => c ? `${c[0]}–${c[1]} g` : base ? `${base[0]}–${base[1]} g` : "—";
+      const baseC = targets.carbsLo != null && targets.carbsHi != null ? [targets.carbsLo, targets.carbsHi] : null;
+      body = `
+      <div class="tablewrap"><table><thead><tr><th></th><th class="n">Days</th><th class="n">kcal</th><th class="n">Carbs</th></tr></thead><tbody>
+        <tr><td>Lift day</td><td class="n">${p.nTrain}</td><td class="n ccnum">${n(p.trainKcal)}</td><td class="n">${carbs(p.trainCarbs, baseC)}</td></tr>
+        <tr><td>Rest day</td><td class="n">${p.nRest}</td><td class="n ccnum">${n(p.restKcal)}</td><td class="n">${carbs(p.restCarbs, baseC)}</td></tr>
+        <tr><td class="muted">Week</td><td class="n muted">7</td><td class="n muted">${n(p.weekKcal)} (same as ${n(p.base)} × 7)</td><td class="n muted">protein and fat unchanged</td></tr>
+      </tbody></table></div>
+      ${p.clamped ? `<p class="note" style="font-size:.85rem">Capped at +${p.delta} so a rest day never drops more than ${MAX_REST_DROP} kcal below ${n(p.base)}.</p>` : ""}`;
+    }
+    return `<div class="card cc" data-cc>
+      <div class="spread"><h3>Eat more on lift days</h3><span class="pill ${p.on ? "good" : "info"}">${p.on ? "On" : "Off"}</span></div>
+      <p class="muted" style="font-size:.9rem">Same calories for the week, more carbs around training, less on rest days. Weekly weight loss does not change; energy in the gym does.</p>
+      <div class="ccrow"><span class="label">Extra on a lift day</span>
+        <button type="button" class="btn small ghost" data-cc-action="less" aria-label="Less" ${st.delta <= MIN_DELTA ? "disabled" : ""}>−</button>
+        <span class="ccnum">+${st.delta} kcal</span>
+        <button type="button" class="btn small ghost" data-cc-action="more" aria-label="More" ${st.delta >= MAX_DELTA ? "disabled" : ""}>+</button>
+      </div>
+      <div><span class="label">Lift days</span><div class="ccdays" style="margin-top:6px">${days}</div></div>
+      ${body}
+      <div class="row">${p.on
+        ? `<button type="button" class="btn ghost" data-cc-action="off">Turn off (flat ${n(p.base)} every day)</button>`
+        : `<button type="button" class="btn" data-cc-action="on" ${p.reason ? "disabled" : ""}>Turn on</button>`}</div>
+    </div>`;
+  }
+
+  return { css, DAYS, STEP, MIN_DELTA, MAX_DELTA, MAX_REST_DROP, defaults, normalize, plan, isTraining, target, apply, html, weekday };
+})();
+
+if (typeof module !== "undefined") module.exports = { CalorieCycling };
 </script>
 <script>
 /*
@@ -12187,6 +14266,245 @@ if (typeof window !== "undefined") window.StrengthAnalytics = StrengthAnalytics;
 if (typeof module !== "undefined" && module.exports) module.exports = StrengthAnalytics;
 </script>
 <script>
+/* Compare any two trends on one chart (MacroFactor-style overlay) for the Aziz Cut Tracker.
+ * Plain JS, no imports, no network. Reads the app's own collections:
+ *   docs = { weights: {date:{kg}}, days: {date:{food:[{kcal,p,eaten}], steps, sleep}}, cardio: {date:{sessions:[{min}]}},
+ *            workouts: {date:{sets:{"<exercise>":[{w,r}]}}} }
+ * API:
+ *   TrendCompare.css                         -> string, inject once (uses the app's tokens)
+ *   TrendCompare.series(docs, opts)          -> [{key, label, unit, points:[{date, v}]}] every series that can be drawn
+ *   TrendCompare.correlate(a, b, opts)       -> {n, r, strength, dir, note} for two series (same-day pairs, Pearson r)
+ *   TrendCompare.chart(a, b, opts)           -> SVG string, A on the left axis, B on the right axis
+ *   TrendCompare.html(docs, opts)            -> HTML string: one card for the Progress tab (self-wires its pickers)
+ *   TrendCompare.summary(docs, opts)         -> plain-text line for the coach / a chat
+ * opts: today (ISO), trend ([{date,trend}] from TrendTDEE.series; otherwise an EWMA 0.1 is computed here),
+ *       lifts ([{name,key,unit,points:[{date,e1rm}]}] from StrengthAnalytics.analyze; otherwise Epley on workouts/{date}),
+ *       a / b (series keys), range (days, 14|28|90|0 = all). Picks persist in prefs when opts.onPick is given.
+ * The correlation is descriptive only: same-day pairs, at least 7 of them, and the note says it is not cause.
+ */
+window.TrendCompare = (() => {
+  const DAY = 864e5, ALPHA = 0.1, MIN_PAIRS = 7, RANGES = [14, 28, 90, 0];
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const ms = s => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  const add = (s, n) => iso(ms(s) + n * DAY);
+  const diff = (a, b) => Math.round((ms(b) - ms(a)) / DAY);
+  const short = s => { const d = new Date(ms(s)); return MON[d.getUTCMonth()] + " " + d.getUTCDate(); };
+  const localToday = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const num = v => { const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v; return typeof n === "number" && isFinite(n) ? n : null; };
+  const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const keyOf = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const fmtV = (v, unit) => unit === "kg" || unit === "h" ? (Math.round(v * 10) / 10).toFixed(1) : Math.round(v).toLocaleString("en-US");
+
+  const byDate = (coll, pick) => Object.entries(coll || {})
+    .map(([k, doc]) => ({ date: isDate(doc && doc.date) ? doc.date : k, v: doc ? pick(doc) : null }))
+    .filter(p => isDate(p.date) && p.v != null && isFinite(p.v))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  function ewma(weights) { // same rule as TrendTDEE.series: interpolate gaps, EWMA 0.1, flat after the last weigh-in
+    const w = byDate(weights, d => { const k = num(d.kg); return k > 20 && k < 400 ? k : null; });
+    const out = []; let t = null;
+    for (let i = 0; i < w.length; i++) {
+      const a = w[i], b = w[i + 1];
+      for (let d = a.date; !b ? d === a.date : d < b.date; d = add(d, 1)) {
+        const fill = d === a.date || !b ? a.v : a.v + (b.v - a.v) * diff(a.date, d) / diff(a.date, b.date);
+        t = t == null ? fill : t + ALPHA * (fill - t);
+        out.push({ date: d, v: Math.round(t * 100) / 100 });
+      }
+    }
+    return out;
+  }
+
+  const eaten = day => ((day && day.food) || []).filter(i => i && i.eaten);
+  const stepCount = day => { const s = day && day.steps; return typeof s === "number" ? s : s && num(s.count) || 0; };
+  const e1rm = (kg, r) => (!(kg > 0) || !(r >= 1) || r > 20) ? null : r === 1 ? kg : kg * (1 + r / 30);
+
+  function liftsFromWorkouts(workouts) {
+    const by = {};
+    Object.entries(workouts || {}).forEach(([k, w]) => {
+      const date = isDate(w && w.date) ? w.date : k;
+      if (!isDate(date) || !w || !w.sets) return;
+      Object.entries(w.sets).forEach(([name, sets]) => {
+        let top = null;
+        (sets || []).forEach(s => { const v = e1rm(num(s && s.w), num(s && s.r)); if (v != null && (top == null || v > top)) top = v; });
+        if (top == null) return;
+        const key = keyOf(name);
+        (by[key] = by[key] || { name: String(name).trim(), key, unit: "kg", points: [] }).points.push({ date, e1rm: top });
+      });
+    });
+    return Object.values(by).map(l => { l.points.sort((a, b) => (a.date < b.date ? -1 : 1)); return l; });
+  }
+
+  function series(docs, opts = {}) {
+    docs = docs || {};
+    const today = isDate(opts.today) ? opts.today : localToday();
+    const cut = pts => pts.filter(p => p.date <= today);
+    const trend = Array.isArray(opts.trend) ? opts.trend.map(p => ({ date: p.date, v: num(p.trend) })).filter(p => isDate(p.date) && p.v != null) : ewma(docs.weights);
+    const out = [
+      { key: "trend", label: "Trend weight", unit: "kg", points: cut(trend) },
+      { key: "weight", label: "Scale weight", unit: "kg", points: cut(byDate(docs.weights, d => { const k = num(d.kg); return k > 20 && k < 400 ? k : null; })) },
+      { key: "kcal", label: "Calories eaten", unit: "kcal", points: cut(byDate(docs.days, d => { const f = eaten(d); return f.length ? f.reduce((s, i) => s + (num(i.kcal) || 0), 0) : null; })) },
+      { key: "protein", label: "Protein eaten", unit: "g", points: cut(byDate(docs.days, d => { const f = eaten(d); return f.length ? f.reduce((s, i) => s + (num(i.p) || 0), 0) : null; })) },
+      { key: "steps", label: "Steps", unit: "steps", points: cut(byDate(docs.days, d => stepCount(d) > 0 ? stepCount(d) : null)) },
+      { key: "sleep", label: "Sleep", unit: "h", points: cut(byDate(docs.days, d => { const h = num(d.sleep); return h > 0 ? h : null; })) },
+      { key: "cardio", label: "Cardio minutes", unit: "min", points: cut(byDate(docs.cardio, d => { const m = (d.sessions || []).reduce((s, x) => s + (num(x && x.min) || 0), 0); return m > 0 ? m : null; })) },
+    ];
+    const lifts = Array.isArray(opts.lifts) ? opts.lifts : liftsFromWorkouts(docs.workouts);
+    lifts.forEach(l => {
+      if (!l || !Array.isArray(l.points)) return;
+      const pts = cut(l.points.map(p => ({ date: p.date, v: num(p.e1rm) })).filter(p => isDate(p.date) && p.v != null));
+      if (pts.length) out.push({ key: "lift:" + (l.key || keyOf(l.name)), label: "Est. 1RM · " + String(l.name || l.key), unit: l.unit === "lb" ? "lb" : "kg", points: pts, lift: true });
+    });
+    return out;
+  }
+
+  function window_(s, today, range) {
+    if (!range) return s.points;
+    const from = add(today, -(range - 1));
+    return s.points.filter(p => p.date >= from);
+  }
+
+  function correlate(a, b, opts = {}) {
+    const today = isDate(opts.today) ? opts.today : localToday();
+    const pa = window_(a, today, opts.range || 0), pb = window_(b, today, opts.range || 0);
+    const mb = new Map(pb.map(p => [p.date, p.v]));
+    const pairs = pa.filter(p => mb.has(p.date)).map(p => [p.v, mb.get(p.date)]);
+    const n = pairs.length;
+    if (n < MIN_PAIRS) return { n, r: null, strength: "none", dir: null, note: n ? "Only " + n + " day" + (n === 1 ? "" : "s") + " with both logged. " + MIN_PAIRS + " are needed for a correlation." : "No days where both were logged yet." };
+    const mx = pairs.reduce((s, p) => s + p[0], 0) / n, my = pairs.reduce((s, p) => s + p[1], 0) / n;
+    let sxy = 0, sxx = 0, syy = 0;
+    pairs.forEach(([x, y]) => { sxy += (x - mx) * (y - my); sxx += (x - mx) ** 2; syy += (y - my) ** 2; });
+    if (!sxx || !syy) return { n, r: null, strength: "none", dir: null, note: "One of the two didn't change over these " + n + " days, so there is nothing to correlate." };
+    const r = Math.round(sxy / Math.sqrt(sxx * syy) * 100) / 100;
+    const ar = Math.abs(r);
+    const strength = ar < 0.2 ? "none" : ar < 0.4 ? "weak" : ar < 0.7 ? "moderate" : "strong";
+    const dir = r > 0 ? "same" : "opposite";
+    const la = a.label.toLowerCase(), lb = b.label.toLowerCase();
+    const rs = "r = " + (r < 0 ? "−" : "") + ar.toFixed(2);
+    const note = strength === "none"
+      ? "Over " + n + " shared days, " + la + " and " + lb + " moved independently (" + rs + ")."
+      : "Over " + n + " shared days, higher " + la + " went with " + (dir === "same" ? "higher " : "lower ") + lb + " (" + rs + ", " + strength + "). Same-day link only, not cause: a change in one is often days away from a change in the other.";
+    return { n, r, strength, dir, note };
+  }
+
+  function ticks(lo, hi) {
+    if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+    const raw = (hi - lo) / 4, p = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(s => s >= raw);
+    const a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step, out = [];
+    for (let v = a; v <= b + step / 2; v += step) out.push(Math.round(v * 1000) / 1000);
+    return { lo: a, hi: b, vals: out };
+  }
+
+  function chart(a, b, opts = {}) {
+    const today = isDate(opts.today) ? opts.today : localToday();
+    const range = opts.range || 0;
+    const pa = window_(a, today, range), pb = window_(b, today, range);
+    if (!pa.length && !pb.length) return '<p class="muted tc-small">Nothing logged in this range for either series.</p>';
+    const all = pa.concat(pb);
+    const first = range ? add(today, -(range - 1)) : all.reduce((m, p) => (p.date < m ? p.date : m), all[0].date);
+    const last = range ? today : all.reduce((m, p) => (p.date > m ? p.date : m), all[0].date);
+    const span = Math.max(6, diff(first, last));
+    const W = 640, H = 240, L = 48, R = 48, T = 14, B = 28;
+    const x = d => L + diff(first, d) / span * (W - L - R);
+    const scale = pts => { if (!pts.length) return null; const vs = pts.map(p => p.v); const t = ticks(Math.min(...vs), Math.max(...vs)); return { t, y: v => T + (t.hi - v) / (t.hi - t.lo) * (H - T - B) }; };
+    const sa = scale(pa), sb = scale(pb);
+    const line = (pts, sc, cls) => {
+      if (!sc) return "";
+      const pp = pts.map(p => x(p.date).toFixed(1) + "," + sc.y(p.v).toFixed(1));
+      const sparse = pts.length < 3 || diff(pts[0].date, pts[pts.length - 1].date) / pts.length > 1.5;
+      return (pts.length > 1 ? '<polyline class="' + cls + '" points="' + pp.join(" ") + '"/>' : "") +
+        (sparse || pts.length < 20 ? pts.map(p => '<circle class="' + cls + '" cx="' + x(p.date).toFixed(1) + '" cy="' + sc.y(p.v).toFixed(1) + '" r="3"/>').join("") : "") +
+        '<circle class="' + cls + ' tc-last" cx="' + x(pts[pts.length - 1].date).toFixed(1) + '" cy="' + sc.y(pts[pts.length - 1].v).toFixed(1) + '" r="4.5"/>';
+    };
+    const axis = (sc, side) => !sc ? "" : sc.t.vals.map(v => (side === "l" ? '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + sc.y(v).toFixed(1) + '" y2="' + sc.y(v).toFixed(1) + '" class="tc-grid"/>' : "") +
+      '<text x="' + (side === "l" ? L - 6 : W - R + 6) + '" y="' + (sc.y(v) + 4).toFixed(1) + '" text-anchor="' + (side === "l" ? "end" : "start") + '" class="tc-tick tc-tick-' + side + '">' + fmtV(v, (side === "l" ? a : b).unit) + "</text>").join("");
+    return '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(a.label) + " and " + esc(b.label) + ' over time">' +
+      axis(sa, "l") + axis(sb, "r") +
+      '<text x="' + L + '" y="' + (H - 8) + '" class="tc-date">' + short(first) + '</text><text x="' + (W - R) + '" y="' + (H - 8) + '" text-anchor="end" class="tc-date">' + short(last) + "</text>" +
+      line(pa, sa, "tc-a") + line(pb, sb, "tc-b") + "</svg>";
+  }
+
+  const pickOr = (list, key, fallback) => list.find(s => s.key === key && s.points.length) || list.find(s => s.key === fallback && s.points.length) || list.find(s => s.points.length) || list[0];
+
+  function resolve(docs, opts) {
+    const list = series(docs, opts);
+    const a = pickOr(list, opts.a || PICK.a, "trend");
+    let b = pickOr(list, opts.b || PICK.b, "steps");
+    if (b === a) b = list.find(s => s !== a && s.points.length) || b;
+    const range = RANGES.includes(+opts.range) ? +opts.range : RANGES.includes(PICK.range) ? PICK.range : 28;
+    return { list, a, b, range, today: isDate(opts.today) ? opts.today : localToday() };
+  }
+
+  function body(R) {
+    const { list, a, b, range, today } = R;
+    const c = correlate(a, b, { today, range });
+    const opt = (s, cur) => '<option value="' + esc(s.key) + '"' + (s === cur ? " selected" : "") + (s.points.length ? "" : " disabled") + ">" + esc(s.label) + (s.points.length ? "" : " (nothing logged)") + "</option>";
+    const group = (cur) => { const plain = list.filter(s => !s.lift), lifts = list.filter(s => s.lift); return plain.map(s => opt(s, cur)).join("") + (lifts.length ? '<optgroup label="Lifts (est. 1RM)">' + lifts.map(s => opt(s, cur)).join("") + "</optgroup>" : ""); };
+    const lastOf = s => { const p = window_(s, today, range); return p.length ? fmtV(p[p.length - 1].v, s.unit) + " " + s.unit + " · " + short(p[p.length - 1].date) : "nothing in range"; };
+    return '<div class="tc-pick">' +
+      '<label class="tc-sel tc-sel-a"><span class="tc-sw tc-sw-a"></span><select data-tc="a" aria-label="First series">' + group(a) + "</select></label>" +
+      '<label class="tc-sel tc-sel-b"><span class="tc-sw tc-sw-b"></span><select data-tc="b" aria-label="Second series">' + group(b) + "</select></label>" +
+      '<select data-tc="range" aria-label="Range">' + RANGES.map(r => '<option value="' + r + '"' + (r === range ? " selected" : "") + ">" + (r ? "Last " + r + " days" : "All time") + "</option>").join("") + "</select></div>" +
+      '<div class="tc-legend"><span><i class="tc-sw tc-sw-a"></i>' + esc(a.label) + ' <b class="tc-mono">' + lastOf(a) + '</b></span><span><i class="tc-sw tc-sw-b"></i>' + esc(b.label) + ' <b class="tc-mono">' + lastOf(b) + "</b></span></div>" +
+      '<div class="chart tc-chart">' + chart(a, b, { today, range }) + "</div>" +
+      '<p class="tc-note ' + (c.r == null ? "muted" : "tc-" + c.strength) + '">' + esc(c.note) + "</p>";
+  }
+
+  let PICK = { a: null, b: null, range: 28 }, LAST = null, bound = false;
+  function bind() {
+    if (bound || typeof document === "undefined") return;
+    bound = true;
+    document.addEventListener("change", ev => {
+      const sel = ev.target && ev.target.closest && ev.target.closest("[data-tc]");
+      if (!sel || !LAST) return;
+      const card = sel.closest(".tc-card"); if (!card) return;
+      const k = sel.dataset.tc;
+      PICK[k] = k === "range" ? +sel.value : sel.value;
+      const R = resolve(LAST.docs, Object.assign({}, LAST.opts, { a: PICK.a, b: PICK.b, range: PICK.range }));
+      PICK.a = R.a.key; PICK.b = R.b.key; PICK.range = R.range;
+      const box = card.querySelector(".tc-body"); if (box) box.innerHTML = body(R);
+      if (typeof LAST.opts.onPick === "function") { try { LAST.opts.onPick(Object.assign({}, PICK)); } catch (e) {} }
+    });
+  }
+
+  function html(docs, opts = {}) {
+    if (opts.pick && !PICK.a) PICK = Object.assign({}, PICK, opts.pick);
+    const R = resolve(docs, opts);
+    LAST = { docs, opts }; bind();
+    PICK.a = R.a.key; PICK.b = R.b.key; PICK.range = R.range;
+    const logged = R.list.filter(s => s.points.length).length;
+    const head = '<div class="spread"><h2>Compare trends</h2><span class="label">' + logged + " series available</span></div>";
+    if (logged < 2) return '<section class="card tc-card">' + head + '<p class="muted">Log weigh-ins plus one more thing (food, steps, sleep, cardio or a workout) and you can overlay any two here.</p></section>';
+    return '<section class="card tc-card">' + head + '<div class="tc-body">' + body(R) + "</div>" +
+      '<p class="muted tc-small">Left axis is the first series, right axis the second. Each axis is scaled to its own range so shapes line up; read the numbers off the sides.</p></section>';
+  }
+
+  function summary(docs, opts = {}) {
+    const R = resolve(docs, opts);
+    const c = correlate(R.a, R.b, { today: R.today, range: R.range });
+    return "Compare: " + R.a.label + " vs " + R.b.label + " (" + (R.range ? "last " + R.range + " days" : "all time") + "). " + c.note;
+  }
+
+  const css = [
+    ".tc-pick{display:flex;flex-wrap:wrap;gap:8px;align-items:center}",
+    ".tc-sel{display:flex;align-items:center;gap:6px;flex:1 1 180px;min-width:0}.tc-sel select{flex:1;min-width:0}",
+    ".tc-sw{display:inline-block;width:12px;height:12px;border-radius:3px;flex:none}.tc-sw-a{background:var(--accent)}.tc-sw-b{background:var(--protein)}",
+    ".tc-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.88rem}.tc-legend span{display:flex;align-items:center;gap:6px}.tc-mono{font-family:var(--mono);font-weight:600}",
+    ".tc-chart svg{width:100%;height:auto;display:block}",
+    ".tc-grid{stroke:var(--line);stroke-width:1}.tc-tick{font-size:11px;font-family:var(--mono);fill:var(--muted)}.tc-tick-l{fill:var(--accent)}.tc-tick-r{fill:var(--protein)}.tc-date{font-size:11px;fill:var(--muted)}",
+    "polyline.tc-a{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linejoin:round}polyline.tc-b{fill:none;stroke:var(--protein);stroke-width:2.5;stroke-linejoin:round}",
+    "circle.tc-a{fill:var(--accent)}circle.tc-b{fill:var(--protein)}circle.tc-last{stroke:var(--surface);stroke-width:2}",
+    ".tc-note{margin:0;font-size:.9rem}.tc-moderate,.tc-strong{font-weight:600}.tc-small{font-size:.82rem;margin:0}",
+  ].join("\n");
+
+  return { css, series, correlate, chart, html, summary, RANGES, MIN_PAIRS };
+})();
+if (typeof window !== "undefined") window.TrendCompare = TrendCompare;
+if (typeof module !== "undefined" && module.exports) module.exports = TrendCompare;
+</script>
+<script>
 /* DataIO: imports, backups and restore for the app shell.
  * Plain JS, no imports, no network. Works on a snapshot of the app's collections
  * ({<collection>: {<docId>: doc}}) and returns plans of writes; it never touches storage itself.
@@ -14334,11 +16652,18 @@ function dbState(){ return {...(S.docs.prefs.main?.dietBreak||{}), auto:false}; 
 function dbDocs(){ return {days:S.docs.days, weights:S.docs.weights}; }
 function dbProfile(){ const pr=S.docs.prefs.main?.profile||{}; const o={}; ["start","startKg","goalKg","cutKcal","protein","fat","maintenance"].forEach(k=>{ if(pr[k]!==undefined && pr[k]!=="" && pr[k]!==null) o[k]=pr[k]; }); if(o.cutKcal===undefined) o.cutKcal=TARGET.kcal; return o; }
 function dietBreakTarget(d){ try{ return window.DietBreak ? DietBreak.target(dbDocs(), dbState(), d, {profile:dbProfile()}) : null; }catch(e){ return null; } }
+/* Calorie cycling (prefs/main.cycling, off by default): lift days get +delta, rest days give it back, the week stays at TARGET.kcal × 7. */
+function ccState(){ return S.docs.prefs.main?.cycling||{}; }
+function ccTraining(d){ if(dayType(d)==="friday") return null; const s=sessionFor(d); return s && s.chosen ? s.session!=="Rest" : null; }
+function ccOpts(){ return {training:ccTraining}; }
+function ccTargets(){ return APPT || {kcal:TARGET.kcal, carbsLo:TARGET.cMin, carbsHi:TARGET.cMax}; }
+function ccTarget(d){ try{ return window.CalorieCycling && ccState().on ? CalorieCycling.target(ccTargets(), d, ccState(), ccOpts()) : null; }catch(e){ return null; } }
 function kcalTarget(d){
   const t=dietBreakTarget(d); if(t && t.mode==="break") return Math.round(t.kcal);
-  // Over-budget recovery cuts (days/{date}.budgetAdj) apply on top of the profile target, never more than 150 below it.
+  const cc=ccTarget(d); const base = cc && cc.kcal ? cc.kcal : TARGET.kcal;
+  // Over-budget recovery cuts (days/{date}.budgetAdj) apply on top of the day's target, never more than 150 below it.
   const adj=Object.values(S.docs.days[d]?.budgetAdj||{}).reduce((x,v)=>x+(Math.min(0,+v||0)),0);
-  return Math.max(TARGET.kcal-150, TARGET.kcal+adj); }
+  return Math.max(base-150, base+adj); }
 function macroBars(items){
   const all=sum(items), eaten=sum(items.filter(i=>i.eaten)), KT=kcalTarget(view.date);
   const rows=[["Calories","kcal",KT-100,KT+100,2400,"kcal",""],["Protein","p",TARGET.pMin,TARGET.pMax,220,"p","g"],["Carbs","c",TARGET.cMin,TARGET.cMax,280,"c","g"],["Fat","f",TARGET.fMin,TARGET.fMax,100,"f","g"]];
@@ -14353,7 +16678,7 @@ function verdict(items){
   const msgs=[];
   const KT=kcalTarget(view.date), KTs=KT.toLocaleString("en-US");
   if(t.kcal<KT-150) msgs.push(["warn",`${r0(KT-t.kcal)} kcal under ${KTs}`]); else if(t.kcal>KT+100) msgs.push(["bad",`${r0(t.kcal-KT)} kcal over ${KTs}`]); else msgs.push(["good","Calories on target"]);
-  if(KT!==TARGET.kcal) msgs.push(["info", dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : `Target today ${KTs} (spreading an earlier surplus)`]);
+  if(KT!==TARGET.kcal){ const cc=ccTarget(view.date); msgs.push(["info", dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
   if(t.p<TARGET.pMin) msgs.push(["warn",`Protein ${r0(TARGET.pMin-t.p)} g short`]); else msgs.push(["good","Protein hit"]);
   if(t.f>TARGET.fMax) msgs.push(["warn","Fat on the high side"]);
   return `<div class="row">${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
@@ -14381,6 +16706,11 @@ function latestKg(){ const ws=weightsSorted(); return ws.length ? ws[ws.length-1
 function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
+function tcOpts(){ // Compare trends: reuse the trend line and the lift e1RM series the other Progress cards already compute
+  let lifts; try{ if(window.StrengthAnalytics) lifts=StrengthAnalytics.analyze(S.docs, strengthOpts()).lifts; }catch(e){}
+  const pick=S.docs.prefs.main?.trendCompare;
+  return {today:TODAY, trend:trendSeries(), lifts, pick, onPick:p=>{ const m={...(S.docs.prefs.main||{}), trendCompare:p}; put("prefs","main",m,{quiet:true}); }};
+}
 let coachPending=null, weightPending=null;
 // >5% off the average of the last 7 days of weigh-ins (needs 3+) needs a second tap. Catches 91.9 typed as 99.1 or 81.9.
 function weightOutlier(date,kg){ const ws=weightsSorted().filter(w=>w.date!==date && w.date<=date && diffDays(w.date,date)<=7); if(ws.length<3) return null; const avg=ws.reduce((a,w)=>a+w.kg,0)/ws.length; const pct=(kg-avg)/avg*100; return Math.abs(pct)>5 ? {avg,pct} : null; }
@@ -14638,6 +16968,7 @@ function vFood(){
       <ul style="margin:0;padding-left:1.1em">${NEVER.map(l=>`<li>${l}</li>`).join("")}${dislikes.map((l,i)=>`<li>${esc(l)} <button class="x" data-act="deldislike" data-i="${i}" aria-label="Remove">×</button></li>`).join("")}</ul>
       <form class="row" data-form="dislike"><input type="text" id="dislike" placeholder="Add a meal you dislike" style="flex:1"><button class="btn ghost small" type="submit">Add</button></form>
     </div>
+    ${safeMod("CalorieCycling",()=>CalorieCycling.html(ccTargets(), ccState(), ccOpts()))}
   </section>`;
 }
 
@@ -14746,6 +17077,7 @@ function vProgress(){
   </div>
   ${trendCard}
   ${safeMod("StrengthAnalytics",()=>StrengthAnalytics.html(S.docs, strengthOpts()))}
+  ${safeMod("TrendCompare",()=>TrendCompare.html(S.docs, tcOpts()))}
   ${window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
     <div class="tablewrap"><table><thead><tr><th>Lift</th><th class="n">Baseline</th><th class="n">Latest best set</th><th>Status</th></tr></thead><tbody>
     ${MAIN_LIFTS.map(n=>{ const base=Object.values(PROGRAM).flat().find(e=>e[0]===n); const h=liftHistory(n); const l=h[h.length-1];
@@ -14849,6 +17181,8 @@ main.addEventListener("click",e=>{
   if(rfw){ put(rfw.collection, rfw.id, rfw.doc, {quiet:true}); render(); return; }
   const sd=e.target.closest("[data-sd]");
   if(sd && window.SuppDrinks){ const a=sd.dataset.sd, data=Object.assign({}, sd.dataset, /save$/.test(a)?SuppDrinks.readForm(document, sd.dataset.key):{}); const r=SuppDrinks.apply(a, data, getDay(view.date), S.docs.prefs.main||{}, {uid}); if(r.prefs) put("prefs","main",r.prefs); if(r.day) saveDay(r.day); if(r.toast) toast(r.toast); if(r.open){ requestAnimationFrame(()=>{ const det=document.querySelector(".sd-card details"); if(det) det.open=true; }); } return; }
+  const cca=e.target.closest("[data-cc-action]");
+  if(cca && window.CalorieCycling){ const p=Object.assign({},clone(S.docs.prefs.main)); p.cycling=CalorieCycling.apply(ccState(), cca.dataset.ccAction, ccOpts()); put("prefs","main",p); return; }
   const dba=e.target.closest("[data-db-action]");
   if(dba){ const p=Object.assign({},clone(S.docs.prefs.main)); p.dietBreak={...DietBreak.apply(dbState(), dba.dataset.dbAction, TODAY, dbDocs(), {profile:dbProfile()}), auto:false}; put("prefs","main",p); return; }
   const rc=e.target.closest("[data-recover]");
@@ -15034,7 +17368,8 @@ function syncLogger(){
   try{
     WorkoutLogger.mount(host, {
       storage, targets: APPT || undefined,
-      formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE) : undefined,
+      formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE, { demoLinks: !(window.ExerciseDemos && window.EXERCISE_DEMOS) }) : undefined,
+      demos: (window.ExerciseDemos && window.EXERCISE_DEMOS) ? ExerciseDemos.create(window.EXERCISE_DEMOS, { library: WorkoutLogger.library }) : undefined,
       weights: { list: async()=>weightsSorted().map(w=>({date:w.date,kg:w.kg})), put: async(date,kg)=>put("weights",date,{date,kg:Math.round(kg*10)/10},{quiet:true}) },
       onFinish(workout, rec){
         if(!rec || !rec.date) return;
@@ -15062,7 +17397,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
