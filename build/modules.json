@@ -23,6 +23,7 @@
     { "file": "modules/exercise-demos/exercise-demos.js" },
     { "file": "modules/exercise-anim/exercise-anim.js" },
     { "file": "modules/photo-food/photo-food.js" },
+    { "file": "modules/macro-target/macro-target.js", "expose": ["MacroTarget"] },
     { "file": "modules/protein-gap/protein-gap.js" },
     { "file": "modules/barcode-scanner/barcode-food.js", "expose": ["BarcodeFood"] },
     { "file": "modules/exercise-swap/exercise-swap.js" },
@@ -40,7 +41,10 @@
     { "file": "modules/strength-analytics/strength-analytics.js", "expose": ["StrengthAnalytics"] },
     { "file": "modules/trend-compare/trend-compare.js", "expose": ["TrendCompare"] },
     { "file": "modules/data-io/data-io.js", "expose": ["DataIO"] },
+    { "file": "modules/calendar-reminders/calendar-reminders.js", "expose": ["CalendarReminders"] },
     { "file": "modules/menu-import/menu-import.js" },
-    { "file": "modules/pending-writes/pending-writes.js" }
+    { "file": "modules/pending-writes/pending-writes.js" },
+    { "file": "modules/app-shortcuts/app-shortcuts.js", "expose": ["AppShortcuts"] },
+    { "file": "modules/cloud-store/cloud-store.js", "expose": ["CloudStore"] }
   ]
 }
