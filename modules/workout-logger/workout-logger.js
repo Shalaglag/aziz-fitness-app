@@ -9,6 +9,8 @@
  * weights: optional { list() -> Promise<[{date:'YYYY-MM-DD', kg}]>, put(date, kg) -> Promise }
  *   so body weight logs go to the shell's own weights collection.
  * formCues: optional FormCues.create(guide) instance (form cues + demo links).
+ * demos: optional ExerciseDemos.create(data, {library}) instance. When given, every exercise gets a
+ *   Demo button (a checked video, else a YouTube search) and the sheet lists its demo videos.
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
  * Live workouts open in Gym mode (one set at a time, big steppers, RIR, rest countdown with "up next");
  *   "List view" in the header switches to the full table. Sets may carry rir (0-4, 4 = 4+).
@@ -735,6 +737,12 @@ Stair Climber|Cardio|Cardio|`;
   let exTab = 'about';
   // Form cues (optional FormCues instance passed as opts.formCues).
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
+  // Demo button: ExerciseDemos (opts.demos) when given, else the form cues link for exercises in the guide.
+  function demoBtn(id, entry) {
+    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues;
+    const l = dm ? dm.link(id, getEx(id).name) : (fc && entry ? { href: fc.demoUrl(entry), label: 'Demo ↗' } : null);
+    return l ? '<a class="lb-btn small ghost" href="' + esc(l.href) + '" target="_blank" rel="noopener noreferrer">' + esc(l.label) + '</a>' : '';
+  }
   on('exOpen', t => {
     const id = t.dataset.id; exTab = 'about';
     openSheet({
@@ -753,7 +761,8 @@ Stair Climber|Cardio|Cardio|`;
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
         (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '') +
-        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '');
+        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '') +
+        (S.opts.demos ? S.opts.demos.sheetHtml(id, ex.name) : '');
     }
     if (!ss.length) return '<div class="lb-empty">No sets logged for this exercise yet.</div>';
     if (exTab === 'history') {
@@ -1203,7 +1212,7 @@ Stair Climber|Cardio|Cardio|`;
       (e.ss ? '<span class="lb-gym-ss ss' + (ssIds.indexOf(e.ss) % 4) + '">Superset ' + String.fromCharCode(65 + ssIds.indexOf(e.ss)) + ' · ' + (partners.findIndex(o => o.k === ei) + 1) + '/' + partners.length + '</span>' : '') + '</div>' +
       '<div class="lb-gym-headrow"><button class="lb-gym-name" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + ei + '" aria-label="Exercise options">•••</button></div>' +
       (e.ss ? '<p class="lb-muted small">Alternate with ' + esc(partners.filter(o => o.k !== ei).map(o => getEx(o.x.exId).name).join(', ')) + ', rest after the round.</p>' : '') +
-      '<div class="lb-gym-tools">' + (fc && entry ? '<a class="lb-btn small ghost" href="' + esc(fc.demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Demo ↗</a>' : '') +
+      '<div class="lb-gym-tools">' + demoBtn(e.exId, entry) +
       '<button class="lb-btn small ghost" data-a="exOpen" data-id="' + e.exId + '">How to</button><button class="lb-btn small ghost" data-a="restEdit" data-ei="' + ei + '">Rest ' + restLabel(restOf(e)) + '</button>' +
       (isWeighted(ex) ? '<button class="lb-btn small ghost" data-a="exPlates" data-ei="' + ei + '">Plates</button>' : '') + '</div>' +
       (fc && entry ? fc.inlineHtml(entry, e.exId) : '') +
@@ -1766,6 +1775,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     opts = opts || {};
     S.opts = opts; S.storage = opts.storage || localStorageAdapter('lb:');
     if (!document.getElementById('lb-style')) { const st = document.createElement('style'); st.id = 'lb-style'; st.textContent = CSS; document.head.appendChild(st); }
+    if (opts.demos && !document.getElementById('ed-style')) { const st = document.createElement('style'); st.id = 'ed-style'; st.textContent = opts.demos.css; document.head.appendChild(st); }
     if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
     root = el; root.classList.add('lb');
     overlay = document.querySelector('.lb-overlay') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'lb-overlay' }));

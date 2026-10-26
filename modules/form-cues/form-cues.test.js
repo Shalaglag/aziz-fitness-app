@@ -98,4 +98,20 @@ t('css uses shell tokens only', () => {
     assert.ok(['--line', '--r', '--sunk', '--accent', '--muted', '--ink', '--warn', '--accent-ink', '--surface'].includes(v.slice(4)), v));
 });
 
+t('machine variants do not borrow cable or dumbbell cues', () => {
+  assert.strictEqual(fc.find('seated-row-machine'), null);
+  assert.strictEqual(fc.find('Seated Row (Machine)'), null);
+  assert.strictEqual(fc.find('lateral-raise-machine'), null);
+  assert.strictEqual(fc.find('Lateral Raise (Machine)'), null);
+  assert.ok(fc.find('Seated Row (Cable)'));
+});
+
+t('demoLinks false hides the demo link', () => {
+  const quiet = FormCues.create(guide, { demoLinks: false });
+  const e = quiet.find('bench-press-barbell');
+  assert.ok(!quiet.detailHtml(e).includes('fc-demo'));
+  assert.ok(!quiet.inlineHtml(e).includes('fc-demo'));
+  assert.ok(fc.detailHtml(e).includes('fc-demo'));
+});
+
 console.log(n + ' tests passed');

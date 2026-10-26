@@ -731,11 +731,18 @@ function dbState(){ return {...(S.docs.prefs.main?.dietBreak||{}), auto:false}; 
 function dbDocs(){ return {days:S.docs.days, weights:S.docs.weights}; }
 function dbProfile(){ const pr=S.docs.prefs.main?.profile||{}; const o={}; ["start","startKg","goalKg","cutKcal","protein","fat","maintenance"].forEach(k=>{ if(pr[k]!==undefined && pr[k]!=="" && pr[k]!==null) o[k]=pr[k]; }); if(o.cutKcal===undefined) o.cutKcal=TARGET.kcal; return o; }
 function dietBreakTarget(d){ try{ return window.DietBreak ? DietBreak.target(dbDocs(), dbState(), d, {profile:dbProfile()}) : null; }catch(e){ return null; } }
+/* Calorie cycling (prefs/main.cycling, off by default): lift days get +delta, rest days give it back, the week stays at TARGET.kcal × 7. */
+function ccState(){ return S.docs.prefs.main?.cycling||{}; }
+function ccTraining(d){ if(dayType(d)==="friday") return null; const s=sessionFor(d); return s && s.chosen ? s.session!=="Rest" : null; }
+function ccOpts(){ return {training:ccTraining}; }
+function ccTargets(){ return APPT || {kcal:TARGET.kcal, carbsLo:TARGET.cMin, carbsHi:TARGET.cMax}; }
+function ccTarget(d){ try{ return window.CalorieCycling && ccState().on ? CalorieCycling.target(ccTargets(), d, ccState(), ccOpts()) : null; }catch(e){ return null; } }
 function kcalTarget(d){
   const t=dietBreakTarget(d); if(t && t.mode==="break") return Math.round(t.kcal);
-  // Over-budget recovery cuts (days/{date}.budgetAdj) apply on top of the profile target, never more than 150 below it.
+  const cc=ccTarget(d); const base = cc && cc.kcal ? cc.kcal : TARGET.kcal;
+  // Over-budget recovery cuts (days/{date}.budgetAdj) apply on top of the day's target, never more than 150 below it.
   const adj=Object.values(S.docs.days[d]?.budgetAdj||{}).reduce((x,v)=>x+(Math.min(0,+v||0)),0);
-  return Math.max(TARGET.kcal-150, TARGET.kcal+adj); }
+  return Math.max(base-150, base+adj); }
 function macroBars(items){
   const all=sum(items), eaten=sum(items.filter(i=>i.eaten)), KT=kcalTarget(view.date);
   const rows=[["Calories","kcal",KT-100,KT+100,2400,"kcal",""],["Protein","p",TARGET.pMin,TARGET.pMax,220,"p","g"],["Carbs","c",TARGET.cMin,TARGET.cMax,280,"c","g"],["Fat","f",TARGET.fMin,TARGET.fMax,100,"f","g"]];
@@ -750,7 +757,7 @@ function verdict(items){
   const msgs=[];
   const KT=kcalTarget(view.date), KTs=KT.toLocaleString("en-US");
   if(t.kcal<KT-150) msgs.push(["warn",`${r0(KT-t.kcal)} kcal under ${KTs}`]); else if(t.kcal>KT+100) msgs.push(["bad",`${r0(t.kcal-KT)} kcal over ${KTs}`]); else msgs.push(["good","Calories on target"]);
-  if(KT!==TARGET.kcal) msgs.push(["info", dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : `Target today ${KTs} (spreading an earlier surplus)`]);
+  if(KT!==TARGET.kcal){ const cc=ccTarget(view.date); msgs.push(["info", dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
   if(t.p<TARGET.pMin) msgs.push(["warn",`Protein ${r0(TARGET.pMin-t.p)} g short`]); else msgs.push(["good","Protein hit"]);
   if(t.f>TARGET.fMax) msgs.push(["warn","Fat on the high side"]);
   return `<div class="row">${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
@@ -1035,6 +1042,7 @@ function vFood(){
       <ul style="margin:0;padding-left:1.1em">${NEVER.map(l=>`<li>${l}</li>`).join("")}${dislikes.map((l,i)=>`<li>${esc(l)} <button class="x" data-act="deldislike" data-i="${i}" aria-label="Remove">×</button></li>`).join("")}</ul>
       <form class="row" data-form="dislike"><input type="text" id="dislike" placeholder="Add a meal you dislike" style="flex:1"><button class="btn ghost small" type="submit">Add</button></form>
     </div>
+    ${safeMod("CalorieCycling",()=>CalorieCycling.html(ccTargets(), ccState(), ccOpts()))}
   </section>`;
 }
 
@@ -1246,6 +1254,8 @@ main.addEventListener("click",e=>{
   if(rfw){ put(rfw.collection, rfw.id, rfw.doc, {quiet:true}); render(); return; }
   const sd=e.target.closest("[data-sd]");
   if(sd && window.SuppDrinks){ const a=sd.dataset.sd, data=Object.assign({}, sd.dataset, /save$/.test(a)?SuppDrinks.readForm(document, sd.dataset.key):{}); const r=SuppDrinks.apply(a, data, getDay(view.date), S.docs.prefs.main||{}, {uid}); if(r.prefs) put("prefs","main",r.prefs); if(r.day) saveDay(r.day); if(r.toast) toast(r.toast); if(r.open){ requestAnimationFrame(()=>{ const det=document.querySelector(".sd-card details"); if(det) det.open=true; }); } return; }
+  const cca=e.target.closest("[data-cc-action]");
+  if(cca && window.CalorieCycling){ const p=Object.assign({},clone(S.docs.prefs.main)); p.cycling=CalorieCycling.apply(ccState(), cca.dataset.ccAction, ccOpts()); put("prefs","main",p); return; }
   const dba=e.target.closest("[data-db-action]");
   if(dba){ const p=Object.assign({},clone(S.docs.prefs.main)); p.dietBreak={...DietBreak.apply(dbState(), dba.dataset.dbAction, TODAY, dbDocs(), {profile:dbProfile()}), auto:false}; put("prefs","main",p); return; }
   const rc=e.target.closest("[data-recover]");
@@ -1431,7 +1441,8 @@ function syncLogger(){
   try{
     WorkoutLogger.mount(host, {
       storage, targets: APPT || undefined,
-      formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE) : undefined,
+      formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE, { demoLinks: !(window.ExerciseDemos && window.EXERCISE_DEMOS) }) : undefined,
+      demos: (window.ExerciseDemos && window.EXERCISE_DEMOS) ? ExerciseDemos.create(window.EXERCISE_DEMOS, { library: WorkoutLogger.library }) : undefined,
       weights: { list: async()=>weightsSorted().map(w=>({date:w.date,kg:w.kg})), put: async(date,kg)=>put("weights",date,{date,kg:Math.round(kg*10)/10},{quiet:true}) },
       onFinish(workout, rec){
         if(!rec || !rec.date) return;
@@ -1459,7 +1470,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
