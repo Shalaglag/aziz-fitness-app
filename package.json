@@ -3,7 +3,7 @@
   "private": true,
   "description": "Aziz's fitness app: app/index.html plus the modules it inlines, wrapped as an Android app (android/)",
   "scripts": {
-    "test": "node --test --test-reporter=dot \"modules/**/*.test.js\" \"modules/**/*.test.mjs\" \"modules/**/test.js\" build/build.test.js && node build/build.js --check",
+    "test": "node --test --test-reporter=dot \"modules/**/*.test.js\" \"modules/**/*.test.mjs\" \"modules/**/test.js\" build/build.test.js tests/*.test.js && node build/build.js --check",
     "android:sync": "node build/build.js && npx cap sync android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleRelease -PversionCode=1 -PversionName=local",
     "android:open": "npx cap open android"
