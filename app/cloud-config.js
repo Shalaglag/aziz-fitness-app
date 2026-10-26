@@ -1,10 +1,10 @@
 /* Firebase web config for the app's own website (see modules/cloud-store/README.md).
  * These values identify the Firebase project; they are not secrets. Access is limited by the
  * Firestore rules in firestore.rules (each signed-in person reads and writes only their own data).
- * Left empty, the app runs without sign-in and saves on the device only. */
+ * Firebase project: aziz-fitness (Spark plan). Empty values = no sign-in, device-only storage. */
 window.FITNESS_CLOUD_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  appId: ""
+  apiKey: "AIzaSyB1xvB49LW6gyXM1U7Q1NIO3cKYDkNO_a8",
+  authDomain: "aziz-fitness.firebaseapp.com",
+  projectId: "aziz-fitness",
+  appId: "1:323272267870:web:ff4fd558a826bd36d6fccf"
 };
