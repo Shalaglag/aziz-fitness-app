@@ -18,6 +18,13 @@ const CloudStore = (() => {
   function validConfig(cfg) {
     return !!cfg && typeof cfg === "object" && REQUIRED.every(k => typeof cfg[k] === "string" && cfg[k].trim() !== "");
   }
+  // Loads app/cloud-config.js next to the page (only off Claude, so the Artifact never requests it).
+  // Resolves true when a valid config is present; a missing file just means "not configured".
+  async function loadConfig() {
+    if (configured()) return true;
+    try { await loadScript("cloud-config.js"); } catch (e) { return false; }
+    return configured();
+  }
   function configured() { return typeof window !== "undefined" && validConfig(window.FITNESS_CLOUD_CONFIG); }
 
   // Firestore update() on a missing doc fails with "not-found"; the app's outbox expects the
@@ -117,7 +124,7 @@ const CloudStore = (() => {
   function currentEmail() { return state.user ? state.user.email : null; }
   async function signOut() { if (state.auth) await state.auth.signOut(); state.user = null; }
 
-  return { validConfig, configured, connect, signOut, currentEmail, authMessage, scoped, SDK };
+  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, authMessage, scoped, SDK };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = CloudStore;

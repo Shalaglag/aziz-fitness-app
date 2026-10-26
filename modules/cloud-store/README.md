@@ -3,6 +3,7 @@
 Inside Claude the app saves through Claude's synced database. On its own website it uses this module
 instead: Firebase email + password sign-in, and Firestore for storage, under `users/{uid}/...`.
 
+- `CloudStore.loadConfig()` loads `app/cloud-config.js` on demand (never inside Claude) and resolves whether a valid config is present.
 - `CloudStore.connect({mount})` → a db with the same shape the shell already uses
   (`collection(c).doc(id).set/update/delete/get`, `collection(c).onSnapshot/add/get`), or `null`
   when `app/cloud-config.js` is empty or the person picks "Use without an account".

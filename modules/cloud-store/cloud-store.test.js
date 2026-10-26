@@ -63,3 +63,7 @@ test("auth errors become plain sentences", () => {
   assert.match(C.authMessage("auth/network-request-failed"), /internet/);
   assert.match(C.authMessage("something-else"), /Couldn't sign in/);
 });
+
+test("loadConfig resolves false when the config file can't be loaded", async () => {
+  assert.strictEqual(await C.loadConfig(), false);
+});
