@@ -783,7 +783,7 @@ function verdict(items){
   if(KT!==TARGET.kcal){ const cc=ccTarget(view.date), rm=reverseTarget(view.date)?.mode; msgs.push(["info", rm==="reverse" ? `Reverse diet: target ${KTs} this week` : rm==="maintain" ? `Maintenance: target ${KTs}` : dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
   if(t.p<TARGET.pMin) msgs.push(["warn",`Protein ${r0(TARGET.pMin-t.p)} g short`]); else msgs.push(["good","Protein hit"]);
   if(t.f>TARGET.fMax) msgs.push(["warn","Fat on the high side"]);
-  return `<div class="row">${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
+  return `<div class="row">${mgDay({food:items, date:view.date})}${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
 }
 
 /* ---------- TODAY ---------- */
@@ -1059,7 +1059,7 @@ function vFood(){
     ${day.food.length?`<div class="items">${day.food.map(i=>`
       <div class="item ${i.eaten?"":"planned"}">
         <input type="checkbox" data-act="eat" data-id="${i.id}" ${i.eaten?"checked":""} aria-label="Eaten">
-        <div class="nm"><b>${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
+        <div class="nm"><b>${mgBadge(i)} ${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
         <div class="mac">${r0(i.kcal)} kcal<br><span style="color:var(--protein)">${r1(+i.p||0)}P</span> <span style="color:var(--carbs)">${r1(+i.c||0)}C</span> <span style="color:var(--fat)">${r1(+i.f||0)}F</span></div>
         <button class="x" data-act="delfood" data-id="${i.id}" aria-label="Remove">×</button>
       </div>`).join("")}</div>
@@ -1071,7 +1071,7 @@ function vFood(){
     <div class="spread"><h3>Nutreeze snack menu</h3><span class="muted" style="font-size:.85rem">Pick any 2. Tap to add.</span></div>
     <div class="tablewrap"><table>
       <thead><tr><th>Snack</th><th>Type</th><th class="n">kcal</th><th class="n">P</th><th class="n">C</th><th class="n">F</th><th></th></tr></thead>
-      <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[1]}</td><td>${s[0]==="Banned"?"Never pick":s[0]}</td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody>
+      <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[0]==="Banned"?"":mgBadge({kcal:s[2],p:s[3],c:s[4],f:s[5]},"snack")+" "}${s[1]}</td><td>${s[0]==="Banned"?"Never pick":s[0]}</td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody>
     </table></div>
     <p class="muted" style="font-size:.88rem">With Meal 1 (pre-workout) prefer fruit or a light sweet. Nuts and Pro Mud Cake fit better with Meal 2, since fat slows digestion. If Meal 1 is 700+ kcal, move the sweet to the evening.</p>
   </div>
@@ -1092,7 +1092,7 @@ function pickerCard(d, training){
   const P = window.NutreezePicker; if(!P) return "";
   let draft=""; try{ draft=localStorage.getItem("aziz-cut-menu")||""; }catch(e){}
   const res = view.pick && view.pick.date===d ? view.pick : null;
-  const line = it => `<li>${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r1(it.p)} P</span></li>`;
+  const line = (it,kind) => `<li>${mgBadge(it,kind,d)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r1(it.p)} P</span></li>`;
   return `<div class="card">
     <div class="spread"><h3>Pick my meals</h3><span class="muted" style="font-size:.85rem">2 meals + 2 snacks + Adonis${training?" + Gatorade":""}</span></div>
     <p class="muted" style="font-size:.9rem">Paste the day's Nutreeze meals, one per line: <span class="num">name kcal protein carbs fat</span>. Never-pick meals are removed automatically.</p>
@@ -1102,7 +1102,7 @@ function pickerCard(d, training){
     ${res && res.skipped && res.skipped.length ? `<p class="muted" style="font-size:.85rem">Removed: ${res.skipped.map(esc).join(", ")}</p>` : ""}
     ${res && res.options ? res.options.map((o,i)=>`<div class="ex">
       <div class="spread"><b>${i===0?"Best option":"Option "+(i+1)}</b><span class="pill ${o.check.fits?"good":"warn"}">${esc(o.check.verdict)}</span></div>
-      <ul style="margin:0;padding-left:1.1em">${line(o.meal1)}${line(o.meal2)}${o.snacks.map(line).join("")}</ul>
+      <ul style="margin:0;padding-left:1.1em">${line(o.meal1,"meal")}${line(o.meal2,"meal")}${o.snacks.map(s=>line(s,"snack")).join("")}</ul>
       <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small" data-act="usepick" data-i="${i}">Use this plan</button></div>
       ${o.check.notes&&o.check.notes.length?`<p class="muted" style="font-size:.85rem">${o.check.notes.map(esc).join(" ")}</p>`:""}
     </div>`).join("") : ""}
@@ -1422,6 +1422,8 @@ function ramadanCard(d){
     return Ramadan.html(d,{dayType:pickerDayType(d), train:pr.ramadanTrain||"after-iftar", cfg, targets:APPT||undefined}); }catch(e){ return ""; }
 }
 function trendSeries(){ try{ return window.TrendTDEE ? TrendTDEE.series(S.docs.weights,{today:TODAY}) : undefined; }catch(e){ return undefined; } }
+function mgBadge(it, kind, date){ try{ return window.MealGrade ? MealGrade.badge(MealGrade.gradeItem(it,{kind, targets:dayTargets(date||view.date)||{kcal:kcalTarget(date||view.date), pMin:TARGET.pMin, pMax:TARGET.pMax, fMin:TARGET.fMin, fMax:TARGET.fMax, cMin:TARGET.cMin, cMax:TARGET.cMax}}),{small:true}) : ""; }catch(e){ return ""; } }
+function mgDay(day){ try{ if(!window.MealGrade || !day.food.length) return ""; const all=day.food.every(i=>i.eaten); const T=dayTargets(day.date||view.date)||{kcal:kcalTarget(day.date||view.date), pMin:TARGET.pMin, pMax:TARGET.pMax, fMin:TARGET.fMin, fMax:TARGET.fMax, cMin:TARGET.cMin, cMax:TARGET.cMax}; return MealGrade.dayBadge(MealGrade.gradeDay(day.food,{targets:T, basis: all?"eaten":"plan"})); }catch(e){ return ""; } }
 function proteinGapRes(day){ try{ return (window.ProteinGap && day.food.length) ? ProteinGap.suggest(day.food,{dislikes:S.docs.prefs.main?.dislikes||[], targets:{kcal:kcalTarget(day.date||view.date), proteinMin:TARGET.pMin, proteinMax:TARGET.pMax}}) : null; }catch(e){ return null; } }
 function proteinGapHtml(day){
   if(day.food.filter(i=>/Meal/.test(i.slot)).length<2) return "";
@@ -1520,7 +1522,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,

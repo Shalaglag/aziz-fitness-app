@@ -9565,6 +9565,166 @@ if (typeof module !== "undefined" && module.exports) module.exports = MacroTarge
 </script>
 <script>
 /*
+ * Meal grade: an A–D grade for one food row, one planned meal, or a whole day.
+ * Pure logic plus two tiny HTML helpers, no network. Browser global (window.MealGrade) or CommonJS.
+ *
+ * A row is graded mainly on protein per 100 kcal (the day's plan needs about 8 g/100 kcal:
+ * 160 g in 2,000 kcal) and on how it fits the day's budget (kcal share, fat share).
+ * A day is graded on protein, calories, fat and carbs against the targets (AppTargets shape,
+ * the picker's {kcal, proteinMin, proteinMax, fat:[lo,hi], carbs:[lo,hi]}, or the shell's TARGET).
+ *
+ *   MealGrade.density(item)                    -> g protein per 100 kcal, or null
+ *   MealGrade.kindOf(item)                     -> 'meal' | 'snack'
+ *   MealGrade.gradeItem(item, {kind, targets}) -> {grade, score, density, kcalShare, fatShare, kind, reasons} or null
+ *   MealGrade.gradeDay(food, {targets, basis}) -> {grade, score, totals, parts, reasons} or null (basis: plan | eaten)
+ *   MealGrade.badge(res, opts) / dayBadge(res) -> small HTML pill; MealGrade.css
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.MealGrade = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const DEFAULTS = { kcal: 2000, kcalLo: 1850, kcalHi: 2150, proteinMin: 160, proteinMax: 170, fatLo: 55, fatHi: 70, carbsLo: 180, carbsHi: 220 };
+  const BANDS = [[80, 'A'], [60, 'B'], [40, 'C'], [0, 'D']];
+  const LABEL = { A: 'Great pick', B: 'Good', C: 'Okay', D: 'Poor fit' };
+
+  const num = v => { const x = typeof v === 'string' && v.trim() ? +v : v; return typeof x === 'number' && isFinite(x) ? x : null; };
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const lerp = (v, from, to, max) => clamp((v - from) / (to - from), 0, 1) * max; // 0 at `from`, `max` at `to`
+  const letter = s => BANDS.find(([min]) => s >= min)[1];
+
+  // Accept AppTargets, the picker engine's shape, or the shell's TARGET.
+  function targetsFrom(t) {
+    t = t || {};
+    const kcal = num(t.kcal) || DEFAULTS.kcal;
+    const pMin = num(t.proteinMin) || num(t.pMin) || DEFAULTS.proteinMin;
+    const pMax = num(t.proteinMax) || num(t.pMax) || pMin + 10;
+    const fat = Array.isArray(t.fat) ? t.fat : [num(t.fatLo) ?? num(t.fMin) ?? DEFAULTS.fatLo, num(t.fatHi) ?? num(t.fMax) ?? DEFAULTS.fatHi];
+    const carbs = Array.isArray(t.carbs) ? t.carbs : [num(t.carbsLo) ?? num(t.cMin) ?? DEFAULTS.carbsLo, num(t.carbsHi) ?? num(t.cMax) ?? DEFAULTS.carbsHi];
+    const kcalLo = num(t.kcalLo) ?? kcal - 150, kcalHi = num(t.kcalHi) ?? kcal + 150;
+    return { kcal, kcalLo, kcalHi, proteinMin: pMin, proteinMax: pMax, fatLo: fat[0], fatHi: fat[1], carbsLo: carbs[0], carbsHi: carbs[1] };
+  }
+
+  const protein = it => num(it.p) ?? num(it.protein);
+  const fatOf = it => num(it.f) ?? num(it.fat);
+
+  function density(it) {
+    const k = num(it && it.kcal), p = it && protein(it);
+    if (!k || k <= 0 || p == null) return null;
+    return p / k * 100;
+  }
+
+  // A row's kind from its slot (app food), section (menu item) or size.
+  function kindOf(it) {
+    if (!it) return 'snack';
+    if (it.kind === 'meal' || it.kind === 'snack') return it.kind;
+    const slot = String(it.slot || '').toLowerCase(), sec = String(it.section || '').toLowerCase();
+    if (/meal|breakfast/.test(slot)) return 'meal';
+    if (/snack|extra|adonis|gatorade/.test(slot)) return 'snack';
+    if (['meal', 'salad', 'soup'].includes(sec)) return 'meal';
+    if (sec) return 'snack';
+    return (num(it.kcal) || 0) >= 350 ? 'meal' : 'snack';
+  }
+
+  function gradeItem(it, opts) {
+    const o = opts || {};
+    const T = targetsFrom(o.targets);
+    const kcal = num(it && it.kcal), p = it && protein(it);
+    if (!kcal || kcal <= 0 || p == null) return null;
+    const kind = o.kind === 'meal' || o.kind === 'snack' ? o.kind : kindOf(it);
+    const d = p / kcal * 100, f = fatOf(it);
+    const fatShare = f == null ? null : f * 9 / kcal;
+    const kcalShare = kcal / T.kcal;
+    const reasons = [];
+    let score;
+    if (kind === 'meal') {
+      const dp = lerp(d, 4, 12, 70);                 // 4 g/100 kcal = 0, 12+ = full
+      let fit = 30;
+      if (kcalShare < 0.25) fit -= (0.25 - kcalShare) * 100;
+      if (kcalShare > 0.40) fit -= (kcalShare - 0.40) * 100;
+      fit = clamp(fit, 0, 30);
+      let pen = 0;
+      if (fatShare != null && fatShare > 0.40) { pen = 10; reasons.push(`${Math.round(fatShare * 100)}% of its calories are fat`); }
+      score = clamp(dp + fit - pen, 0, 100);
+      reasons.unshift(`${d.toFixed(1)} g protein per 100 kcal`, `${Math.round(kcalShare * 100)}% of the day's ${T.kcal.toLocaleString('en-US')} kcal`);
+    } else {
+      const dp = lerp(d, 0, 8, 50);
+      const fit = kcal <= 120 ? 50 : lerp(kcal, 300, 120, 50);
+      let pen = 0;
+      if (f != null && f >= 15) { pen = 15; reasons.push(`${Math.round(f)} g fat for a snack`); }
+      score = clamp(dp + fit - pen, 0, 100);
+      reasons.unshift(`${d.toFixed(1)} g protein per 100 kcal`, `${Math.round(kcal)} kcal`);
+    }
+    score = Math.round(score);
+    const grade = letter(score);
+    return { grade, score, density: +d.toFixed(1), kcalShare: +kcalShare.toFixed(3), fatShare: fatShare == null ? null : +fatShare.toFixed(3), kind, label: LABEL[grade], reasons };
+  }
+
+  function sum(items) {
+    return items.reduce((a, i) => ({ kcal: a.kcal + (num(i.kcal) || 0), p: a.p + (protein(i) || 0), c: a.c + (num(i.c) ?? num(i.carbs) ?? 0), f: a.f + (fatOf(i) || 0) }), { kcal: 0, p: 0, c: 0, f: 0 });
+  }
+
+  function gradeDay(food, opts) {
+    const o = opts || {};
+    const T = targetsFrom(o.targets);
+    const items = (food || []).filter(i => i && (o.basis === 'eaten' ? i.eaten : true));
+    if (!items.length) return null;
+    const t = sum(items), parts = [], reasons = [];
+    const r0 = v => Math.round(v);
+    // Protein 40: full at proteinMin, nothing 40 g below it.
+    let pp = lerp(t.p, T.proteinMin - 40, T.proteinMin, 40);
+    if (t.p > T.proteinMax + 30) pp -= 5;
+    pp = clamp(Math.round(pp), 0, 40);
+    parts.push({ key: 'protein', label: 'Protein', got: pp, max: 40, detail: `${r0(t.p)} g of ${T.proteinMin}–${T.proteinMax} g` });
+    if (t.p < T.proteinMin) reasons.push(`${r0(T.proteinMin - t.p)} g protein short`);
+    // Calories 35: full inside the band, −1 per 10 kcal outside it.
+    const out = t.kcal < T.kcalLo ? T.kcalLo - t.kcal : t.kcal > T.kcalHi ? t.kcal - T.kcalHi : 0;
+    const kp = clamp(Math.round(35 - out / 10), 0, 35);
+    parts.push({ key: 'kcal', label: 'Calories', got: kp, max: 35, detail: `${r0(t.kcal)} of ${r0(T.kcalLo)}–${r0(T.kcalHi)} kcal` });
+    if (out) reasons.push(`${r0(out)} kcal ${t.kcal > T.kcalHi ? 'over' : 'under'} the ${r0(T.kcalLo)}–${r0(T.kcalHi)} band`);
+    // Fat 15: full at or under fatHi, −1 per 2 g over.
+    const fp = clamp(Math.round(15 - Math.max(0, t.f - T.fatHi) / 2), 0, 15);
+    parts.push({ key: 'fat', label: 'Fat', got: fp, max: 15, detail: `${r0(t.f)} g (max ${T.fatHi} g)` });
+    if (t.f > T.fatHi) reasons.push(`fat ${r0(t.f - T.fatHi)} g over ${T.fatHi} g`);
+    // Carbs 10: in range 10, within 20 g 5, else 0.
+    const cout = t.c < T.carbsLo ? T.carbsLo - t.c : t.c > T.carbsHi ? t.c - T.carbsHi : 0;
+    const cp = cout === 0 ? 10 : cout <= 20 ? 5 : 0;
+    parts.push({ key: 'carbs', label: 'Carbs', got: cp, max: 10, detail: `${r0(t.c)} g of ${T.carbsLo}–${T.carbsHi} g` });
+    if (cout > 20) reasons.push(`carbs ${r0(cout)} g outside ${T.carbsLo}–${T.carbsHi} g`);
+    const score = parts.reduce((a, x) => a + x.got, 0);
+    const grade = score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 50 ? 'C' : 'D';
+    return { grade, score, totals: t, parts, reasons, basis: o.basis === 'eaten' ? 'eaten' : 'plan', count: items.length };
+  }
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function badge(res, opts) {
+    if (!res) return '';
+    const o = opts || {};
+    const title = o.title || `${res.label}: ${res.reasons.join(' · ')}`;
+    return `<span class="mg mg-${res.grade}${o.small ? ' mg-s' : ''}" title="${esc(title)}" aria-label="Grade ${res.grade}, ${esc(title)}">${res.grade}</span>`;
+  }
+
+  function dayBadge(res) {
+    if (!res) return '';
+    const why = res.reasons.length ? res.reasons.join('; ') : 'protein, calories, fat and carbs all on target';
+    return `<span class="mg mg-day mg-${res.grade}" title="${esc(why)}" aria-label="Day grade ${res.grade}: ${esc(why)}">Day ${res.grade}<small>${res.basis === 'eaten' ? 'eaten' : 'planned'}</small></span>`;
+  }
+
+  const css = `
+.mg{display:inline-flex;align-items:center;justify-content:center;min-width:1.5em;height:1.5em;padding:0 .35em;border-radius:6px;font-weight:800;font-size:.78rem;line-height:1;color:#fff;background:var(--muted);vertical-align:middle;flex:none}
+.mg.mg-s{min-width:1.3em;height:1.3em;font-size:.7rem}
+.mg-A{background:var(--good)}.mg-B{background:var(--accent)}.mg-C{background:var(--warn)}.mg-D{background:var(--bad)}
+.mg-day{border-radius:999px;padding:2px 10px;height:auto;gap:6px;font-size:.78rem}
+.mg-day small{font-weight:500;opacity:.85;font-size:.7rem}
+`;
+
+  return { DEFAULTS, LABEL, targetsFrom, density, kindOf, gradeItem, gradeDay, badge, dayBadge, css };
+});
+</script>
+<script>
+/*
  * Protein gap closer.
  * Pure logic, no DOM. Works as a browser global (window.ProteinGap)
  * or as a CommonJS module, so the main app can inline it as-is.
@@ -17235,6 +17395,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
 .mi .mi-it.off .mi-nums,.mi .mi-it.off .mi-top input{opacity:.5}
 .mi .mi-top{display:flex;gap:6px;align-items:center}
 .mi .mi-top input{flex:1;min-width:0}
+.mi .mi-top .mg{margin-right:2px}
+.mi li .mg{margin-left:-1.4em;margin-right:.2em}
 .mi .mi-nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.3fr);gap:6px;margin-top:6px}
 .mi .mi-nums label{display:flex;flex-direction:column;font-size:.72rem;color:var(--muted);gap:2px}
 .mi input.mi-in,.mi select.mi-in{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:6px;padding:6px;font:inherit;font-size:.9rem}
@@ -17244,14 +17406,21 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
 .mi .mi-sub{font-size:.85rem}
 `;
 
-  function itemsTable(items, dislikes) {
+  // A–D grade pill from the MealGrade module when it is inlined; '' otherwise.
+  function gradeOf(it, kind, T) {
+    const MG = (typeof root !== 'undefined' && root.MealGrade) || (typeof window !== 'undefined' && window.MealGrade);
+    if (!MG) return '';
+    try { return MG.badge(MG.gradeItem(it, { kind, targets: T }), { small: true }); } catch (e) { return ''; }
+  }
+
+  function itemsTable(items, dislikes, T) {
     const tagged = annotate(items, { bannedReason: makeBanned(H.engine, dislikes), likeOf: H.engine.likeOf });
     const flagged = tagged.filter(it => it.needsCheck && !it.banned).length;
     const rows = tagged.map((it, i) => {
       const cls = it.banned ? 'off' : it.needsCheck ? 'flag' : '';
       const n = (k, label) => `<label>${label}<input class="mi-in n" inputmode="decimal" data-mik="${k}" data-i="${i}" value="${it[k] == null ? '' : esc(it[k])}" aria-label="${label} for ${esc(it.name)}"></label>`;
       return `<div class="mi-it ${cls}">
-        <div class="mi-top"><input class="mi-in" data-mik="name" data-i="${i}" value="${esc(it.name)}" aria-label="Name">
+        <div class="mi-top">${it.banned || it.skip ? '' : gradeOf(it, ['meal', 'salad', 'soup'].includes(it.section) ? 'meal' : 'snack', T)}<input class="mi-in" data-mik="name" data-i="${i}" value="${esc(it.name)}" aria-label="Name">
           ${!it.banned && it.needsCheck && complete(it) ? `<button class="btn small" data-mi="ok" data-i="${i}" title="The numbers match the menu">OK</button>` : ''}
           <button class="btn ghost small" data-mi="skip" data-i="${i}" title="${it.skip ? 'Use it again' : 'Leave it out'}" aria-label="${it.skip ? 'Use it again' : 'Leave it out'}">${it.skip ? 'Use' : '✕'}</button></div>
         <div class="mi-nums">${n('kcal', 'kcal')}${n('protein', 'Protein')}${n('carbs', 'Carbs')}${n('fat', 'Fat')}
@@ -17264,16 +17433,16 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
       ${flagged ? `<p class="mi-sub"><b>${flagged} item${flagged > 1 ? 's need' : ' needs'} a check.</b> Compare with the menu and tap OK, or fix the number. <button class="btn ghost small" data-mi="okall">All match the menu</button></p>` : ''}`;
   }
 
-  function resultHtml(res) {
+  function resultHtml(res, T) {
     if (!res) return '';
-    const line = it => `<li>${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r0(it.p)} P</span>${it.needsCheck ? ' <span class="pill warn">unconfirmed</span>' : ''}</li>`;
+    const line = (it, kind) => `<li>${gradeOf(it, kind, T)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r0(it.p)} P</span>${it.needsCheck ? ' <span class="pill warn">unconfirmed</span>' : ''}</li>`;
     const fixedLines = (res.fixed || []).map(x => `<li class="muted">${esc(x.name)} <span class="num" style="font-size:.85rem">${r0(x.kcal)} kcal · ${r0(x.p)} P${x.estimate ? ' (estimate)' : ''}</span></li>`).join('');
     return `${res.notes.length ? `<p class="muted mi-sub">${res.notes.map(esc).join(' ')}</p>` : ''}
       ${res.skipped.length ? `<p class="muted mi-sub">Left out: ${res.skipped.map(s => `${esc(s.name)} (${esc(s.reason)})`).join(', ')}</p>` : ''}
       ${res.error ? `<p class="note">${esc(res.error)}</p>` : ''}
       ${res.options.map((o, i) => `<div class="ex">
         <div class="spread"><b>${i === 0 ? 'Best option' : 'Option ' + (i + 1)}</b><span class="pill ${o.check.fits ? 'good' : 'warn'}">${o.check.fits ? 'Fits' : 'Closest'}</span></div>
-        <ul style="margin:0;padding-left:1.1em">${line(o.meal1)}${line(o.meal2)}${o.snacks.map(line).join('')}${fixedLines}</ul>
+        <ul style="margin:0;padding-left:1.1em">${line(o.meal1, 'meal')}${line(o.meal2, 'meal')}${o.snacks.map(s => line(s, 'snack')).join('')}${fixedLines}</ul>
         <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small" data-mi="use" data-i="${i}">Plan this day</button></div>
         <p class="muted mi-sub">${esc(o.check.verdict)}</p>
       </div>`).join('')}`;
@@ -17297,13 +17466,13 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
       ${ST.busy ? `<p class="muted mi-sub" aria-live="polite">${esc(ST.busy)} ${ST.ctl ? '<button class="btn ghost small" data-mi="stop">Stop</button>' : ''}</p>` : ''}
       ${ST.error ? `<p class="note">${esc(ST.error)}</p>` : ''}
       ${ST.warnings.length ? `<p class="muted mi-sub">${ST.warnings.map(esc).join(' ')}</p>` : ''}
-      ${ST.items && ST.items.length ? `${itemsTable(ST.items, bans)}
+      ${ST.items && ST.items.length ? `${itemsTable(ST.items, bans, T)}
         <div class="row" style="flex-wrap:wrap;gap:12px">
           <label class="mi-sub"><input type="checkbox" id="miAdonis"${ST.opts.adonis ? ' checked' : ''}> Adonis cookie dough</label>
           <label class="mi-sub"><input type="checkbox" id="miConfirmed"${ST.opts.onlyConfirmed ? ' checked' : ''}> Only use checked numbers</label>
           <button class="btn" data-mi="go">Find the best combo</button>
         </div>
-        ${resultHtml(ST.result)}` : ''}
+        ${resultHtml(ST.result, T)}` : ''}
     </div>`;
   }
 
@@ -17919,7 +18088,7 @@ function verdict(items){
   if(KT!==TARGET.kcal){ const cc=ccTarget(view.date), rm=reverseTarget(view.date)?.mode; msgs.push(["info", rm==="reverse" ? `Reverse diet: target ${KTs} this week` : rm==="maintain" ? `Maintenance: target ${KTs}` : dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
   if(t.p<TARGET.pMin) msgs.push(["warn",`Protein ${r0(TARGET.pMin-t.p)} g short`]); else msgs.push(["good","Protein hit"]);
   if(t.f>TARGET.fMax) msgs.push(["warn","Fat on the high side"]);
-  return `<div class="row">${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
+  return `<div class="row">${mgDay({food:items, date:view.date})}${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
 }
 
 /* ---------- TODAY ---------- */
@@ -18195,7 +18364,7 @@ function vFood(){
     ${day.food.length?`<div class="items">${day.food.map(i=>`
       <div class="item ${i.eaten?"":"planned"}">
         <input type="checkbox" data-act="eat" data-id="${i.id}" ${i.eaten?"checked":""} aria-label="Eaten">
-        <div class="nm"><b>${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
+        <div class="nm"><b>${mgBadge(i)} ${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
         <div class="mac">${r0(i.kcal)} kcal<br><span style="color:var(--protein)">${r1(+i.p||0)}P</span> <span style="color:var(--carbs)">${r1(+i.c||0)}C</span> <span style="color:var(--fat)">${r1(+i.f||0)}F</span></div>
         <button class="x" data-act="delfood" data-id="${i.id}" aria-label="Remove">×</button>
       </div>`).join("")}</div>
@@ -18207,7 +18376,7 @@ function vFood(){
     <div class="spread"><h3>Nutreeze snack menu</h3><span class="muted" style="font-size:.85rem">Pick any 2. Tap to add.</span></div>
     <div class="tablewrap"><table>
       <thead><tr><th>Snack</th><th>Type</th><th class="n">kcal</th><th class="n">P</th><th class="n">C</th><th class="n">F</th><th></th></tr></thead>
-      <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[1]}</td><td>${s[0]==="Banned"?"Never pick":s[0]}</td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody>
+      <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[0]==="Banned"?"":mgBadge({kcal:s[2],p:s[3],c:s[4],f:s[5]},"snack")+" "}${s[1]}</td><td>${s[0]==="Banned"?"Never pick":s[0]}</td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody>
     </table></div>
     <p class="muted" style="font-size:.88rem">With Meal 1 (pre-workout) prefer fruit or a light sweet. Nuts and Pro Mud Cake fit better with Meal 2, since fat slows digestion. If Meal 1 is 700+ kcal, move the sweet to the evening.</p>
   </div>
@@ -18228,7 +18397,7 @@ function pickerCard(d, training){
   const P = window.NutreezePicker; if(!P) return "";
   let draft=""; try{ draft=localStorage.getItem("aziz-cut-menu")||""; }catch(e){}
   const res = view.pick && view.pick.date===d ? view.pick : null;
-  const line = it => `<li>${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r1(it.p)} P</span></li>`;
+  const line = (it,kind) => `<li>${mgBadge(it,kind,d)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r1(it.p)} P</span></li>`;
   return `<div class="card">
     <div class="spread"><h3>Pick my meals</h3><span class="muted" style="font-size:.85rem">2 meals + 2 snacks + Adonis${training?" + Gatorade":""}</span></div>
     <p class="muted" style="font-size:.9rem">Paste the day's Nutreeze meals, one per line: <span class="num">name kcal protein carbs fat</span>. Never-pick meals are removed automatically.</p>
@@ -18238,7 +18407,7 @@ function pickerCard(d, training){
     ${res && res.skipped && res.skipped.length ? `<p class="muted" style="font-size:.85rem">Removed: ${res.skipped.map(esc).join(", ")}</p>` : ""}
     ${res && res.options ? res.options.map((o,i)=>`<div class="ex">
       <div class="spread"><b>${i===0?"Best option":"Option "+(i+1)}</b><span class="pill ${o.check.fits?"good":"warn"}">${esc(o.check.verdict)}</span></div>
-      <ul style="margin:0;padding-left:1.1em">${line(o.meal1)}${line(o.meal2)}${o.snacks.map(line).join("")}</ul>
+      <ul style="margin:0;padding-left:1.1em">${line(o.meal1,"meal")}${line(o.meal2,"meal")}${o.snacks.map(s=>line(s,"snack")).join("")}</ul>
       <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small" data-act="usepick" data-i="${i}">Use this plan</button></div>
       ${o.check.notes&&o.check.notes.length?`<p class="muted" style="font-size:.85rem">${o.check.notes.map(esc).join(" ")}</p>`:""}
     </div>`).join("") : ""}
@@ -18558,6 +18727,8 @@ function ramadanCard(d){
     return Ramadan.html(d,{dayType:pickerDayType(d), train:pr.ramadanTrain||"after-iftar", cfg, targets:APPT||undefined}); }catch(e){ return ""; }
 }
 function trendSeries(){ try{ return window.TrendTDEE ? TrendTDEE.series(S.docs.weights,{today:TODAY}) : undefined; }catch(e){ return undefined; } }
+function mgBadge(it, kind, date){ try{ return window.MealGrade ? MealGrade.badge(MealGrade.gradeItem(it,{kind, targets:dayTargets(date||view.date)||{kcal:kcalTarget(date||view.date), pMin:TARGET.pMin, pMax:TARGET.pMax, fMin:TARGET.fMin, fMax:TARGET.fMax, cMin:TARGET.cMin, cMax:TARGET.cMax}}),{small:true}) : ""; }catch(e){ return ""; } }
+function mgDay(day){ try{ if(!window.MealGrade || !day.food.length) return ""; const all=day.food.every(i=>i.eaten); const T=dayTargets(day.date||view.date)||{kcal:kcalTarget(day.date||view.date), pMin:TARGET.pMin, pMax:TARGET.pMax, fMin:TARGET.fMin, fMax:TARGET.fMax, cMin:TARGET.cMin, cMax:TARGET.cMax}; return MealGrade.dayBadge(MealGrade.gradeDay(day.food,{targets:T, basis: all?"eaten":"plan"})); }catch(e){ return ""; } }
 function proteinGapRes(day){ try{ return (window.ProteinGap && day.food.length) ? ProteinGap.suggest(day.food,{dislikes:S.docs.prefs.main?.dislikes||[], targets:{kcal:kcalTarget(day.date||view.date), proteinMin:TARGET.pMin, proteinMax:TARGET.pMax}}) : null; }catch(e){ return null; } }
 function proteinGapHtml(day){
   if(day.food.filter(i=>/Meal/.test(i.slot)).length<2) return "";
@@ -18656,7 +18827,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
