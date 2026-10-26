@@ -1600,6 +1600,364 @@ return {localISODate,parseWaterH,applyWaterH,totalWater};
 })();
 </script>
 <script>
+/* Voice logging for the Aziz Cut Tracker: say a set ("bench 60 for 10, 10, 8") or a meal ("had a chicken shawarma").
+ * Plain JS, no imports, no network. Speech comes from the browser's SpeechRecognition when the page is allowed a
+ * microphone; otherwise the same box takes Android keyboard voice typing (the mic on Gboard). Either way the text
+ * goes through the same parser, so the tests cover the whole path after the microphone.
+ * API:
+ *   VoiceLog.parse(text, opts)        -> [{ exercise, candidates, sure, weight, unit, reps, sets, km, min, raw }]
+ *        opts = { exercises: [{id, name, cat}], current: exId, prefer: [exId], unit: "kg"|"lb" }
+ *        One entry per exercise mentioned ("bench 60 for 10 10 8 then lat pulldown 55 for 12 12" -> 2 entries).
+ *        exercise is null when nothing in the library matched (and no `current` to fall back on).
+ *   VoiceLog.matchExercise(phrase, exercises, opts) -> { best, candidates:[{ex, score}] }
+ *   VoiceLog.toSets(entry, exercise)  -> [{t:'n', w, r, km, min, sec, done:true}] in the logger's set shape
+ *   VoiceLog.words(text)              -> text with number words turned into digits ("sixty for ten" -> "60 for 10")
+ *   VoiceLog.speech.supported()       -> true when the browser has SpeechRecognition
+ *   VoiceLog.speech.start({ onText(text, final), onEnd(), onError(code) }) -> { stop() }
+ *   VoiceLog.open({ exercises, current, prefer, unit, onApply(entries) }) -> opens the "Log by voice" sheet (Train)
+ *   VoiceLog.foodCardHtml()           -> Food tab card with the mic; VoiceLog.bindFood(root, { onText }) wires it once
+ *   VoiceLog.css                      -> string, inject once (uses the app's tokens)
+ */
+window.VoiceLog = (() => {
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const r1 = n => Math.round(n * 10) / 10;
+
+  // ---------- number words ----------
+  const ONES = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
+  const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+  const HALF = { half: 0.5, quarter: 0.25 };
+  function words(text) {
+    const toks = String(text || "").toLowerCase().replace(/-/g, " ").split(/\s+/).filter(Boolean);
+    const out = []; let acc = null;
+    const flush = () => { if (acc != null) { out.push(String(acc)); acc = null; } };
+    const push = (punct) => { if (punct) { flush(); out.push(punct); } };
+    for (let i = 0; i < toks.length; i++) {
+      const w = toks[i].replace(/[,.;:!?]+$/, ""), punct = toks[i].slice(w.length);
+      if (w in ONES) { if (acc != null && !((acc >= 20 && acc % 10 === 0) || (acc >= 100 && acc % 100 === 0))) flush(); acc = (acc || 0) + ONES[w]; push(punct); continue; }
+      if (w in TENS) { if (acc != null && !(acc >= 100 && acc % 100 === 0)) flush(); acc = (acc || 0) + TENS[w]; push(punct); continue; }
+      if (w === "hundred") { if (acc != null && acc < 100) acc = acc * 100; else { flush(); acc = 100; } push(punct); continue; }
+      if (w === "and" && acc != null && acc >= 100 && toks[i + 1] && (toks[i + 1].replace(/[,.;:!?]+$/, "") in ONES || toks[i + 1].replace(/[,.;:!?]+$/, "") in TENS)) continue;
+      if (w === "a" && acc == null && toks[i + 1] && toks[i + 1].replace(/[,.;:!?]+$/, "") in HALF) continue;
+      if (w in HALF) { if (acc != null) { acc += HALF[w]; } else acc = HALF[w]; flush(); push(punct); continue; }
+      flush(); out.push(toks[i]);
+    }
+    flush();
+    return out.join(" ").replace(/ ([,.;:!?])/g, "$1").replace(/(\d) point (\d)/g, "$1.$2").replace(/(\d) and a half\b/g, "$1.5").replace(/(\d) and 0.5\b/g, "$1.5");
+  }
+
+  // ---------- exercise matching ----------
+  const SYN = {
+    bench: ["bench", "press"], flat: ["bench"], db: ["dumbbell"], dumbbells: ["dumbbell"], bb: ["barbell"], bar: ["barbell"],
+    pulldown: ["pulldown"], pulldowns: ["pulldown"], "pull-down": ["pulldown"], lats: ["lat"], lat: ["lat", "pulldown"],
+    ohp: ["overhead", "press"], overhead: ["overhead", "press"], shoulder: ["overhead", "shoulder", "press"], military: ["overhead", "press"],
+    rdl: ["romanian", "deadlift"], rdls: ["romanian", "deadlift"], romanian: ["romanian", "deadlift"],
+    curls: ["curl"], curl: ["curl"], biceps: ["bicep", "curl"], bicep: ["bicep", "curl"], tris: ["triceps"], tricep: ["triceps"],
+    pushdown: ["pushdown"], pushdowns: ["pushdown"], rope: ["rope", "pushdown"], skullcrusher: ["skull", "crusher"], skullcrushers: ["skull", "crusher"],
+    rows: ["row"], row: ["row"], squats: ["squat"], squat: ["squat"], hack: ["hack", "squat"], smith: ["smith"],
+    lateral: ["lateral", "raise"], laterals: ["lateral", "raise"], side: ["lateral", "raise"], delts: ["lateral", "raise"], delt: ["lateral", "raise"],
+    raises: ["raise"], ext: ["extension"], extensions: ["extension"], extension: ["extension"], quad: ["leg", "extension"],
+    ham: ["leg", "curl"], hamstring: ["leg", "curl"], hamstrings: ["leg", "curl"],
+    pullups: ["pull", "up"], pullup: ["pull", "up"], chinups: ["chin", "up"], chinup: ["chin", "up"], pushups: ["push", "up"], pushup: ["push", "up"],
+    dips: ["dip"], dip: ["dip"], flys: ["fly"], flies: ["fly"], fly: ["fly"], pec: ["pec", "deck"], crossover: ["crossover"], crossovers: ["crossover"],
+    treadmill: ["treadmill"], walk: ["treadmill", "walk"], walking: ["treadmill", "walk"], incline: ["incline"], run: ["treadmill", "run"], running: ["treadmill", "run"],
+    bike: ["bike"], cycling: ["bike"], elliptical: ["elliptical"], stairs: ["stair", "climber"], stairmaster: ["stair", "climber"], rowing: ["rowing", "machine"],
+    abs: ["abs"], ab: ["abs"], crunches: ["crunch"], crunch: ["crunch"], plank: ["plank"], calves: ["calf"], calf: ["calf"], shrugs: ["shrug"], shrug: ["shrug"],
+    adductor: ["adductor"], adductors: ["adductor"], abductor: ["abductor"], abductors: ["abductor"], abduction: ["abductor"], adduction: ["adductor"],
+    machine: ["machine"], cable: ["cable"], cables: ["cable"], gundam: ["gundam"], preacher: ["preacher"], hammer: ["hammer"], face: ["face", "pull"], facepull: ["face", "pull"], facepulls: ["face", "pull"],
+    deadlift: ["deadlift"], deadlifts: ["deadlift"], thrust: ["hip", "thrust"], thrusts: ["hip", "thrust"], glute: ["glute"], glutes: ["glute"], lunges: ["lunge"], lunge: ["lunge"],
+    chest: ["chest"], back: ["back"], wide: ["wide"], close: ["close"], single: ["single", "arm"], "one": ["single"], seated: ["seated"], standing: ["standing"], lying: ["lying"]
+  };
+  const STOP = new Set(["the", "a", "an", "on", "at", "with", "of", "my", "i", "did", "do", "some", "set", "sets", "rep", "reps", "kg", "kilo", "kilos", "kilogram", "kilograms", "lb", "lbs", "pound", "pounds", "for", "x", "by", "times", "each", "and", "then", "log", "add", "to", "grip", "arm"]);
+  const stem = w => w.replace(/ies$/, "y").replace(/(?<![su])s$/, "");
+  const norm = s => String(s || "").toLowerCase().replace(/[()\-,/]+/g, " ").replace(/[^a-z0-9. ]+/g, " ").split(/\s+/).filter(Boolean);
+  const exTokens = ex => { const t = new Set(norm(ex.name).map(stem)); if (ex.part) norm(ex.part).forEach(x => t.add(stem(x))); return t; };
+  const phraseTokens = phrase => { const out = new Set(); norm(phrase).forEach(w => { if (STOP.has(w) || /^\d/.test(w)) return; const s = stem(w); out.add(s); (SYN[w] || SYN[s] || []).forEach(x => out.add(stem(x))); }); return out; };
+
+  function matchExercise(phrase, exercises, opts = {}) {
+    const want = phraseTokens(phrase);
+    if (!want.size || !exercises || !exercises.length) return { best: null, candidates: [] };
+    const prefer = new Set(opts.prefer || []);
+    const scored = exercises.map(ex => {
+      const have = exTokens(ex);
+      let hit = 0; want.forEach(t => { if (have.has(t)) hit++; });
+      if (!hit) return null;
+      // Share of the request matched, then how much of the exercise's name the request covers (so "bench" prefers the plain barbell bench).
+      let score = hit / want.size + 0.35 * (hit / have.size);
+      if (prefer.has(ex.id)) score += 0.3;
+      if (ex.id === opts.current) score += 0.15;
+      if (ex.avoided) score -= 0.1;
+      return { ex, score: Math.round(score * 1000) / 1000 };
+    }).filter(Boolean).sort((a, b) => b.score - a.score || a.ex.name.length - b.ex.name.length);
+    const best = scored[0] ? scored[0].ex : null;
+    const sure = !!scored[0] && (scored.length < 2 || scored[0].score - scored[1].score >= 0.08);
+    return { best, sure, candidates: scored.slice(0, 5) };
+  }
+
+  // ---------- set parsing ----------
+  const UNIT = { kg: "kg", kilo: "kg", kilos: "kg", kilogram: "kg", kilograms: "kg", lb: "lb", lbs: "lb", pound: "lb", pounds: "lb" };
+  const SPLIT = /\s*(?:,\s*)?\b(?:and then|then|after that|next|and)\b\s*/;
+  const isCardio = ex => !!ex && ex.cat === "Cardio";
+  const repsOnly = ex => !!ex && ["Bodyweight", "Reps only", "Assisted"].includes(ex.cat);
+  const isDuration = ex => !!ex && ex.cat === "Duration";
+
+  function parseChunk(raw, opts) {
+    let s = words(raw).toLowerCase().replace(/\b(\d+(?:\.\d+)?)\s*(kg|kilos?|kilograms?|lbs?|pounds?)\b/g, "$1 $2").replace(/[;!?]/g, " ");
+    s = s.replace(/\bx\b|\btimes\b|\bby\b/g, " for ").replace(/\b(\d+)\s*(?:reps?|repetitions?)\b/g, "$1 rep").replace(/\b(\d+)\s*sets?\b/g, "$1 set").replace(/(\d)\s*(?:km|kilometers?|k)\b/g, "$1 km").replace(/(\d)\s*(?:mins?|minutes?)\b/g, "$1 min").replace(/(\d)\s*(?:secs?|seconds?)\b/g, "$1 sec");
+    const toks = s.split(/[\s,]+/).filter(Boolean);
+    const firstNum = toks.findIndex(t => /^\d/.test(t));
+    const phrase = (firstNum === -1 ? toks : toks.slice(0, firstNum)).filter(t => !["log", "add", "did", "i", "the", "at", "with", "for", "some", "just", "do", "my"].includes(t)).join(" ");
+    const tail = firstNum === -1 ? [] : toks.slice(firstNum);
+    const nums = []; // {v, tag}
+    for (let i = 0; i < tail.length; i++) {
+      const t = tail[i];
+      if (!/^\d+(\.\d+)?$/.test(t)) continue;
+      const v = parseFloat(t), next = tail[i + 1] || "", prev = tail[i - 1] || "";
+      let tag = "";
+      if (UNIT[next]) tag = "w:" + UNIT[next];
+      else if (next === "rep") tag = "r";
+      else if (next === "set") tag = "sets";
+      else if (next === "km") tag = "km";
+      else if (next === "min") tag = "min";
+      else if (next === "sec") tag = "sec";
+      else if (prev === "of" && nums.length && nums[nums.length - 1].tag === "sets") tag = "r";
+      else if (prev === "at") tag = "w:";
+      nums.push({ v, tag });
+    }
+    return { phrase, nums, raw: raw.trim() };
+  }
+
+  function parse(text, opts = {}) {
+    const exercises = opts.exercises || [];
+    const chunks = String(text || "").split(SPLIT).map(c => c.trim()).filter(c => /\d|\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\b/i.test(c) || c.length > 2);
+    const out = []; let lastEx = null;
+    chunks.forEach(c => {
+      const { phrase, nums, raw } = parseChunk(c, opts);
+      const m = phrase ? matchExercise(phrase, exercises, opts) : { best: null, sure: false, candidates: [] };
+      let ex = m.best, sure = m.sure;
+      if (!ex && !phrase) { ex = exercises.find(e => e.id === (out.length ? lastEx : opts.current)) || null; sure = !!ex; }
+      lastEx = ex ? ex.id : lastEx;
+      const e = { exercise: ex, candidates: m.candidates.map(x => x.ex), sure: !!ex && sure, weight: null, unit: opts.unit || "kg", reps: [], sets: null, km: null, min: null, sec: null, raw, phrase };
+      const tagged = k => nums.filter(n => n.tag === k || (k === "w" && n.tag.startsWith("w:")));
+      const w = tagged("w")[0]; if (w) { e.weight = w.v; if (w.tag.slice(2)) e.unit = w.tag.slice(2); }
+      tagged("sets").forEach(n => { e.sets = n.v; });
+      tagged("km").forEach(n => { e.km = n.v; }); tagged("min").forEach(n => { e.min = n.v; }); tagged("sec").forEach(n => { e.sec = n.v; });
+      e.reps = tagged("r").map(n => n.v);
+      const loose = nums.filter(n => !n.tag).map(n => n.v);
+      if (isCardio(ex)) { if (e.min == null && loose.length) e.min = loose.shift(); if (e.km == null && loose.length) e.km = loose.shift(); }
+      else if (isDuration(ex)) { if (e.sec == null && e.min == null && loose.length) e.sec = loose.shift(); if (e.min != null && e.sec == null) { e.sec = e.min * 60; e.min = null; } }
+      else if (repsOnly(ex)) { e.reps = e.reps.concat(loose); }
+      else {
+        if (e.weight == null && loose.length && (loose.length > 1 || e.reps.length || e.sets)) e.weight = loose.shift();
+        e.reps = e.reps.concat(loose);
+      }
+      if (e.sets && e.reps.length === 1) e.reps = Array.from({ length: e.sets }, () => e.reps[0]);
+      if (e.sets && !e.reps.length && e.weight != null && !isCardio(ex)) e.reps = Array.from({ length: e.sets }, () => null);
+      if (e.reps.length) e.reps = e.reps.map(r => (r == null ? null : Math.round(r)));
+      if (e.weight != null && e.weight > 1000) e.weight = null;
+      if (e.exercise || e.reps.length || e.km != null || e.min != null || e.sec != null) out.push(e);
+    });
+    return out;
+  }
+
+  function toSets(entry, exercise) {
+    const blank = () => ({ t: "n", w: "", r: "", km: "", min: "", sec: "", done: true });
+    if (isDuration(exercise || entry.exercise)) { const n = entry.sec != null ? entry.sec : entry.min != null ? entry.min * 60 : null; if (n == null) return []; const s = blank(); s.sec = String(Math.round(n)); return [s]; }
+    if (isCardio(exercise || entry.exercise)) { const s = blank(); if (entry.km != null) s.km = String(r1(entry.km)); if (entry.min != null) s.min = String(Math.round(entry.min)); return s.km || s.min ? [s] : []; }
+    const reps = entry.reps && entry.reps.length ? entry.reps : (entry.weight != null ? [null] : []);
+    return reps.map(r => { const s = blank(); if (r != null) s.r = String(r); if (entry.weight != null && !repsOnly(exercise || entry.exercise)) s.w = String(r1(entry.weight)); return s; }).filter(s => s.r || s.w);
+  }
+
+  // ---------- speech ----------
+  const SR = () => (typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition)) || null;
+  const speech = {
+    supported: () => !!SR(),
+    start({ onText, onEnd, onError, lang } = {}) {
+      const R = SR(); if (!R) { onError && onError("unsupported"); return { stop() { } }; }
+      const rec = new R(); rec.lang = lang || "en-US"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+      let finalText = "";
+      rec.onresult = ev => { let interim = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) { const r = ev.results[i]; if (r.isFinal) finalText += (finalText ? " " : "") + r[0].transcript; else interim += r[0].transcript; } onText && onText((finalText + " " + interim).trim(), false); };
+      rec.onerror = ev => { onError && onError(ev && ev.error || "error"); };
+      rec.onend = () => { if (finalText) onText && onText(finalText.trim(), true); onEnd && onEnd(); };
+      try { rec.start(); } catch (e) { onError && onError("start"); }
+      return { stop() { try { rec.stop(); } catch (e) { } } };
+    }
+  };
+  const errorText = code => ({
+    "not-allowed": "The microphone is blocked here. Tap the box and use the mic on your keyboard instead.",
+    "service-not-allowed": "Speech isn't available in this browser. Tap the box and use the mic on your keyboard instead.",
+    unsupported: "This browser has no speech recognition. Tap the box and use the mic on your keyboard instead.",
+    "no-speech": "Didn't catch anything. Try again, closer to the phone.",
+    "audio-capture": "No microphone found.",
+    network: "Speech needs a connection. Type it, or use the keyboard mic."
+  }[code] || "Couldn't listen. Tap the box and use the mic on your keyboard.");
+
+  // ---------- Train sheet ----------
+  let sheet = null, V = null;
+  const fmtEntry = e => e.exercise ? e.exercise.name : (e.phrase || "Which exercise?");
+  function open(opts) {
+    close();
+    V = { opts, text: "", entries: [], listening: false, err: "", ctl: null };
+    sheet = document.createElement("div"); sheet.className = "vl-overlay"; sheet.innerHTML = '<section class="vl-sheet" role="dialog" aria-label="Log by voice"></section>';
+    document.body.appendChild(sheet);
+    sheet.addEventListener("click", e => { if (e.target === sheet) { close(); return; } const b = e.target.closest("[data-vl]"); if (b) act(b.dataset.vl, b); });
+    sheet.addEventListener("input", e => { const t = e.target; if (t.id === "vlText") { V.text = t.value; reparse(); renderEntries(); } const k = t.dataset.vk, i = +t.dataset.vi; if (k && V.entries[i]) applyField(V.entries[i], k, t.value); });
+    sheet.addEventListener("change", e => { const t = e.target; const k = t.dataset.vk, i = +t.dataset.vi; if (k === "ex" && V.entries[i]) { const ex = (V.opts.exercises || []).find(x => x.id === t.value) || null; V.entries[i].exercise = ex; V.entries[i].sure = !!ex; renderEntries(); } });
+    render();
+    if (speech.supported()) listen();
+    else setTimeout(() => { const ta = sheet && sheet.querySelector("#vlText"); if (ta) ta.focus(); }, 50);
+  }
+  function close() { if (V && V.ctl) V.ctl.stop(); if (sheet) sheet.remove(); sheet = null; V = null; }
+  function applyField(e, k, val) {
+    if (k === "w") { const n = parseFloat(String(val).replace(",", ".")); e.weight = isFinite(n) ? n : null; }
+    else if (k === "unit") e.unit = val === "lb" ? "lb" : "kg";
+    else if (k === "reps") e.reps = String(val).split(/[\s,x×]+/).map(x => parseInt(x, 10)).filter(x => x > 0);
+    else if (k === "km") { const n = parseFloat(val); e.km = isFinite(n) ? n : null; }
+    else if (k === "min") { const n = parseFloat(val); e.min = isFinite(n) ? n : null; }
+    else if (k === "sec") { const n = parseFloat(val); e.sec = isFinite(n) ? n : null; }
+  }
+  function reparse() { V.entries = parse(V.text, V.opts); }
+  function listen() {
+    if (!V) return;
+    V.err = ""; V.listening = true; renderMic();
+    V.ctl = speech.start({
+      onText(text, final) { if (!V) return; V.text = text; const ta = sheet.querySelector("#vlText"); if (ta) ta.value = text; if (final) { reparse(); renderEntries(); } },
+      onEnd() { if (!V) return; V.listening = false; V.ctl = null; reparse(); renderMic(); renderEntries(); },
+      onError(code) { if (!V) return; V.listening = false; V.ctl = null; V.err = errorText(code); renderMic(); if (/allowed|unsupported|capture/.test(code)) { const ta = sheet.querySelector("#vlText"); if (ta) ta.focus(); } }
+    });
+  }
+  function act(a) {
+    if (a === "close") close();
+    else if (a === "mic") { if (V.listening) { V.ctl && V.ctl.stop(); } else if (speech.supported()) listen(); else { V.err = errorText("unsupported"); renderMic(); sheet.querySelector("#vlText").focus(); } }
+    else if (a === "clear") { V.text = ""; V.entries = []; render(); }
+    else if (a === "apply") {
+      const ok = V.entries.filter(e => e.exercise && toSets(e, e.exercise).length);
+      if (!ok.length) { V.err = "Pick an exercise and say the weight and reps first."; renderMic(); return; }
+      const cb = V.opts.onApply; close(); cb && cb(ok.map(e => ({ exId: e.exercise.id, name: e.exercise.name, unit: e.unit, sets: toSets(e, e.exercise), entry: e })));
+    }
+  }
+  function render() {
+    if (!sheet) return;
+    const sup = speech.supported();
+    sheet.firstElementChild.innerHTML = `<header class="vl-head"><button type="button" class="vl-link" data-vl="close">Close</button><b>Log by voice</b><button type="button" class="vl-btn primary" data-vl="apply">Add sets</button></header>
+      <div class="vl-body">
+        <div class="vl-mic-row" id="vlMicRow"></div>
+        <textarea id="vlText" rows="2" placeholder="${sup ? "e.g. bench 60 for 10, 10, 8" : "Tap the mic on your keyboard and say e.g. bench 60 for 10, 10, 8"}" aria-label="What you lifted">${esc(V.text)}</textarea>
+        <div id="vlEntries"></div>
+        <p class="vl-hint">Say the exercise, the weight, then the reps of each set: "incline dumbbell press 30 kilos 12, 12, 10", "pull ups 8, 7, 6", "treadmill 30 minutes 2 km". "Then" starts another exercise.</p>
+      </div>`;
+    renderMic(); renderEntries();
+  }
+  function renderMic() {
+    const el = sheet && sheet.querySelector("#vlMicRow"); if (!el) return;
+    el.innerHTML = `<button type="button" class="vl-mic${V.listening ? " on" : ""}" data-vl="mic" aria-label="${V.listening ? "Stop listening" : "Start listening"}">${MIC}</button><span class="vl-state">${V.listening ? "Listening…" : speech.supported() ? "Tap the mic and speak" : "Use your keyboard's mic in the box"}</span>${V.text ? '<button type="button" class="vl-link small" data-vl="clear">Clear</button>' : ""}${V.err ? `<p class="vl-err">${esc(V.err)}</p>` : ""}`;
+  }
+  function renderEntries() {
+    const el = sheet && sheet.querySelector("#vlEntries"); if (!el) return;
+    const exs = V.opts.exercises || [];
+    el.innerHTML = V.entries.map((e, i) => {
+      const ex = e.exercise, cands = (e.candidates || []).filter(c => !ex || c.id !== ex.id).slice(0, 4);
+      const optsHtml = (ex ? [ex] : []).concat(cands).map(c => `<option value="${esc(c.id)}" ${ex && c.id === ex.id ? "selected" : ""}>${esc(c.name)}</option>`).join("") +
+        `<option disabled>──────</option>` + exs.filter(c => !(ex && c.id === ex.id) && !cands.includes(c)).map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
+      const cardio = isCardio(ex), ro = repsOnly(ex), dur = isDuration(ex);
+      return `<div class="vl-entry${ex ? "" : " ask"}">
+        <select data-vk="ex" data-vi="${i}" aria-label="Exercise">${ex ? "" : '<option value="" selected>Which exercise?</option>'}${optsHtml}</select>
+        ${ex && !e.sure ? `<small class="vl-hint">Heard "${esc(e.phrase)}". Change it if that's wrong.</small>` : ""}
+        <div class="vl-fields">
+          ${dur ? `<label><span>Seconds</span><input type="number" inputmode="numeric" data-vk="sec" data-vi="${i}" value="${e.sec ?? (e.min != null ? e.min * 60 : "")}"></label>` : cardio ? `<label><span>Minutes</span><input type="number" inputmode="decimal" data-vk="min" data-vi="${i}" value="${e.min ?? ""}"></label><label><span>km</span><input type="number" inputmode="decimal" step="0.1" data-vk="km" data-vi="${i}" value="${e.km ?? ""}"></label>`
+            : `${ro ? "" : `<label><span>Weight</span><input type="number" inputmode="decimal" step="0.5" data-vk="w" data-vi="${i}" value="${e.weight ?? ""}"></label><label><span>Unit</span><select data-vk="unit" data-vi="${i}"><option ${e.unit !== "lb" ? "selected" : ""}>kg</option><option ${e.unit === "lb" ? "selected" : ""}>lb</option></select></label>`}
+               <label class="grow"><span>Reps per set</span><input type="text" inputmode="numeric" data-vk="reps" data-vi="${i}" value="${esc(e.reps.filter(r => r != null).join(", "))}" placeholder="10, 10, 8"></label>`}
+        </div>
+        <small class="vl-sum">${summary(e)}</small>
+      </div>`;
+    }).join("") || (V.text ? '<p class="vl-hint">Nothing to log yet. Say the exercise, weight and reps.</p>' : "");
+  }
+  const summary = e => {
+    const sets = toSets(e, e.exercise);
+    if (!sets.length) return "";
+    if (isDuration(e.exercise)) return `${sets[0].sec} s`;
+    if (isCardio(e.exercise)) return `${sets[0].min ? sets[0].min + " min" : ""}${sets[0].min && sets[0].km ? " · " : ""}${sets[0].km ? sets[0].km + " km" : ""}`;
+    return `${sets.length} set${sets.length > 1 ? "s" : ""}: ${sets.map(s => (s.w ? s.w + " " + e.unit + " × " : "") + (s.r || "?")).join(", ")}`;
+  };
+  const MIC = '<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4zm6-4a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.06A8 8 0 0 1 4 11a1 1 0 1 1 2 0 6 6 0 0 0 12 0z"/></svg>';
+
+  // ---------- Food card ----------
+  let F = null;
+  function foodCardHtml() {
+    const st = F || {};
+    return `<div class="card vl-food"><div class="spread"><h3>Say what you ate</h3><span class="muted" style="font-size:.85rem">Speech → Claude estimate</span></div>
+      <div class="row vl-mic-row">
+        <button type="button" class="vl-mic${st.listening ? " on" : ""}" data-vlf="mic" aria-label="${st.listening ? "Stop listening" : "Start listening"}">${MIC}</button>
+        <input type="text" id="vlFood" placeholder="${speech.supported() ? "e.g. had a chicken shawarma and a Gatorade" : "Tap your keyboard's mic: e.g. had a chicken shawarma"}" value="${esc(st.text || "")}" aria-label="What you ate">
+        <button type="button" class="btn small" data-vlf="go">Estimate</button>
+      </div>
+      ${st.listening ? '<p class="muted" style="font-size:.85rem;margin:0">Listening…</p>' : ""}${st.err ? `<p class="note">${esc(st.err)}</p>` : ""}
+    </div>`;
+  }
+  function bindFood(root, opts) {
+    F = { text: "", listening: false, err: "", ctl: null, opts };
+    const card = () => root.querySelector(".vl-food");
+    const rerender = () => { const c = card(); if (!c) return; const tmp = document.createElement("div"); tmp.innerHTML = foodCardHtml(); c.replaceWith(tmp.firstElementChild); };
+    const go = () => { const t = (F.text || "").trim(); if (!t) { F.err = "Say or type what you ate first."; rerender(); return; } F.err = ""; opts.onText && opts.onText(t); F.text = ""; rerender(); };
+    root.addEventListener("click", e => {
+      const b = e.target.closest("[data-vlf]"); if (!b) return;
+      if (b.dataset.vlf === "go") go();
+      else if (b.dataset.vlf === "mic") {
+        if (F.listening) { F.ctl && F.ctl.stop(); return; }
+        if (!speech.supported()) { F.err = errorText("unsupported"); rerender(); const i = root.querySelector("#vlFood"); if (i) i.focus(); return; }
+        F.err = ""; F.listening = true; rerender();
+        F.ctl = speech.start({
+          onText(text, final) { F.text = text; const i = root.querySelector("#vlFood"); if (i) i.value = text; if (final) { F.listening = false; F.ctl = null; go(); } },
+          onEnd() { if (F.listening) { F.listening = false; F.ctl = null; if (F.text) go(); else rerender(); } },
+          onError(code) { F.listening = false; F.ctl = null; F.err = errorText(code); rerender(); if (/allowed|unsupported|capture/.test(code)) { const i = root.querySelector("#vlFood"); if (i) i.focus(); } }
+        });
+      }
+    });
+    root.addEventListener("input", e => { if (e.target.id === "vlFood") F.text = e.target.value; });
+    root.addEventListener("keydown", e => { if (e.target.id === "vlFood" && e.key === "Enter") { e.preventDefault(); go(); } });
+  }
+  // Hand dictated text to the PhotoFood card (fills its box and presses Estimate).
+  function toPhotoFood(root, text) {
+    const ta = root.querySelector("#pfText"); if (!ta) return false;
+    ta.value = text; ta.dispatchEvent(new Event("input", { bubbles: true }));
+    const go = root.querySelector('[data-pf="go"]'); if (go) go.click();
+    try { ta.closest(".card").scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { }
+    return true;
+  }
+
+  const css = `
+.vl-mic{display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:50%;border:1px solid var(--line,#ccc);background:var(--sunk,#f3f3f3);color:var(--accent,#2b6);cursor:pointer;flex:none;transition:transform .15s}
+.vl-mic.on{background:var(--accent,#2b6);color:var(--accent-ink,#fff);animation:vl-pulse 1.1s ease-in-out infinite}
+@keyframes vl-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent,#2b6) 45%,transparent)}50%{box-shadow:0 0 0 12px transparent}}
+.vl-mic-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.vl-mic-row .vl-state{color:var(--muted,#777);font-size:.9rem}
+.vl-err{flex-basis:100%;margin:0;color:var(--bad,#c33);font-size:.88rem}
+.vl-food #vlFood{flex:1;min-width:140px;border:1px solid var(--line,#ccc);background:var(--sunk,#f3f3f3);color:var(--ink,#111);border-radius:8px;padding:10px;font:inherit}
+.vl-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1200;display:flex;align-items:flex-end;justify-content:center}
+.vl-sheet{width:100%;max-width:720px;max-height:92vh;overflow:auto;background:var(--surface,#fff);color:var(--ink,#111);border-radius:16px 16px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.25);padding-bottom:max(16px,env(safe-area-inset-bottom,0px))}
+.vl-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line,#ddd)}
+.vl-head b{text-align:center}
+.vl-body{padding:14px 16px;display:grid;gap:12px}
+.vl-body textarea{width:100%;border:1px solid var(--line,#ccc);background:var(--sunk,#f3f3f3);color:var(--ink,#111);border-radius:10px;padding:10px;font:inherit;font-size:1.05rem;resize:vertical}
+.vl-link{background:none;border:0;color:var(--accent,#2b6);font:inherit;font-weight:600;cursor:pointer;padding:6px 0}
+.vl-link.small{font-size:.85rem}
+.vl-btn{border:1px solid var(--line,#ccc);background:var(--sunk,#f3f3f3);color:var(--ink,#111);border-radius:10px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
+.vl-btn.primary{background:var(--accent,#2b6);color:var(--accent-ink,#fff);border-color:transparent}
+.vl-entry{border:1px solid var(--line,#ddd);border-radius:12px;padding:10px;display:grid;gap:8px;background:var(--sunk,#f8f8f8)}
+.vl-entry.ask{border-color:var(--warn,#d90)}
+.vl-entry select,.vl-entry input{border:1px solid var(--line,#ccc);background:var(--surface,#fff);color:var(--ink,#111);border-radius:8px;padding:8px;font:inherit;width:100%;min-width:0}
+.vl-fields{display:flex;gap:8px;flex-wrap:wrap}
+.vl-fields label{display:grid;gap:3px;font-size:.8rem;color:var(--muted,#777);flex:1 1 80px}
+.vl-fields label.grow{flex:2 1 140px}
+.vl-fields input{font-size:1.05rem;font-variant-numeric:tabular-nums}
+.vl-sum{color:var(--muted,#777)}
+.vl-hint{color:var(--muted,#777);font-size:.85rem;margin:0}
+`;
+
+  return { parse, matchExercise, toSets, words, speech, errorText, open, close, foodCardHtml, bindFood, toPhotoFood, css, _internal: { parseChunk, phraseTokens } };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = VoiceLog;
+</script>
+<script>
 /* Workout share card: a finished workout as WhatsApp-ready text and as a PNG image.
  * Plain JS, no imports, no network. Generic: works for any Liftbook-style workout doc.
  *
@@ -1841,6 +2199,8 @@ if (typeof module !== 'undefined') module.exports = { WorkoutShare };
  * formCues: optional FormCues.create(guide) instance (form cues + demo links).
  * demos: optional ExerciseDemos.create(data, {library}) instance. When given, every exercise gets a
  *   Demo button (a checked video, else a YouTube search) and the sheet lists its demo videos.
+ * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
+ *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
  * Live workouts open in Gym mode (one set at a time, big steppers, RIR, rest countdown with "up next");
  *   "List view" in the header switches to the full table. Sets may carry rir (0-4, 4 = 4+).
@@ -2954,8 +3314,38 @@ Stair Climber|Cardio|Cardio|`;
   }
   on('minimize', () => { closeEditor(); });
   function headHtml() {
-    if (E.mode === 'live') return '<button class="lb-link" data-a="minimize" aria-label="Minimize workout">Hide</button><span class="lb-headmid"><span class="lb-mono lb-elapsed" data-clock="' + E.doc.start + '">' + clock(Date.now() - E.doc.start) + '</span><button class="lb-link small" data-a="gymToggle">' + (E.view === 'gym' ? 'List view' : 'Gym mode') + '</button></span><button class="lb-btn primary small" data-a="finish">Finish</button>';
+    if (E.mode === 'live') return '<button class="lb-link" data-a="minimize" aria-label="Minimize workout">Hide</button><span class="lb-headmid"><span class="lb-mono lb-elapsed" data-clock="' + E.doc.start + '">' + clock(Date.now() - E.doc.start) + '</span><button class="lb-link small" data-a="gymToggle">' + (E.view === 'gym' ? 'List view' : 'Gym mode') + '</button></span><span class="lb-headend">' + (global.VoiceLog ? '<button class="lb-mic" data-a="voice" aria-label="Log by voice" title="Log by voice">' + MIC_ICON + '</button>' : '') + '<button class="lb-btn primary small" data-a="finish">Finish</button></span>';
     return '<button class="lb-link" data-a="cancelEdit">Cancel</button><b>' + (E.mode === 'template' ? 'Edit template' : 'Edit workout') + '</b><button class="lb-btn primary small" data-a="saveEdit">Save</button>';
+  }
+  // ---------- Voice logging (VoiceLog module, optional) ----------
+  const MIC_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4zm6-4a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.06A8 8 0 0 1 4 11a1 1 0 1 1 2 0 6 6 0 0 0 12 0z"/></svg>';
+  on('voice', () => {
+    if (!global.VoiceLog || !E) return;
+    const cur = E.view === 'gym' && fixCur() ? E.doc.exercises[E.cur[0]] : null;
+    global.VoiceLog.open({ exercises: allExercises(), unit: S.settings.unit, current: cur ? cur.exId : undefined, prefer: E.doc.exercises.map(e => e.exId), onApply: applyVoice });
+  });
+  // entries: [{exId, unit, sets:[{t,w,r,km,min,sec,done}]}] from VoiceLog. Fills the exercise's pending sets first, then appends.
+  function applyVoice(entries) {
+    if (!E) return 0;
+    let n = 0; const names = [];
+    (entries || []).forEach(en => {
+      let ei = E.doc.exercises.findIndex(x => x.exId === en.exId), e = E.doc.exercises[ei];
+      if (!e) { e = { exId: en.exId, unit: en.unit || defUnit(en.exId), notes: '', sets: [] }; E.doc.exercises.push(e); ei = E.doc.exercises.length - 1; }
+      const ex = getEx(en.exId); names.push(ex.name);
+      en.sets.forEach(src => {
+        const vals = Object.assign({}, src);
+        if (vals.w && en.unit && en.unit !== e.unit) vals.w = fmtN(en.unit === 'lb' ? +vals.w * LB : +vals.w / LB, 1).replace(/,/g, '');
+        let j = e.sets.findIndex(x => !x.done && x.t !== 'w');
+        if (j < 0) { e.sets.push({ t: 'n', w: '', r: '', km: '', min: '', sec: '', done: false }); j = e.sets.length - 1; }
+        const s = e.sets[j];
+        ['w', 'r', 'km', 'min', 'sec'].forEach(k => { if (vals[k] !== '' && vals[k] != null) s[k] = String(vals[k]); });
+        s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id); n++;
+      });
+    });
+    if (!n) return 0;
+    touch(); renderEditor(); renderRest();
+    toast('Logged ' + n + ' set' + (n > 1 ? 's' : '') + ': ' + [...new Set(names)].join(', '));
+    return n;
   }
   function prevFor(e) {
     if (E.mode === 'template') { const s = sessions(e.exId)[0]; return { sets: s ? s.e.sets : [], src: 'last', unit: s ? s.e.unit : e.unit }; }
@@ -3572,6 +3962,8 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-rest-row{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:6px;max-width:720px;margin-left:auto;margin-right:auto}
 .lb-rest-time{font-size:1.7rem;font-weight:700;min-width:5.5rem;text-align:center}
 .lb-headmid{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.15}
+.lb-headend{display:flex;align-items:center;gap:8px}
+.lb-mic{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:1px solid var(--lb-line);background:var(--lb-sunk);color:var(--lb-accent);cursor:pointer;padding:0}
 .lb-live.gym .lb-live-body{padding-bottom:200px}
 .lb-gym{display:flex;flex-direction:column;gap:12px}
 .lb-gym-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.74rem;letter-spacing:.12em;text-transform:uppercase;color:var(--lb-muted);font-weight:700}
@@ -3657,7 +4049,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   }
   // Called by a host when its storage changed underneath (another device): reload and redraw.
   async function refresh() { await loadAll(); if (!E && !sheets.length) renderMain(); }
-  const api = { mount, refresh, buildProgram, toShellRecord, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -8907,6 +9299,272 @@ const PhotoFood = (() => {
 if (typeof module !== "undefined" && module.exports) module.exports = PhotoFood;
 </script>
 <script>
+/**
+ * MacroTarget: log food by the macro you want from it.
+ *
+ *   "40 g protein of grilled chicken"  -> 129 g grilled chicken breast (213 kcal, 40 P, 0 C, 4.6 F)
+ *   "300 kcal rice"                    -> 231 g cooked white rice
+ *   "50 g carbs from oats"             -> 75 g oats
+ *   "150 g salmon"                     -> plain weight, scaled from per-100 g
+ *
+ * Pure logic + a small card. Browser global `window.MacroTarget` or CommonJS.
+ *
+ *   MacroTarget.parse(text)                     -> {amount, macro: "p"|"c"|"f"|"kcal"|"g", query}
+ *   MacroTarget.find(query, {foods, extra})     -> {food, candidates} (best per-100 g match)
+ *   MacroTarget.gramsFor(food, macro, amount)   -> grams of food that give `amount` of `macro`, or null
+ *   MacroTarget.scale(food, grams)              -> {name, kcal, p, c, f, grams, est}
+ *   MacroTarget.solve(text, opts)               -> {ok, parsed, food, grams, item, note} | {ok:false, parsed, reason, candidates}
+ *       opts.custom = {name?, kcal, p, c, f} per 100 g, used when the catalog has no match
+ *   MacroTarget.html(date, day) / bind(root, {getDay, date, render, onAdd}) / css
+ */
+window.MacroTarget = (() => {
+  // Per 100 g (ml for drinks). Cooked unless the name says otherwise. All values are typical label / USDA figures.
+  const FOODS = [
+    { id: "chicken-breast", name: "Grilled chicken breast", kcal: 165, p: 31, c: 0, f: 3.6, alias: ["chicken", "grilled chicken", "chicken breast", "breast"] },
+    { id: "chicken-thigh", name: "Chicken thigh, skinless", kcal: 209, p: 26, c: 0, f: 11, alias: ["thigh", "chicken thigh"] },
+    { id: "beef-mince", name: "Lean beef mince (5%)", kcal: 137, p: 21, c: 0, f: 5, alias: ["beef", "mince", "ground beef", "minced beef", "lean beef"] },
+    { id: "steak", name: "Beef steak, lean", kcal: 190, p: 29, c: 0, f: 8, alias: ["steak", "sirloin", "fillet"] },
+    { id: "lamb", name: "Lamb, lean", kcal: 230, p: 25, c: 0, f: 14, alias: ["lamb", "mutton"] },
+    { id: "salmon", name: "Salmon", kcal: 208, p: 20, c: 0, f: 13, alias: ["salmon"] },
+    { id: "tuna", name: "Tuna, canned in water", kcal: 116, p: 26, c: 0, f: 1, alias: ["tuna", "canned tuna"] },
+    { id: "white-fish", name: "White fish (hamour, cod)", kcal: 96, p: 21, c: 0, f: 1, alias: ["fish", "hamour", "cod", "tilapia", "white fish"] },
+    { id: "shrimp", name: "Shrimp", kcal: 99, p: 24, c: 0.2, f: 0.3, alias: ["shrimp", "prawns", "prawn"] },
+    { id: "egg", name: "Whole egg", kcal: 155, p: 13, c: 1.1, f: 11, alias: ["egg", "eggs", "boiled egg", "boiled eggs", "whole egg"] },
+    { id: "egg-white", name: "Egg white", kcal: 52, p: 11, c: 0.7, f: 0.2, alias: ["egg white", "egg whites", "whites"] },
+    { id: "greek-yogurt", name: "Greek yogurt 0%", kcal: 59, p: 10, c: 3.6, f: 0.4, alias: ["greek yogurt", "greek yoghurt", "yogurt", "yoghurt", "skyr"] },
+    { id: "labneh", name: "Labneh", kcal: 180, p: 8, c: 4, f: 15, alias: ["labneh"] },
+    { id: "cottage", name: "Cottage cheese", kcal: 98, p: 11, c: 3.4, f: 4.3, alias: ["cottage cheese", "cottage"] },
+    { id: "milk", name: "Low-fat milk", kcal: 46, p: 3.4, c: 5, f: 1.5, alias: ["milk", "low fat milk", "low-fat milk", "skimmed milk"] },
+    { id: "laban", name: "Laban", kcal: 45, p: 3.3, c: 4.5, f: 1.5, alias: ["laban", "buttermilk"] },
+    { id: "whey", name: "Whey isolate powder", kcal: 375, p: 78, c: 6, f: 1.5, alias: ["whey", "protein powder", "iso100", "iso 100", "isolate", "scoop"] },
+    { id: "rice", name: "White rice, cooked", kcal: 130, p: 2.7, c: 28, f: 0.3, alias: ["rice", "white rice", "basmati", "steamed rice"] },
+    { id: "brown-rice", name: "Brown rice, cooked", kcal: 123, p: 2.7, c: 26, f: 1, alias: ["brown rice"] },
+    { id: "oats", name: "Oats, dry", kcal: 379, p: 13, c: 67, f: 6.5, alias: ["oats", "oatmeal", "porridge", "rolled oats"] },
+    { id: "potato", name: "Potato, boiled", kcal: 87, p: 1.9, c: 20, f: 0.1, alias: ["potato", "potatoes", "boiled potato"] },
+    { id: "sweet-potato", name: "Sweet potato, baked", kcal: 90, p: 2, c: 21, f: 0.1, alias: ["sweet potato", "sweet potatoes"] },
+    { id: "pasta", name: "Pasta, cooked", kcal: 158, p: 5.8, c: 31, f: 0.9, alias: ["pasta", "spaghetti", "penne", "macaroni"] },
+    { id: "khubz", name: "Khubz (Arabic bread)", kcal: 255, p: 12.6, c: 49, f: 0.9, alias: ["khubz", "bread", "pita", "arabic bread", "toast"] },
+    { id: "lentils", name: "Lentils, cooked", kcal: 116, p: 9, c: 20, f: 0.4, alias: ["lentils", "lentil", "dal", "daal"] },
+    { id: "chickpeas", name: "Chickpeas, cooked", kcal: 164, p: 8.9, c: 27, f: 2.6, alias: ["chickpeas", "chickpea", "hummus beans"] },
+    { id: "hummus", name: "Hummus", kcal: 166, p: 7.9, c: 14, f: 9.6, alias: ["hummus", "houmous"] },
+    { id: "banana", name: "Banana", kcal: 89, p: 1.1, c: 23, f: 0.3, alias: ["banana", "bananas"] },
+    { id: "apple", name: "Apple", kcal: 52, p: 0.3, c: 14, f: 0.2, alias: ["apple", "apples"] },
+    { id: "dates", name: "Dates", kcal: 282, p: 2.5, c: 75, f: 0.4, alias: ["dates", "date", "tamr"] },
+    { id: "berries", name: "Mixed berries", kcal: 50, p: 0.7, c: 12, f: 0.3, alias: ["berries", "blueberries", "strawberries", "raspberries"] },
+    { id: "avocado", name: "Avocado", kcal: 160, p: 2, c: 8.5, f: 15, alias: ["avocado"] },
+    { id: "almonds", name: "Almonds", kcal: 579, p: 21, c: 22, f: 50, alias: ["almonds", "almond", "nuts"] },
+    { id: "peanut-butter", name: "Peanut butter", kcal: 588, p: 25, c: 20, f: 50, alias: ["peanut butter", "pb"] },
+    { id: "olive-oil", name: "Olive oil", kcal: 884, p: 0, c: 0, f: 100, alias: ["olive oil", "oil"] },
+    { id: "butter", name: "Butter", kcal: 717, p: 0.9, c: 0.1, f: 81, alias: ["butter"] },
+    { id: "cheese", name: "Cheddar cheese", kcal: 403, p: 25, c: 1.3, f: 33, alias: ["cheese", "cheddar"] },
+    { id: "broccoli", name: "Broccoli", kcal: 34, p: 2.8, c: 7, f: 0.4, alias: ["broccoli", "veg", "vegetables", "greens"] },
+    { id: "salad", name: "Mixed salad", kcal: 20, p: 1.5, c: 3.5, f: 0.2, alias: ["salad", "lettuce", "leaves"] }
+  ];
+
+  const MACROS = { p: "protein", c: "carbs", f: "fat", kcal: "kcal", g: "weight" };
+  const MACRO_WORDS = {
+    protein: "p", prot: "p", pro: "p", p: "p",
+    carb: "c", carbs: "c", carbohydrate: "c", carbohydrates: "c", c: "c",
+    fat: "f", fats: "f", f: "f",
+    kcal: "kcal", cal: "kcal", cals: "kcal", calorie: "kcal", calories: "kcal", kcals: "kcal"
+  };
+  const FILLER = new Set(["of", "from", "in", "worth", "with", "the", "a", "an", "some", "my", "for", "and", "to", "please", "add", "log"]);
+  const r1 = n => Math.round(n * 10) / 10;
+  const num = v => { const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : +v; return isFinite(n) && n >= 0 ? n : 0; };
+  const norm = s => String(s ?? "").toLowerCase().replace(/[^a-z0-9%.\s-]/g, " ").replace(/\s+/g, " ").trim();
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  /**
+   * "40 g protein of grilled chicken" -> {amount:40, macro:"p", query:"grilled chicken"}.
+   * The macro word may sit before or after the number ("protein 40 g chicken" works too).
+   * A number with a gram unit and no macro word is a plain weight (macro "g");
+   * a bare number with no unit defaults to protein. Returns null without a number.
+   */
+  function parse(text) {
+    const t = norm(String(text ?? "").replace(/(\d),(\d)/g, "$1.$2")).replace(/(\d)(g|gr|grams?|kcal|cals?|calories)\b/g, "$1 $2");
+    const toks = t.split(" ").filter(Boolean);
+    const ni = toks.findIndex(x => /^\d+(\.\d+)?$/.test(x));
+    if (ni < 0) return null;
+    const amount = parseFloat(toks[ni]);
+    const used = new Set([ni]);
+    let unit = null, macro = null;
+    let i = ni + 1;
+    if (i < toks.length && /^(g|gr|grams?|kcal|cals?|calories)$/.test(toks[i])) { unit = toks[i]; used.add(i); i++; }
+    if (unit && MACRO_WORDS[unit] === "kcal") macro = "kcal";
+    // macro word right after the number/unit, skipping one filler ("40 g of protein")
+    for (let k = i, hops = 0; k < toks.length && hops < 2; k++, hops++) {
+      if (FILLER.has(toks[k])) { continue; }
+      if (MACRO_WORDS[toks[k]] && !macro) { macro = MACRO_WORDS[toks[k]]; used.add(k); }
+      break;
+    }
+    // or just before the number ("protein 40 g chicken")
+    if (!macro && ni > 0 && MACRO_WORDS[toks[ni - 1]]) { macro = MACRO_WORDS[toks[ni - 1]]; used.add(ni - 1); }
+    if (!macro) macro = unit ? "g" : "p";
+    const query = toks.filter((x, k) => !used.has(k) && !FILLER.has(x) && !MACRO_WORDS[x]).join(" ").trim();
+    return { amount, macro, query, unit: unit || null };
+  }
+
+  /** Best per-100 g match for a free-text name. Scores alias and name token overlap; exact alias wins. */
+  function find(query, opts = {}) {
+    const q = norm(query);
+    const foods = (opts.foods || FOODS).concat(opts.extra || []);
+    if (!q) return { food: null, candidates: [] };
+    const qt = q.split(" ");
+    const scored = foods.map(fd => {
+      const names = [fd.name].concat(fd.alias || []).map(norm);
+      let s = 0;
+      for (const n of names) {
+        if (n === q) s = Math.max(s, 100);
+        else if (q.includes(n)) s = Math.max(s, 60 + n.length);
+        else if (n.includes(q)) s = Math.max(s, 40 + q.length);
+        else {
+          const nt = n.split(" "), hit = qt.filter(x => nt.includes(x)).length;
+          if (hit) s = Math.max(s, 10 * hit + (hit === nt.length ? 15 : 0));
+        }
+      }
+      return { food: fd, s };
+    }).filter(x => x.s > 0).sort((a, b) => b.s - a.s);
+    return { food: scored[0] ? scored[0].food : null, candidates: scored.slice(0, 4).map(x => x.food) };
+  }
+
+  /** Grams of `food` that give `amount` of `macro`. Null when the food has none of that macro. */
+  function gramsFor(food, macro, amount) {
+    if (!food || !(amount > 0)) return null;
+    if (macro === "g") return Math.round(amount);
+    const per100 = num(food[macro]);
+    if (!(per100 > 0)) return null;
+    return Math.round(amount / per100 * 100);
+  }
+
+  /** A food row for `grams` of `food`. */
+  function scale(food, grams) {
+    const k = grams / 100;
+    return {
+      name: `${food.name}, ${Math.round(grams)} g`,
+      kcal: Math.round(num(food.kcal) * k), p: r1(num(food.p) * k), c: r1(num(food.c) * k), f: r1(num(food.f) * k),
+      grams: Math.round(grams), est: true
+    };
+  }
+
+  /**
+   * One call: parse, match, work out grams, build the food row.
+   * opts.custom = {name?, kcal, p, c, f} per 100 g replaces the catalog match (for food not in the list).
+   */
+  function solve(text, opts = {}) {
+    const parsed = parse(text);
+    if (!parsed) return { ok: false, parsed: null, reason: "Start with a number, e.g. \"40 g protein of grilled chicken\".", candidates: [] };
+    let food = null, candidates = [];
+    const cu = opts.custom;
+    if (cu && (num(cu.kcal) > 0 || num(cu.p) > 0 || num(cu.c) > 0 || num(cu.f) > 0)) {
+      const kcal = num(cu.kcal) || Math.round(num(cu.p) * 4 + num(cu.c) * 4 + num(cu.f) * 9);
+      food = { id: "custom", name: String(cu.name || parsed.query || "Food").trim() || "Food", kcal, p: num(cu.p), c: num(cu.c), f: num(cu.f), custom: true };
+    } else {
+      const r = find(parsed.query, opts); food = r.food; candidates = r.candidates;
+    }
+    if (!food) return { ok: false, parsed, reason: parsed.query ? `No per-100 g numbers for "${parsed.query}". Enter them below.` : "Name the food, e.g. \"40 g protein of grilled chicken\".", candidates };
+    const grams = gramsFor(food, parsed.macro, parsed.amount);
+    if (grams === null) return { ok: false, parsed, food, reason: `${food.name} has no ${MACROS[parsed.macro]}. Pick another food or another macro.`, candidates };
+    const item = scale(food, grams);
+    let note = "";
+    if (parsed.macro !== "g" && grams > 600) note = `That is ${grams} g. Check the number or split it over two meals.`;
+    return { ok: true, parsed, food, grams, item, note, candidates };
+  }
+
+  /** One line for a result, e.g. "129 g Grilled chicken breast = 213 kcal · 40 P · 0 C · 4.6 F". */
+  function summary(res) {
+    if (!res || !res.ok) return res && res.reason || "";
+    const it = res.item;
+    return `${it.grams} g ${res.food.name} = ${it.kcal} kcal · ${it.p} P · ${it.c} C · ${it.f} F`;
+  }
+
+  // ---- card (state lives here so the app's re-renders keep it) ----
+  const SLOTS = ["Meal 1", "Meal 2", "Snack", "Breakfast", "Extra"];
+  const S = { text: "", res: null, slot: "", eaten: false, custom: null, forDate: null };
+  let O = null;
+
+  function recompute() {
+    S.res = S.text.trim() ? solve(S.text, { custom: S.custom }) : null;
+    if (S.res && !S.res.ok && !S.custom && S.res.parsed && S.res.parsed.query && !S.res.candidates.length) S.custom = { name: S.res.parsed.query, kcal: "", p: "", c: "", f: "" };
+    if (S.res && S.res.ok && !S.res.food.custom) S.custom = null;
+  }
+
+  function bind(root, opts) {
+    O = opts;
+    root.addEventListener("click", e => {
+      const b = e.target.closest("[data-mt]"); if (!b) return;
+      const a = b.dataset.mt;
+      if (a === "go") { recompute(); O.render(); }
+      else if (a === "pick") { const fd = FOODS.find(x => x.id === b.dataset.id); if (fd && S.res && S.res.parsed) { S.custom = null; S.res = solve(S.text, { foods: [fd] }); O.render(); } }
+      else if (a === "add") {
+        if (!S.res || !S.res.ok) return;
+        const date = O.date();
+        O.onAdd(date, [{ ...S.res.item, slot: S.slot || SLOTS[0], eaten: S.eaten }]);
+        S.text = ""; S.res = null; S.custom = null; S.eaten = false;
+        O.render();
+      }
+      else if (a === "clear") { S.text = ""; S.res = null; S.custom = null; O.render(); }
+    });
+    root.addEventListener("input", e => {
+      const t = e.target;
+      if (t.id === "mtText") { S.text = t.value; return; }
+      const k = t.dataset && t.dataset.mtc;
+      if (k) { S.custom = S.custom || { name: "", kcal: "", p: "", c: "", f: "" }; S.custom[k] = t.value; }
+    });
+    root.addEventListener("change", e => {
+      const t = e.target;
+      if (t.id === "mtSlot") S.slot = t.value;
+      else if (t.id === "mtEaten") S.eaten = t.checked;
+    });
+    root.addEventListener("submit", e => {
+      if (e.target.dataset && e.target.dataset.form === "macro-target") { e.preventDefault(); recompute(); O.render(); }
+    });
+  }
+
+  function html(date) {
+    if (S.forDate !== date) { S.forDate = date; S.slot = ""; }
+    const res = S.res;
+    return `<div class="card mt">
+    <div class="spread"><h3>Log by target macro</h3><span class="muted" style="font-size:.85rem">Grams worked out for you</span></div>
+    <form data-form="macro-target" class="row" style="flex-wrap:nowrap">
+      <input type="text" id="mtText" value="${esc(S.text)}" placeholder='e.g. "40 g protein of grilled chicken" or "300 kcal rice"' aria-label="Target macro and food" style="flex:1;min-width:10em" enterkeyhint="go">
+      <button class="btn" type="submit" data-mt="go">Work out</button>
+    </form>
+    ${res && res.ok ? `<p class="num" style="margin:0"><b>${esc(summary(res))}</b></p>
+      ${res.note ? `<p class="note">${esc(res.note)}</p>` : ""}
+      ${res.candidates.length > 1 ? `<div class="row mt-alt"><span class="muted" style="font-size:.85rem">Not it?</span>${res.candidates.filter(c => c.id !== res.food.id).slice(0, 3).map(c => `<button class="chip" data-mt="pick" data-id="${esc(c.id)}">${esc(c.name)}</button>`).join("")}</div>` : ""}
+      <div class="row">
+        <select id="mtSlot" aria-label="Slot">${SLOTS.map(s => `<option ${s === (S.slot || SLOTS[0]) ? "selected" : ""}>${s}</option>`).join("")}</select>
+        <label class="row" style="font-size:.9rem;gap:6px"><input type="checkbox" id="mtEaten" ${S.eaten ? "checked" : ""}> Eaten</label>
+        <button class="btn" data-mt="add">Add</button><button class="btn ghost small" data-mt="clear">Clear</button>
+      </div>
+      <p class="muted" style="font-size:.82rem;margin:0">${res.food.custom ? "Uses the per-100 g numbers you entered." : "Typical per-100 g values, saved as an estimate. Label numbers beat these when you have them."}</p>`
+    : res ? `<p class="note">${esc(res.reason)}</p>
+      ${res.candidates.length ? `<div class="row mt-alt">${res.candidates.map(c => `<button class="chip" data-mt="pick" data-id="${esc(c.id)}">${esc(c.name)}</button>`).join("")}</div>` : ""}
+      ${S.custom ? `<div class="mt-custom"><span class="label">Per 100 g of ${esc(S.custom.name || "this food")}</span>
+        <div class="mt-mac">
+          <label class="field"><span class="label">kcal</span><input type="number" inputmode="decimal" step="1" data-mtc="kcal" value="${esc(S.custom.kcal)}"></label>
+          <label class="field"><span class="label">Protein</span><input type="number" inputmode="decimal" step="0.1" data-mtc="p" value="${esc(S.custom.p)}"></label>
+          <label class="field"><span class="label">Carbs</span><input type="number" inputmode="decimal" step="0.1" data-mtc="c" value="${esc(S.custom.c)}"></label>
+          <label class="field"><span class="label">Fat</span><input type="number" inputmode="decimal" step="0.1" data-mtc="f" value="${esc(S.custom.f)}"></label>
+        </div>
+        <div class="row"><button class="btn small" data-mt="go">Work out</button></div></div>` : ""}`
+    : `<p class="muted" style="font-size:.85rem;margin:0">Type what you want from a food and it works out the grams: protein, carbs, fat, kcal, or a plain weight like "150 g salmon".</p>`}
+  </div>`;
+  }
+
+  const css = `
+.mt .mt-alt{gap:6px}
+.mt .mt-custom{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--surface)}
+.mt .mt-mac{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.mt .mt-mac .field{min-width:0}
+.mt .mt-mac input{width:100%;min-width:0}
+`;
+
+  return { FOODS, MACROS, parse, find, gramsFor, scale, solve, summary, html, bind, css, SLOTS };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = MacroTarget;
+</script>
+<script>
 /*
  * Protein gap closer.
  * Pure logic, no DOM. Works as a browser global (window.ProteinGap)
@@ -11346,6 +12004,324 @@ window.CalorieCycling = (() => {
 })();
 
 if (typeof module !== "undefined") module.exports = { CalorieCycling };
+</script>
+<script>
+/*
+ * ReverseDiet: the climb back to maintenance once the cut is done.
+ *
+ * Nothing about one person is built in. The host passes the user's own
+ * profile (goal weight, cut calories, maintenance if known, protein/fat)
+ * and the logs; the module decides when the goal is reached, plans weekly
+ * calorie steps from the cut target up to maintenance, and checks each week
+ * whether the trend weight is drifting before taking the next step.
+ *
+ * API (global `ReverseDiet`, plain JS, no imports, no network):
+ *   css                                      inject once
+ *   plan(docs, state, {today, profile, tdee, trend})   full plan object
+ *   target(docs, state, date, opts)          {mode:"cut"|"reverse"|"maintain", kcal, lo, hi, protein, carbs, fat, week, weeks}
+ *   html(docs, state, opts)                  one card
+ *   apply(state, action, today, docs, opts)  new state; actions from data-rd-action
+ *
+ * docs  = {days, weights} from the app (`weights/{date}.kg`, `days/{date}.food[]`).
+ * state = host-stored object (prefs/main.reverseDiet), {} to start:
+ *         {auto, started, startKg, fromKcal, toKcal, weeks, stepKcal, dismissedAt}
+ * opts.profile = {goalKg, cutKcal, maintenance, protein, fat} (all optional)
+ * opts.tdee    = {kcal, lo, hi} from TrendTDEE.estimate when ready
+ * opts.trend   = TrendTDEE.series(weights) to share one trend line (optional)
+ */
+window.ReverseDiet = (() => {
+  const DAY = 864e5;
+  const ALPHA = 0.1;             // trend EWMA, same as TrendTDEE / GoalDate
+  const STEP_LO = 100, STEP_HI = 150; // kcal added per week
+  const MIN_WEEKS = 2, MAX_WEEKS = 10;
+  const HOLD_PCT = 0.01;         // trend above goal by 1 % of goal weight: hold this week's step
+  const BACK_PCT = 0.02;         // above by 2 %: step back one week
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+  const ms = s => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  const add = (s, n) => iso(ms(s) + n * DAY);
+  const diff = (a, b) => Math.round((ms(b) - ms(a)) / DAY);
+  const short = s => { const d = new Date(ms(s)); return MON[d.getUTCMonth()] + " " + d.getUTCDate(); };
+  const localToday = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const num = v => { const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v; return typeof n === "number" && isFinite(n) ? n : null; };
+  const pos = v => { const n = num(v); return n != null && n > 0 ? n : null; };
+  const r50 = n => Math.round(n / 50) * 50;
+  const r5 = n => Math.round(n / 5) * 5;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const fint = n => Math.round(n).toLocaleString("en-US");
+  const f1 = n => (Math.round(n * 10) / 10).toFixed(1);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // ---------- data ----------
+  function weighIns(docs) {
+    const w = (docs && docs.weights) || {};
+    return Object.keys(w).filter(d => DATE.test(d) && pos(w[d] && w[d].kg) != null)
+      .sort().map(d => ({ date: d, kg: pos(w[d].kg) }));
+  }
+
+  // Daily trend series: EWMA 0.1 over interpolated weigh-ins, flat after the last one.
+  function trendSeries(docs, today, given) {
+    if (Array.isArray(given) && given.length && given[0].date && given[0].trend != null) return given;
+    const ws = weighIns(docs);
+    if (!ws.length) return [];
+    const out = [];
+    let t = ws[0].kg, i = 0;
+    const last = today > ws[ws.length - 1].date ? today : ws[ws.length - 1].date;
+    for (let d = ws[0].date; d <= last; d = add(d, 1)) {
+      while (i + 1 < ws.length && ws[i + 1].date <= d) i++;
+      let kg = null;
+      if (ws[i].date === d) kg = ws[i].kg;
+      else if (i + 1 < ws.length) { const a = ws[i], b = ws[i + 1]; kg = a.kg + (b.kg - a.kg) * diff(a.date, d) / diff(a.date, b.date); }
+      if (kg != null) t = d === ws[0].date ? kg : t + ALPHA * (kg - t);
+      out.push({ date: d, kg: ws[i].date === d ? ws[i].kg : null, trend: Math.round(t * 100) / 100 });
+    }
+    return out;
+  }
+  const trendAt = (series, date) => {
+    if (!series.length || date < series[0].date) return null;
+    let v = null;
+    for (const r of series) { if (r.date > date) break; v = r.trend; }
+    return v;
+  };
+
+  function intakeAvg(docs, from, to) {
+    const days = (docs && docs.days) || {};
+    const vals = [];
+    Object.keys(days).forEach(d => {
+      if (!DATE.test(d) || d < from || d > to) return;
+      const food = (days[d] && days[d].food) || [];
+      const eaten = food.filter(f => f && f.eaten);
+      if (!eaten.length) return;
+      vals.push(eaten.reduce((s, f) => s + (num(f.kcal) || 0), 0));
+    });
+    return vals.length ? vals.reduce((s, x) => s + x, 0) / vals.length : null;
+  }
+
+  // ---------- numbers ----------
+  function maintenance(profile, tdee, goalKg) {
+    if (tdee && pos(tdee.kcal)) return { kcal: r50(tdee.kcal), lo: pos(tdee.lo) ? r50(tdee.lo) : null, hi: pos(tdee.hi) ? r50(tdee.hi) : null, source: "trend" };
+    if (pos(profile.maintenance)) return { kcal: r50(profile.maintenance), lo: null, hi: null, source: "profile" };
+    if (goalKg) return { kcal: r50(goalKg * 31), lo: r50(goalKg * 28), hi: r50(goalKg * 34), source: "estimate" };
+    return { kcal: null, lo: null, hi: null, source: "none" };
+  }
+
+  // Weekly steps from `from` to `to`: +100–150 kcal a week, 2–10 weeks, last week lands exactly on `to`.
+  function schedule(from, to) {
+    const gap = Math.max(0, to - from);
+    if (gap <= 0) return { weeks: 0, step: 0, kcal: [] };
+    const weeks = clamp(Math.ceil(gap / STEP_HI), MIN_WEEKS, MAX_WEEKS);
+    const step = gap / weeks;
+    const kcal = [];
+    for (let w = 1; w <= weeks; w++) kcal.push(w === weeks ? to : r50(from + step * w));
+    return { weeks, step: Math.round(step), kcal };
+  }
+
+  function macros(kcal, profile, goalKg) {
+    if (!kcal) return { protein: null, carbs: null, fat: null };
+    const kg = goalKg || null;
+    const protein = pos(profile.protein) || (kg ? r5(kg * 1.8) : null);
+    const fat = pos(profile.fat) || (kg ? r5(kg * 0.9) : null);
+    const carbs = protein != null && fat != null ? Math.max(0, r5((kcal - protein * 4 - fat * 9) / 4)) : null;
+    return { protein, carbs, fat };
+  }
+
+  // ---------- the plan ----------
+  function plan(docs, state, opts = {}) {
+    state = state || {};
+    const profile = opts.profile || {};
+    const today = DATE.test(opts.today || "") ? opts.today : localToday();
+    const goalKg = pos(profile.goalKg);
+    const series = trendSeries(docs, today, opts.trend);
+    const trendNow = trendAt(series, today);
+    const ws = weighIns(docs);
+    const cutKcal = pos(profile.cutKcal) || (ws.length ? intakeAvg(docs, add(today, -27), add(today, -1)) : null);
+    const auto = state.auto !== false;
+    const P = { today, goalKg, trendNow, lastWeighIn: ws.length ? ws[ws.length - 1] : null, cutKcal: cutKcal ? r50(cutKcal) : null, auto, state, status: "off", notes: [] };
+
+    if (!goalKg) { P.status = "off"; P.notes.push("Set a goal weight in Your numbers and this card plans the way back to maintenance."); return P; }
+    if (!ws.length) { P.status = "off"; P.notes.push("Log a weigh-in to start the trend."); return P; }
+
+    const m = maintenance(profile, opts.tdee, goalKg);
+    P.maintenance = m;
+
+    const started = DATE.test(state.started || "") ? state.started : null;
+    const reachedDate = series.find(r => r.trend <= goalKg) ? series.find(r => r.trend <= goalKg).date : null;
+    P.reached = reachedDate != null && trendNow != null && trendNow <= goalKg + goalKg * HOLD_PCT;
+    P.reachedOn = reachedDate;
+    P.kgToGo = trendNow != null ? Math.max(0, trendNow - goalKg) : null;
+
+    if (!started) {
+      const from = P.cutKcal, to = m.kcal;
+      const s = from != null && to != null ? schedule(from, to) : null;
+      P.preview = s && to > from ? { from, to, weeks: s.weeks, step: s.step, kcal: s.kcal, source: m.source } : null;
+      if (reachedDate && P.reached) {
+        P.status = "ready";
+        if (auto && P.preview) {
+          const st = apply(state, "start", reachedDate > today ? today : reachedDate, docs, opts);
+          if (st.started) return plan(docs, st, opts);
+        }
+        P.notes.push("Trend weight is at the goal. Start the reverse to add calories back a step at a time instead of jumping to maintenance.");
+      } else {
+        P.status = "cutting";
+        if (P.kgToGo != null && P.kgToGo <= 1) P.notes.push("Under 1 kg to go. Keep eating to plan; the reverse starts when the trend crosses " + f1(goalKg) + " kg.");
+        if (!P.preview) P.notes.push(from == null ? "Log eaten food so the plan knows the cut calories." : "Maintenance is not above the cut calories yet; check Your numbers.");
+      }
+      return P;
+    }
+
+    // Active reverse: fixed at start so the plan does not move under the user.
+    const from = pos(state.fromKcal) || P.cutKcal, to = pos(state.toKcal) || m.kcal;
+    const s = schedule(from, to);
+    const startKg = pos(state.startKg) || trendAt(series, started) || goalKg;
+    const base = Math.min(startKg, goalKg);
+    const weekOf = d => Math.floor(Math.max(0, diff(started, d)) / 7); // 0 = first week of the reverse
+    const scheduledWeek = weekOf(today);
+
+    // Drift check at each completed week boundary: hold or step back when the trend is above the goal band.
+    let eff = 0; const checks = [];
+    for (let k = 1; k <= scheduledWeek; k++) {
+      const at = add(started, k * 7);
+      const t = trendAt(series, at);
+      let verdict = "step";
+      if (t != null) {
+        const over = t - base;
+        if (over > base * BACK_PCT) verdict = "back";
+        else if (over > base * HOLD_PCT) verdict = "hold";
+      }
+      if (verdict === "step") eff = Math.min(s.weeks, eff + 1);
+      else if (verdict === "back") eff = Math.max(0, eff - 1);
+      checks.push({ date: at, trend: t, verdict });
+    }
+    const effWeek = Math.min(eff, s.weeks); // steps actually taken
+    const kcalToday = effWeek === 0 ? from : s.kcal[effWeek - 1];
+    const done = effWeek >= s.weeks && s.weeks > 0 || s.weeks === 0;
+    P.status = done ? "maintain" : "reverse";
+    P.from = from; P.to = to; P.weeks = s.weeks; P.step = s.step; P.steps = s.kcal;
+    P.started = started; P.startKg = startKg; P.band = { lo: base - base * HOLD_PCT, hi: base + base * HOLD_PCT, back: base + base * BACK_PCT };
+    P.scheduledWeek = scheduledWeek; P.effWeek = effWeek; P.checks = checks;
+    P.kcalToday = kcalToday;
+    P.macros = macros(kcalToday, profile, goalKg);
+    P.nextStep = done ? null : { date: add(started, (scheduledWeek + 1) * 7), kcal: s.kcal[Math.min(s.weeks - 1, effWeek)] };
+    P.drift = trendNow != null ? trendNow - base : null;
+    P.eatenAvg = intakeAvg(docs, add(today, -6), add(today, -1));
+    const holds = checks.filter(c => c.verdict === "hold").length, backs = checks.filter(c => c.verdict === "back").length;
+    if (holds) P.notes.push(holds + (holds === 1 ? " week held" : " weeks held") + " because the trend sat more than 1 % above the goal.");
+    if (backs) P.notes.push("Stepped back " + backs + (backs === 1 ? " week" : " weeks") + " after the trend rose more than 2 % above the goal.");
+    if (P.drift != null && P.drift > base * BACK_PCT) P.notes.push(done ? "Trend is " + f1(P.drift) + " kg above the goal. Hold here or trim 100–150 kcal until it settles." : "Trend is " + f1(P.drift) + " kg above the goal; the next step waits until it comes back under " + f1(P.band.hi) + " kg.");
+    else if (P.drift != null && P.drift < -base * HOLD_PCT) P.notes.push("Still losing on the reverse. Fine for a week; if it keeps falling, take the next step early.");
+    if (P.eatenAvg != null && kcalToday && Math.abs(P.eatenAvg - kcalToday) > 150) P.notes.push("Last 7 days averaged " + fint(P.eatenAvg) + " kcal against a target of " + fint(kcalToday) + ". The drift check only means something when intake matches the step.");
+    if (m.source === "estimate" && state.toKcal == null) P.notes.push("Maintenance is an estimate (about 31 kcal/kg). The trend check corrects it on the way up.");
+    return P;
+  }
+
+  function target(docs, state, date, opts = {}) {
+    const P = plan(docs, state, Object.assign({}, opts, { today: DATE.test(date || "") ? date : opts.today }));
+    const out = { mode: "cut", kcal: null, lo: null, hi: null, protein: null, carbs: null, fat: null, week: null, weeks: null };
+    if (P.status !== "reverse" && P.status !== "maintain") return out;
+    out.mode = P.status; out.kcal = P.kcalToday; out.lo = P.kcalToday - 100; out.hi = P.kcalToday + 100;
+    out.protein = P.macros.protein; out.carbs = P.macros.carbs; out.fat = P.macros.fat;
+    out.week = P.effWeek; out.weeks = P.weeks;
+    return out;
+  }
+
+  // ---------- state changes ----------
+  function apply(state, action, today, docs, opts = {}) {
+    const s = Object.assign({}, state || {});
+    today = DATE.test(today || "") ? today : localToday();
+    if (action === "start") {
+      const P = plan(docs, Object.assign({}, s, { started: null, auto: false }), Object.assign({}, opts, { today }));
+      if (!P.preview) return s;
+      s.started = today;
+      s.startKg = P.trendNow;
+      s.fromKcal = P.preview.from; s.toKcal = P.preview.to;
+      s.weeks = P.preview.weeks; s.stepKcal = P.preview.step;
+      s.toSource = P.preview.source;
+      return s;
+    }
+    if (action === "cancel") { delete s.started; delete s.startKg; delete s.fromKcal; delete s.toKcal; delete s.weeks; delete s.stepKcal; delete s.toSource; return s; }
+    if (action === "auto") { s.auto = true; return s; }
+    if (action === "manual") { s.auto = false; return s; }
+    if (action === "faster" || action === "slower") {
+      if (!s.started) return s;
+      // Shift the start date one week so the scheduled week moves without touching the logs.
+      s.started = add(s.started, action === "faster" ? -7 : 7);
+      if (s.started > today) s.started = today;
+      return s;
+    }
+    return s;
+  }
+
+  // ---------- card ----------
+  const pill = (c, t) => '<span class="rd-pill ' + c + '">' + esc(t) + '</span>';
+  const btn = (a, t, primary) => '<button type="button" class="' + (primary ? "btn" : "btn ghost") + '" data-rd-action="' + a + '">' + esc(t) + '</button>';
+  const smallP = t => '<p class="rd-small">' + t + '</p>';
+
+  function stepsTable(P, current) {
+    const rows = P.steps.map((k, i) => {
+      const w = i + 1, on = current != null && w === current;
+      const date = P.started ? short(add(P.started, i * 7)) : "Week " + w;
+      return '<tr' + (on ? ' class="rd-on"' : "") + '><td>' + esc(P.started ? "Wk " + w + " · " + date : date) + '</td><td class="n">' + fint(k) + '</td></tr>';
+    });
+    return '<div class="tablewrap"><table class="rd-table"><thead><tr><th>Week</th><th class="n">kcal</th></tr></thead><tbody>' + rows.join("") + '</tbody></table></div>';
+  }
+
+  function html(docs, state, opts = {}) {
+    const P = plan(docs, state, opts);
+    const h = ['<div class="card rd-card"><div class="spread"><h3>Back to maintenance</h3>'];
+    if (P.status === "off") {
+      h.push("</div>" + smallP(esc(P.notes[0])) + "</div>");
+      return h.join("");
+    }
+    const g = f1(P.goalKg);
+    if (P.status === "cutting") {
+      h.push(pill("neutral", P.kgToGo != null ? f1(P.kgToGo) + " kg to go" : "cutting") + "</div>");
+      h.push('<p>Trend <b>' + (P.trendNow != null ? f1(P.trendNow) : "—") + ' kg</b>, goal <b>' + g + ' kg</b>. When the trend reaches the goal this card plans the climb back instead of a jump.</p>');
+      if (P.preview) h.push(smallP("Plan so far: <b>" + fint(P.preview.from) + "</b> → <b>" + fint(P.preview.to) + " kcal</b> over " + P.preview.weeks + " weeks (about +" + fint(P.preview.step) + " a week). Maintenance from " + (P.preview.source === "trend" ? "your trend and food logs" : P.preview.source === "profile" ? "Your numbers" : "a ~31 kcal/kg estimate") + "."));
+      P.notes.forEach(n => h.push(smallP(esc(n))));
+      h.push('<div class="rd-row">' + (P.auto ? btn("manual", "I'll start it myself") : btn("auto", "Start automatically at goal")) + "</div></div>");
+      return h.join("");
+    }
+    if (P.status === "ready") {
+      h.push(pill("good", "goal reached") + "</div>");
+      h.push('<p>Trend <b>' + f1(P.trendNow) + ' kg</b> is at your goal of <b>' + g + ' kg</b>' + (P.reachedOn ? " (crossed " + short(P.reachedOn) + ")" : "") + ".</p>");
+      if (P.preview) { h.push(smallP("Reverse: <b>" + fint(P.preview.from) + "</b> → <b>" + fint(P.preview.to) + " kcal</b> in " + P.preview.weeks + " weekly steps of about " + fint(P.preview.step) + ". Each step waits if the trend climbs more than 1 % above the goal.")); h.push(stepsTable({ steps: P.preview.kcal, started: null }, null)); }
+      P.notes.forEach(n => h.push(smallP(esc(n))));
+      h.push('<div class="rd-row">' + (P.preview ? btn("start", "Start the reverse today", true) : "") + (P.auto ? btn("manual", "Manual") : btn("auto", "Automatic")) + "</div></div>");
+      return h.join("");
+    }
+    // reverse or maintain
+    const done = P.status === "maintain";
+    h.push(pill(done ? "good" : "neutral", done ? "at maintenance" : "week " + (P.scheduledWeek + 1) + " of " + P.weeks) + "</div>");
+    h.push('<div class="rd-big"><div class="rd-num">' + fint(P.kcalToday) + ' <small>kcal today</small></div>' +
+      (P.macros.protein != null ? '<div class="rd-small">P ' + P.macros.protein + ' g · C ' + P.macros.carbs + ' g · F ' + P.macros.fat + ' g</div>' : "") + "</div>");
+    h.push('<p>Trend <b>' + (P.trendNow != null ? f1(P.trendNow) : "—") + ' kg</b> · goal ' + g + ' kg · band ' + f1(P.band.lo) + "–" + f1(P.band.hi) + " kg" + (P.drift != null ? " · drift " + (P.drift >= 0 ? "+" : "−") + f1(Math.abs(P.drift)) + " kg" : "") + "</p>");
+    if (!done && P.nextStep) h.push(smallP("Next step <b>" + fint(P.nextStep.kcal) + " kcal</b> on " + short(P.nextStep.date) + ", if the trend is still inside the band."));
+    if (done) h.push(smallP("Hold <b>" + fint(P.to) + " kcal</b>. Weigh in as usual; this card flags a drift of more than 2 % either way."));
+    h.push('<details class="rd-details"><summary>Steps and weekly checks</summary>' + stepsTable(P, P.effWeek) +
+      (P.checks.length ? '<ul class="rd-checks">' + P.checks.map(c => '<li>' + esc(short(c.date)) + ': trend ' + (c.trend != null ? f1(c.trend) : "—") + ' kg → ' + esc(c.verdict === "step" ? "stepped up" : c.verdict === "hold" ? "held" : "stepped back") + '</li>').join("") + '</ul>' : "") + "</details>");
+    P.notes.forEach(n => h.push(smallP(esc(n))));
+    h.push('<div class="rd-row">' + (done ? "" : btn("faster", "Faster") + btn("slower", "Slower")) + btn("cancel", done ? "Back to cutting" : "Stop, back to cut") + "</div></div>");
+    return h.join("");
+  }
+
+  const css = [
+    ".rd-card p{margin:.4em 0}",
+    ".rd-small{font-size:.85rem;color:var(--muted)}.rd-small b{color:var(--ink)}",
+    ".rd-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 0}",
+    ".rd-pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:600;border:1px solid currentColor;white-space:nowrap}",
+    ".rd-pill.good{color:var(--good)}.rd-pill.warn{color:var(--warn)}.rd-pill.neutral{color:var(--accent)}",
+    ".rd-big{margin:6px 0 2px}.rd-num{font-size:1.7rem;font-weight:700;font-variant-numeric:tabular-nums}.rd-num small{font-size:.8rem;font-weight:500;color:var(--muted)}",
+    ".rd-table td,.rd-table th{padding:3px 8px}.rd-table tr.rd-on td{font-weight:700;color:var(--accent)}",
+    ".rd-checks{margin:6px 0 0;padding-left:18px;font-size:.85rem;color:var(--muted)}",
+    ".rd-details{margin-top:6px}.rd-details summary{cursor:pointer;font-size:.9rem}"
+  ].join("\n");
+
+  return { css, plan, target, html, apply, schedule, trendSeries };
+})();
+
+if (typeof module !== "undefined") module.exports = ReverseDiet;
 </script>
 <script>
 /*
@@ -16708,7 +17684,12 @@ function ccTraining(d){ if(dayType(d)==="friday") return null; const s=sessionFo
 function ccOpts(){ return {training:ccTraining}; }
 function ccTargets(){ return APPT || {kcal:TARGET.kcal, carbsLo:TARGET.cMin, carbsHi:TARGET.cMax}; }
 function ccTarget(d){ try{ return window.CalorieCycling && ccState().on ? CalorieCycling.target(ccTargets(), d, ccState(), ccOpts()) : null; }catch(e){ return null; } }
+// Reverse diet (back to maintenance after the goal): manual start, like diet breaks.
+function rdState(){ return {...(S.docs.prefs.main?.reverseDiet||{}), auto:false}; }
+function rdOpts(){ let tdee=null; try{ if(window.TrendTDEE){ const E=TrendTDEE.estimate(S.docs,{today:TODAY}); if(E&&E.ready) tdee={kcal:E.tdee, lo:E.tdeeLo, hi:E.tdeeHi}; } }catch(e){} return {today:TODAY, profile:dbProfile(), tdee, trend:trendSeries()}; }
+function reverseTarget(d){ try{ return window.ReverseDiet ? ReverseDiet.target(dbDocs(), rdState(), d, rdOpts()) : null; }catch(e){ return null; } }
 function kcalTarget(d){
+  const rt=reverseTarget(d); if(rt && rt.kcal && rt.mode!=="cut") return Math.round(rt.kcal);
   const t=dietBreakTarget(d); if(t && t.mode==="break") return Math.round(t.kcal);
   const cc=ccTarget(d); const base = cc && cc.kcal ? cc.kcal : TARGET.kcal;
   // Over-budget recovery cuts (days/{date}.budgetAdj) apply on top of the day's target, never more than 150 below it.
@@ -16728,7 +17709,7 @@ function verdict(items){
   const msgs=[];
   const KT=kcalTarget(view.date), KTs=KT.toLocaleString("en-US");
   if(t.kcal<KT-150) msgs.push(["warn",`${r0(KT-t.kcal)} kcal under ${KTs}`]); else if(t.kcal>KT+100) msgs.push(["bad",`${r0(t.kcal-KT)} kcal over ${KTs}`]); else msgs.push(["good","Calories on target"]);
-  if(KT!==TARGET.kcal){ const cc=ccTarget(view.date); msgs.push(["info", dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
+  if(KT!==TARGET.kcal){ const cc=ccTarget(view.date), rm=reverseTarget(view.date)?.mode; msgs.push(["info", rm==="reverse" ? `Reverse diet: target ${KTs} this week` : rm==="maintain" ? `Maintenance: target ${KTs}` : dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
   if(t.p<TARGET.pMin) msgs.push(["warn",`Protein ${r0(TARGET.pMin-t.p)} g short`]); else msgs.push(["good","Protein hit"]);
   if(t.f>TARGET.fMax) msgs.push(["warn","Fat on the high side"]);
   return `<div class="row">${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
@@ -16996,7 +17977,9 @@ function vFood(){
       </div>
     </div>
   </section>
+  ${typeof MacroTarget !== "undefined" ? MacroTarget.html(d) : ""}
   ${safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day}))}
+  ${window.VoiceLog && typeof PhotoFood !== "undefined" ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : ""}
   ${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}
   <div id="bcHost"></div>
   ${window.MenuImport ? MenuImport.html(d) : pickerCard(d, training)}
@@ -17148,6 +18131,7 @@ function vProgress(){
   ${cdSafe(()=>Cardio.progressHTML(cdDocs(), {today:TODAY}))}
   ${rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts()))}
   ${safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}))}
+  ${safeMod("ReverseDiet",()=>ReverseDiet.html(dbDocs(), rdState(), rdOpts()))}
   ${report?`<div class="card"><details data-keep="wr" ${view.open.wr?"open":""}><summary>Weekly report (week by week: weight, food, lifts)</summary>${report}</details></div>`:""}
   ${foodDays.length?`<div class="card"><h3>Calories eaten</h3>
     ${foodDays.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th class="n">kcal</th><th class="n">Protein</th><th>Status</th></tr></thead><tbody>
@@ -17244,6 +18228,8 @@ main.addEventListener("click",e=>{
   if(cca && window.CalorieCycling){ const p=Object.assign({},clone(S.docs.prefs.main)); p.cycling=CalorieCycling.apply(ccState(), cca.dataset.ccAction, ccOpts()); put("prefs","main",p); return; }
   const dba=e.target.closest("[data-db-action]");
   if(dba){ const p=Object.assign({},clone(S.docs.prefs.main)); p.dietBreak={...DietBreak.apply(dbState(), dba.dataset.dbAction, TODAY, dbDocs(), {profile:dbProfile()}), auto:false}; put("prefs","main",p); return; }
+  const rda=e.target.closest("[data-rd-action]");
+  if(rda && window.ReverseDiet){ const p=Object.assign({},clone(S.docs.prefs.main)); p.reverseDiet={...ReverseDiet.apply(rdState(), rda.dataset.rdAction, TODAY, dbDocs(), rdOpts()), auto:false}; put("prefs","main",p); toast(rda.dataset.rdAction==="start"?"Reverse diet started. Calories step up each week.":"Saved"); return; }
   const rc=e.target.closest("[data-recover]");
   if(rc){ const rd=rc.dataset.recoverDate; BudgetRecovery.apply(BudgetRecovery.plan(rd,S.docs.days), rc.dataset.recover).forEach(({date,patch})=>{ const cur=getDay(date); put("days",date,{...cur,...patch,budgetAdj:{...(cur.budgetAdj||{}),...(patch.budgetAdj||{})}},{quiet:true}); }); render(); toast(rc.dataset.recover==="skip"?"Let it go. The weekly average is what counts.":"Plan saved"); return; }
   const eff=e.target.closest("[data-effort]");
@@ -17459,7 +18445,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
@@ -17468,11 +18454,18 @@ try{
     onApply: ch=>{ if(!ch || ch.key!=="profile.cutKcal" || !(+ch.to>0)) return;
       if(!coachPending || coachPending.to!==ch.to || Date.now()-coachPending.at>10000){ coachPending={to:ch.to, at:Date.now()}; toast(`Tap again to change your calorie target from ${Math.round(ch.from).toLocaleString("en-US")} to ${Math.round(ch.to).toLocaleString("en-US")} kcal.`); return; }
       coachPending=null; const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), cutKcal:+ch.to}; put("prefs","main",p); toast(`Calorie target is now ${Math.round(ch.to).toLocaleString("en-US")} kcal. Change it any time in Guide, Your numbers.`); } });
+  if(window.MacroTarget){ const mst=document.createElement("style"); mst.textContent=MacroTarget.css; document.head.appendChild(mst);
+    MacroTarget.bind(document, { date: () => view.date, render, onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items.map(it=>({id:uid(),eaten:false,...it}))); saveDay(day); toast("Added "+items[0].name+(items[0].eaten?"":". Tick it when you eat it.")); } }); }
   PhotoFood.bind(document, {
     getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
     getDay, date: () => view.date, render,
     onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items); saveDay(day); toast(items.length===1 ? "Added as an estimate" : "Added "+items.length+" items as estimates"); }
   });
+  if(window.VoiceLog){
+    const vst=document.createElement("style"); vst.textContent=VoiceLog.css; document.head.appendChild(vst);
+    // Spoken meals go through the photo/description card: fill its box and press Estimate.
+    VoiceLog.bindFood(document, { onText: text => { if(!VoiceLog.toPhotoFood(document, text)) toast("The photo and description card isn't available here, so speech can't be estimated."); } });
+  }
 }catch(e){}
 try{
   const st=document.createElement("style"); st.textContent=MenuImport.css; document.head.appendChild(st);
