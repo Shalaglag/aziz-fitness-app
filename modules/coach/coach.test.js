@@ -239,3 +239,31 @@ test("exerciseIn matches plan names loosely and ignores unrelated questions", ()
   assert.equal(Coach.exerciseIn("Should I bench heavier?", names), "Bench Press (Barbell)");
   assert.equal(Coach.exerciseIn("What should I eat today?", names), null);
 });
+
+test("insights: PRs, falling strength, protein, fatigue, weekday overage, rest-vs-train protein; seen ids hide", () => {
+  const docs = { weights: {}, days: {}, workouts: {}, prefs: { main: { profile: { start: "2026-09-01", cutKcal: 2000, protein: 180 } } } };
+  const d = n => { const t = new Date(Date.UTC(2026, 9, 26)); t.setUTCDate(t.getUTCDate() - n); return t.toISOString().slice(0, 10); };
+  // Lifts: Squat improving to a PR, two lifts falling three sessions in a row, effort high.
+  [6, 4, 2].forEach((n, i) => { docs.workouts[d(n)] = { date: d(n), session: "Lower A", effort: 4, sets: { "Hack Squat": [{ w: 100 + i * 5, r: 8 }], "Leg Extension": [{ w: 120 - i * 10, r: 8 }], "Lying Leg Curl": [{ w: 60 - i * 5, r: 8 }] } }; });
+  docs.workouts[d(8)] = { date: d(8), session: "Push A", effort: 5, sets: { "Bench Press (Barbell)": [{ w: 80, r: 8 }] } };
+  // Food: 28 days logged; Fridays (d(n) where weekday 5) over by 400; rest days low protein.
+  for (let n = 1; n <= 28; n++) { const dt = d(n), wd = new Date(dt + "T00:00:00Z").getUTCDay(), train = !!docs.workouts[dt]; docs.days[dt] = { date: dt, food: [{ name: "Day", slot: "Lunch", kcal: wd === 5 ? 2400 : 1950, p: train ? 190 : 140, eaten: true }] }; }
+  const ins = Coach.insights(docs, { today: "2026-10-26", limit: 10 });
+  const ids = ins.map(i => i.id);
+  assert.ok(ids.some(i => i.startsWith("pr-")), "pr");
+  assert.ok(ids.includes("strength-down"), "strength-down");
+  assert.ok(ids.some(i => i.startsWith("protein-week-")), "protein");
+  assert.ok(ids.some(i => i.startsWith("fatigue-")), "fatigue");
+  assert.ok(ids.includes("weekday-over-5"), "friday");
+  assert.ok(ids.includes("protein-rest-vs-train"), "rest vs train");
+  ins.forEach(i => assert.ok(i.title && i.text && ["good", "warn", "info"].includes(i.kind)));
+  const few = Coach.insights(docs, { today: "2026-10-26" });
+  assert.equal(few.length, 3);
+  assert.equal(few[0].kind, "warn");
+  const seen = Object.fromEntries(ids.map(i => [i, "2026-10-24"]));
+  assert.equal(Coach.insights(docs, { today: "2026-10-26", seen }).length, 0);
+  assert.ok(Coach.insights(docs, { today: "2026-10-26", seen: { "strength-down": "2026-10-10" }, limit: 10 }).some(i => i.id === "strength-down"));
+  assert.ok(Coach.insightsHtml(docs, { today: "2026-10-26" }).includes("Patterns in your logs"));
+  assert.equal(Coach.insights({}, { today: "2026-10-26" }).length, 0);
+  assert.equal(Coach.insightsHtml({}, { today: "2026-10-26" }), "");
+});

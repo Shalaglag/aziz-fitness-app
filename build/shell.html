@@ -1184,7 +1184,7 @@ function vProgress(){
   const report = safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, view.wrWeek==null?{}:{week:view.wrWeek}));
   const trendCard = safeMod("TrendTDEE", ()=>TrendTDEE.html(S.docs));
   const co=coachOpts();
-  return `${coachSafe(()=>Coach.reviewHtml(S.docs, co))}${coachSafe(()=>Coach.chatHtml(S.docs, co))}
+  return `${coachSafe(()=>Coach.insightsHtml(S.docs, {...co, seen:S.docs.prefs.main?.coachSeen||{}}))}${coachSafe(()=>Coach.reviewHtml(S.docs, co))}${coachSafe(()=>Coach.chatHtml(S.docs, co))}
   <div class="card hero">
     <div class="spread"><h2>${lastW?`${lastW.kg.toFixed(1)} kg`:"No weigh-ins yet"}</h2><span class="label">Goal ${GOAL_KG} kg</span></div>
     <div class="prog" aria-label="Progress to goal"><i style="width:${pct}%"></i></div>
@@ -1545,6 +1545,7 @@ try{
     effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee, tab:()=>view.tab,
     strength:()=>coachOpts().strength, recoveryText:()=>coachOpts().recoveryText, cardioText:()=>coachOpts().cardioText,
     planToday:coachPlanToday, exerciseNames:()=>Object.values(PROGRAM).flat().map(t=>t[0]), exercise:coachExercise,
+    onDismiss:id=>{ const m=clone(S.docs.prefs.main||{}); m.coachSeen={...(m.coachSeen||{}), [id]:TODAY}; put("prefs","main",m,{quiet:true}); },
     // Inside Claude: the page's sample capability (free). On the website: the app's own endpoint, which
     // checks the Firebase sign-in token and holds the API key (netlify/functions/coach.mjs).
     getSample:()=>window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),

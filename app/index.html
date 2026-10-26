@@ -13562,6 +13562,9 @@ if (typeof module !== "undefined") module.exports = { RecoveryFatigue };
  *        (Cardio.summary), planToday {session, exercises:[{name,w,reps,sets,unit}]}, exerciseNames[],
  *        exercise(name) -> form-guide entry + demo, and question (to attach the exercise asked about)
  *   Coach.liftHistory(docs, today)              -> per-lift last 5 sessions, best e1RM, PR flag
+ *   Coach.insights(docs, opts)                  -> up to 3 local insights [{id, kind, title, text, evidence, ask}];
+ *        opts.seen {id: date} hides ones shown in the last opts.repeatDays (7); opts.strength adds balance
+ *   Coach.insightsHtml(docs, opts)              -> "Patterns in your logs" card; opts.onDismiss(id) via bind
  *   Coach.exerciseIn(question, names)           -> the exercise name a question mentions, or null
  *   Coach.prompt(question, ctx, history)        -> the instruction sent to Claude
  *   Coach.parseAnswer(value)                    -> {answer, evidence[], missing[], suggestion|null}
@@ -14104,6 +14107,15 @@ window.Coach = (() => {
 .co-ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
 .co-miss{font-size:.85rem;color:var(--muted);margin:6px 0 0;padding-left:18px}
 .co-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.co-ins{border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:var(--r);padding:10px 12px;background:var(--sunk)}
+.co-ins+.co-ins{margin-top:8px}
+.co-ins-good{border-left-color:var(--good)}.co-ins-warn{border-left-color:var(--warn)}.co-ins-info{border-left-color:var(--accent)}
+.co-ins-head{display:flex;justify-content:space-between;align-items:start;gap:8px}
+.co-ins p{margin:4px 0 0;font-size:.9rem;color:var(--ink)}
+.co-ins details{margin-top:6px;font-size:.8rem;color:var(--muted)}
+.co-ins ul{margin:4px 0 0;padding-left:18px}
+.co-x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:.9rem;padding:0 2px}
+.co-chip{margin-top:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.85rem;cursor:pointer}
 .co-chips button{border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.85rem;cursor:pointer}
 .co-ask{display:flex;gap:6px;margin-top:6px}
 .co-ask input{flex:1;min-width:0;padding:10px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);font:inherit}
@@ -14137,6 +14149,108 @@ window.Coach = (() => {
 `;
   const S = { from: null, msgs: [], busy: false, error: "", ctl: null, draft: "", hidden: false, noClaude: false, noClaudeWhy: "", open: false, stream: "", loaded: false };
   let O = null;
+
+  // ---------- Insights: patterns in the logs, worked out locally (no Claude, no cost) ----------
+  // Each rule returns null unless it has enough data. Ids are stable so the host can remember what was
+  // shown (opts.seen = {id: "YYYY-MM-DD"}); an insight repeats only after opts.repeatDays (7).
+  const WD = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const pctChange = (a, b) => b ? (a / b - 1) * 100 : null;
+  function insights(docs, opts = {}) {
+    docs = docs || {};
+    const today = isDate(opts.today) ? opts.today : localToday();
+    const T = targets(docs, opts), days = docs.days || {}, out = [];
+    const push = (id, kind, title, text, evidence, ask) => out.push({ id, kind, title, text, evidence: (evidence || []).filter(Boolean), ask: ask || null });
+    const lifts = liftHistory(docs, today, 30);
+    const list = workoutList(docs).filter(w => w.date <= today && Object.keys(w.lifts).length);
+    const dayAt = d => days[d] || {};
+    const ask = q => q;
+
+    // 1. New personal records this week.
+    const prs = lifts.filter(l => l.latestIsPR && l.last5[l.last5.length - 1].date > add(today, -7));
+    if (prs.length) push("pr-" + prs.map(l => l.bestOn).sort().pop(), "good", prs.length === 1 ? "New best on " + prs[0].name : prs.length + " new personal bests this week",
+      prs.map(l => l.name + " " + l.last5[l.last5.length - 1].top + " (est. 1RM " + l.bestE1rm + " kg)").join("; ") + ".", [], ask("Which of my lifts are improving fastest?"));
+
+    // 2. Strength falling across several lifts (3 sessions each, each lower than the one before).
+    const falling = lifts.filter(l => l.last5.length >= 3 && l.last5.slice(-3).every((s, i, a) => i === 0 || s.e1rm < a[i - 1].e1rm) && pctChange(l.last5[l.last5.length - 1].e1rm, l.last5[l.last5.length - 3].e1rm) <= -3);
+    if (falling.length >= 2) push("strength-down", "warn", "Strength is slipping on " + falling.length + " lifts",
+      "Three sessions in a row went down on " + falling.slice(0, 3).map(l => l.name).join(", ") + (falling.length > 3 ? " and more" : "") + ". In a cut that usually means food, sleep or fatigue, not the plan.",
+      falling.slice(0, 4).map(l => l.name + ": " + l.last5.slice(-3).map(s => s.e1rm).join(" → ") + " kg est. 1RM"), ask("Why has my strength decreased recently?"));
+
+    // 3. Protein missed on most logged days this week.
+    if (T.proteinMin) {
+      const wk = dates(add(today, -7), add(today, -1)).map(d => ({ d, e: eaten(dayAt(d)) })).filter(x => x.e);
+      const short = wk.filter(x => x.e.p < T.proteinMin);
+      if (wk.length >= 4 && short.length >= Math.ceil(wk.length / 2)) push("protein-week-" + add(today, -1), "warn", "Protein under target on " + short.length + " of " + wk.length + " logged days",
+        "Average " + Math.round(mean(wk.map(x => x.e.p))) + " g against a " + T.proteinMin + " g minimum. Protein is what keeps muscle while the calories are down.",
+        short.map(x => x.d + ": " + Math.round(x.e.p) + " g"), ask("How can I hit my protein target more often?"));
+    }
+
+    // 4. Training effort high on most recent sessions (possible fatigue).
+    const eff = list.filter(w => w.effort != null).slice(-4);
+    if (eff.length === 4 && eff.filter(w => w.effort >= 4).length >= 3) push("fatigue-" + eff[eff.length - 1].date, "warn", "Hard sessions piling up",
+      "Effort was 4 or 5 on " + eff.filter(w => w.effort >= 4).length + " of the last 4 sessions. A lighter week may protect your lifts.",
+      eff.map(w => w.date + " " + (w.session || "") + ": effort " + w.effort), ask("Should I take a lighter week?"));
+
+    // 5. Lifts after short sleep vs after a full night (3+ sessions each).
+    const withSleep = list.map(w => { const h = num(dayAt(add(w.date, -1)).sleep); const e = Object.values(w.lifts).map(sets => Math.max(...sets.map(x => epley(x.kg, x.r)))); return h != null && e.length ? { h, e: mean(e), date: w.date } : null; }).filter(Boolean).filter(w => w.date > add(today, -56));
+    const shortN = withSleep.filter(w => w.h < 6.5), fullN = withSleep.filter(w => w.h >= 7);
+    if (shortN.length >= 3 && fullN.length >= 3) {
+      const diff = pctChange(mean(shortN.map(w => w.e)), mean(fullN.map(w => w.e)));
+      if (diff <= -4) push("sleep-lifts", "info", "Short nights cost you strength", "Sessions after under 6.5 h of sleep averaged " + Math.abs(Math.round(diff)) + "% lower est. 1RM than after 7 h or more.",
+        [shortN.length + " sessions after short sleep, " + fullN.length + " after a full night, last 8 weeks"], ask("How does my sleep affect my lifts?"));
+    }
+
+    // 6. Weight-loss pace slowing (last 14 days vs the 14 before, 4+ weigh-ins each).
+    const ws = weighIns(docs.weights).filter(w => w.date <= today);
+    const slope = (from, to) => { const pts = ws.filter(w => w.date > from && w.date <= to).map(w => ({ x: diff(from, w.date), y: w.kg })); const f = pts.length >= 4 ? fit(pts) : null; return f ? { kgWk: f.slope * 7, n: pts.length } : null; };
+    const now = slope(add(today, -14), today), before = slope(add(today, -28), add(today, -14));
+    const bw = ws.length ? ws[ws.length - 1].kg : null;
+    if (now && before && bw) {
+      const pNow = -now.kgWk / bw * 100, pBefore = -before.kgWk / bw * 100;
+      if (pBefore >= 0.4 && pNow < 0.25) push("pace-slowing-" + today.slice(0, 7), "info", "Weight loss has slowed", "The trend was " + f1(pBefore) + "% of body weight a week, now " + f1(Math.max(0, pNow)) + "%. Two weeks is early; check adherence first, then the 14-day review.",
+        ["Last 14 days: " + f1(now.kgWk) + " kg/week (" + now.n + " weigh-ins)", "14 days before: " + f1(before.kgWk) + " kg/week (" + before.n + " weigh-ins)"], ask("Why has my weight stopped decreasing?"));
+    }
+
+    // 7. Recovery improving (readiness parts, 7 days vs the 7 before, 4+ check-ins each).
+    const rScore = d => { const r = dayAt(d).readiness; if (!r) return null; const v = [r.quality, r.soreness, r.energy].map(num).filter(x => x != null); return v.length ? mean(v) : null; };
+    const r1 = dates(add(today, -6), today).map(rScore).filter(x => x != null), r0 = dates(add(today, -13), add(today, -7)).map(rScore).filter(x => x != null);
+    if (r1.length >= 4 && r0.length >= 4 && mean(r1) - mean(r0) >= 0.6) push("recovery-up-" + today, "good", "Recovery is improving", "Your check-ins average " + f1(mean(r1)) + "/5 this week against " + f1(mean(r0)) + "/5 last week.", [], null);
+
+    // 8. Volume imbalance (from StrengthAnalytics when passed).
+    const lean = opts.strength && (opts.strength.balance || []).filter(b => b.lean && b.ratio != null);
+    if (lean && lean.length) push("balance-" + lean.map(b => b.id || b.label).join("-"), "info", "Training volume leans " + lean[0].lean, lean.map(b => b.label + " " + Math.round(b.ratio * 100) / 100 + " : 1").join("; ") + ". Worth a look over a few weeks, not one.", [], ask("Am I training every muscle enough?"));
+
+    // 9. Protein on rest days vs training days (28 days, 3+ of each).
+    const trainDates = new Set(list.map(w => w.date));
+    const pr28 = dates(add(today, -28), add(today, -1)).map(d => ({ d, e: eaten(dayAt(d)) })).filter(x => x.e);
+    const pT = pr28.filter(x => trainDates.has(x.d)).map(x => x.e.p), pR = pr28.filter(x => !trainDates.has(x.d)).map(x => x.e.p);
+    if (pT.length >= 3 && pR.length >= 3 && Math.abs(mean(pT) - mean(pR)) >= 20) {
+      const lower = mean(pR) < mean(pT) ? "rest" : "training";
+      push("protein-rest-vs-train", "info", "Protein drops on " + lower + " days", "Training days average " + Math.round(mean(pT)) + " g protein, rest days " + Math.round(mean(pR)) + " g. Muscle is kept on rest days too.", [pT.length + " training days, " + pR.length + " rest days logged in 4 weeks"], ask("What should I eat on rest days?"));
+    }
+
+    // 10. The weekday that goes over target most (28 days, 3+ of that weekday logged).
+    if (T.kcal) {
+      const byWd = {};
+      dates(add(today, -28), add(today, -1)).forEach(d => { const e = eaten(dayAt(d)); if (!e) return; const tgt = opts.kcalTarget ? num(opts.kcalTarget(d)) || T.kcal : T.kcal; (byWd[dow(d)] = byWd[dow(d)] || []).push(e.kcal - tgt); });
+      const worst = Object.entries(byWd).filter(([, v]) => v.length >= 3).map(([k, v]) => ({ wd: +k, over: mean(v), n: v.length })).sort((a, b) => b.over - a.over)[0];
+      if (worst && worst.over >= 150) push("weekday-over-" + worst.wd, "info", WD[worst.wd] + "s run over target", "On " + WD[worst.wd] + "s you average " + Math.round(worst.over) + " kcal over, across " + worst.n + " logged " + WD[worst.wd] + "s. Planning that day ahead usually fixes it.", [], ask("How can I keep " + WD[worst.wd] + "s on target?"));
+    }
+
+    // Keep it calm: hide what was shown in the last repeatDays, max `limit`.
+    const seen = opts.seen || {}, repeat = opts.repeatDays || 7, limit = opts.limit || 3;
+    const order = { warn: 0, good: 1, info: 2 };
+    return out.filter(i => !(seen[i.id] && diff(seen[i.id], today) < repeat)).sort((a, b) => order[a.kind] - order[b.kind]).slice(0, limit);
+  }
+
+  function insightsHtml(docs, opts = {}) {
+    const list = insights(docs, opts);
+    if (!list.length) return "";
+    const items = list.map(i => '<div class="co-ins co-ins-' + i.kind + '" data-coach-insight="' + esc(i.id) + '"><div class="co-ins-head"><b>' + esc(i.title) + '</b><button class="co-x" data-coach-dismiss="' + esc(i.id) + '" aria-label="Dismiss">✕</button></div><p>' + esc(i.text) + "</p>" +
+      (i.evidence.length ? '<details><summary>Based on</summary><ul>' + i.evidence.map(e => "<li>" + esc(e) + "</li>").join("") + "</ul></details>" : "") +
+      (i.ask ? '<button class="co-chip" data-coach-ask="' + esc(i.ask) + '">Ask Claude about this</button>' : "") + "</div>").join("");
+    return '<div class="card co-insights"><h3>Patterns in your logs</h3><p class="co-src" style="margin-top:0">Worked out from your logs, no Claude needed. Each shows once a week at most.</p>' + items + "</div>";
+  }
 
   function recHtml(r, canApply) {
     const kind = { change: "Suggested change", keep: "Recommendation", tip: "Tip" }[r.kind];
@@ -14347,8 +14461,9 @@ window.Coach = (() => {
   function bind(root, opts) {
     O = Object.assign(O || {}, opts);
     root.addEventListener("click", e => {
-      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask]");
+      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask],[data-coach-dismiss]");
       if (!t) return;
+      if (t.dataset.coachDismiss) { if (O.onDismiss) O.onDismiss(t.dataset.coachDismiss); const box = t.closest("[data-coach-insight]"); if (box) box.remove(); return; }
       if (t.hasAttribute("data-coach-open")) openPanel(true);
       else if (t.hasAttribute("data-coach-close")) openPanel(false);
       else if (t.dataset.coachAsk !== undefined) {
@@ -14372,7 +14487,7 @@ window.Coach = (() => {
     root.addEventListener("keydown", e => { if (e.key === "Escape" && S.open) openPanel(false); });
   }
 
-  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, bind, errorText, TOPICS, _state: S };
+  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, insights, insightsHtml, bind, errorText, TOPICS, _state: S };
 })();
 if (typeof module !== "undefined") module.exports = Coach;
 </script>
@@ -18560,7 +18675,7 @@ function vProgress(){
   const report = safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, view.wrWeek==null?{}:{week:view.wrWeek}));
   const trendCard = safeMod("TrendTDEE", ()=>TrendTDEE.html(S.docs));
   const co=coachOpts();
-  return `${coachSafe(()=>Coach.reviewHtml(S.docs, co))}${coachSafe(()=>Coach.chatHtml(S.docs, co))}
+  return `${coachSafe(()=>Coach.insightsHtml(S.docs, {...co, seen:S.docs.prefs.main?.coachSeen||{}}))}${coachSafe(()=>Coach.reviewHtml(S.docs, co))}${coachSafe(()=>Coach.chatHtml(S.docs, co))}
   <div class="card hero">
     <div class="spread"><h2>${lastW?`${lastW.kg.toFixed(1)} kg`:"No weigh-ins yet"}</h2><span class="label">Goal ${GOAL_KG} kg</span></div>
     <div class="prog" aria-label="Progress to goal"><i style="width:${pct}%"></i></div>
@@ -18921,6 +19036,7 @@ try{
     effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee, tab:()=>view.tab,
     strength:()=>coachOpts().strength, recoveryText:()=>coachOpts().recoveryText, cardioText:()=>coachOpts().cardioText,
     planToday:coachPlanToday, exerciseNames:()=>Object.values(PROGRAM).flat().map(t=>t[0]), exercise:coachExercise,
+    onDismiss:id=>{ const m=clone(S.docs.prefs.main||{}); m.coachSeen={...(m.coachSeen||{}), [id]:TODAY}; put("prefs","main",m,{quiet:true}); },
     // Inside Claude: the page's sample capability (free). On the website: the app's own endpoint, which
     // checks the Firebase sign-in token and holds the API key (netlify/functions/coach.mjs).
     getSample:()=>window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
