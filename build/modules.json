@@ -25,6 +25,7 @@
     { "file": "modules/protein-gap/protein-gap.js" },
     { "file": "modules/barcode-scanner/barcode-food.js", "expose": ["BarcodeFood"] },
     { "file": "modules/exercise-swap/exercise-swap.js" },
+    { "file": "modules/travel-workout/travel-workout.js" },
     { "file": "modules/progress-photos/progress-photos.js" },
     { "file": "modules/diet-break/diet-break.js", "expose": ["DietBreak"] },
     { "file": "modules/calorie-cycling/calorie-cycling.js", "expose": ["CalorieCycling"] },
