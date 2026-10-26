@@ -17,7 +17,7 @@ Live workouts open in Gym mode by default. "List view" in the header switches to
 - Big "Done" button: fills blanks from last time, flags records (green banner), starts the rest timer, moves to the next set.
 - Supersets run A1 → B1 → A2 → B2; the rest timer starts only after the round. Uneven set counts finish on the longer exercise.
 - Rest countdown is large in Gym mode, with ±15 s, Skip and "Up next: exercise · set · last time".
-- Demo ↗ (from form cues), How to (exercise sheet), Rest, Plates, and the collapsed form cues panel.
+- Demo ↗ (from `opts.demos` / ExerciseDemos when passed, else form cues), How to (exercise sheet), Rest, Plates, and the collapsed form cues panel.
 - Reopening a workout picks up after the furthest checked set, so skipped warm-ups don't pull you back.
 - Wake lock, beep and vibration settings are the existing ones.
 
