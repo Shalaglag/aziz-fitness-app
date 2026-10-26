@@ -2028,12 +2028,24 @@ Stair Climber|Cardio|Cardio|`;
     const atTop = ws.filter(s => (num(s.w) || 0) === top);
     const minR = Math.min(...atTop.map(s => num(s.r)));
     const step = weightStep(ex, unit);
-    if (minR >= 12) return 'All sets hit 12 last time. Try ' + fmtN(top + step, 2) + ' ' + unit + '.';
+    if (minR >= 12) return 'All sets hit 12 last time. Try ' + fmtN(stepWeight(top, 1, step), 2) + ' ' + unit + '.';
     return 'Beat last time: aim for ' + fmtN(top, 2) + ' ' + unit + ' × ' + (minR + 1) + ' on one set.';
   }
 
   // ---------- Gym mode helpers ----------
-  const weightStep = (ex, unit) => unit === 'lb' ? 5 : (ex.cat === 'Dumbbell' ? 2 : 2.5);
+  // Weight increment per exercise. Default by equipment; an exercise can save its machine's real step (ex.step,
+  // in ex.stepUnit) so steppers, progression hints and warm-ups land on weights the stack actually has.
+  const defaultStep = (ex, unit) => unit === 'lb' ? 5 : (ex.cat === 'Dumbbell' ? 2 : 2.5);
+  const weightStep = (ex, unit) => {
+    const st = num(ex.step);
+    if (!st || st <= 0) return defaultStep(ex, unit);
+    const su = ex.stepUnit || ex.unit || S.settings.unit;
+    if (su === unit) return st;
+    return Math.max(0.25, Math.round((unit === 'lb' ? st / LB : st * LB) * 4) / 4);
+  };
+  const snapStep = (v, step) => step > 0 ? Math.round(Math.round(v / step) * step * 100) / 100 : Math.round(v * 100) / 100;
+  // One click on a weight stepper: move by the step and land on the step grid (61 kg + 2.5 -> 62.5, not 63.5).
+  const stepWeight = (v, d, step) => Math.max(0, snapStep((num(v) || 0) + d * step, step));
   const FIELD_STEP = { r: 1, km: 0.1, min: 1, sec: 5 };
   const stepFor = (ex, unit, k) => k === 'w' ? weightStep(ex, unit) : FIELD_STEP[k];
   const bumpVal = (v, d) => Math.max(0, Math.round(((num(v) || 0) + d) * 100) / 100);
@@ -2306,6 +2318,7 @@ Stair Climber|Cardio|Cardio|`;
       title: id ? 'Edit exercise' : 'New exercise',
       body: () => '<label class="lb-field">Name<input id="lb-exname" class="lb-input" value="' + esc(ex.name) + '"' + (id && LIB[id] ? ' disabled' : '') + '></label><label class="lb-field">Body part<select id="lb-expart" class="lb-input"' + (id && LIB[id] ? ' disabled' : '') + '>' + PARTS.map(p => '<option' + (p === ex.part ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label><label class="lb-field">Equipment<select id="lb-excat" class="lb-input"' + (id && LIB[id] ? ' disabled' : '') + '>' + CATS.map(c => '<option' + (c === ex.cat ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label>' +
         '<label class="lb-field">Default unit<select id="lb-exunit" class="lb-input"><option value="">App default (' + S.settings.unit + ')</option><option value="kg"' + (ex.unit === 'kg' ? ' selected' : '') + '>kg</option><option value="lb"' + (ex.unit === 'lb' ? ' selected' : '') + '>lb</option></select></label><label class="lb-field">Rest timer (seconds)<input id="lb-exrest" class="lb-input" inputmode="numeric" placeholder="' + (ex.compound ? S.settings.restCompound : S.settings.restIso) + '" value="' + esc(ex.rest || '') + '"></label><label class="lb-field">Machine settings and notes<textarea id="lb-exmemo" class="lb-input" rows="3" placeholder="Seat height 4, pad on notch 6…">' + esc(ex.memo || '') + '</textarea></label>' +
+        stepFieldHtml(ex) +
         '<label class="lb-check"><input type="checkbox" id="lb-excomp"' + (ex.compound ? ' checked' : '') + '> Big compound lift (uses the longer rest)</label>' +
         '<div class="lb-row"><button class="lb-btn primary wide" data-a="saveEx" data-id="' + (id || '') + '">Save</button></div>',
       onSave: after
@@ -2318,12 +2331,43 @@ Stair Climber|Cardio|Cardio|`;
     const name = v('#lb-exname');
     if (!isLib && !name) { toast('Give the exercise a name'); return; }
     const newId = id || ('c-' + slug(name) + '-' + uid().slice(-4));
-    const doc = Object.assign({}, S.data.exercises[newId] || {}, { id: newId, unit: v('#lb-exunit') || undefined, rest: num(v('#lb-exrest')) || undefined, memo: v('#lb-exmemo'), compound: el.querySelector('#lb-excomp').checked });
+    const unit = v('#lb-exunit') || undefined, step = num(v('#lb-exstep'));
+    const doc = Object.assign({}, S.data.exercises[newId] || {}, { id: newId, unit, rest: num(v('#lb-exrest')) || undefined, memo: v('#lb-exmemo'), compound: el.querySelector('#lb-excomp').checked, step: step > 0 ? step : undefined, stepUnit: step > 0 ? (unit || S.settings.unit) : undefined });
     if (!isLib) Object.assign(doc, { name, part: v('#lb-expart'), cat: v('#lb-excat'), custom: true });
     put('exercises', JSON.parse(JSON.stringify(doc)));
     const after = topSheet().o.onSave;
     closeSheet(); toast('Saved');
     if (after) after(newId);
+    const sh = topSheet(); if (sh) sh.render();
+  });
+  // Weight increment input with the common stack steps as chips. Saved in the exercise's logging unit.
+  function stepFieldHtml(ex) {
+    const unit = ex.unit || S.settings.unit, cur = num(ex.step) && (ex.stepUnit || unit) === unit ? +ex.step : '';
+    const chips = unit === 'lb' ? [2.5, 5, 10] : [1, 1.25, 2, 2.5, 5];
+    return '<label class="lb-field">Weight step (' + unit + ')<input id="lb-exstep" class="lb-input num" inputmode="decimal" placeholder="' + fmtN(defaultStep(ex, unit), 2) + ' (' + esc(ex.cat || 'Machine') + ' default)" value="' + cur + '"></label>' +
+      '<div class="lb-row tight lb-chips">' + chips.map(c => '<button type="button" class="lb-btn small' + (cur === c ? ' primary' : ' ghost') + '" data-a="stepChip" data-v="' + c + '">' + fmtN(c, 2) + '</button>').join('') + '</div>' +
+      '<p class="lb-muted small">The smallest jump this machine or dumbbell rack allows. Steppers, "try X next" hints and warm-ups round to it.</p>';
+  }
+  on('stepChip', t => { const el = topSheet().el, inp = el.querySelector('#lb-exstep'); if (inp) inp.value = t.dataset.v; el.querySelectorAll('[data-a="stepChip"]').forEach(b => { b.classList.toggle('primary', b === t); b.classList.toggle('ghost', b !== t); }); });
+  // Quick machine setup while logging: seat / pin notes and the weight step, without leaving the workout.
+  function memoHtml(ex, editable) {
+    const txt = ex.memo ? esc(ex.memo).replace(/\n+/g, ' · ') : '';
+    if (!editable) return txt ? '<p class="lb-memo small">' + txt + '</p>' : '';
+    return '<button class="lb-memo-btn' + (txt ? '' : ' empty') + '" data-a="exSetup" data-id="' + esc(ex.id) + '" aria-label="Machine settings">' + (txt ? '⚙ ' + txt : '⚙ Add seat, pin or weight step') + '</button>';
+  }
+  on('exSetup', t => {
+    const id = t.dataset.id;
+    openSheet({
+      title: () => 'Machine settings · ' + getEx(id).name,
+      body: () => { const ex = getEx(id); return '<label class="lb-field">Seat, pins, grips, notes<textarea id="lb-exmemo" class="lb-input" rows="3" placeholder="Seat 4, chest pad 6, handles wide…">' + esc(ex.memo || '') + '</textarea></label>' + stepFieldHtml(ex) + '<div class="lb-row"><button class="lb-btn primary wide" data-a="saveSetup" data-id="' + esc(id) + '">Save</button></div>'; }
+    });
+  });
+  on('saveSetup', t => {
+    const el = topSheet().el, id = t.dataset.id, ex = getEx(id), unit = ex.unit || S.settings.unit, step = num(el.querySelector('#lb-exstep').value);
+    const doc = Object.assign({}, S.data.exercises[id] || {}, { id, memo: el.querySelector('#lb-exmemo').value.trim(), step: step > 0 ? step : undefined, stepUnit: step > 0 ? unit : undefined });
+    put('exercises', JSON.parse(JSON.stringify(doc)));
+    closeSheet(); toast('Saved');
+    if (E) renderEditor(); else renderMain();
     const sh = topSheet(); if (sh) sh.render();
   });
 
@@ -2343,7 +2387,7 @@ Stair Climber|Cardio|Cardio|`;
   function exDetail(id) {
     const ex = getEx(id), ss = sessions(id), R = records(id), weighted = isWeighted(ex);
     if (exTab === 'about') {
-      return '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div></div>' +
+      return '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div>' + (weighted ? '<div><b>' + fmtN(weightStep(ex, ex.unit || S.settings.unit), 2) + ' ' + (ex.unit || S.settings.unit) + '</b><span>Weight step' + (num(ex.step) ? '' : ' (default)') + '</span></div>' : '') + '</div>' +
         (ex.avoided ? '<p class="lb-warnbox">Your plan avoids this lift (no deadlifts, RDLs, hip thrusts, back extensions, glute-ham raises, reverse hypers or cable pull-throughs). Pick a machine-based option instead.</p>' : '') +
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
@@ -2492,6 +2536,11 @@ Stair Climber|Cardio|Cardio|`;
     list.forEach(p => { while (rem >= p - 1e-9) { out.push(p); rem = Math.round((rem - p) * 100) / 100; } });
     return { plates: out, rem };
   }
+  // Smallest total you can actually load at or above this per-side weight.
+  function loadableUp(perSide, unit) {
+    const list = unit === 'lb' ? S.settings.platesLb : S.settings.platesKg, small = Math.min(...list), r = platesFor(Math.max(0, perSide), unit);
+    return r.rem > 0 ? Math.round((perSide - r.rem + small) * 100) / 100 : Math.round(perSide * 100) / 100;
+  }
   const PLATE_COLORS = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'];
   function plateSvg(plates, unit) {
     const list = unit === 'lb' ? S.settings.platesLb : S.settings.platesKg;
@@ -2507,7 +2556,7 @@ Stair Climber|Cardio|Cardio|`;
     const r = platesFor(Math.max(0, per), plate.unit);
     return '<div class="lb-row tight"><div class="lb-seg"><button data-a="plateMode" data-k="total" class="' + (plate.mode === 'total' ? 'on' : '') + '">Total weight</button><button data-a="plateMode" data-k="side" class="' + (plate.mode === 'side' ? 'on' : '') + '">Per side</button></div><div class="lb-seg"><button data-a="plateUnit" data-k="kg" class="' + (plate.unit === 'kg' ? 'on' : '') + '">kg</button><button data-a="plateUnit" data-k="lb" class="' + (plate.unit === 'lb' ? 'on' : '') + '">lb</button></div></div>' +
       '<div class="lb-row tight"><label class="lb-field inline">' + (plate.mode === 'total' ? 'Total' : 'Per side') + '<input class="lb-input num" id="lb-plateval" inputmode="decimal" value="' + plate.val + '" data-in="plateVal"></label><label class="lb-field inline">Bar<input class="lb-input num" inputmode="decimal" value="' + bar + '" data-in="barVal"></label></div>' +
-      '<div id="lb-plateout">' + (per < 0 ? '<p class="lb-muted">That is lighter than the bar.</p>' : plateSvg(r.plates, plate.unit) + '<p><b>Each side:</b> ' + (r.plates.length ? r.plates.join(' + ') + ' ' + plate.unit : 'empty bar') + (r.rem > 0 ? ' <span class="lb-warn">(' + fmtN(r.rem, 2) + ' ' + plate.unit + ' left over)</span>' : '') + '</p><p class="lb-muted small">Total on the bar: ' + fmtN(total - r.rem * 2, 2) + ' ' + plate.unit + ' · ' + fmtN(Math.max(0, per), 2) + ' per side</p>') + '</div>';
+      '<div id="lb-plateout">' + (per < 0 ? '<p class="lb-muted">That is lighter than the bar.</p>' : plateSvg(r.plates, plate.unit) + '<p><b>Each side:</b> ' + (r.plates.length ? r.plates.join(' + ') + ' ' + plate.unit : 'empty bar') + (r.rem > 0 ? ' <span class="lb-warn">(' + fmtN(r.rem, 2) + ' ' + plate.unit + ' left over)</span>' : '') + '</p>' + (r.rem > 0 ? '<p class="lb-hint small">Load ' + fmtN(total - r.rem * 2, 2) + ' or ' + fmtN(loadableUp(per, plate.unit) * 2 + bar, 2) + ' ' + plate.unit + ' instead.</p>' : '') + '<p class="lb-muted small">Total on the bar: ' + fmtN(total - r.rem * 2, 2) + ' ' + plate.unit + ' · ' + fmtN(Math.max(0, per), 2) + ' per side</p>') + '</div>';
   }
   function refreshTool(id, html) { const el = root.querySelector(id) || (topSheet() && topSheet().el.querySelector(id)); if (el) el.innerHTML = html; }
   on('plateMode', t => { const bar = plate.unit === 'lb' ? S.settings.barLb : S.settings.bar; if (t.dataset.k !== plate.mode) plate.val = t.dataset.k === 'side' ? Math.max(0, (plate.val - bar) / 2) : plate.val * 2 + bar; plate.mode = t.dataset.k; rerenderTools(); });
@@ -2517,8 +2566,8 @@ Stair Climber|Cardio|Cardio|`;
   function partialPlate() { const tmp = document.createElement('div'); tmp.innerHTML = plateTool(); refreshTool('#lb-plateout', tmp.querySelector('#lb-plateout').innerHTML); }
   function rerenderTools() { const sh = topSheet(); if (sh && sh.o.tool) sh.render(); else renderMain(); }
   let settingsT; function saveSettingsSoon() { clearTimeout(settingsT); settingsT = setTimeout(saveSettings, 600); }
-  function warmSets(w, unit, bar) {
-    const step = unit === 'lb' ? 5 : 2.5, rd = v => Math.max(bar, Math.round(v / step) * step);
+  function warmSets(w, unit, bar, step) {
+    step = step || (unit === 'lb' ? 5 : 2.5); const rd = v => Math.max(bar, snapStep(v, step));
     const plan = [[0, 10], [0.5, 8], [0.7, 5], [0.85, 3]];
     const out = []; plan.forEach(([p, r]) => { const v = p ? rd(w * p) : bar; if (v < w && !out.some(o => o.w === v)) out.push({ w: v, r }); });
     return out;
@@ -2720,7 +2769,7 @@ Stair Climber|Cardio|Cardio|`;
         (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') +
         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
-        (ex.memo ? '<p class="lb-memo small">' + esc(ex.memo) + '</p>' : '') +
+        memoHtml(ex, live) +
         (hint ? '<p class="lb-hint small">' + esc(hint) + '</p>' : '') +
         (e.showNote || e.notes ? '<textarea class="lb-input lb-notes" rows="1" placeholder="Note for this exercise" data-in="eNote" data-ei="' + i + '">' + esc(e.notes || '') + '</textarea>' : '') +
         '<div class="lb-sets" style="--cols:' + cols + '"><div class="lb-setrow head"><span>Set</span><span>Previous</span>' + f.map(k => '<span>' + ({ w: e.unit.toUpperCase(), r: 'Reps', km: 'Km', min: 'Min', sec: 'Sec' }[k]) + '</span>').join('') + xc.map(k => '<span>' + k.toUpperCase() + '</span>').join('') + '<span>' + (live ? '✓' : '') + '</span></div>';
@@ -2803,7 +2852,7 @@ Stair Climber|Cardio|Cardio|`;
       (isWeighted(ex) ? '<button class="lb-btn small ghost" data-a="exPlates" data-ei="' + ei + '">Plates</button>' : '') + '</div>' +
       (fc && entry ? fc.inlineHtml(entry, e.exId) : '') +
       (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
-      (ex.memo ? '<p class="lb-memo small">' + esc(ex.memo) + '</p>' : '') +
+      memoHtml(ex, true) +
       '<div class="lb-gym-dots" role="group" aria-label="Sets">' + e.sets.map((x, j) => '<button class="lb-gym-dot ' + x.t + (x.done ? ' done' : '') + (j === si ? ' cur' : '') + '" data-a="gGo" data-ei="' + ei + '" data-si="' + j + '" aria-label="' + esc(setLabel(e, j)) + (x.done ? ', done' : '') + '">' + (x.t === 'n' ? ++n : x.t.toUpperCase()) + '</button>').join('') + '<button class="lb-gym-dot add" data-a="gAdd" aria-label="Add a set">+</button></div>' +
       '<section class="lb-gym-card' + (s.done ? ' done' : '') + '">' +
       '<div class="lb-gym-setlabel">' + esc(setLabel(e, si)) + (s.done ? ' <span class="lb-gym-ok">✓ done</span>' : '') + '</div>' +
@@ -2846,7 +2895,7 @@ Stair Climber|Cardio|Cardio|`;
   on('gNext', () => { const nx = nextPending(E.doc.exercises, E.cur); if (nx) gymGo(nx[0], nx[1]); });
   on('gStep', t => {
     const c = gymCtx(), k = t.dataset.k, start = c.vals[k] === '' || c.vals[k] == null ? 0 : String(c.vals[k]).replace(/,/g, '');
-    c.s[k] = String(bumpVal(start, +t.dataset.d * stepFor(c.ex, c.e.unit, k)));
+    c.s[k] = String(k === 'w' ? stepWeight(start, +t.dataset.d, weightStep(c.ex, c.e.unit)) : bumpVal(start, +t.dataset.d * stepFor(c.ex, c.e.unit, k)));
     if (c.s.done) c.s.pr = setPRs(c.e.exId, c.e.unit, c.s, E.doc.id);
     touch();
     const inp = liveEl.querySelector('.lb-gym-num[data-k="' + k + '"]'); if (inp) inp.value = c.s[k];
@@ -3271,6 +3320,9 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-sslabel{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--lb-muted)}
 .lb-exhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .lb-memo{color:var(--lb-muted);font-style:italic}
+.lb-memo-btn{display:block;width:100%;text-align:left;background:none;border:1px dashed var(--lb-line);color:var(--lb-muted);border-radius:10px;padding:6px 10px;font:inherit;font-size:.85rem;font-style:italic;cursor:pointer;margin:4px 0}
+.lb-memo-btn:not(.empty){border-style:solid;color:inherit;font-style:normal}
+.lb-chips{margin:-4px 0 6px}
 .lb-hint{color:var(--lb-good);font-weight:600}
 .lb-sets{margin-top:8px}
 .lb-setrow{display:grid;grid-template-columns:var(--cols);gap:6px;align-items:center;padding:4px 2px;border-radius:8px}
@@ -3377,7 +3429,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   // Called by a host when its storage changed underneath (another device): reload and redraw.
   async function refresh() { await loadAll(); if (!E && !sheets.length) renderMain(); }
   const api = { mount, refresh, buildProgram, toShellRecord, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
-    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal } };
+    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
