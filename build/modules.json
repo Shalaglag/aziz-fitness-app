@@ -30,6 +30,7 @@
     { "file": "modules/coach/coach.js", "expose": ["Coach"] },
     { "file": "modules/cardio/cardio.js", "expose": ["Cardio"] },
     { "file": "modules/strength-analytics/strength-analytics.js", "expose": ["StrengthAnalytics"] },
+    { "file": "modules/monthly-recap/monthly-recap.js", "expose": ["MonthlyRecap"] },
     { "file": "modules/data-io/data-io.js", "expose": ["DataIO"] },
     { "file": "modules/menu-import/menu-import.js" },
     { "file": "modules/pending-writes/pending-writes.js" }

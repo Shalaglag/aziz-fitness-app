@@ -776,6 +776,7 @@ window.addEventListener("unhandledrejection", e=>{ const r=e && e.reason; showEr
 function cdSafe(fn){ return safeMod("Cardio", fn); }
 function latestKg(){ const ws=weightsSorted(); return ws.length ? ws[ws.length-1].kg : undefined; }
 function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS}; }
+function mrOpts(){ return {today:TODAY, ym:view.mrYm, targets:dayTargets, sessionFor:x=>sessionFor(x)?.session, units:window.StrengthAnalytics?StrengthAnalytics.unitsFrom(PROGRAM):undefined, mainLifts:MAIN_LIFTS, start:START.date}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
 let coachPending=null, weightPending=null;
@@ -1142,6 +1143,7 @@ function vProgress(){
   </div>
   ${trendCard}
   ${safeMod("StrengthAnalytics",()=>StrengthAnalytics.html(S.docs, strengthOpts()))}
+  ${safeMod("MonthlyRecap",()=>MonthlyRecap.html(S.docs, mrOpts()))}
   ${window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
     <div class="tablewrap"><table><thead><tr><th>Lift</th><th class="n">Baseline</th><th class="n">Latest best set</th><th>Status</th></tr></thead><tbody>
     ${MAIN_LIFTS.map(n=>{ const base=Object.values(PROGRAM).flat().find(e=>e[0]===n); const h=liftHistory(n); const l=h[h.length-1];
@@ -1260,6 +1262,18 @@ main.addEventListener("click",e=>{
   if(wr){
     if(wr.hasAttribute("data-wr-copy")){ const t=WeeklyReport.summary(S.docs, view.wrWeek==null?{}:{week:view.wrWeek}); navigator.clipboard.writeText(t).then(()=>toast("Summary copied"),()=>toast("Copy blocked. Select the text in the report instead.")); }
     else { view.wrWeek=+wr.dataset.wrWeek; render(); }
+    return;
+  }
+  const mr=e.target.closest("[data-mr-month],[data-mr-save],[data-mr-copy]");
+  if(mr && window.MonthlyRecap){
+    if(mr.hasAttribute("data-mr-month")){ view.mrYm=mr.dataset.mrMonth||undefined; render(); }
+    else if(mr.hasAttribute("data-mr-copy")){ const t=MonthlyRecap.summary(MonthlyRecap.compute(S.docs, mrOpts())); navigator.clipboard.writeText(t).then(()=>toast("Recap copied"),()=>toast("Copy blocked. Use Save as image instead.")); }
+    else { mr.disabled=true; MonthlyRecap.save(MonthlyRecap.compute(S.docs, mrOpts()), {name:"Cut tracker"}).then(res=>{
+        if(res.saved){ toast("Saved "+res.filename); return; }
+        if(res.cancelled) return;
+        const host=mr.closest(".card").querySelector("[data-mr-preview]"); if(host&&res.url){ host.hidden=false; host.innerHTML=`<img src="${res.url}" alt="Month recap image"><p class="muted" style="font-size:.85rem">Long-press (or right-click) the image to save it.</p>`; }
+        else toast("Couldn't make the image here.");
+      }).catch(()=>toast("Couldn't make the image here.")).finally(()=>{ mr.disabled=false; }); }
     return;
   }
   const el=e.target.closest("[data-act]"); if(!el) return;
@@ -1458,7 +1472,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","MonthlyRecap"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
