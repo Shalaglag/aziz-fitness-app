@@ -14,7 +14,7 @@ instead: Firebase email + password sign-in, and Firestore for storage, under `us
 - Tests: `node --test modules/cloud-store/cloud-store.test.js`.
 
 Claude-only features don't exist on the website: photo food logging and menu import need Claude to
-read the image, and progress photos need Claude's file storage. Those cards say they're unavailable.
+read the image, and progress photos need Claude's file storage, so those cards won't work there yet.
 
 ## Setup (once)
 
