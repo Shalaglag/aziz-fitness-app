@@ -392,6 +392,13 @@ Stair Climber|Cardio|Cardio|`;
     }
     return out;
   }
+  // PR celebration (modules/pr-celebrate): what was beaten and the old best, for the toast and the gym banner.
+  const PRC = typeof PRCelebrate !== 'undefined' ? PRCelebrate : (typeof globalThis !== 'undefined' && globalThis.PRCelebrate) || null;
+  function celebration(e, s) {
+    if (!PRC || !s.pr || !s.pr.length) return null;
+    const ex = getEx(e.exId);
+    return PRC.describe(s.pr, records(e.exId, E.doc && E.doc.id), s, { name: ex.name, unit: e.unit, e1rm, fmtDate: at => fmtDate(at, { month: 'short', day: 'numeric' }) });
+  }
   function workoutStats(w) {
     let vol = 0, sets = 0, prs = 0;
     w.exercises.forEach(e => working(e).forEach(s => { sets++; vol += toKg(num(s.w) || 0, e.unit) * (num(s.r) || 0); if (s.pr && s.pr.length) prs++; }));
@@ -1242,7 +1249,7 @@ Stair Climber|Cardio|Cardio|`;
     const stepTxt = k => fmtN(stepFor(ex, e.unit, k), 2);
     let n = 0;
     let html = '<div class="lb-gym">' +
-      (E.flash ? '<div class="lb-gym-pr" role="status">New record · ' + esc(E.flash) + '</div>' : '') +
+      (E.flash ? (typeof E.flash === 'object' && PRC ? PRC.bannerHtml(E.flash, esc) : '<div class="lb-gym-pr" role="status">New record · ' + esc(E.flash) + '</div>') : '') +
       '<div class="lb-gym-top"><span>Exercise ' + (ei + 1) + ' of ' + d.exercises.length + '</span>' +
       (e.ss ? '<span class="lb-gym-ss ss' + (ssIds.indexOf(e.ss) % 4) + '">Superset ' + String.fromCharCode(65 + ssIds.indexOf(e.ss)) + ' · ' + (partners.findIndex(o => o.k === ei) + 1) + '/' + partners.length + '</span>' : '') + '</div>' +
       '<div class="lb-gym-headrow"><button class="lb-gym-name" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + ei + '" aria-label="Exercise options">•••</button></div>' +
@@ -1311,7 +1318,7 @@ Stair Climber|Cardio|Cardio|`;
   on('gDone', () => {
     const [ei, si] = E.cur, s = E.doc.exercises[ei].sets[si];
     if (!completeSet(ei, si, true)) return; // the gym screen shows its own record banner
-    E.flash = s.pr && s.pr.length ? getEx(E.doc.exercises[ei].exId).name + ': ' + s.pr.join(', ') : null;
+    E.flash = s.pr && s.pr.length ? (celebration(E.doc.exercises[ei], s) || getEx(E.doc.exercises[ei].exId).name + ': ' + s.pr.join(', ')) : null;
     const nx = nextPending(E.doc.exercises, [ei, si]); if (nx) E.cur = nx;
     touch(); renderEditor(); renderRest(); liveEl.querySelector('.lb-live-body').scrollTop = 0;
   });
@@ -1342,9 +1349,10 @@ Stair Climber|Cardio|Cardio|`;
     f.forEach(k => { const ph = phFor(prev, p, e, k); if ((s[k] === '' || s[k] == null) && ph !== '') s[k] = String(ph).replace(/,/g, ''); });
     if (f.every(k => s[k] === '' || s[k] == null)) { toast('Enter ' + (f[0] === 'w' ? 'weight and reps' : 'a value') + ' first'); return false; }
     s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id);
-    if (s.pr.length && !quiet) toast('New record: ' + ex.name + ' · ' + s.pr.join(', '));
+    const cel = celebration(e, s);
+    if (s.pr.length && !quiet) { if (cel) PRC.fire(cel, { toast, vibrate: !!S.settings.vibrate }); else toast('New record: ' + ex.name + ' · ' + s.pr.join(', ')); }
     if (ex.cat !== 'Cardio' && restAfter(E.doc.exercises, i, j)) startRest(restOf(e));
-    if (S.settings.vibrate && navigator.vibrate) try { navigator.vibrate(15); } catch (er) { }
+    if (S.settings.vibrate && navigator.vibrate && !(cel && !quiet)) try { navigator.vibrate(15); } catch (er) { }
     return true;
   }
   on('check', t => {
@@ -1787,7 +1795,7 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-gym-pair{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:stretch} .lb-gym-pair .lb-btn{min-height:76px;padding:0 18px}
 .lb-gym-nav{display:grid;grid-template-columns:1fr auto 1fr;gap:8px} .lb-gym-nav .lb-btn{min-height:52px;padding:6px 10px;font-size:.9rem}
 .lb-gym-nav .lb-btn:disabled{opacity:.4}
-.lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}
+.lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}.pr-celebrate b{display:block;font-size:1rem}.pr-celebrate-lines{display:block;margin-top:4px;font-weight:600;font-size:.88rem;opacity:.95}.pr-celebrate-lines>span{display:block}.pr-celebrate small{opacity:.8;font-weight:500}
 @keyframes lb-pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
 .lb-live.gym .lb-rest{padding-top:12px}
 .lb-live.gym .lb-rest-bar{height:8px;border-radius:4px}
