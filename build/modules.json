@@ -18,6 +18,7 @@
     { "file": "modules/form-cues/exercise-form-guide.json", "json": "FORM_GUIDE" },
     { "file": "modules/form-cues/form-cues.js" },
     { "file": "modules/photo-food/photo-food.js" },
+    { "file": "modules/macro-target/macro-target.js", "expose": ["MacroTarget"] },
     { "file": "modules/protein-gap/protein-gap.js" },
     { "file": "modules/barcode-scanner/barcode-food.js", "expose": ["BarcodeFood"] },
     { "file": "modules/exercise-swap/exercise-swap.js" },
