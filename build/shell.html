@@ -1004,6 +1004,7 @@ function vFood(){
     </div>
   </section>
   ${safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day}))}
+  ${safeMod("CopyMeals",()=>CopyMeals.cardHTML(day,{today:TODAY,days:S.docs.days,open:view.open.cm}))}
   ${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}
   <div id="bcHost"></div>
   ${window.MenuImport ? MenuImport.html(d) : pickerCard(d, training)}
@@ -1282,6 +1283,10 @@ main.addEventListener("click",e=>{
   else if(a==="meal-add"){ const m=S.docs.meals[el.dataset.id]; if(!m) return; const r=SavedMeals.applyToDay(getDay(d),m,{uid}); put("meals",m.id,SavedMeals.markUsed(m),{quiet:true}); if(r.added.length){ saveDay(r.day); toast("Added "+m.name+(r.skipped.length?" ("+r.skipped.length+" already on the day)":"")+". Tick items as you eat them."); } else toast("Everything in "+m.name+" is already on this day"); }
   else if(a==="meal-del"){ if(el.dataset.confirm){ const mid=el.dataset.id, old=S.docs.meals[mid]; remove("meals",mid); if(old) undoToast("Deleted "+(old.name||"meal"), ()=>put("meals",mid,old)); } else { el.dataset.confirm="1"; el.textContent="Delete?"; el.classList.add("confirm"); } }
   else if(a==="delfood"){ const day=getDay(d), idx=day.food.findIndex(i=>i.id===el.dataset.id), item=day.food[idx]; day.food=day.food.filter(i=>i.id!==el.dataset.id); saveDay(day); if(item) undoToast("Removed "+(item.name||"item"), ()=>{ const cur=getDay(d); if(cur.food.some(i=>i.id===item.id)) return; cur.food=cur.food.slice(); cur.food.splice(Math.min(idx,cur.food.length),0,item); saveDay(cur); }); }
+  else if(a==="cm-copy"){ const f=CopyMeals.readForm(document); if(!f.date){ toast("Pick a date to copy to"); return; } if(f.date===d){ toast("That is the same day. Pick another date."); return; } const r=CopyMeals.copyToDay(getDay(f.date), CopyMeals.select(getDay(d), f.ids), {uid, slot:f.slot, eaten:f.eaten}); const label=CopyMeals.fmt(f.date,TODAY); if(!r.added.length){ toast(CopyMeals.summary(r,label)); return; } const ids=r.added.map(i=>i.id); if(el.dataset.go) view.date=f.date; put("days",f.date,r.day); if(el.dataset.go) window.scrollTo(0,0); undoToast(CopyMeals.summary(r,label), ()=>put("days",f.date,CopyMeals.removeIds(getDay(f.date),ids))); }
+  else if(a==="cm-pull"){ const src=el.dataset.date||CopyMeals.readForm(document).from; if(!src){ toast("Pick a date to copy from"); return; } if(src===d){ toast("That is the same day. Pick another date."); return; } const r=CopyMeals.copyDay(getDay(src), getDay(d), {uid}); if(!r.added.length){ toast(r.skipped.length?"Everything from "+CopyMeals.fmt(src,TODAY)+" is already here":"Nothing logged on "+CopyMeals.fmt(src,TODAY)); return; } const ids=r.added.map(i=>i.id); saveDay(r.day); undoToast(CopyMeals.summary(r,CopyMeals.fmt(d,TODAY))+" from "+CopyMeals.fmt(src,TODAY), ()=>saveDay(CopyMeals.removeIds(getDay(d),ids))); }
+  else if(a==="cm-date"){ CopyMeals.setDate(document, el.dataset.date); }
+  else if(a==="cm-all"){ CopyMeals.selectAll(document, el.dataset.on==="1"); }
   else if(a==="copyday"){ const day=getDay(d), nd=addDays(d,1), next=getDay(nd); next.food=next.food.concat(day.food.map(i=>({...i,id:uid(),eaten:false}))); put("days",nd,next); view.date=nd; toast("Copied to "+fmt(nd)); }
   else if(a==="clearday"){ if(el.dataset.confirm){ const day=getDay(d); day.food=[]; saveDay(day); } else { el.dataset.confirm="1"; el.textContent="Tap again to clear"; } }
   else if(a==="swap"){ openSwap(el.dataset.n); }
