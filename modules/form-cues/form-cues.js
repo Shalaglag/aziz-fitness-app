@@ -27,6 +27,20 @@
   const loose = s => slug(String(s || '').toLowerCase()
     .replace(/dumbbells?/g, 'db').replace(/barbell/g, 'bb').replace(/\bbiceps?\b/g, 'bicep')
     .replace(/\((machine|cable|plate[- ]loaded|plate)\)/g, '').replace(/\bbench\b(?= press)/g, ''));
+  // Equipment named in a logger name or id: "Seated Row (Machine)" / "seated-row-machine" -> "machine".
+  const EQUIP = { 'smith-machine': 'smith', 'plate-loaded': 'plate', 'ez-bar': 'ez', machine: 'machine', cable: 'cable', dumbbell: 'db', barbell: 'bb' };
+  const equipOf = s => {
+    const m = String(s || '').match(/\(([^)]*)\)\s*$/), k = m ? slug(m[1]) : slug(s);
+    const hit = Object.keys(EQUIP).find(e => m ? k === e : k.endsWith('-' + e));
+    return hit ? EQUIP[hit] : null;
+  };
+  // A loose match only counts when the entry was written for that equipment, so a machine row never gets cable row cues.
+  const equipFits = (input, e) => {
+    const want = equipOf(input);
+    if (!want) return true;
+    const text = loose([e.name].concat(e.loggedAs || [], e.equipment || '').join(' ').replace(/\(([^)]*)\)/g, ' $1 '));
+    return new RegExp('(^|-)' + want + '(-|$)').test(text) || (want === 'plate' && /plate/.test(text));
+  };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const list = a => '<ul>' + a.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
 
@@ -36,7 +50,9 @@
     return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(entry.name.replace(/\(.*?\)/g, '').trim() + ' proper form');
   }
 
-  function create(guide) {
+  // opts.demoLinks false hides "Watch a demo" (the host shows ExerciseDemos links instead).
+  function create(guide, opts) {
+    const showDemo = !(opts && opts.demoLinks === false);
     const exercises = (guide && guide.exercises) || [];
     const byId = {}, byKey = {};
     exercises.forEach(e => {
@@ -54,7 +70,9 @@
     function find(idOrName) {
       if (!idOrName) return null;
       const s = slug(idOrName);
-      return byId[s] || byKey[s] || byKey['~' + loose(idOrName)] || null;
+      if (byId[s] || byKey[s]) return byId[s] || byKey[s];
+      const e = byKey['~' + loose(idOrName)];
+      return e && equipFits(idOrName, e) ? e : null;
     }
 
     function muscles(entry) {
@@ -63,7 +81,7 @@
         (entry.primary || []).map(m => '<span class="fc-chip p">' + esc(m) + '</span>').join('') +
         (entry.secondary || []).map(m => '<span class="fc-chip">' + esc(m) + '</span>').join('') + '</p>';
     }
-    const demo = entry => '<a class="fc-demo" href="' + esc(demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Watch a demo ↗</a>';
+    const demo = entry => !showDemo ? '' : '<a class="fc-demo" href="' + esc(demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Watch a demo ↗</a>';
 
     // Collapsed panel for the live workout card. `key` keeps it open across re-renders.
     function inlineHtml(entry, key) {
