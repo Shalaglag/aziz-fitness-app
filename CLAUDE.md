@@ -16,7 +16,7 @@ Goal: same quality and pace, fewer tokens. These rules remove reading that never
 
 ## Tests
 - While working: `node --test modules/<name>/<name>.test.js`
-- Before a PR: `node --test --test-reporter=dot modules/*/*.test.js modules/*/*.test.mjs build/build.test.js` (the last one fails until `app/index.html` is rebuilt)
+- Before a PR: `npm test` (module tests, `build/build.test.js`, the phone-sized whole-app checks in `tests/`, then the build check)
 - On failure: `node --test <file> 2>&1 | grep -A8 "^not ok"`
 - CI (`.github/workflows/tests.yml`) runs `npm test` on every PR and on main (module tests, `build/build.test.js`, then `node build/build.js --check`); a red check means the PR is not mergeable yet.
 
