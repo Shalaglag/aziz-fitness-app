@@ -11,7 +11,7 @@ A demo shows in the app only when **all** of these hold:
 Otherwise the Demo button is a YouTube search that keeps the equipment words ("Seated Row Machine proper form") and is labelled "Search demos ↗".
 
 ## Files
-- `demos.json`: the registry (`window.EXERCISE_DEMOS` in the app). Seeded with no URLs.
+- `demos.json`: the registry (`window.EXERCISE_DEMOS` in the app). 32 plan lifts have one YouTube link found by search with title and channel confirmed, status `review` (nobody has watched them yet). Gundam has none: it needs a clip of your machine. Nothing is `verified`.
 - `exercise-demos.js`: `window.ExerciseDemos`.
 - `exercise-demos.test.js`: `node --test modules/exercise-demos/exercise-demos.test.js`.
 

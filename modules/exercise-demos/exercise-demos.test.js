@@ -98,7 +98,8 @@ test('custom exercises get a search that keeps the equipment words', () => {
 test('summary counts every entry once', () => {
   const s = make().summary();
   assert.strictEqual(s.total, 124);
-  assert.strictEqual(s.missing, 124);
+  assert.strictEqual(s.verified, 0);
+  assert.strictEqual(s.review + s.missing, 124);
 });
 
 test('sheet html escapes and labels unchecked finds', () => {
