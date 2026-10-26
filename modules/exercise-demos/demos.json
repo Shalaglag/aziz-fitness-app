@@ -1,0 +1,1090 @@
+{
+ "schemaVersion": 1,
+ "updated": "2026-10-25",
+ "note": "Keyed by workout-logger exercise id. An item shows in the app only when status is verified, checkedBy and checkedAt are set, and the entry equipment matches the logger library. Never add a URL nobody has opened.",
+ "demos": {
+  "hip-adductor-machine": {
+   "name": "Hip Adductor (Machine)",
+   "equipment": "Machine",
+   "muscle": "Adductors",
+   "pattern": "Hip ab/adduction",
+   "priority": 1,
+   "aliases": [
+    "Hip Adductor"
+   ],
+   "items": []
+  },
+  "iso-lateral-low-row-plate-loaded": {
+   "name": "Iso-Lateral Low Row (Plate-loaded)",
+   "equipment": "Plate-loaded",
+   "muscle": "Back",
+   "pattern": "Horizontal pull",
+   "priority": 1,
+   "aliases": [
+    "Iso-Lateral Low Row (plate)"
+   ],
+   "note": "Plate-loaded machines differ by brand (Hammer Strength style). Match the machine type, not just the name.",
+   "items": []
+  },
+  "lat-pulldown-single-arm-cable": {
+   "name": "Lat Pulldown - Single Arm (Cable)",
+   "equipment": "Cable",
+   "muscle": "Back",
+   "pattern": "Vertical pull",
+   "priority": 1,
+   "aliases": [
+    "Lat Pulldown, Single Arm"
+   ],
+   "items": []
+  },
+  "lat-pulldown-wide-grip-cable": {
+   "name": "Lat Pulldown - Wide Grip (Cable)",
+   "equipment": "Cable",
+   "muscle": "Back",
+   "pattern": "Vertical pull",
+   "priority": 1,
+   "aliases": [
+    "Lat Pulldown, Wide"
+   ],
+   "items": []
+  },
+  "pullover-machine": {
+   "name": "Pullover (Machine)",
+   "equipment": "Machine",
+   "muscle": "Back",
+   "pattern": "Shoulder extension (lats)",
+   "priority": 1,
+   "items": []
+  },
+  "seated-row-cable": {
+   "name": "Seated Row (Cable)",
+   "equipment": "Cable",
+   "muscle": "Back",
+   "pattern": "Horizontal pull",
+   "priority": 1,
+   "items": []
+  },
+  "shrug-machine": {
+   "name": "Shrug (Machine)",
+   "equipment": "Machine",
+   "muscle": "Back",
+   "pattern": "Shrug",
+   "priority": 1,
+   "aliases": [
+    "Traps Machine"
+   ],
+   "items": []
+  },
+  "t-bar-row": {
+   "name": "T-Bar Row",
+   "equipment": "Plate-loaded",
+   "muscle": "Back",
+   "pattern": "Horizontal pull",
+   "priority": 1,
+   "items": []
+  },
+  "bicep-curl-dumbbell": {
+   "name": "Bicep Curl (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 1,
+   "aliases": [
+    "DB Curl"
+   ],
+   "items": []
+  },
+  "seated-bicep-curl-machine": {
+   "name": "Seated Bicep Curl (Machine)",
+   "equipment": "Machine",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 1,
+   "aliases": [
+    "Seated Bicep Curl"
+   ],
+   "items": []
+  },
+  "standing-bicep-curl-cable": {
+   "name": "Standing Bicep Curl (Cable)",
+   "equipment": "Cable",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 1,
+   "aliases": [
+    "Cable Standing Biceps"
+   ],
+   "items": []
+  },
+  "calf-press-leg-press": {
+   "name": "Calf Press (Leg Press)",
+   "equipment": "Machine",
+   "muscle": "Calves",
+   "pattern": "Calf raise",
+   "priority": 1,
+   "aliases": [
+    "Calf Press on Seated Leg Press"
+   ],
+   "note": "Seated leg press calf press. Don't use a 45° sled or standing calf clip.",
+   "items": []
+  },
+  "standing-calf-raise-machine": {
+   "name": "Standing Calf Raise (Machine)",
+   "equipment": "Machine",
+   "muscle": "Calves",
+   "pattern": "Calf raise",
+   "priority": 1,
+   "aliases": [
+    "Standing Calf Raise"
+   ],
+   "items": []
+  },
+  "treadmill-incline-walk": {
+   "name": "Treadmill (Incline Walk)",
+   "equipment": "Cardio",
+   "muscle": "Cardio",
+   "pattern": "Cardio",
+   "priority": 1,
+   "aliases": [
+    "Treadmill (30 min)"
+   ],
+   "items": []
+  },
+  "bench-press-barbell": {
+   "name": "Bench Press (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Chest",
+   "pattern": "Horizontal push",
+   "priority": 1,
+   "items": []
+  },
+  "cable-crossover": {
+   "name": "Cable Crossover",
+   "equipment": "Cable",
+   "muscle": "Chest",
+   "pattern": "Chest fly",
+   "priority": 1,
+   "items": []
+  },
+  "gundam-chest-press-machine": {
+   "name": "Gundam Chest Press (Machine)",
+   "equipment": "Machine",
+   "muscle": "Chest",
+   "pattern": "Horizontal push",
+   "priority": 1,
+   "aliases": [
+    "Gundam (chest machine)"
+   ],
+   "note": "Brand/nickname. Best covered by a clip of the machine at your gym; generic chest-press videos may not match.",
+   "items": []
+  },
+  "incline-bench-press-dumbbell": {
+   "name": "Incline Bench Press (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Chest",
+   "pattern": "Incline push",
+   "priority": 1,
+   "aliases": [
+    "Incline DB Press"
+   ],
+   "items": []
+  },
+  "seated-abs-machine": {
+   "name": "Seated Abs (Machine)",
+   "equipment": "Machine",
+   "muscle": "Core",
+   "pattern": "Core",
+   "priority": 1,
+   "aliases": [
+    "Seated Abs"
+   ],
+   "note": "Machine crunch. Don't use a cable crunch clip.",
+   "items": []
+  },
+  "hip-abductor-machine": {
+   "name": "Hip Abductor (Machine)",
+   "equipment": "Machine",
+   "muscle": "Glutes",
+   "pattern": "Hip ab/adduction",
+   "priority": 1,
+   "aliases": [
+    "Hip Abductor"
+   ],
+   "items": []
+  },
+  "lying-leg-curl-machine": {
+   "name": "Lying Leg Curl (Machine)",
+   "equipment": "Machine",
+   "muscle": "Hamstrings",
+   "pattern": "Knee flexion",
+   "priority": 1,
+   "aliases": [
+    "Lying Leg Curl"
+   ],
+   "items": []
+  },
+  "hack-squat-machine": {
+   "name": "Hack Squat (Machine)",
+   "equipment": "Machine",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 1,
+   "aliases": [
+    "Hack Squat"
+   ],
+   "items": []
+  },
+  "leg-extension-machine": {
+   "name": "Leg Extension (Machine)",
+   "equipment": "Machine",
+   "muscle": "Quads",
+   "pattern": "Knee extension",
+   "priority": 1,
+   "aliases": [
+    "Leg Extension"
+   ],
+   "items": []
+  },
+  "squat-smith-machine": {
+   "name": "Squat (Smith Machine)",
+   "equipment": "Smith machine",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 1,
+   "aliases": [
+    "Smith Squat"
+   ],
+   "items": []
+  },
+  "front-raise-dumbbell": {
+   "name": "Front Raise (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Shoulders",
+   "pattern": "Shoulder isolation",
+   "priority": 1,
+   "aliases": [
+    "Front Raise (DB)"
+   ],
+   "items": []
+  },
+  "lateral-raise-cable": {
+   "name": "Lateral Raise (Cable)",
+   "equipment": "Cable",
+   "muscle": "Shoulders",
+   "pattern": "Shoulder isolation",
+   "priority": 1,
+   "note": "Shares one cues entry with the dumbbell raise. Needs its own cable demo (single-arm, low pulley).",
+   "items": []
+  },
+  "lateral-raise-dumbbell": {
+   "name": "Lateral Raise (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Shoulders",
+   "pattern": "Shoulder isolation",
+   "priority": 1,
+   "note": "Shares one cues entry with the cable raise. Needs its own dumbbell demo. \"Side Delts\" is not mapped: it could mean the cable or the dumbbell raise.",
+   "items": []
+  },
+  "reverse-fly-machine": {
+   "name": "Reverse Fly (Machine)",
+   "equipment": "Machine",
+   "muscle": "Shoulders",
+   "pattern": "Rear-delt isolation",
+   "priority": 1,
+   "items": []
+  },
+  "seated-overhead-press-dumbbell": {
+   "name": "Seated Overhead Press (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Shoulders",
+   "pattern": "Vertical push",
+   "priority": 1,
+   "aliases": [
+    "Seated DB Overhead Press"
+   ],
+   "items": []
+  },
+  "standing-lateral-raise-machine": {
+   "name": "Standing Lateral Raise (Machine)",
+   "equipment": "Machine",
+   "muscle": "Shoulders",
+   "pattern": "Shoulder isolation",
+   "priority": 1,
+   "aliases": [
+    "Standing Side Delts (machine)"
+   ],
+   "note": "Standing side-delt machine, not the seated lateral raise machine.",
+   "items": []
+  },
+  "triceps-extension-cable": {
+   "name": "Triceps Extension (Cable)",
+   "equipment": "Cable",
+   "muscle": "Triceps",
+   "pattern": "Elbow extension",
+   "priority": 1,
+   "note": "Guide assumes overhead cable extension (not yet confirmed). Confirm before matching a video.",
+   "items": []
+  },
+  "triceps-pushdown-straight-bar": {
+   "name": "Triceps Pushdown (Straight Bar)",
+   "equipment": "Cable",
+   "muscle": "Triceps",
+   "pattern": "Elbow extension",
+   "priority": 1,
+   "aliases": [
+    "Triceps Pushdown"
+   ],
+   "items": []
+  },
+  "triceps-rope-pushdown-cable": {
+   "name": "Triceps Rope Pushdown (Cable)",
+   "equipment": "Cable",
+   "muscle": "Triceps",
+   "pattern": "Elbow extension",
+   "priority": 1,
+   "aliases": [
+    "Triceps Rope"
+   ],
+   "items": []
+  },
+  "swap-cable-adduction": {
+   "name": "Cable Adduction",
+   "equipment": "Cable",
+   "muscle": "Adductors",
+   "pattern": "Hip ab/adduction",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "swap-copenhagen-plank": {
+   "name": "Copenhagen Plank",
+   "equipment": "Duration",
+   "muscle": "Adductors",
+   "pattern": "Core",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "assisted-pull-up-machine": {
+   "name": "Assisted Pull Up (Machine)",
+   "equipment": "Assisted",
+   "muscle": "Back",
+   "pattern": "Vertical pull",
+   "priority": 2,
+   "items": []
+  },
+  "chest-supported-row-machine": {
+   "name": "Chest-Supported Row (Machine)",
+   "equipment": "Machine",
+   "muscle": "Back",
+   "pattern": "Horizontal pull",
+   "priority": 2,
+   "items": []
+  },
+  "iso-lateral-high-row-plate-loaded": {
+   "name": "Iso-Lateral High Row (Plate-loaded)",
+   "equipment": "Plate-loaded",
+   "muscle": "Back",
+   "pattern": "Horizontal pull",
+   "priority": 2,
+   "items": []
+  },
+  "lat-pulldown-close-grip-cable": {
+   "name": "Lat Pulldown - Close Grip (Cable)",
+   "equipment": "Cable",
+   "muscle": "Back",
+   "pattern": "Vertical pull",
+   "priority": 2,
+   "items": []
+  },
+  "lat-pulldown-machine": {
+   "name": "Lat Pulldown (Machine)",
+   "equipment": "Machine",
+   "muscle": "Back",
+   "pattern": "Vertical pull",
+   "priority": 2,
+   "items": []
+  },
+  "seated-row-machine": {
+   "name": "Seated Row (Machine)",
+   "equipment": "Machine",
+   "muscle": "Back",
+   "pattern": "Horizontal pull",
+   "priority": 2,
+   "items": []
+  },
+  "shrug-barbell": {
+   "name": "Shrug (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Back",
+   "pattern": "Shrug",
+   "priority": 2,
+   "items": []
+  },
+  "shrug-dumbbell": {
+   "name": "Shrug (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Back",
+   "pattern": "Shrug",
+   "priority": 2,
+   "items": []
+  },
+  "straight-arm-pulldown-cable": {
+   "name": "Straight-Arm Pulldown (Cable)",
+   "equipment": "Cable",
+   "muscle": "Back",
+   "pattern": "Shoulder extension (lats)",
+   "priority": 2,
+   "items": []
+  },
+  "bayesian-curl-cable": {
+   "name": "Bayesian Curl (Cable)",
+   "equipment": "Cable",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 2,
+   "items": []
+  },
+  "bicep-curl-barbell": {
+   "name": "Bicep Curl (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 2,
+   "items": []
+  },
+  "hammer-curl-dumbbell": {
+   "name": "Hammer Curl (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 2,
+   "items": []
+  },
+  "preacher-curl-ez-bar": {
+   "name": "Preacher Curl (EZ Bar)",
+   "equipment": "Barbell",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 2,
+   "items": []
+  },
+  "preacher-curl-machine": {
+   "name": "Preacher Curl (Machine)",
+   "equipment": "Machine",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 2,
+   "items": []
+  },
+  "seated-calf-raise-machine": {
+   "name": "Seated Calf Raise (Machine)",
+   "equipment": "Machine",
+   "muscle": "Calves",
+   "pattern": "Calf raise",
+   "priority": 2,
+   "items": []
+  },
+  "swap-smith-standing-calf-raise": {
+   "name": "Smith Standing Calf Raise",
+   "equipment": "Smith machine",
+   "muscle": "Calves",
+   "pattern": "Calf raise",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "bench-press-dumbbell": {
+   "name": "Bench Press (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Chest",
+   "pattern": "Horizontal push",
+   "priority": 2,
+   "items": []
+  },
+  "bench-press-smith-machine": {
+   "name": "Bench Press (Smith Machine)",
+   "equipment": "Smith machine",
+   "muscle": "Chest",
+   "pattern": "Horizontal push",
+   "priority": 2,
+   "items": []
+  },
+  "chest-fly-dumbbell": {
+   "name": "Chest Fly (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Chest",
+   "pattern": "Chest fly",
+   "priority": 2,
+   "items": []
+  },
+  "chest-press-machine": {
+   "name": "Chest Press (Machine)",
+   "equipment": "Machine",
+   "muscle": "Chest",
+   "pattern": "Horizontal push",
+   "priority": 2,
+   "items": []
+  },
+  "incline-bench-press-barbell": {
+   "name": "Incline Bench Press (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Chest",
+   "pattern": "Incline push",
+   "priority": 2,
+   "items": []
+  },
+  "incline-bench-press-smith-machine": {
+   "name": "Incline Bench Press (Smith Machine)",
+   "equipment": "Smith machine",
+   "muscle": "Chest",
+   "pattern": "Incline push",
+   "priority": 2,
+   "items": []
+  },
+  "incline-chest-press-machine": {
+   "name": "Incline Chest Press (Machine)",
+   "equipment": "Machine",
+   "muscle": "Chest",
+   "pattern": "Incline push",
+   "priority": 2,
+   "items": []
+  },
+  "low-to-high-cable-fly": {
+   "name": "Low-to-High Cable Fly",
+   "equipment": "Cable",
+   "muscle": "Chest",
+   "pattern": "Chest fly",
+   "priority": 2,
+   "items": []
+  },
+  "pec-deck-machine": {
+   "name": "Pec Deck (Machine)",
+   "equipment": "Machine",
+   "muscle": "Chest",
+   "pattern": "Chest fly",
+   "priority": 2,
+   "items": []
+  },
+  "cable-crunch": {
+   "name": "Cable Crunch",
+   "equipment": "Cable",
+   "muscle": "Core",
+   "pattern": "Core",
+   "priority": 2,
+   "items": []
+  },
+  "decline-crunch": {
+   "name": "Decline Crunch",
+   "equipment": "Reps only",
+   "muscle": "Core",
+   "pattern": "Core",
+   "priority": 2,
+   "items": []
+  },
+  "hanging-leg-raise": {
+   "name": "Hanging Leg Raise",
+   "equipment": "Reps only",
+   "muscle": "Core",
+   "pattern": "Core",
+   "priority": 2,
+   "items": []
+  },
+  "swap-cable-abduction": {
+   "name": "Cable Abduction",
+   "equipment": "Cable",
+   "muscle": "Glutes",
+   "pattern": "Hip ab/adduction",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "glute-kickback-machine": {
+   "name": "Glute Kickback (Machine)",
+   "equipment": "Machine",
+   "muscle": "Glutes",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 2,
+   "items": []
+  },
+  "seated-leg-curl-machine": {
+   "name": "Seated Leg Curl (Machine)",
+   "equipment": "Machine",
+   "muscle": "Hamstrings",
+   "pattern": "Knee flexion",
+   "priority": 2,
+   "items": []
+  },
+  "swap-single-leg-lying-curl": {
+   "name": "Single-Leg Lying Curl",
+   "equipment": "Machine",
+   "muscle": "Hamstrings",
+   "pattern": "Knee flexion",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "standing-leg-curl-machine": {
+   "name": "Standing Leg Curl (Machine)",
+   "equipment": "Machine",
+   "muscle": "Hamstrings",
+   "pattern": "Knee flexion",
+   "priority": 2,
+   "items": []
+  },
+  "swap-chest-supported-db-row": {
+   "name": "Chest-Supported DB Row",
+   "equipment": "Dumbbell",
+   "muscle": "Mid back",
+   "pattern": "Horizontal pull",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "swap-chest-supported-t-bar-row": {
+   "name": "Chest-Supported T-Bar Row",
+   "equipment": "Plate-loaded",
+   "muscle": "Mid back",
+   "pattern": "Horizontal pull",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "swap-belt-squat": {
+   "name": "Belt Squat",
+   "equipment": "Machine",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "leg-press-machine": {
+   "name": "Leg Press (Machine)",
+   "equipment": "Machine",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 2,
+   "items": []
+  },
+  "pendulum-squat-machine": {
+   "name": "Pendulum Squat (Machine)",
+   "equipment": "Machine",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 2,
+   "items": []
+  },
+  "swap-single-leg-extension": {
+   "name": "Single-Leg Extension",
+   "equipment": "Machine",
+   "muscle": "Quads",
+   "pattern": "Knee extension",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "swap-smith-split-squat": {
+   "name": "Smith Split Squat",
+   "equipment": "Smith machine",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "arnold-press-dumbbell": {
+   "name": "Arnold Press (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Shoulders",
+   "pattern": "Vertical push",
+   "priority": 2,
+   "items": []
+  },
+  "face-pull-cable": {
+   "name": "Face Pull (Cable)",
+   "equipment": "Cable",
+   "muscle": "Shoulders",
+   "pattern": "Shoulder isolation",
+   "priority": 2,
+   "items": []
+  },
+  "front-raise-cable": {
+   "name": "Front Raise (Cable)",
+   "equipment": "Cable",
+   "muscle": "Shoulders",
+   "pattern": "Shoulder isolation",
+   "priority": 2,
+   "items": []
+  },
+  "lateral-raise-machine": {
+   "name": "Lateral Raise (Machine)",
+   "equipment": "Machine",
+   "muscle": "Shoulders",
+   "pattern": "Shoulder isolation",
+   "priority": 2,
+   "items": []
+  },
+  "reverse-fly-dumbbell": {
+   "name": "Reverse Fly (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Shoulders",
+   "pattern": "Rear-delt isolation",
+   "priority": 2,
+   "items": []
+  },
+  "shoulder-press-machine": {
+   "name": "Shoulder Press (Machine)",
+   "equipment": "Machine",
+   "muscle": "Shoulders",
+   "pattern": "Vertical push",
+   "priority": 2,
+   "items": []
+  },
+  "swap-smith-seated-press": {
+   "name": "Smith Seated Press",
+   "equipment": "Smith machine",
+   "muscle": "Shoulders (press)",
+   "pattern": "Vertical push",
+   "priority": 2,
+   "note": "Only appears as a swap suggestion; not in the logger library yet.",
+   "items": []
+  },
+  "overhead-triceps-extension-dumbbell": {
+   "name": "Overhead Triceps Extension (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Triceps",
+   "pattern": "Elbow extension",
+   "priority": 2,
+   "items": []
+  },
+  "single-arm-pushdown-cable": {
+   "name": "Single-Arm Pushdown (Cable)",
+   "equipment": "Cable",
+   "muscle": "Triceps",
+   "pattern": "Elbow extension",
+   "priority": 2,
+   "items": []
+  },
+  "skull-crusher-ez-bar": {
+   "name": "Skull Crusher (EZ Bar)",
+   "equipment": "Barbell",
+   "muscle": "Triceps",
+   "pattern": "Elbow extension",
+   "priority": 2,
+   "items": []
+  },
+  "triceps-dip-machine": {
+   "name": "Triceps Dip (Machine)",
+   "equipment": "Machine",
+   "muscle": "Triceps",
+   "pattern": "Elbow extension",
+   "priority": 2,
+   "items": []
+  },
+  "bent-over-row-barbell": {
+   "name": "Bent Over Row (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Back",
+   "pattern": "Horizontal pull",
+   "priority": 3,
+   "items": []
+  },
+  "chin-up": {
+   "name": "Chin Up",
+   "equipment": "Bodyweight",
+   "muscle": "Back",
+   "pattern": "Vertical pull",
+   "priority": 3,
+   "items": []
+  },
+  "one-arm-row-dumbbell": {
+   "name": "One-Arm Row (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Back",
+   "pattern": "Horizontal pull",
+   "priority": 3,
+   "items": []
+  },
+  "pull-up": {
+   "name": "Pull Up",
+   "equipment": "Bodyweight",
+   "muscle": "Back",
+   "pattern": "Vertical pull",
+   "priority": 3,
+   "items": []
+  },
+  "concentration-curl-dumbbell": {
+   "name": "Concentration Curl (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 3,
+   "items": []
+  },
+  "incline-curl-dumbbell": {
+   "name": "Incline Curl (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Biceps",
+   "pattern": "Elbow flexion",
+   "priority": 3,
+   "items": []
+  },
+  "elliptical": {
+   "name": "Elliptical",
+   "equipment": "Cardio",
+   "muscle": "Cardio",
+   "pattern": "Cardio",
+   "priority": 3,
+   "items": []
+  },
+  "rowing-machine": {
+   "name": "Rowing Machine",
+   "equipment": "Cardio",
+   "muscle": "Cardio",
+   "pattern": "Cardio",
+   "priority": 3,
+   "items": []
+  },
+  "stair-climber": {
+   "name": "Stair Climber",
+   "equipment": "Cardio",
+   "muscle": "Cardio",
+   "pattern": "Cardio",
+   "priority": 3,
+   "items": []
+  },
+  "stationary-bike": {
+   "name": "Stationary Bike",
+   "equipment": "Cardio",
+   "muscle": "Cardio",
+   "pattern": "Cardio",
+   "priority": 3,
+   "items": []
+  },
+  "treadmill-run": {
+   "name": "Treadmill Run",
+   "equipment": "Cardio",
+   "muscle": "Cardio",
+   "pattern": "Cardio",
+   "priority": 3,
+   "items": []
+  },
+  "chest-dip": {
+   "name": "Chest Dip",
+   "equipment": "Bodyweight",
+   "muscle": "Chest",
+   "pattern": "Horizontal push",
+   "priority": 3,
+   "items": []
+  },
+  "decline-bench-press-barbell": {
+   "name": "Decline Bench Press (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Chest",
+   "pattern": "Horizontal push",
+   "priority": 3,
+   "items": []
+  },
+  "push-up": {
+   "name": "Push Up",
+   "equipment": "Bodyweight",
+   "muscle": "Chest",
+   "pattern": "Horizontal push",
+   "priority": 3,
+   "items": []
+  },
+  "ab-wheel-rollout": {
+   "name": "Ab Wheel Rollout",
+   "equipment": "Reps only",
+   "muscle": "Core",
+   "pattern": "Core",
+   "priority": 3,
+   "items": []
+  },
+  "plank": {
+   "name": "Plank",
+   "equipment": "Duration",
+   "muscle": "Core",
+   "pattern": "Core",
+   "priority": 3,
+   "items": []
+  },
+  "russian-twist": {
+   "name": "Russian Twist",
+   "equipment": "Reps only",
+   "muscle": "Core",
+   "pattern": "Core",
+   "priority": 3,
+   "items": []
+  },
+  "reverse-curl-ez-bar": {
+   "name": "Reverse Curl (EZ Bar)",
+   "equipment": "Barbell",
+   "muscle": "Forearms",
+   "pattern": "Forearm",
+   "priority": 3,
+   "items": []
+  },
+  "wrist-curl-dumbbell": {
+   "name": "Wrist Curl (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Forearms",
+   "pattern": "Forearm",
+   "priority": 3,
+   "items": []
+  },
+  "glute-kickback-cable": {
+   "name": "Glute Kickback (Cable)",
+   "equipment": "Cable",
+   "muscle": "Glutes",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 3,
+   "items": []
+  },
+  "nordic-curl": {
+   "name": "Nordic Curl",
+   "equipment": "Reps only",
+   "muscle": "Hamstrings",
+   "pattern": "Knee flexion",
+   "priority": 3,
+   "items": []
+  },
+  "bulgarian-split-squat-dumbbell": {
+   "name": "Bulgarian Split Squat (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 3,
+   "items": []
+  },
+  "front-squat-barbell": {
+   "name": "Front Squat (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 3,
+   "items": []
+  },
+  "goblet-squat-dumbbell": {
+   "name": "Goblet Squat (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 3,
+   "items": []
+  },
+  "squat-barbell": {
+   "name": "Squat (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 3,
+   "items": []
+  },
+  "walking-lunge-dumbbell": {
+   "name": "Walking Lunge (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Quads",
+   "pattern": "Squat / knee-dominant",
+   "priority": 3,
+   "items": []
+  },
+  "overhead-press-barbell": {
+   "name": "Overhead Press (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Shoulders",
+   "pattern": "Vertical push",
+   "priority": 3,
+   "items": []
+  },
+  "upright-row-cable": {
+   "name": "Upright Row (Cable)",
+   "equipment": "Cable",
+   "muscle": "Shoulders",
+   "pattern": "Shoulder isolation",
+   "priority": 3,
+   "items": []
+  },
+  "close-grip-bench-press-barbell": {
+   "name": "Close-Grip Bench Press (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Triceps",
+   "pattern": "Horizontal push",
+   "priority": 3,
+   "items": []
+  },
+  "back-extension": {
+   "name": "Back Extension",
+   "equipment": "Bodyweight",
+   "muscle": "Back",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 4,
+   "items": []
+  },
+  "deadlift-barbell": {
+   "name": "Deadlift (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Back",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 4,
+   "items": []
+  },
+  "cable-pull-through": {
+   "name": "Cable Pull-Through",
+   "equipment": "Cable",
+   "muscle": "Glutes",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 4,
+   "items": []
+  },
+  "hip-thrust-barbell": {
+   "name": "Hip Thrust (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Glutes",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 4,
+   "items": []
+  },
+  "hip-thrust-machine": {
+   "name": "Hip Thrust (Machine)",
+   "equipment": "Machine",
+   "muscle": "Glutes",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 4,
+   "items": []
+  },
+  "reverse-hyper-machine": {
+   "name": "Reverse Hyper (Machine)",
+   "equipment": "Machine",
+   "muscle": "Glutes",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 4,
+   "items": []
+  },
+  "glute-ham-raise": {
+   "name": "Glute-Ham Raise",
+   "equipment": "Bodyweight",
+   "muscle": "Hamstrings",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 4,
+   "items": []
+  },
+  "romanian-deadlift-barbell": {
+   "name": "Romanian Deadlift (Barbell)",
+   "equipment": "Barbell",
+   "muscle": "Hamstrings",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 4,
+   "items": []
+  },
+  "romanian-deadlift-dumbbell": {
+   "name": "Romanian Deadlift (Dumbbell)",
+   "equipment": "Dumbbell",
+   "muscle": "Hamstrings",
+   "pattern": "Hip hinge / hip extension",
+   "priority": 4,
+   "items": []
+  }
+ }
+}
