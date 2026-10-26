@@ -122,9 +122,12 @@ const CloudStore = (() => {
     return scoped(fs, who.uid);
   }
   function currentEmail() { return state.user ? state.user.email : null; }
+  // Firebase ID token of the signed-in person (null when nobody is signed in). The coach endpoint
+  // checks it server-side before calling Claude.
+  function idToken() { return state.user && state.user.getIdToken ? state.user.getIdToken().catch(() => null) : Promise.resolve(null); }
   async function signOut() { if (state.auth) await state.auth.signOut(); state.user = null; }
 
-  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, authMessage, scoped, SDK };
+  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, idToken, authMessage, scoped, SDK };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = CloudStore;

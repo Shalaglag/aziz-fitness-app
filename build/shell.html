@@ -435,6 +435,7 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 </header>
 <div class="wrap err-banner" id="errBanner" hidden role="alert"></div>
 <main class="wrap" id="main"></main>
+<div id="coachHost"></div>
 <div class="wrap" id="lbHost" hidden></div>
 <div class="wrap" id="ppHost" hidden></div>
 <div class="wrap" id="dioHost" hidden></div>
@@ -540,8 +541,8 @@ const LIB = {
 };
 
 /* ===================== Store (synced db when available, else this browser) ===================== */
-const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio"];
-const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading"};
+const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio","chats"];
+const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},chats:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading"};
 const LB_READ = ["lb_workouts","lb_exercises"];
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
@@ -1524,11 +1525,18 @@ try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
-    effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee,
+    effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee, tab:()=>view.tab,
+    // Inside Claude: the page's sample capability (free). On the website: the app's own endpoint, which
+    // checks the Firebase sign-in token and holds the API key (netlify/functions/coach.mjs).
     getSample:()=>window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
+    endpoint: window.claude ? null : "/api/coach",
+    getToken:()=>window.CloudStore && CloudStore.idToken ? CloudStore.idToken() : Promise.resolve(null),
+    // Chat history: chats/main {msgs}, synced like everything else (DataIO backs it up, Clear chat empties it).
+    chats:{ load:()=>((S.docs.chats||{}).main||{}).msgs||[], save:msgs=>put("chats","main",{id:"main",msgs,at:Date.now()},{quiet:true}) },
     onApply: ch=>{ if(!ch || ch.key!=="profile.cutKcal" || !(+ch.to>0)) return;
       if(!coachPending || coachPending.to!==ch.to || Date.now()-coachPending.at>10000){ coachPending={to:ch.to, at:Date.now()}; toast(`Tap again to change your calorie target from ${Math.round(ch.from).toLocaleString("en-US")} to ${Math.round(ch.to).toLocaleString("en-US")} kcal.`); return; }
       coachPending=null; const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), cutKcal:+ch.to}; put("prefs","main",p); toast(`Calorie target is now ${Math.round(ch.to).toLocaleString("en-US")} kcal. Change it any time in Guide, Your numbers.`); } });
+  if(window.Coach && Coach.mountPanel) safe("coach panel", ()=>Coach.mountPanel(document.getElementById("coachHost")));
   if(window.MacroTarget){ const mst=document.createElement("style"); mst.textContent=MacroTarget.css; document.head.appendChild(mst);
     MacroTarget.bind(document, { date: () => view.date, render, onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items.map(it=>({id:uid(),eaten:false,...it}))); saveDay(day); toast("Added "+items[0].name+(items[0].eaten?"":". Tick it when you eat it.")); } }); }
   PhotoFood.bind(document, {

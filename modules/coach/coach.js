@@ -15,11 +15,21 @@
  *   Coach.prompt(question, ctx, history)        -> the instruction sent to Claude
  *   Coach.parseAnswer(value)                    -> {answer, evidence[], missing[], suggestion|null}
  *   Coach.localAnswer(topic, docs, opts)        -> same shape, worked out without Claude
- *   Coach.chatHtml(docs, opts)                  -> "Ask your coach" card
- *   Coach.bind(root, opts)                      -> wire both cards once (delegated on root)
+ *   Coach.chatHtml()                            -> compact "Ask Claude" card (opens the panel)
+ *   Coach.panelHtml() / Coach.mountPanel(el, opts) -> floating "Ask Claude" button + chat panel; mount once
+ *                                                  outside the re-rendered area, the panel owns its DOM
+ *   Coach.open(true|false)                      -> open or close the panel
+ *   Coach.suggestions(tab)                      -> suggested questions for a screen (today/train/food/progress/guide)
+ *   Coach.partialAnswer(text)                   -> the "answer" text inside a partly streamed JSON reply
+ *   Coach.bind(root, opts)                      -> wire the cards and the panel once (delegated on root)
  *        opts = { getDocs: () => S.docs, getSample: () => Promise<sample|null>, render: () => void,
  *                 today?: () => "YYYY-MM-DD", effort?: () => EffortDeload result, tdee?: () => TrendTDEE result,
- *                 onApply?: change => void }   // only called on a tap; omit it and no "Use" button is shown
+ *                 onApply?: change => void,    // only called on a tap; omit it and no "Use" button is shown
+ *                 tab?: () => "today"|..., chats?: {load: () => msgs[], save: msgs => void},
+ *                 endpoint?: "/api/coach", getToken?: () => Promise<idToken|null> }
+ * Transports, in order: the page's `sample` capability (inside the Claude app, free); else POST `endpoint`
+ * with the Firebase ID token (the website; the server holds the API key and streams the reply); else the
+ * quick questions only, with a note. Chat history goes through opts.chats (the host stores it).
  * Rules: only food marked eaten counts; nothing is assumed for days without logs; a target change is only
  * ever a suggestion with its reasons, and is applied by the host after an explicit tap.
  */
@@ -476,8 +486,27 @@ const Coach = (() => {
 .co-src{font-size:.7rem;color:var(--muted);margin-top:6px}
 .co-err{color:var(--bad);font-size:.85rem;margin-top:6px}
 @media (prefers-reduced-motion:no-preference){.co-new{animation:co-in .25s ease-out}@keyframes co-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
+/* Ask Claude: floating button + panel (bottom sheet on phones, side panel on desktop) */
+.co-fab{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:30;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;padding:12px 16px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:700;box-shadow:0 6px 20px rgb(0 0 0/.25);cursor:pointer}
+.co-fab .co-fab-i{font-size:1.1rem;line-height:1}
+.co-fab:active{transform:scale(.97)}
+@media (min-width:721px){.co-fab{bottom:24px;right:24px}}
+.co-scrim{position:fixed;inset:0;z-index:31;background:rgb(0 0 0/.35)}
+.co-panel{position:fixed;z-index:32;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);box-shadow:0 -10px 40px rgb(0 0 0/.25);left:0;right:0;bottom:0;max-height:min(86vh,860px);border-radius:18px 18px 0 0;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);visibility:hidden}
+.co-panel.co-open{transform:none;visibility:visible}
+@media (min-width:721px){.co-panel{left:auto;top:0;width:min(440px,92vw);max-height:none;border-radius:0;border-width:0 0 0 1px;transform:translateX(102%);box-shadow:-10px 0 40px rgb(0 0 0/.25)}}
+.co-ph{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.co-ph b{font-family:var(--display);font-size:1.25rem;letter-spacing:.02em;text-transform:uppercase}
+.co-body{flex:1;overflow:auto;padding:12px 16px;overscroll-behavior:contain}
+.co-pf{padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--surface)}
+.co-pf .co-ask{margin-top:0}
+.co-note{margin:0 0 8px}
+.co-live{white-space:pre-wrap}
+.co-cursor{display:inline-block;width:.5em;height:1em;vertical-align:-.15em;margin-left:2px;background:var(--accent);animation:co-blink 1s steps(2) infinite}
+@keyframes co-blink{to{opacity:0}}
+@media (prefers-reduced-motion:reduce){.co-panel{transition:none}.co-cursor{animation:none}}
 `;
-  const S = { from: null, msgs: [], busy: false, error: "", ctl: null, draft: "", hidden: false, noClaude: false };
+  const S = { from: null, msgs: [], busy: false, error: "", ctl: null, draft: "", hidden: false, noClaude: false, noClaudeWhy: "", open: false, stream: "", loaded: false };
   let O = null;
 
   function recHtml(r, canApply) {
@@ -518,15 +547,6 @@ const Coach = (() => {
     return '<div class="co-a' + nw + '">' + esc(m.answer) + sg + ev + ms_ + '<div class="co-src">' + (m.local ? "Worked out from your logs" : "Claude, from your logs only") + "</div></div>";
   }
 
-  function chatHtml() {
-    const chips = '<div class="co-chips">' + TOPICS.map(t => '<button data-coach-topic="' + t.id + '">' + esc(t.label) + "</button>").join("") + "</div>";
-    const ask = S.noClaude ? '<p class="co-src">Free-form questions need Claude, which isn\'t available on this page right now. The quick questions above still work.</p>'
-      : '<form class="co-ask" data-coach-form><input data-coach-input placeholder="Ask about your training, food or weight" value="' + esc(S.draft) + '" maxlength="600"' + (S.busy ? " disabled" : "") + '><button class="co-btn" style="margin:0"' + (S.busy ? " disabled" : "") + ">Ask</button>" + (S.busy ? '<button type="button" class="co-btn co-ghost" style="margin:0" data-coach-stop>Stop</button>' : "") + "</form>";
-    const msgs = S.msgs.map(m => (m.q ? '<div class="co-q">' + esc(m.q) + "</div>" : "") + answerHtml(m)).join("");
-    S.msgs.forEach(m => { m.seen = true; });
-    return '<div class="card co-chat"><h3>Ask your coach</h3><p class="co-src" style="margin-top:0">Answers use only what you\'ve logged. Nothing changes unless you change it.</p>' + chips + ask + (S.error && !S.noClaude ? '<p class="co-err">' + esc(S.error) + "</p>" : "") + (S.msgs.length ? '<div class="co-msgs">' + msgs + "</div>" : "") + (S.msgs.length ? '<button class="co-btn co-ghost" data-coach-clear>Clear chat</button>' : "") + "</div>";
-  }
-
   function errorText(code) {
     switch (code) {
       case "not_granted": case "sampling_disabled": case "not_declared": case "capability_disabled": case "capability_removed":
@@ -536,48 +556,179 @@ const Coach = (() => {
       case "refused": return "Claude couldn't answer that one. Try asking it another way.";
       case "invalid_json": case "empty_completion": return "Claude's answer couldn't be read. Try again.";
       case "prompt_too_large": return "Too much data to send at once. Try a shorter question.";
+      case "not_signed_in": return "Sign in to ask Claude. The quick questions still work.";
+      case "daily_cap": return "You've reached today's question limit. It resets at midnight; the quick questions still work.";
+      case "no_key": return "Claude isn't connected to this website yet. The quick questions still work.";
+      case "offline": return "You're offline. Logging works; Claude needs a connection.";
       default: return "Something went wrong reaching Claude. Try again.";
     }
   }
 
+  // ---------- Ask Claude: the chat panel ----------
+  // Suggested questions per screen. `topic` = answered from the numbers without Claude.
+  const SUGGEST = {
+    today: [{ q: "What's left today?", topic: "today" }, { q: "Should I take a rest day?" }, { q: "How am I doing this week?" }],
+    train: [{ q: "What should I train today?" }, { q: "Did I get stronger this week?" }, { q: "Which lifts are stalling?", topic: "lifts" }, { q: "Should I increase my bench press weight?" }],
+    food: [{ q: "Am I eating enough protein?", topic: "protein" }, { q: "What should I eat today?" }, { q: "How many calories have I eaten today?" }],
+    progress: [{ q: "Is my cut working?", topic: "progress" }, { q: "Why isn't my weight moving?", topic: "plateau" }, { q: "Am I losing weight fast enough?" }],
+    guide: [{ q: "Explain my calorie target" }, { q: "What's left today?", topic: "today" }],
+  };
+  function suggestions(tab) { return SUGGEST[tab] || SUGGEST.today; }
+
+  // While Claude streams its JSON reply, show the text of "answer" as it grows.
+  function partialAnswer(text) {
+    const m = /"answer"\s*:\s*"/.exec(text || "");
+    if (!m) return "";
+    let out = "", i = m.index + m[0].length;
+    for (; i < text.length; i++) {
+      const c = text[i];
+      if (c === "\\") { const n = text[i + 1]; if (n === undefined) break; out += n === "n" ? "\n" : n === "t" ? " " : n === "u" ? "" : n; i += n === "u" ? 5 : 1; continue; }
+      if (c === '"') break;
+      out += c;
+    }
+    return out;
+  }
+
+  // The compact card (Progress tab): opens the panel.
+  function chatHtml() {
+    const chips = suggestions("progress").slice(0, 3).map(s => '<button data-coach-ask="' + esc(s.q) + '"' + (s.topic ? ' data-coach-topic="' + s.topic + '"' : "") + ">" + esc(s.q) + "</button>").join("");
+    return '<div class="card co-chat"><div class="co-head"><h3>Ask Claude</h3><button class="co-btn co-ghost" style="margin:0" data-coach-open>Open chat</button></div>' +
+      '<p class="co-src" style="margin-top:0">Your coach answers from what you\'ve logged. Nothing changes unless you confirm it.</p><div class="co-chips">' + chips + "</div></div>";
+  }
+
+  function transportNote() {
+    if (S.noClaude) return S.noClaudeWhy || "Free-form questions need Claude, which isn't available here. The suggested questions still work.";
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return "You're offline. Logging works; Claude needs a connection. The quick questions still work.";
+    return "";
+  }
+
+  function panelHtml() {
+    const tab = O && O.tab ? O.tab() : "today";
+    const sugg = suggestions(tab);
+    const chips = '<div class="co-chips">' + sugg.map(s => '<button data-coach-ask="' + esc(s.q) + '"' + (s.topic ? ' data-coach-topic="' + s.topic + '"' : "") + ">" + esc(s.q) + "</button>").join("") + "</div>";
+    const note = transportNote();
+    const live = S.busy && S.stream ? '<div class="co-q">' + esc(S.msgs[S.msgs.length - 1].q) + '</div><div class="co-a co-live">' + esc(S.stream) + '<span class="co-cursor"></span></div>' : "";
+    const msgs = S.msgs.filter(m => !(m.pending && live)).map(m => (m.q ? '<div class="co-q">' + esc(m.q) + "</div>" : "") + answerHtml(m)).join("") + live;
+    S.msgs.forEach(m => { m.seen = true; });
+    const form = '<form class="co-ask" data-coach-form><input data-coach-input placeholder="Ask about your training, food or weight" value="' + esc(S.draft) + '" maxlength="600"' + (S.busy ? " disabled" : "") + ' autocomplete="off"><button class="co-btn" style="margin:0"' + (S.busy ? " disabled" : "") + ">Ask</button>" + (S.busy ? '<button type="button" class="co-btn co-ghost" style="margin:0" data-coach-stop>Stop</button>' : "") + "</form>";
+    return '<button class="co-fab" data-coach-open aria-label="Ask Claude" title="Ask Claude"><span class="co-fab-i">✦</span><span class="co-fab-t">Ask Claude</span></button>' +
+      '<div class="co-scrim" data-coach-close' + (S.open ? "" : " hidden") + '></div>' +
+      '<section class="co-panel' + (S.open ? " co-open" : "") + '" role="dialog" aria-label="Ask Claude" aria-hidden="' + (S.open ? "false" : "true") + '">' +
+      '<header class="co-ph"><div><b>Ask Claude</b><div class="co-src" style="margin:0">Answers use only what you\'ve logged</div></div><div class="co-nav">' +
+      (S.msgs.length ? '<button data-coach-clear title="Clear chat">⌫</button>' : "") + '<button data-coach-close aria-label="Close">✕</button></div></header>' +
+      '<div class="co-body" data-coach-body>' + (S.msgs.length ? "" : '<p class="co-src">Try one of these, or type your own question.</p>') + chips +
+      (S.msgs.length ? '<div class="co-msgs">' + msgs + "</div>" : "") + (S.error && !S.noClaude ? '<p class="co-err">' + esc(S.error) + "</p>" : "") + "</div>" +
+      '<footer class="co-pf">' + (note ? '<p class="co-src co-note">' + esc(note) + "</p>" : "") + form + "</footer></section>";
+  }
+
+  let host = null;
+  function renderPanel() {
+    if (!host) return;
+    const body = host.querySelector("[data-coach-body]"), atBottom = body ? body.scrollTop + body.clientHeight >= body.scrollHeight - 40 : true;
+    const active = typeof document !== "undefined" && document.activeElement && document.activeElement.matches && document.activeElement.matches("[data-coach-input]");
+    host.innerHTML = panelHtml();
+    const nb = host.querySelector("[data-coach-body]");
+    if (nb && (atBottom || S.busy)) nb.scrollTop = nb.scrollHeight;
+    if (active && S.open && !S.busy) { const inp = host.querySelector("[data-coach-input]"); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+  }
+  function loadHistory() {
+    if (S.loaded || !O || !O.chats) return;
+    S.loaded = true;
+    try { const h = O.chats.load(); if (Array.isArray(h)) S.msgs = h.filter(m => m && m.q && m.answer).slice(-40).map(m => Object.assign({ seen: true }, m)); } catch (e) {}
+  }
+  function saveHistory() {
+    if (!O || !O.chats) return;
+    try { O.chats.save(S.msgs.filter(m => m.q && m.answer).slice(-40).map(m => ({ q: m.q, answer: m.answer, evidence: m.evidence || [], missing: m.missing || [], suggestion: m.suggestion || null, local: !!m.local, at: m.at || Date.now() }))); } catch (e) {}
+  }
+  function openPanel(on) {
+    loadHistory();
+    S.open = on !== false;
+    renderPanel();
+    if (S.open) { const inp = host && host.querySelector("[data-coach-input]"); if (inp && window.matchMedia && !window.matchMedia("(max-width:720px)").matches) inp.focus(); }
+  }
+  // Mount once, outside the host's re-rendered area. The panel keeps its own DOM.
+  function mountPanel(el, opts) {
+    if (opts) O = Object.assign(O || {}, opts);
+    host = el;
+    renderPanel();
+    if (typeof window !== "undefined") { window.addEventListener("online", renderPanel); window.addEventListener("offline", renderPanel); }
+  }
+
   const oo = () => ({ today: O.today ? O.today() : undefined, effort: O.effort ? O.effort() : undefined, tdee: O.tdee ? O.tdee() : undefined, targets: O.targets ? O.targets() : undefined, rules: O.rules ? O.rules() : undefined, kcalTarget: O.kcalTarget });
+  const rerender = () => { renderPanel(); if (O.render && !host) O.render(); };
+
+  // Transport 2: the app's own server endpoint (website build). Streams the model text back.
+  async function askEndpoint(question, ctx, history, signal, onDelta) {
+    const token = O.getToken ? await O.getToken().catch(() => null) : null;
+    const e = code => { const x = new Error(code); x.code = code; return x; };
+    if (!token) throw e("not_signed_in");
+    const res = await fetch(O.endpoint, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + token }, body: JSON.stringify({ question, ctx, history }), signal });
+    if (!res.ok) {
+      let code = "http_" + res.status;
+      try { const j = await res.json(); if (j && j.error) code = j.error; } catch (_) {}
+      if (res.status === 401) code = "not_signed_in"; else if (res.status === 429) code = code === "daily_cap" ? "daily_cap" : "rate_limited"; else if (res.status === 503) code = "no_key";
+      throw e(code);
+    }
+    let text = "";
+    if (res.body && res.body.getReader) {
+      const rd = res.body.getReader(), dec = new TextDecoder();
+      for (;;) { const { value, done } = await rd.read(); if (done) break; text += dec.decode(value, { stream: true }); onDelta(text); }
+    } else text = await res.text();
+    return text;
+  }
 
   async function ask(q) {
     q = String(q || "").trim();
     if (!q || S.busy) return;
-    const sample = await O.getSample();
-    if (!sample) { S.noClaude = true; S.error = errorText("not_granted"); O.render(); return; }
+    loadHistory();
+    const sample = O.getSample ? await O.getSample() : null;
+    if (!sample && !O.endpoint) { S.noClaude = true; S.error = errorText("not_granted"); rerender(); return; }
     const history = S.msgs.filter(m => m.q && m.answer && !m.local).map(m => ({ q: m.q, a: m.answer }));
-    const m = { q, pending: true };
-    S.msgs.push(m); S.busy = true; S.error = ""; S.draft = ""; S.ctl = typeof AbortController === "function" ? new AbortController() : null; O.render();
+    const m = { q, pending: true, at: Date.now() };
+    S.msgs.push(m); S.busy = true; S.error = ""; S.draft = ""; S.stream = ""; S.ctl = typeof AbortController === "function" ? new AbortController() : null; rerender();
     try {
       const ctx = context(O.getDocs(), oo());
-      const v = await sample.json(prompt(q, ctx, history), { signal: S.ctl && S.ctl.signal, modelTier: "default" });
+      let v;
+      if (sample) v = await sample.json(prompt(q, ctx, history), { signal: S.ctl && S.ctl.signal, modelTier: "default" });
+      else v = await askEndpoint(q, ctx, history, S.ctl && S.ctl.signal, t => { S.stream = partialAnswer(t); renderPanel(); });
       const a = parseAnswer(v);
-      if (a.error) { S.msgs.pop(); S.error = a.error; } else Object.assign(m, a, { pending: false });
+      if (a.error) { S.msgs.pop(); S.error = a.error; } else { Object.assign(m, a, { pending: false }); saveHistory(); }
     } catch (e) {
       S.msgs.pop();
       const code = e && e.code;
       if (code !== "cancelled" && !(e && e.name === "AbortError")) {
         S.error = errorText(code);
-        if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) S.noClaude = true;
+        if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed", "no_key"].includes(code)) { S.noClaude = true; S.noClaudeWhy = code === "no_key" ? "Claude isn't connected to this website yet (no API key configured). The quick questions still work." : ""; }
       }
     }
-    S.busy = false; S.ctl = null; O.render();
+    S.busy = false; S.ctl = null; S.stream = ""; rerender();
+  }
+
+  function askLocal(topic) {
+    loadHistory();
+    const t = TOPICS.find(x => x.id === topic);
+    if (!t) return;
+    S.msgs.push(Object.assign({ q: t.label, at: Date.now() }, localAnswer(t.id, O.getDocs(), oo())));
+    saveHistory();
+    rerender();
   }
 
   function bind(root, opts) {
-    O = opts;
+    O = Object.assign(O || {}, opts);
     root.addEventListener("click", e => {
-      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop]");
+      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask]");
       if (!t) return;
-      if (t.dataset.coachTopic) {
-        const topic = TOPICS.find(x => x.id === t.dataset.coachTopic);
-        S.msgs.push(Object.assign({ q: topic.label }, localAnswer(topic.id, O.getDocs(), oo())));
-        O.render();
-      } else if (t.dataset.coachPeriod !== undefined) { if (t.dataset.coachPeriod) { S.from = t.dataset.coachPeriod; O.render(); } }
+      if (t.hasAttribute("data-coach-open")) openPanel(true);
+      else if (t.hasAttribute("data-coach-close")) openPanel(false);
+      else if (t.dataset.coachAsk !== undefined) {
+        if (!host) { /* no panel mounted: answer inline on the card */ }
+        else if (!S.open) openPanel(true);
+        if (t.dataset.coachTopic) askLocal(t.dataset.coachTopic); else ask(t.dataset.coachAsk);
+      }
+      else if (t.dataset.coachTopic) askLocal(t.dataset.coachTopic);
+      else if (t.dataset.coachPeriod !== undefined) { if (t.dataset.coachPeriod) { S.from = t.dataset.coachPeriod; O.render(); } }
       else if (t.dataset.coachApply) { try { const ch = JSON.parse(t.dataset.coachApply); if (O.onApply) O.onApply(ch); } catch (err) {} }
-      else if (t.hasAttribute("data-coach-clear")) { S.msgs = []; S.error = ""; O.render(); }
+      else if (t.hasAttribute("data-coach-clear")) { S.msgs = []; S.error = ""; saveHistory(); rerender(); }
       else if (t.hasAttribute("data-coach-stop")) { if (S.ctl) S.ctl.abort(); }
     });
     root.addEventListener("input", e => { if (e.target.matches && e.target.matches("[data-coach-input]")) S.draft = e.target.value; });
@@ -587,8 +738,9 @@ const Coach = (() => {
       const inp = e.target.querySelector("[data-coach-input]");
       ask(inp ? inp.value : S.draft);
     });
+    root.addEventListener("keydown", e => { if (e.key === "Escape" && S.open) openPanel(false); });
   }
 
-  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, bind, errorText, TOPICS, _state: S };
+  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, bind, errorText, TOPICS, _state: S };
 })();
 if (typeof module !== "undefined") module.exports = Coach;

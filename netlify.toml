@@ -11,3 +11,10 @@
   for = "/index.html"
   [headers.values]
     Cache-Control = "no-cache"
+
+# Ask Claude endpoint (netlify/functions/coach.mjs). It stays inert until ANTHROPIC_API_KEY is set in the
+# site's environment variables; the shared Coach module and the Firebase config are bundled with it.
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  included_files = ["modules/coach/coach.js", "app/cloud-config.js", "netlify/functions/lib/**"]

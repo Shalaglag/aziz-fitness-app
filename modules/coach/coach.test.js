@@ -186,6 +186,24 @@ test("empty data does not throw", () => {
   const R = Coach.review({}, { today: "2026-11-09" });
   assert.equal(R.verdict, "empty");
   assert.ok(Coach.reviewHtml({}, { today: "2026-11-09" }).includes("14-day review"));
-  assert.ok(Coach.chatHtml().includes("Ask your coach"));
+  assert.ok(Coach.chatHtml().includes("Ask Claude"));
   assert.ok(Coach.context({}, { today: "2026-11-09" }));
+});
+
+test("suggestions differ per screen and partialAnswer reads a streaming reply", () => {
+  assert.ok(Coach.suggestions("train").some(s => /train today/i.test(s.q)));
+  assert.ok(Coach.suggestions("food").some(s => s.topic === "protein"));
+  assert.equal(Coach.suggestions("nope").length, Coach.suggestions("today").length);
+  assert.equal(Coach.partialAnswer('{"answer":"Yes, add 2.5 kg.\\nYour bench'), "Yes, add 2.5 kg.\nYour bench");
+  assert.equal(Coach.partialAnswer('{"answer":"Done \\"now\\"","evidence":[]}'), 'Done "now"');
+  assert.equal(Coach.partialAnswer('{"evid'), "");
+});
+
+test("panelHtml renders the button, the panel and the offline/no-Claude notes", () => {
+  const h = Coach.panelHtml();
+  assert.ok(h.includes("co-fab") && h.includes("Ask Claude") && h.includes("data-coach-form"));
+  assert.ok(!h.includes("co-open"));
+  Coach._state.noClaude = true;
+  assert.ok(/suggested questions still work|quick questions/.test(Coach.panelHtml()));
+  Coach._state.noClaude = false;
 });
