@@ -817,7 +817,24 @@ function tcOpts(){ // Compare trends: reuse the trend line and the lift e1RM ser
 let coachPending=null, weightPending=null;
 // >5% off the average of the last 7 days of weigh-ins (needs 3+) needs a second tap. Catches 91.9 typed as 99.1 or 81.9.
 function weightOutlier(date,kg){ const ws=weightsSorted().filter(w=>w.date!==date && w.date<=date && diffDays(w.date,date)<=7); if(ws.length<3) return null; const avg=ws.reduce((a,w)=>a+w.kg,0)/ws.length; const pct=(kg-avg)/avg*100; return Math.abs(pct)>5 ? {avg,pct} : null; }
-function coachOpts(){ const o={today:TODAY, targets:APPT, rules:{floor:1800}, kcalTarget};
+// Exercise knowledge for the coach: form guide entry + whether a verified demo exists (never a URL).
+let coachFC=null, coachDemos=null;
+function coachExercise(name){
+  try{
+    if(coachFC===null) coachFC=(window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE,{demoLinks:false}) : false;
+    if(coachDemos===null) coachDemos=(window.ExerciseDemos && window.EXERCISE_DEMOS && window.WorkoutLogger) ? ExerciseDemos.create(window.EXERCISE_DEMOS,{library:WorkoutLogger.library}) : false;
+    const e=coachFC ? coachFC.find(name) : null, demo=coachDemos ? coachDemos.best(name) : null;
+    if(!e && !demo) return null;
+    return {name:(e&&e.name)||name, setup:e?e.setup:[], cues:e?e.cues:[], mistakes:e?e.mistakes:[], primary:e?e.primary:[], secondary:e?e.secondary:[], demo:demo||null};
+  }catch(err){ return null; }
+}
+function coachPlanToday(){ const sf=sessionFor(TODAY); const ex=(PROGRAM[sf.session]||[]).map(t=>({name:t[0], w:t[1], reps:t[2], sets:t[3], unit:t[4]||"kg"})); return {session:sf.session, chosen:!!sf.chosen, exercises:ex}; }
+let coachCache=null; // one computation per tick: the panel's getters all ask within the same call
+function coachOpts(){ if(coachCache) return coachCache; const o={today:TODAY, targets:APPT, rules:{floor:1800}, kcalTarget}; coachCache=o; setTimeout(()=>{ coachCache=null; },0);
+  try{ if(window.StrengthAnalytics) o.strength=StrengthAnalytics.analyze(S.docs, strengthOpts()); }catch(e){}
+  try{ if(window.RecoveryFatigue && RecoveryFatigue.summary) o.recoveryText=RecoveryFatigue.summary(S.docs, {today:TODAY, ...rfOpts()}); }catch(e){}
+  try{ if(window.Cardio && Cardio.summary) o.cardioText=Cardio.summary(S.docs, {today:TODAY}); }catch(e){}
+  try{ o.planToday=coachPlanToday(); o.exerciseNames=Object.values(PROGRAM).flat().map(t=>t[0]); o.exercise=coachExercise; }catch(e){}
   try{ if(window.EffortDeload) o.effort=EffortDeload.analyze(S.docs.workouts,{today:TODAY, dismissedAt:S.docs.prefs.main?.deloadDismissedAt}); }catch(e){}
   try{ if(window.TrendTDEE) o.tdee=TrendTDEE.estimate(S.docs,{today:TODAY}); }catch(e){}
   return o; }
@@ -1526,6 +1543,8 @@ try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
     effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee, tab:()=>view.tab,
+    strength:()=>coachOpts().strength, recoveryText:()=>coachOpts().recoveryText, cardioText:()=>coachOpts().cardioText,
+    planToday:coachPlanToday, exerciseNames:()=>Object.values(PROGRAM).flat().map(t=>t[0]), exercise:coachExercise,
     // Inside Claude: the page's sample capability (free). On the website: the app's own endpoint, which
     // checks the Firebase sign-in token and holds the API key (netlify/functions/coach.mjs).
     getSample:()=>window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),

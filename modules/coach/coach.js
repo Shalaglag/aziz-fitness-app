@@ -11,7 +11,12 @@
  *   Coach.review(docs, {today, from?, effort?}) -> the 14-day review (verdict, checks, recommendations)
  *   Coach.reviewHtml(docs, opts)                -> Progress card: the review, with period arrows
  *   Coach.summary(review)                       -> plain text of a review, to copy into a chat
- *   Coach.context(docs, opts)                   -> the facts the coach is allowed to use (JSON-able)
+ *   Coach.context(docs, opts)                   -> the facts the coach is allowed to use (JSON-able); with
+ *        opts.strength (StrengthAnalytics.analyze), recoveryText (RecoveryFatigue.summary), cardioText
+ *        (Cardio.summary), planToday {session, exercises:[{name,w,reps,sets,unit}]}, exerciseNames[],
+ *        exercise(name) -> form-guide entry + demo, and question (to attach the exercise asked about)
+ *   Coach.liftHistory(docs, today)              -> per-lift last 5 sessions, best e1RM, PR flag
+ *   Coach.exerciseIn(question, names)           -> the exercise name a question mentions, or null
  *   Coach.prompt(question, ctx, history)        -> the instruction sent to Claude
  *   Coach.parseAnswer(value)                    -> {answer, evidence[], missing[], suggestion|null}
  *   Coach.localAnswer(topic, docs, opts)        -> same shape, worked out without Claude
@@ -330,6 +335,39 @@ const Coach = (() => {
   }
 
   /* ---------- coach context + Claude ---------- */
+  // Per-lift history from the logs: last sessions (top set, est. 1RM) and the all-time best, for lifts
+  // trained in the last 8 weeks. The coach can answer "did I get stronger" and "how much should I lift".
+  function liftHistory(docs, today, limit = 14) {
+    const list = workoutList(docs).filter(w => w.date <= today), out = {};
+    list.forEach(w => Object.entries(w.lifts).forEach(([name, sets]) => {
+      const top = sets.reduce((b, x) => { const e = epley(x.kg, x.r); return !b || e > b.e ? { e, kg: x.kg, r: x.r } : b; }, null);
+      if (!top) return;
+      (out[name] = out[name] || []).push({ date: w.date, top: top.kg + "x" + top.r, e1rm: Math.round(top.e), sets: sets.length, effort: w.effort != null ? w.effort : undefined });
+    }));
+    const recent = add(today, -56);
+    return Object.entries(out).filter(([, h]) => h[h.length - 1].date >= recent)
+      .sort((a, b) => b[1][b[1].length - 1].date.localeCompare(a[1][a[1].length - 1].date)).slice(0, limit)
+      .map(([name, h]) => {
+        const best = h.reduce((b, x) => (!b || x.e1rm > b.e1rm ? x : b), null), last = h[h.length - 1];
+        const prev = h.length > 1 ? h[h.length - 2] : null;
+        return { name, last5: h.slice(-5), bestE1rm: best.e1rm, bestOn: best.date, latestIsPR: best === last && h.length > 1, vsPrevious: prev ? sgn((last.e1rm / prev.e1rm - 1) * 100, 0) + "%" : null };
+      });
+  }
+  // The exercise a question is about, matched against names the app knows (logs + plan + guide).
+  const plain = s => String(s || "").toLowerCase().replace(/\(.*?\)/g, " ").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  function exerciseIn(question, names) {
+    const q = " " + plain(question) + " ";
+    if (q.trim().length < 3) return null;
+    let hit = null, hitLen = 0;
+    (names || []).forEach(n => {
+      const p = plain(n); if (!p) return;
+      const words = p.split(" ");
+      const forms = [p, words.slice(0, 2).join(" ")].concat(words[0].length >= 5 ? [words[0]] : []);
+      forms.forEach(fm => { const k = " " + fm + " "; if (fm && q.includes(k) && (fm.length > hitLen || (fm.length === hitLen && p.length < plain(hit).length))) { hit = n; hitLen = fm.length; } });
+    });
+    return hit;
+  }
+
   function context(docs, opts = {}) {
     docs = docs || {};
     const today = isDate(opts.today) ? opts.today : localToday();
@@ -359,6 +397,48 @@ const Coach = (() => {
       sleepLast7: dates(add(today, -7), add(today, -1)).map(d => num(((docs.days || {})[d] || {}).sleep)).filter(h => h != null),
       dislikes: ((((docs.prefs || {}).main || {}).dislikes) || []).slice(0, 30),
     };
+    // ---- phase 4: training, nutrition and recovery detail ----
+    const prefsMain = (docs.prefs || {}).main || {};
+    ctx.lifts = liftHistory(docs, today);
+    if (opts.planToday) ctx.planToday = opts.planToday;
+    if (opts.strength) {
+      const st = opts.strength;
+      ctx.strength = {
+        lifts: (st.lifts || []).slice(0, 14).map(l => ({ name: l.name, sessions: l.sessions, bestE1rm: l.best && Math.round(l.best.e1rm), lastE1rm: l.last && Math.round(l.last.e1rm), change28: l.change28 != null ? sgn(l.change28 * 100, 0) + "%" : null, cut: l.cut && l.cut.pct != null ? sgn(l.cut.pct * 100, 0) + "%" : null })),
+        weeklySetsPerMuscle: (st.muscles || []).map(m => ({ muscle: m.label, thisWeek: Math.round(m.thisWeek), avg4: Math.round(m.avg4 * 10) / 10, daysPerWeek: m.freq4, status: m.status })),
+        balance: (st.balance || []).filter(b => b.ratio != null).map(b => ({ pair: b.label, ratio: Math.round(b.ratio * 100) / 100, lean: b.lean || null })),
+      };
+    }
+    if (opts.recoveryText) ctx.recovery = String(opts.recoveryText).slice(0, 1200);
+    ctx.readiness7 = dates(add(today, -6), today).map(d => { const r = ((docs.days || {})[d] || {}).readiness; return r ? { date: d, quality: r.quality, soreness: r.soreness, energy: r.energy, joints: Object.keys(r.joints || {}).filter(j => r.joints[j]) } : null; }).filter(Boolean);
+    ctx.steps7 = dates(add(today, -6), today).map(d => { const v = num(((docs.days || {})[d] || {}).steps); return v != null ? [d, Math.round(v)] : null; }).filter(Boolean);
+    if (prefsMain.stepGoal) ctx.stepGoal = num(prefsMain.stepGoal);
+    if (opts.cardioText) ctx.cardio = String(opts.cardioText).slice(0, 800);
+    else { const cd = docs.cardio || {}; ctx.cardio14 = dates(add(today, -13), today).map(d => cd[d] && Array.isArray(cd[d].sessions) ? { date: d, sessions: cd[d].sessions.map(x => [x.kind, x.min, x.speed, x.incline].filter(v => v != null).join(" ")) } : null).filter(Boolean); }
+    const planned = ((d0.food || [])).filter(x => x && x.eaten === false).map(x => ({ name: x.name, slot: x.slot, kcal: Math.round(num(x.kcal) || 0), p: Math.round(num(x.p) || 0) }));
+    if (planned.length) ctx.plannedToday = planned.slice(0, 20);
+    const eatenItems = ((d0.food || [])).filter(x => x && x.eaten === true).map(x => ({ name: x.name, slot: x.slot, kcal: Math.round(num(x.kcal) || 0), p: Math.round(num(x.p) || 0), est: x.est ? true : undefined }));
+    if (eatenItems.length) ctx.eatenToday = eatenItems.slice(0, 30);
+    if (eatenItems.length) { const ef = (d0.food || []).filter(x => x && x.eaten === true); ctx.todaySoFar.eatenCarbs = Math.round(ef.reduce((a, x) => a + (num(x.c) || 0), 0)); ctx.todaySoFar.eatenFat = Math.round(ef.reduce((a, x) => a + (num(x.f) || 0), 0)); }
+    if (T.carbsLo != null || T.carbsHi != null) ctx.targets.carbs = [T.carbsLo, T.carbsHi]; if (T.fatLo != null || T.fatHi != null) ctx.targets.fat = [T.fatLo, T.fatHi];
+    const meals = Object.values(docs.meals || {}).filter(m => m && m.name && Array.isArray(m.items));
+    if (meals.length) ctx.savedMeals = meals.sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 12).map(m => ({ name: m.name, kcal: Math.round(m.items.reduce((s_, i) => s_ + (num(i.kcal) || 0), 0)), protein: Math.round(m.items.reduce((s_, i) => s_ + (num(i.p) || 0), 0)) }));
+    const menu = (docs.menus || {})[today];
+    if (menu && Array.isArray(menu.items)) ctx.menuToday = menu.items.filter(i => i && i.name && !i.skip).slice(0, 40).map(i => ({ name: i.name, kcal: num(i.kcal), protein: num(i.p != null ? i.p : i.protein) }));
+    if (opts.kcalTarget) { const kt = num(opts.kcalTarget(today)); if (kt != null && kt !== T.kcal) ctx.targets.kcalToday = Math.round(kt); }
+    if (prefsMain.cycling && prefsMain.cycling.on) ctx.calorieCycling = { on: true, deltaKcal: num(prefsMain.cycling.delta) };
+    if (prefsMain.dietBreak && prefsMain.dietBreak.started) ctx.dietBreak = { started: prefsMain.dietBreak.started, until: prefsMain.dietBreak.until || null };
+    const hurt = ((docs.prefs || {}).swaps || {}).hurt || {};
+    const hurtNames = Object.values(hurt).filter(h => h && h.name).map(h => h.name + (h.note ? " (" + clip(h.note, 60) + ")" : ""));
+    if (hurtNames.length) ctx.exercisesThatHurt = hurtNames.slice(0, 10);
+    const swapped = {}; dates(add(today, -27), today).forEach(d => { const w = (docs.workouts || {})[d]; if (w && w.swapped) Object.entries(w.swapped).forEach(([used, plan]) => { swapped[used] = plan; }); });
+    if (Object.keys(swapped).length) ctx.recentSwaps = Object.entries(swapped).map(([used, plan]) => used + " instead of " + plan).slice(0, 10);
+    if (opts.question && opts.exercise) {
+      const names = ctx.lifts.map(l => l.name).concat((opts.planToday && opts.planToday.exercises || []).map(x => x.name), opts.exerciseNames || []);
+      const hit = exerciseIn(opts.question, names);
+      const ex = hit && opts.exercise(hit);
+      if (ex) ctx.exerciseAsked = { name: ex.name || hit, setup: (ex.setup || []).slice(0, 6), cues: (ex.cues || []).slice(0, 6), mistakes: (ex.mistakes || []).slice(0, 6), muscles: { primary: ex.primary || [], secondary: ex.secondary || [] }, demoVideo: ex.demo ? "verified demo available in the app (the app opens it; do not give a URL)" : "no verified demo yet", logged: ctx.lifts.find(l => l.name === hit) || null };
+    }
     if (opts.tdee && opts.tdee.ready) ctx.calorieBurn = { kcal: Math.round(opts.tdee.tdee), lo: Math.round(opts.tdee.tdeeLo), hi: Math.round(opts.tdee.tdeeHi), trendRateKgWk: +f1(opts.tdee.rateKgWk) };
     if (opts.effort) ctx.deloadCheck = { nudge: !!opts.effort.nudge, reason: opts.effort.reason || null };
     return ctx;
@@ -376,6 +456,9 @@ const Coach = (() => {
       "- You cannot change targets or settings. You may suggest a change and give the reason; the user decides in the app.",
       "- Judge weight by averages and trends, never by one weigh-in.",
       "- For pain, injury or medical questions, give general guidance and suggest seeing a professional.",
+      "- Lifting advice: base loads on lifts.last5 and planToday; suggest at most one small step (2.5 kg, or one rep) when the last session hit its reps with effort 3 or less, hold when effort was 4-5 or readiness is low, and name the set. Never suggest exercises listed in exercisesThatHurt.",
+      "- Food advice: pick only from plannedToday, savedMeals, menuToday or foods already in the logs, and respect dislikes; say what fits kcalLeft and proteinLeft.",
+      "- Exercise technique: use exerciseAsked only. Say the app has a verified demo when demoVideo says so; never give a video link.",
       "- Plain, friendly language, under 120 words in answer. No markdown headings.",
       past ? "Earlier in this chat:\n" + past : "",
       "DATA:\n" + JSON.stringify(ctx),
@@ -654,7 +737,9 @@ const Coach = (() => {
     if (typeof window !== "undefined") { window.addEventListener("online", renderPanel); window.addEventListener("offline", renderPanel); }
   }
 
-  const oo = () => ({ today: O.today ? O.today() : undefined, effort: O.effort ? O.effort() : undefined, tdee: O.tdee ? O.tdee() : undefined, targets: O.targets ? O.targets() : undefined, rules: O.rules ? O.rules() : undefined, kcalTarget: O.kcalTarget });
+  const call = k => { try { return O[k] ? O[k]() : undefined; } catch (e) { return undefined; } };
+  const oo = () => ({ today: call("today"), effort: call("effort"), tdee: call("tdee"), targets: call("targets"), rules: call("rules"), kcalTarget: O.kcalTarget,
+    strength: call("strength"), recoveryText: call("recoveryText"), cardioText: call("cardioText"), planToday: call("planToday"), exerciseNames: call("exerciseNames"), exercise: O.exercise });
   const rerender = () => { renderPanel(); if (O.render && !host) O.render(); };
 
   // Transport 2: the app's own server endpoint (website build). Streams the model text back.
@@ -687,7 +772,7 @@ const Coach = (() => {
     const m = { q, pending: true, at: Date.now() };
     S.msgs.push(m); S.busy = true; S.error = ""; S.draft = ""; S.stream = ""; S.ctl = typeof AbortController === "function" ? new AbortController() : null; rerender();
     try {
-      const ctx = context(O.getDocs(), oo());
+      const ctx = context(O.getDocs(), Object.assign(oo(), { question: q }));
       let v;
       if (sample) v = await sample.json(prompt(q, ctx, history), { signal: S.ctl && S.ctl.signal, modelTier: "default" });
       else v = await askEndpoint(q, ctx, history, S.ctl && S.ctl.signal, t => { S.stream = partialAnswer(t); renderPanel(); });
@@ -741,6 +826,6 @@ const Coach = (() => {
     root.addEventListener("keydown", e => { if (e.key === "Escape" && S.open) openPanel(false); });
   }
 
-  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, bind, errorText, TOPICS, _state: S };
+  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, bind, errorText, TOPICS, _state: S };
 })();
 if (typeof module !== "undefined") module.exports = Coach;

@@ -207,3 +207,35 @@ test("panelHtml renders the button, the panel and the offline/no-Claude notes", 
   assert.ok(/suggested questions still work|quick questions/.test(Coach.panelHtml()));
   Coach._state.noClaude = false;
 });
+
+test("context carries lift history, planned food, saved meals, readiness, steps and the exercise asked about", () => {
+  const docs = { weights: {}, days: {}, workouts: {}, meals: {}, prefs: { main: { profile: { start: "2026-10-01", cutKcal: 2000, protein: 180 }, stepGoal: 9000 }, swaps: { hurt: { "leg-press": { name: "Leg Press", note: "knee" } } } } };
+  ["2026-10-20", "2026-10-22", "2026-10-24"].forEach((d, i) => { docs.workouts[d] = { date: d, session: "Push A", effort: 3, sets: { "Bench Press (Barbell)": [{ w: 80 + i * 2.5, r: 8 }], "Lateral Raise (Cable)": [{ w: 7.5, r: 12 }] } }; });
+  docs.days["2026-10-26"] = { date: "2026-10-26", steps: 8200, readiness: { quality: 4, soreness: 3, energy: 4, joints: { knee: 1 } }, food: [{ name: "Chicken rice", slot: "Lunch", kcal: 600, p: 50, c: 60, f: 12, eaten: true }, { name: "Protein shake", slot: "Snack", kcal: 200, p: 40, eaten: false }] };
+  docs.meals.a = { id: "a", name: "Usual Nutreeze day", items: [{ name: "x", kcal: 500, p: 45 }, { name: "y", kcal: 700, p: 60 }], uses: 3 };
+  const ctx = Coach.context(docs, { today: "2026-10-26", question: "Should I increase my bench press weight?", exercise: n => ({ name: n, cues: ["Bend the bar"], mistakes: ["Flared elbows"], primary: ["Chest"], demo: { url: "x" } }), planToday: { session: "Push A", exercises: [{ name: "Bench Press (Barbell)", w: 90, reps: 8, sets: 2, unit: "kg" }] } });
+  const bench = ctx.lifts.find(l => l.name === "Bench Press (Barbell)");
+  assert.equal(bench.last5.length, 3);
+  assert.equal(bench.latestIsPR, true);
+  assert.ok(bench.vsPrevious.startsWith("+"));
+  assert.deepEqual(ctx.plannedToday, [{ name: "Protein shake", slot: "Snack", kcal: 200, p: 40 }]);
+  assert.equal(ctx.eatenToday[0].name, "Chicken rice");
+  assert.equal(ctx.todaySoFar.eatenCarbs, 60);
+  assert.equal(ctx.savedMeals[0].kcal, 1200);
+  assert.deepEqual(ctx.steps7, [["2026-10-26", 8200]]);
+  assert.equal(ctx.stepGoal, 9000);
+  assert.deepEqual(ctx.readiness7[0].joints, ["knee"]);
+  assert.deepEqual(ctx.exercisesThatHurt, ["Leg Press (knee)"]);
+  assert.equal(ctx.exerciseAsked.name, "Bench Press (Barbell)");
+  assert.ok(/verified demo/.test(ctx.exerciseAsked.demoVideo));
+  assert.equal(ctx.planToday.session, "Push A");
+  assert.ok(Coach.prompt("q", ctx, []).includes("exercisesThatHurt"));
+});
+
+test("exerciseIn matches plan names loosely and ignores unrelated questions", () => {
+  const names = ["Bench Press (Barbell)", "Incline DB Press", "Lat Pulldown, Wide", "Hack Squat", "Leg Extension"];
+  assert.equal(Coach.exerciseIn("how do I do the hack squat", names), "Hack Squat");
+  assert.equal(Coach.exerciseIn("Explain the lat pulldown", names), "Lat Pulldown, Wide");
+  assert.equal(Coach.exerciseIn("Should I bench heavier?", names), "Bench Press (Barbell)");
+  assert.equal(Coach.exerciseIn("What should I eat today?", names), null);
+});
