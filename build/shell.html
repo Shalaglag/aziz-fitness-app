@@ -1,6 +1,8 @@
 <title>Aziz Cut Tracker</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <style>
@@ -1532,4 +1534,14 @@ try{
   });
 }catch(e){}
 initStore();
+// Home-screen shortcuts (manifest "shortcuts"): #log-weight etc. open a tab and focus one control.
+function runShortcut(){
+  const sc = window.AppShortcuts && AppShortcuts.parse(location.hash);
+  if(!sc) return;
+  try{ history.replaceState(null, "", location.pathname + location.search); }catch(_){}
+  view.date = TODAY; view.tab = sc.tab; render(); window.scrollTo(0,0);
+  requestAnimationFrame(()=>{ const el = sc.focus && document.querySelector(sc.focus); if(el){ el.scrollIntoView({block:"center"}); el.focus(); } });
+}
+runShortcut();
+window.addEventListener("hashchange", runShortcut);
 </script>

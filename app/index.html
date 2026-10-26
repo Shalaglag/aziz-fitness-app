@@ -1,6 +1,8 @@
 <title>Aziz Cut Tracker</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <style>
@@ -15965,6 +15967,39 @@ if (typeof module !== "undefined") module.exports = DataIO;
 });
 </script>
 <script>
+/* AppShortcuts: home-screen shortcuts (long-press the app icon) that open the app on one action.
+ * The manifest's shortcut URLs end in a hash such as #log-weight; parse() turns that hash into
+ * the tab to show and the element to focus. Pure lookup, no DOM, so it is testable in node.
+ *
+ *   AppShortcuts.parse("#log-weight") -> {action:"log-weight", tab:"today", focus:"#wkg", ...}
+ *   AppShortcuts.parse("#food")       -> null   (plain tab hashes are handled by the shell)
+ */
+window.AppShortcuts = (() => {
+  const ACTIONS = {
+    "log-weight":    { tab: "today", focus: "#wkg", label: "Log weight" },
+    "add-water":     { tab: "today", focus: '[data-act="water"][data-ml="250"]', label: "Add water" },
+    "start-workout": { tab: "train", focus: null, label: "Start workout" },
+    "log-food":      { tab: "food", focus: "#fname", label: "Log food" }
+  };
+
+  function parse(hash) {
+    const key = String(hash || "").replace(/^#/, "").trim().toLowerCase();
+    const a = ACTIONS[key];
+    return a ? { action: key, ...a } : null;
+  }
+
+  // Manifest "shortcuts" entries, kept here so the list and the handler can't drift apart.
+  function manifestShortcuts(base) {
+    const b = base || "./index.html";
+    return Object.keys(ACTIONS).map(k => ({ name: ACTIONS[k].label, short_name: ACTIONS[k].label, url: b + "#" + k }));
+  }
+
+  return { ACTIONS, parse, manifestShortcuts };
+})();
+
+if (typeof module !== "undefined" && module.exports) module.exports = AppShortcuts;
+</script>
+<script>
 /* ===================== Plan data (from Aziz's handoff, Oct 25 2026) ===================== */
 const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:220};
 const START = {date:"2026-10-25", kg:91.9}; let GOAL_KG = 80;
@@ -17061,4 +17096,14 @@ try{
   });
 }catch(e){}
 initStore();
+// Home-screen shortcuts (manifest "shortcuts"): #log-weight etc. open a tab and focus one control.
+function runShortcut(){
+  const sc = window.AppShortcuts && AppShortcuts.parse(location.hash);
+  if(!sc) return;
+  try{ history.replaceState(null, "", location.pathname + location.search); }catch(_){}
+  view.date = TODAY; view.tab = sc.tab; render(); window.scrollTo(0,0);
+  requestAnimationFrame(()=>{ const el = sc.focus && document.querySelector(sc.focus); if(el){ el.scrollIntoView({block:"center"}); el.focus(); } });
+}
+runShortcut();
+window.addEventListener("hashchange", runShortcut);
 </script>
