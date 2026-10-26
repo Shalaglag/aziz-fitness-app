@@ -2,7 +2,6 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="manifest" href="manifest.webmanifest">
-<script src="cloud-config.js"></script>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
@@ -629,7 +628,7 @@ async function initStore(){
   let db = null;
   try{ db = window.claude && await window.claude.use("db"); }catch(e){}
   // On its own website there is no Claude db: sign in to the cloud store instead (modules/cloud-store).
-  if(!db && !window.claude && window.CloudStore && CloudStore.configured()){
+  if(!db && !window.claude && window.CloudStore && (await CloudStore.loadConfig()) && CloudStore.configured()){
     try{ db = await CloudStore.connect({mount:document.body}); }catch(e){ toast("Couldn't reach your account. Saving on this device for now."); }
   }
   if(!db){ setSync(); return; }
