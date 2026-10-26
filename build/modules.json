@@ -40,6 +40,7 @@
     { "file": "modules/strength-analytics/strength-analytics.js", "expose": ["StrengthAnalytics"] },
     { "file": "modules/trend-compare/trend-compare.js", "expose": ["TrendCompare"] },
     { "file": "modules/data-io/data-io.js", "expose": ["DataIO"] },
+    { "file": "modules/calendar-reminders/calendar-reminders.js", "expose": ["CalendarReminders"] },
     { "file": "modules/menu-import/menu-import.js" },
     { "file": "modules/pending-writes/pending-writes.js" },
     { "file": "modules/app-shortcuts/app-shortcuts.js", "expose": ["AppShortcuts"] },

@@ -1210,6 +1210,7 @@ function vProgress(){
 }
 
 /* ---------- GUIDE ---------- */
+function crCtx(){ const p=S.docs.prefs.main||{}; return {from:TODAY, review:STRICT.to, supps: window.SuppDrinks?SuppDrinks.plan(p):[], now:new Date()}; }
 function vGuide(){
   const q=view.q.toLowerCase();
   const libNames = Object.keys(LIB).filter(n=>!q || n.toLowerCase().includes(q) || LIB[n][0].toLowerCase().includes(q));
@@ -1268,6 +1269,7 @@ function vGuide(){
       <div><button class="btn small" type="submit">Save</button></div>
     </form>
   </div>
+  ${safeMod("CalendarReminders",()=>CalendarReminders.html(S.docs.prefs.main||{}, crCtx()))}
   <div class="card"><h3>App colour</h3>
     <p class="muted" style="font-size:.9rem">Pick a plate colour for buttons and highlights. Light or dark follows your phone or Claude app setting.</p>
     <div class="row">${[["red","25 kg red"],["blue","20 kg blue"],["yellow","15 kg yellow"],["green","10 kg green"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</div>
@@ -1291,6 +1293,8 @@ main.addEventListener("click",e=>{
   if(window.Cardio && e.target.closest("[data-cardio]")){ try{ if(Cardio.handle(e.target, {docs:cdDocs(), date:view.date, toast, weightKg:latestKg(), put:(c,id,doc)=>{ cardioOpts={}; put(c,id,doc); }, rerender:o=>{ cardioOpts=o||{}; render(); }})) return; }catch(err){ toast("Cardio: "+err.message); return; } }
   const rfw=window.RecoveryFatigue && e.target.closest("[data-rf]") ? RecoveryFatigue.handle(e.target, S.docs, view.date) : null;
   if(rfw){ put(rfw.collection, rfw.id, rfw.doc, {quiet:true}); render(); return; }
+  const cr=e.target.closest("[data-cr]");
+  if(cr && window.CalendarReminders){ const r=CalendarReminders.apply(cr.dataset.cr, CalendarReminders.readForm(document), S.docs.prefs.main||{}, crCtx()); if(r.prefs) put("prefs","main",r.prefs); if(r.download) dioDownload(r.download.filename, r.download.text); if(r.toast) toast(r.toast); return; }
   const sd=e.target.closest("[data-sd]");
   if(sd && window.SuppDrinks){ const a=sd.dataset.sd, data=Object.assign({}, sd.dataset, /save$/.test(a)?SuppDrinks.readForm(document, sd.dataset.key):{}); const r=SuppDrinks.apply(a, data, getDay(view.date), S.docs.prefs.main||{}, {uid}); if(r.prefs) put("prefs","main",r.prefs); if(r.day) saveDay(r.day); if(r.toast) toast(r.toast); if(r.open){ requestAnimationFrame(()=>{ const det=document.querySelector(".sd-card details"); if(det) det.open=true; }); } return; }
   const cca=e.target.closest("[data-cc-action]");
@@ -1514,7 +1518,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
