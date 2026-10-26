@@ -1553,8 +1553,8 @@ Stair Climber|Cardio|Cardio|`;
   }
 
   // ---------- Rest timer ----------
-  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); }
-  function stopRest() { rest = null; persistRest(); renderRest(); }
+  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec } })); } catch (e) { } }
+  function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
   on('restManual', t => { primeAudio(); startRest(+t.dataset.s); toast('Rest timer ' + mmss(+t.dataset.s)); renderRest(); });
   on('restAdj', t => { if (!rest) return; rest.end += +t.dataset.d * 1000; rest.total = Math.max(rest.total + +t.dataset.d, 1); persistRest(); renderRest(); });
