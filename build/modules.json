@@ -38,6 +38,7 @@
     { "file": "modules/coach/coach.js", "expose": ["Coach"] },
     { "file": "modules/cardio/cardio.js", "expose": ["Cardio"] },
     { "file": "modules/strength-analytics/strength-analytics.js", "expose": ["StrengthAnalytics"] },
+    { "file": "modules/muscle-feedback/muscle-feedback.js", "expose": ["MuscleFeedback"] },
     { "file": "modules/trend-compare/trend-compare.js", "expose": ["TrendCompare"] },
     { "file": "modules/data-io/data-io.js", "expose": ["DataIO"] },
     { "file": "modules/calendar-reminders/calendar-reminders.js", "expose": ["CalendarReminders"] },
