@@ -39,6 +39,7 @@
     { "file": "modules/data-io/data-io.js", "expose": ["DataIO"] },
     { "file": "modules/menu-import/menu-import.js" },
     { "file": "modules/pending-writes/pending-writes.js" },
-    { "file": "modules/app-shortcuts/app-shortcuts.js", "expose": ["AppShortcuts"] }
+    { "file": "modules/app-shortcuts/app-shortcuts.js", "expose": ["AppShortcuts"] },
+    { "file": "modules/cloud-store/cloud-store.js", "expose": ["CloudStore"] }
   ]
 }
