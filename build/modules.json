@@ -6,6 +6,7 @@
     { "file": "modules/weekly-report/weekly-report.js", "expose": ["WeeklyReport"] },
     { "file": "modules/strong-sync/strong-csv.js", "expose": ["StrongCSV"] },
     { "file": "modules/waterh-sync/waterh-import.js", "esm": "WaterH" },
+    { "file": "modules/workout-share/workout-share.js", "expose": ["WorkoutShare"] },
     { "file": "modules/workout-logger/workout-logger.js" },
     { "file": "modules/saved-meals/saved-meals.js" },
     { "file": "modules/effort-deload/effort-deload.js", "expose": ["EffortDeload"] },

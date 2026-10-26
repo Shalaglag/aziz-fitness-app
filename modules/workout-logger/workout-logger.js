@@ -650,7 +650,7 @@ Stair Climber|Cardio|Cardio|`;
         const st = workoutStats(w);
         return '<p class="lb-muted">' + fmtDate(w.start, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + ' · ' + fmtTime(w.start) + '</p><div class="lb-tiles"><div><b>' + fmtDur(st.dur) + '</b><span>Duration</span></div><div><b>' + fmtN(st.vol, 0) + '</b><span>Volume kg</span></div><div><b>' + st.sets + '</b><span>Sets</span></div><div><b>' + st.prs + '</b><span>PRs</span></div></div>' + (w.notes ? '<p class="lb-note">' + esc(w.notes) + '</p>' : '') +
           w.exercises.map(e => { const ex = getEx(e.exId); let n = 0; return '<div class="lb-hex"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button>' + (e.notes ? '<p class="lb-muted small">' + esc(e.notes) + '</p>' : '') + '<table class="lb-tbl"><tbody>' + e.sets.map(s => '<tr><td class="lb-settag ' + s.t + '">' + (s.t === 'n' ? ++n : s.t.toUpperCase()) + '</td><td>' + esc(fmtSet(s, e, ex)) + (s.rpe ? ' <span class="lb-muted">@' + s.rpe + '</span>' : '') + (num(s.rir) != null ? ' <span class="lb-muted">RIR ' + s.rir + '</span>' : '') + '</td><td class="r">' + (isWeighted(ex) && s.t !== 'w' && num(s.r) ? '<span class="lb-muted small">1RM ' + fmtN(e1rm(+s.w, +s.r), 1) + '</span>' : '') + (s.pr && s.pr.length ? ' <span class="lb-pr" title="' + esc(s.pr.join(', ')) + '">PR</span>' : '') + '</td></tr>').join('') + '</tbody></table></div>'; }).join('') +
-          '<div class="lb-row"><button class="lb-btn primary" data-a="again" data-id="' + id + '">Perform again</button><button class="lb-btn ghost" data-a="editWorkout" data-id="' + id + '">Edit</button><button class="lb-btn ghost" data-a="saveAsTpl" data-id="' + id + '">Save as template</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + id + '">Copy summary</button><button class="lb-btn ghost danger" data-a="askDelW">Delete</button></div><div class="lb-confirm" id="lb-delw" hidden><p>Delete this workout from your history? This can’t be undone.</p><button class="lb-btn danger" data-a="delW" data-id="' + id + '">Delete workout</button></div>';
+          '<div class="lb-row"><button class="lb-btn primary" data-a="again" data-id="' + id + '">Perform again</button><button class="lb-btn ghost" data-a="editWorkout" data-id="' + id + '">Edit</button><button class="lb-btn ghost" data-a="saveAsTpl" data-id="' + id + '">Save as template</button><button class="lb-btn ghost" data-a="shareWorkout" data-id="' + id + '">Share</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + id + '">Copy summary</button><button class="lb-btn ghost danger" data-a="askDelW">Delete</button></div><div class="lb-confirm" id="lb-delw" hidden><p>Delete this workout from your history? This can’t be undone.</p><button class="lb-btn danger" data-a="delW" data-id="' + id + '">Delete workout</button></div>';
       }
     });
   });
@@ -673,6 +673,41 @@ Stair Climber|Cardio|Cardio|`;
     }
   }
   on('copySummary', t => copyText(summaryText(S.data.workouts[t.dataset.id])));
+
+  // Share: WhatsApp-ready text + PNG card via the WorkoutShare module (opts.share or window.WorkoutShare).
+  // Without the module, Share falls back to copying the plain summary.
+  function shareModule() { return S.opts.share || (typeof window !== 'undefined' && window.WorkoutShare) || null; }
+  function shareWorkout(w) {
+    const WS = shareModule();
+    if (!w) return;
+    if (!WS) return copyText(summaryText(w));
+    let sum, cv;
+    try { sum = WS.summarize(w, getEx); cv = WS.draw(sum, { footer: S.opts.shareFooter || '' }); }
+    catch (e) { return copyText(summaryText(w)); }
+    const txt = WS.text(sum, { footer: S.opts.shareFooter || '' });
+    const canFiles = typeof navigator !== 'undefined' && !!navigator.share;
+    openSheet({
+      title: 'Share workout',
+      body: () => '<div class="lb-share"><img alt="' + esc(sum.name) + ' workout card"></div>' +
+        '<div class="lb-row"><button class="lb-btn primary" data-a="shareSend">' + (canFiles ? 'Share…' : 'Save image') + '</button><button class="lb-btn ghost" data-a="shareCopy">Copy text</button>' + (canFiles ? '<button class="lb-btn ghost" data-a="shareSave">Save image</button>' : '') + '</div>' +
+        '<details class="lb-share-text"><summary class="lb-muted small">Preview the text</summary><pre>' + esc(txt) + '</pre></details>',
+      mount: el => { const img = el.querySelector('img'); try { img.src = cv.toDataURL('image/png'); } catch (e) { img.remove(); } }
+    });
+    shareCtx = { sum, cv, txt, WS };
+  }
+  let shareCtx = null;
+  on('shareWorkout', t => shareWorkout(S.data.workouts[t.dataset.id]));
+  on('shareSend', async () => {
+    if (!shareCtx) return;
+    const r = await shareCtx.WS.share(shareCtx.sum, { canvas: shareCtx.cv, footer: S.opts.shareFooter || '' });
+    if (r === 'shared') toast('Shared'); else if (r === 'shared-text') toast('Shared the text (this browser can\u2019t share images)'); else if (r === 'copied') toast('Text copied, image downloaded'); else if (r === 'saved') toast('Image downloaded'); else if (r === 'failed') copyText(shareCtx.txt);
+  });
+  on('shareCopy', () => { if (shareCtx) copyText(shareCtx.txt); });
+  on('shareSave', () => {
+    if (!shareCtx) return;
+    const name = (shareCtx.sum.name || 'workout').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-' + isoDate(shareCtx.sum.start) + '.png';
+    try { shareCtx.WS.download(shareCtx.cv.toDataURL('image/png'), name); toast('Image downloaded'); } catch (e) { toast('Could not save the image'); }
+  });
 
   // Exercises tab
   function filteredExercises() {
@@ -1481,7 +1516,7 @@ Stair Climber|Cardio|Cardio|`;
         (prs.length ? '<h4>New records</h4><ul class="lb-prlist">' + prs.map(p => '<li><b>' + esc(p.ex) + '</b> ' + esc(fmtSet(p.s, p.e)) + ' <span class="lb-pr">' + esc(p.s.pr.join(', ')) + '</span></li>').join('') + '</ul>' : '') +
         (drops.length ? '<p class="lb-warnbox">' + esc(drops.map(x => x.name).join(', ')) + ' dropped 2 sessions in a row. Check sleep, pre-workout food and volume before changing calories.</p>' : '') +
         (tread ? '' : '<p class="lb-note">Don’t forget your 30 min treadmill (about 4.0 km/h, incline 3).</p>') +
-        '<div class="lb-row"><button class="lb-btn ghost" data-a="copySummary" data-id="' + w.id + '">Copy summary</button><button class="lb-btn ghost" data-a="histOpen" data-id="' + w.id + '">View details</button></div>'
+        '<div class="lb-row"><button class="lb-btn primary" data-a="shareWorkout" data-id="' + w.id + '">Share</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + w.id + '">Copy summary</button><button class="lb-btn ghost" data-a="histOpen" data-id="' + w.id + '">View details</button></div>'
     });
   }
 
@@ -1762,6 +1797,7 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-rest-next b{color:var(--lb-ink)}
 @media (max-width:360px){.lb-gym-field{grid-template-columns:60px minmax(0,1fr) 60px}.lb-gym-num{font-size:2.5rem}.lb-gym-name{font-size:1.8rem}.lb-live.gym .lb-rest-row{gap:6px}.lb-live.gym .lb-rest-time{font-size:2.6rem;min-width:5rem}.lb-live.gym .lb-rest-row .lb-btn{min-width:52px;padding:6px 8px}}
 .lb-done-hero{text-align:center;padding:10px 0 14px} .lb-done-hero b{display:block;font-family:var(--lb-display);font-size:1.9rem} .lb-done-hero span{color:var(--lb-muted)}
+.lb-share{background:var(--lb-sunk);border-radius:var(--lb-r);padding:8px;margin-bottom:10px} .lb-share img{display:block;width:100%;height:auto;border-radius:calc(var(--lb-r)*.7);box-shadow:0 6px 24px rgba(0,0,0,.18)} .lb-share-text{margin-top:10px} .lb-share-text pre{white-space:pre-wrap;font:inherit;font-size:.9rem;background:var(--lb-sunk);padding:10px;border-radius:var(--lb-r);margin:6px 0 0}
 .lb-prlist{list-style:none;padding:0;margin:0} .lb-prlist li{padding:6px 0;border-bottom:1px solid var(--lb-line)}
 .lb-toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--lb-ink);color:var(--lb-surface);padding:10px 16px;border-radius:999px;font-weight:600;font-size:.9rem;opacity:0;transition:opacity .2s,transform .2s;z-index:40;max-width:calc(100% - 32px);text-align:center;pointer-events:none}
 .lb-toast.show{opacity:1;transform:translate(-50%,0)}
