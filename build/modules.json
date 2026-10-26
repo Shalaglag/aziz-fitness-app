@@ -29,6 +29,7 @@
     { "file": "modules/progress-photos/progress-photos.js" },
     { "file": "modules/diet-break/diet-break.js", "expose": ["DietBreak"] },
     { "file": "modules/calorie-cycling/calorie-cycling.js", "expose": ["CalorieCycling"] },
+    { "file": "modules/reverse-diet/reverse-diet.js", "expose": ["ReverseDiet"] },
     { "file": "modules/app-targets/app-targets.js" },
     { "file": "modules/daily-dashboard/daily-dashboard.js" },
     { "file": "modules/supps-drinks/supps-drinks.js", "expose": ["SuppDrinks"] },

@@ -737,7 +737,12 @@ function ccTraining(d){ if(dayType(d)==="friday") return null; const s=sessionFo
 function ccOpts(){ return {training:ccTraining}; }
 function ccTargets(){ return APPT || {kcal:TARGET.kcal, carbsLo:TARGET.cMin, carbsHi:TARGET.cMax}; }
 function ccTarget(d){ try{ return window.CalorieCycling && ccState().on ? CalorieCycling.target(ccTargets(), d, ccState(), ccOpts()) : null; }catch(e){ return null; } }
+// Reverse diet (back to maintenance after the goal): manual start, like diet breaks.
+function rdState(){ return {...(S.docs.prefs.main?.reverseDiet||{}), auto:false}; }
+function rdOpts(){ let tdee=null; try{ if(window.TrendTDEE){ const E=TrendTDEE.estimate(S.docs,{today:TODAY}); if(E&&E.ready) tdee={kcal:E.tdee, lo:E.tdeeLo, hi:E.tdeeHi}; } }catch(e){} return {today:TODAY, profile:dbProfile(), tdee, trend:trendSeries()}; }
+function reverseTarget(d){ try{ return window.ReverseDiet ? ReverseDiet.target(dbDocs(), rdState(), d, rdOpts()) : null; }catch(e){ return null; } }
 function kcalTarget(d){
+  const rt=reverseTarget(d); if(rt && rt.kcal && rt.mode!=="cut") return Math.round(rt.kcal);
   const t=dietBreakTarget(d); if(t && t.mode==="break") return Math.round(t.kcal);
   const cc=ccTarget(d); const base = cc && cc.kcal ? cc.kcal : TARGET.kcal;
   // Over-budget recovery cuts (days/{date}.budgetAdj) apply on top of the day's target, never more than 150 below it.
@@ -757,7 +762,7 @@ function verdict(items){
   const msgs=[];
   const KT=kcalTarget(view.date), KTs=KT.toLocaleString("en-US");
   if(t.kcal<KT-150) msgs.push(["warn",`${r0(KT-t.kcal)} kcal under ${KTs}`]); else if(t.kcal>KT+100) msgs.push(["bad",`${r0(t.kcal-KT)} kcal over ${KTs}`]); else msgs.push(["good","Calories on target"]);
-  if(KT!==TARGET.kcal){ const cc=ccTarget(view.date); msgs.push(["info", dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
+  if(KT!==TARGET.kcal){ const cc=ccTarget(view.date), rm=reverseTarget(view.date)?.mode; msgs.push(["info", rm==="reverse" ? `Reverse diet: target ${KTs} this week` : rm==="maintain" ? `Maintenance: target ${KTs}` : dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
   if(t.p<TARGET.pMin) msgs.push(["warn",`Protein ${r0(TARGET.pMin-t.p)} g short`]); else msgs.push(["good","Protein hit"]);
   if(t.f>TARGET.fMax) msgs.push(["warn","Fat on the high side"]);
   return `<div class="row">${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
@@ -1178,6 +1183,7 @@ function vProgress(){
   ${cdSafe(()=>Cardio.progressHTML(cdDocs(), {today:TODAY}))}
   ${rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts()))}
   ${safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}))}
+  ${safeMod("ReverseDiet",()=>ReverseDiet.html(dbDocs(), rdState(), rdOpts()))}
   ${report?`<div class="card"><details data-keep="wr" ${view.open.wr?"open":""}><summary>Weekly report (week by week: weight, food, lifts)</summary>${report}</details></div>`:""}
   ${foodDays.length?`<div class="card"><h3>Calories eaten</h3>
     ${foodDays.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th class="n">kcal</th><th class="n">Protein</th><th>Status</th></tr></thead><tbody>
@@ -1274,6 +1280,8 @@ main.addEventListener("click",e=>{
   if(cca && window.CalorieCycling){ const p=Object.assign({},clone(S.docs.prefs.main)); p.cycling=CalorieCycling.apply(ccState(), cca.dataset.ccAction, ccOpts()); put("prefs","main",p); return; }
   const dba=e.target.closest("[data-db-action]");
   if(dba){ const p=Object.assign({},clone(S.docs.prefs.main)); p.dietBreak={...DietBreak.apply(dbState(), dba.dataset.dbAction, TODAY, dbDocs(), {profile:dbProfile()}), auto:false}; put("prefs","main",p); return; }
+  const rda=e.target.closest("[data-rd-action]");
+  if(rda && window.ReverseDiet){ const p=Object.assign({},clone(S.docs.prefs.main)); p.reverseDiet={...ReverseDiet.apply(rdState(), rda.dataset.rdAction, TODAY, dbDocs(), rdOpts()), auto:false}; put("prefs","main",p); toast(rda.dataset.rdAction==="start"?"Reverse diet started. Calories step up each week.":"Saved"); return; }
   const rc=e.target.closest("[data-recover]");
   if(rc){ const rd=rc.dataset.recoverDate; BudgetRecovery.apply(BudgetRecovery.plan(rd,S.docs.days), rc.dataset.recover).forEach(({date,patch})=>{ const cur=getDay(date); put("days",date,{...cur,...patch,budgetAdj:{...(cur.budgetAdj||{}),...(patch.budgetAdj||{})}},{quiet:true}); }); render(); toast(rc.dataset.recover==="skip"?"Let it go. The weekly average is what counts.":"Plan saved"); return; }
   const eff=e.target.closest("[data-effort]");
@@ -1489,7 +1497,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
