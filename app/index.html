@@ -9565,6 +9565,166 @@ if (typeof module !== "undefined" && module.exports) module.exports = MacroTarge
 </script>
 <script>
 /*
+ * Meal grade: an A–D grade for one food row, one planned meal, or a whole day.
+ * Pure logic plus two tiny HTML helpers, no network. Browser global (window.MealGrade) or CommonJS.
+ *
+ * A row is graded mainly on protein per 100 kcal (the day's plan needs about 8 g/100 kcal:
+ * 160 g in 2,000 kcal) and on how it fits the day's budget (kcal share, fat share).
+ * A day is graded on protein, calories, fat and carbs against the targets (AppTargets shape,
+ * the picker's {kcal, proteinMin, proteinMax, fat:[lo,hi], carbs:[lo,hi]}, or the shell's TARGET).
+ *
+ *   MealGrade.density(item)                    -> g protein per 100 kcal, or null
+ *   MealGrade.kindOf(item)                     -> 'meal' | 'snack'
+ *   MealGrade.gradeItem(item, {kind, targets}) -> {grade, score, density, kcalShare, fatShare, kind, reasons} or null
+ *   MealGrade.gradeDay(food, {targets, basis}) -> {grade, score, totals, parts, reasons} or null (basis: plan | eaten)
+ *   MealGrade.badge(res, opts) / dayBadge(res) -> small HTML pill; MealGrade.css
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.MealGrade = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const DEFAULTS = { kcal: 2000, kcalLo: 1850, kcalHi: 2150, proteinMin: 160, proteinMax: 170, fatLo: 55, fatHi: 70, carbsLo: 180, carbsHi: 220 };
+  const BANDS = [[80, 'A'], [60, 'B'], [40, 'C'], [0, 'D']];
+  const LABEL = { A: 'Great pick', B: 'Good', C: 'Okay', D: 'Poor fit' };
+
+  const num = v => { const x = typeof v === 'string' && v.trim() ? +v : v; return typeof x === 'number' && isFinite(x) ? x : null; };
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const lerp = (v, from, to, max) => clamp((v - from) / (to - from), 0, 1) * max; // 0 at `from`, `max` at `to`
+  const letter = s => BANDS.find(([min]) => s >= min)[1];
+
+  // Accept AppTargets, the picker engine's shape, or the shell's TARGET.
+  function targetsFrom(t) {
+    t = t || {};
+    const kcal = num(t.kcal) || DEFAULTS.kcal;
+    const pMin = num(t.proteinMin) || num(t.pMin) || DEFAULTS.proteinMin;
+    const pMax = num(t.proteinMax) || num(t.pMax) || pMin + 10;
+    const fat = Array.isArray(t.fat) ? t.fat : [num(t.fatLo) ?? num(t.fMin) ?? DEFAULTS.fatLo, num(t.fatHi) ?? num(t.fMax) ?? DEFAULTS.fatHi];
+    const carbs = Array.isArray(t.carbs) ? t.carbs : [num(t.carbsLo) ?? num(t.cMin) ?? DEFAULTS.carbsLo, num(t.carbsHi) ?? num(t.cMax) ?? DEFAULTS.carbsHi];
+    const kcalLo = num(t.kcalLo) ?? kcal - 150, kcalHi = num(t.kcalHi) ?? kcal + 150;
+    return { kcal, kcalLo, kcalHi, proteinMin: pMin, proteinMax: pMax, fatLo: fat[0], fatHi: fat[1], carbsLo: carbs[0], carbsHi: carbs[1] };
+  }
+
+  const protein = it => num(it.p) ?? num(it.protein);
+  const fatOf = it => num(it.f) ?? num(it.fat);
+
+  function density(it) {
+    const k = num(it && it.kcal), p = it && protein(it);
+    if (!k || k <= 0 || p == null) return null;
+    return p / k * 100;
+  }
+
+  // A row's kind from its slot (app food), section (menu item) or size.
+  function kindOf(it) {
+    if (!it) return 'snack';
+    if (it.kind === 'meal' || it.kind === 'snack') return it.kind;
+    const slot = String(it.slot || '').toLowerCase(), sec = String(it.section || '').toLowerCase();
+    if (/meal|breakfast/.test(slot)) return 'meal';
+    if (/snack|extra|adonis|gatorade/.test(slot)) return 'snack';
+    if (['meal', 'salad', 'soup'].includes(sec)) return 'meal';
+    if (sec) return 'snack';
+    return (num(it.kcal) || 0) >= 350 ? 'meal' : 'snack';
+  }
+
+  function gradeItem(it, opts) {
+    const o = opts || {};
+    const T = targetsFrom(o.targets);
+    const kcal = num(it && it.kcal), p = it && protein(it);
+    if (!kcal || kcal <= 0 || p == null) return null;
+    const kind = o.kind === 'meal' || o.kind === 'snack' ? o.kind : kindOf(it);
+    const d = p / kcal * 100, f = fatOf(it);
+    const fatShare = f == null ? null : f * 9 / kcal;
+    const kcalShare = kcal / T.kcal;
+    const reasons = [];
+    let score;
+    if (kind === 'meal') {
+      const dp = lerp(d, 4, 12, 70);                 // 4 g/100 kcal = 0, 12+ = full
+      let fit = 30;
+      if (kcalShare < 0.25) fit -= (0.25 - kcalShare) * 100;
+      if (kcalShare > 0.40) fit -= (kcalShare - 0.40) * 100;
+      fit = clamp(fit, 0, 30);
+      let pen = 0;
+      if (fatShare != null && fatShare > 0.40) { pen = 10; reasons.push(`${Math.round(fatShare * 100)}% of its calories are fat`); }
+      score = clamp(dp + fit - pen, 0, 100);
+      reasons.unshift(`${d.toFixed(1)} g protein per 100 kcal`, `${Math.round(kcalShare * 100)}% of the day's ${T.kcal.toLocaleString('en-US')} kcal`);
+    } else {
+      const dp = lerp(d, 0, 8, 50);
+      const fit = kcal <= 120 ? 50 : lerp(kcal, 300, 120, 50);
+      let pen = 0;
+      if (f != null && f >= 15) { pen = 15; reasons.push(`${Math.round(f)} g fat for a snack`); }
+      score = clamp(dp + fit - pen, 0, 100);
+      reasons.unshift(`${d.toFixed(1)} g protein per 100 kcal`, `${Math.round(kcal)} kcal`);
+    }
+    score = Math.round(score);
+    const grade = letter(score);
+    return { grade, score, density: +d.toFixed(1), kcalShare: +kcalShare.toFixed(3), fatShare: fatShare == null ? null : +fatShare.toFixed(3), kind, label: LABEL[grade], reasons };
+  }
+
+  function sum(items) {
+    return items.reduce((a, i) => ({ kcal: a.kcal + (num(i.kcal) || 0), p: a.p + (protein(i) || 0), c: a.c + (num(i.c) ?? num(i.carbs) ?? 0), f: a.f + (fatOf(i) || 0) }), { kcal: 0, p: 0, c: 0, f: 0 });
+  }
+
+  function gradeDay(food, opts) {
+    const o = opts || {};
+    const T = targetsFrom(o.targets);
+    const items = (food || []).filter(i => i && (o.basis === 'eaten' ? i.eaten : true));
+    if (!items.length) return null;
+    const t = sum(items), parts = [], reasons = [];
+    const r0 = v => Math.round(v);
+    // Protein 40: full at proteinMin, nothing 40 g below it.
+    let pp = lerp(t.p, T.proteinMin - 40, T.proteinMin, 40);
+    if (t.p > T.proteinMax + 30) pp -= 5;
+    pp = clamp(Math.round(pp), 0, 40);
+    parts.push({ key: 'protein', label: 'Protein', got: pp, max: 40, detail: `${r0(t.p)} g of ${T.proteinMin}–${T.proteinMax} g` });
+    if (t.p < T.proteinMin) reasons.push(`${r0(T.proteinMin - t.p)} g protein short`);
+    // Calories 35: full inside the band, −1 per 10 kcal outside it.
+    const out = t.kcal < T.kcalLo ? T.kcalLo - t.kcal : t.kcal > T.kcalHi ? t.kcal - T.kcalHi : 0;
+    const kp = clamp(Math.round(35 - out / 10), 0, 35);
+    parts.push({ key: 'kcal', label: 'Calories', got: kp, max: 35, detail: `${r0(t.kcal)} of ${r0(T.kcalLo)}–${r0(T.kcalHi)} kcal` });
+    if (out) reasons.push(`${r0(out)} kcal ${t.kcal > T.kcalHi ? 'over' : 'under'} the ${r0(T.kcalLo)}–${r0(T.kcalHi)} band`);
+    // Fat 15: full at or under fatHi, −1 per 2 g over.
+    const fp = clamp(Math.round(15 - Math.max(0, t.f - T.fatHi) / 2), 0, 15);
+    parts.push({ key: 'fat', label: 'Fat', got: fp, max: 15, detail: `${r0(t.f)} g (max ${T.fatHi} g)` });
+    if (t.f > T.fatHi) reasons.push(`fat ${r0(t.f - T.fatHi)} g over ${T.fatHi} g`);
+    // Carbs 10: in range 10, within 20 g 5, else 0.
+    const cout = t.c < T.carbsLo ? T.carbsLo - t.c : t.c > T.carbsHi ? t.c - T.carbsHi : 0;
+    const cp = cout === 0 ? 10 : cout <= 20 ? 5 : 0;
+    parts.push({ key: 'carbs', label: 'Carbs', got: cp, max: 10, detail: `${r0(t.c)} g of ${T.carbsLo}–${T.carbsHi} g` });
+    if (cout > 20) reasons.push(`carbs ${r0(cout)} g outside ${T.carbsLo}–${T.carbsHi} g`);
+    const score = parts.reduce((a, x) => a + x.got, 0);
+    const grade = score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 50 ? 'C' : 'D';
+    return { grade, score, totals: t, parts, reasons, basis: o.basis === 'eaten' ? 'eaten' : 'plan', count: items.length };
+  }
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function badge(res, opts) {
+    if (!res) return '';
+    const o = opts || {};
+    const title = o.title || `${res.label}: ${res.reasons.join(' · ')}`;
+    return `<span class="mg mg-${res.grade}${o.small ? ' mg-s' : ''}" title="${esc(title)}" aria-label="Grade ${res.grade}, ${esc(title)}">${res.grade}</span>`;
+  }
+
+  function dayBadge(res) {
+    if (!res) return '';
+    const why = res.reasons.length ? res.reasons.join('; ') : 'protein, calories, fat and carbs all on target';
+    return `<span class="mg mg-day mg-${res.grade}" title="${esc(why)}" aria-label="Day grade ${res.grade}: ${esc(why)}">Day ${res.grade}<small>${res.basis === 'eaten' ? 'eaten' : 'planned'}</small></span>`;
+  }
+
+  const css = `
+.mg{display:inline-flex;align-items:center;justify-content:center;min-width:1.5em;height:1.5em;padding:0 .35em;border-radius:6px;font-weight:800;font-size:.78rem;line-height:1;color:#fff;background:var(--muted);vertical-align:middle;flex:none}
+.mg.mg-s{min-width:1.3em;height:1.3em;font-size:.7rem}
+.mg-A{background:var(--good)}.mg-B{background:var(--accent)}.mg-C{background:var(--warn)}.mg-D{background:var(--bad)}
+.mg-day{border-radius:999px;padding:2px 10px;height:auto;gap:6px;font-size:.78rem}
+.mg-day small{font-weight:500;opacity:.85;font-size:.7rem}
+`;
+
+  return { DEFAULTS, LABEL, targetsFrom, density, kindOf, gradeItem, gradeDay, badge, dayBadge, css };
+});
+</script>
+<script>
+/*
  * Protein gap closer.
  * Pure logic, no DOM. Works as a browser global (window.ProteinGap)
  * or as a CommonJS module, so the main app can inline it as-is.
@@ -15314,6 +15474,227 @@ if (typeof window !== "undefined") window.StrengthAnalytics = StrengthAnalytics;
 if (typeof module !== "undefined" && module.exports) module.exports = StrengthAnalytics;
 </script>
 <script>
+/* Muscle feedback → next week's sets (Train + Progress). Plain JS, no imports, no network.
+ * After a muscle's last set, three quick taps (1–3 each): pump, soreness, workload. Saved on the day's
+ * workout as workouts/{date}.feedback = { <muscleId>: {pump, soreness, workload, at} }.
+ * Next week each muscle's sets go up, stay or go down by RP-style rules, inside its weekly set target.
+ * API:
+ *   MuscleFeedback.css                                   -> string, inject once (uses the app's tokens)
+ *   MuscleFeedback.musclesTrained(workout, musclesFor)   -> [muscleId] primary muscles with a logged set
+ *   MuscleFeedback.sessionDelta(fb)                      -> {delta:-2..+2, reason} for one {pump,soreness,workload}
+ *   MuscleFeedback.plan(docs, opts)                      -> {from, to, rows:[{id,label,sets,sessions,delta,next,lo,hi,reason}], rated}
+ *   MuscleFeedback.cardHtml(workout, date, opts)         -> taps card for Train ("" when nothing was lifted)
+ *   MuscleFeedback.planHtml(docs, opts)                  -> "Next week's sets" card for Progress
+ *   MuscleFeedback.handle(el, docs, date)                -> {collection:"workouts", id, doc} to save, or null
+ *   MuscleFeedback.summary(docs, opts)                   -> plain text for the coach
+ * opts (all optional):
+ *   today        "YYYY-MM-DD", default the device's local date
+ *   musclesFor   name -> {primary, secondary} | null; default window.StrengthAnalytics.musclesFor
+ *   setTargets   {muscleId: {lo, hi}} weekly set targets (prefs/main.setTargets, Strength card)
+ *   volume       {lo, hi} default range for muscles without a target, default 10–20
+ *   weekSets     {muscleId: sets this week}; else analysis().muscles[].thisWeek; else counted here
+ *   analysis     () => StrengthAnalytics.analyze(...) result, read lazily for this week's sets
+ * Rules (per rated session, then averaged over the week and rounded):
+ *   points = (2 − soreness) + (2 − pump) + (2 − workload)   → +3 … −3
+ *   +2 when points ≥ 3 (fresh, no pump, easy), +1 when 1–2, 0 when 0 or −1, −1 when ≤ −2.
+ *   Still sore (3) or too much workload (3) never adds sets; both together = −2.
+ *   next = round(sets this week) + delta, capped at hi when adding and floored at lo when cutting;
+ *   without feedback the sets stay (a muscle under or over its target is flagged, not moved).
+ */
+window.MuscleFeedback = (() => {
+  const DAY = 864e5;
+  const MUSCLES = [
+    ["chest", "Chest"], ["back", "Back"], ["traps", "Traps"], ["frontDelts", "Front delts"], ["sideDelts", "Side delts"],
+    ["rearDelts", "Rear delts"], ["biceps", "Biceps"], ["triceps", "Triceps"], ["forearms", "Forearms"], ["quads", "Quads"],
+    ["hamstrings", "Hamstrings"], ["glutes", "Glutes"], ["adductors", "Adductors"], ["abductors", "Abductors"], ["calves", "Calves"], ["abs", "Abs"]
+  ];
+  const ORDER = MUSCLES.map(m => m[0]);
+  const LABEL = Object.fromEntries(MUSCLES);
+  const MAJOR = ["chest", "back", "sideDelts", "rearDelts", "biceps", "triceps", "quads", "hamstrings", "glutes"];
+  const KEYS = ["pump", "soreness", "workload"];
+  const SCALE = {
+    pump: { title: "Pump", words: ["Low", "Good", "Great"] },
+    soreness: { title: "Soreness", words: ["None", "Gone in time", "Still sore"] },
+    workload: { title: "Workload", words: ["Easy", "Hard", "Too much"] }
+  };
+
+  const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const localToday = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+  const add = (s, n) => new Date(Date.parse(s + "T00:00:00Z") + n * DAY).toISOString().slice(0, 10);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const lvl = v => { v = +v; return v >= 1 && v <= 3 ? Math.round(v) : null; };
+  const defaultMusclesFor = () => (typeof window !== "undefined" && window.StrengthAnalytics && window.StrengthAnalytics.musclesFor) || (() => null);
+  const docsOf = col => col ? (Array.isArray(col) ? col : Object.values(col)) : [];
+
+  function hasSets(workout) {
+    return !!(workout && workout.sets && Object.values(workout.sets).some(a => (a || []).some(x => x && (+x.w || +x.r))));
+  }
+
+  // Primary muscles with a logged set in this workout, in a stable body order.
+  function musclesTrained(workout, musclesFor) {
+    musclesFor = musclesFor || defaultMusclesFor();
+    const out = new Set();
+    if (workout && workout.sets) Object.entries(workout.sets).forEach(([name, arr]) => {
+      if (!(arr || []).some(x => x && (+x.w || +x.r))) return;
+      const m = musclesFor(name); if (!m || m.cardio || !m.primary) return;
+      m.primary.forEach(id => { if (id in LABEL) out.add(id); });
+    });
+    return ORDER.filter(id => out.has(id));
+  }
+
+  function complete(fb) { return !!fb && KEYS.every(k => lvl(fb[k]) != null); }
+
+  function sessionDelta(fb) {
+    if (!complete(fb)) return { delta: null, reason: "Not rated" };
+    const p = lvl(fb.pump), s = lvl(fb.soreness), w = lvl(fb.workload);
+    if (s === 3 && w === 3) return { delta: -2, reason: "Still sore and too much work" };
+    const pts = (2 - s) + (2 - p) + (2 - w);
+    let d = pts >= 3 ? 2 : pts >= 1 ? 1 : pts >= -1 ? 0 : -1;
+    if ((s === 3 || w === 3) && d > 0) d = 0;
+    const reason = s === 3 ? "Still sore" : w === 3 ? "Workload too much" : d >= 2 ? "Fresh, little pump, easy" : d === 1 ? "Recovered with room to spare" : d === 0 ? "Right where it should be" : "Hard to recover from";
+    return { delta: d, reason };
+  }
+
+  // Sets per muscle over the last 7 days, primary 1 / helper ½ (same count as StrengthAnalytics, workouts only).
+  function countSets(workouts, from, to, musclesFor) {
+    const sets = Object.fromEntries(ORDER.map(id => [id, 0]));
+    docsOf(workouts).forEach(w => {
+      if (!w || !isDate(w.date) || w.date < from || w.date > to || !w.sets) return;
+      Object.entries(w.sets).forEach(([name, arr]) => {
+        const n = (arr || []).filter(x => x && (+x.w || +x.r)).length; if (!n) return;
+        const m = musclesFor(name); if (!m || m.cardio) return;
+        (m.primary || []).forEach(id => { if (id in sets) sets[id] += n; });
+        (m.secondary || []).forEach(id => { if (id in sets) sets[id] += n / 2; });
+      });
+    });
+    return sets;
+  }
+
+  function weekSets(docs, from, to, opts) {
+    if (opts.weekSets) return opts.weekSets;
+    try {
+      const a = typeof opts.analysis === "function" ? opts.analysis() : opts.analysis;
+      if (a && Array.isArray(a.muscles)) return Object.fromEntries(a.muscles.map(m => [m.id, m.thisWeek || 0]));
+    } catch (e) { /* fall through to our own count */ }
+    return countSets(docs.workouts, from, to, opts.musclesFor);
+  }
+
+  function plan(docs, opts = {}) {
+    docs = docs || {};
+    const today = isDate(opts.today) ? opts.today : localToday();
+    const o = Object.assign({}, opts, { musclesFor: opts.musclesFor || defaultMusclesFor() });
+    const to = today, from = add(today, -6);
+    const sets = weekSets(docs, from, to, o);
+    const lo0 = (opts.volume && +opts.volume.lo) || 10, hi0 = (opts.volume && +opts.volume.hi) || 20;
+    const targets = opts.setTargets || {};
+    const fbs = Object.fromEntries(ORDER.map(id => [id, []]));
+    docsOf(docs.workouts).forEach(w => {
+      if (!w || !isDate(w.date) || w.date < from || w.date > to || !w.feedback) return;
+      Object.entries(w.feedback).forEach(([id, fb]) => { if (id in fbs && complete(fb)) fbs[id].push(Object.assign({ date: w.date }, fb)); });
+    });
+    const rows = [];
+    ORDER.forEach(id => {
+      const s = +sets[id] || 0, list = fbs[id];
+      if (!s && !list.length) return;
+      const t = targets[id] && +targets[id].lo >= 0 && +targets[id].hi > 0 ? { lo: +targets[id].lo, hi: +targets[id].hi } : MAJOR.includes(id) ? { lo: lo0, hi: hi0 } : null;
+      const ds = list.map(sessionDelta);
+      const mean = ds.length ? ds.reduce((a, d) => a + d.delta, 0) / ds.length : 0;
+      const delta = ds.length ? Math.round(mean) : null;
+      const cur = Math.round(s);
+      const raw = cur + (delta || 0);
+      const next = Math.max(0, t && delta > 0 ? Math.min(raw, Math.max(t.hi, cur)) : t && delta < 0 ? Math.max(raw, Math.min(t.lo, cur)) : raw);
+      const last = ds[ds.length - 1];
+      let reason = !ds.length ? "No feedback yet" : ds.length === 1 ? last.reason : ds.map(d => d.reason).filter((r, i, a) => a.indexOf(r) === i).join(" / ");
+      if (t && delta && next === cur) reason += delta > 0 ? " · already at the top of the target" : " · already at the bottom of the target";
+      else if (t && cur < t.lo) reason += " · under target"; else if (t && cur > t.hi) reason += " · over target";
+      rows.push({ id, label: LABEL[id], major: MAJOR.includes(id), sets: s, sessions: ds.length, delta, next, lo: t ? t.lo : null, hi: t ? t.hi : null, reason, last: list.length ? list[list.length - 1] : null });
+    });
+    return { from, to, rows, rated: rows.some(r => r.sessions) };
+  }
+
+  // ---- Train card: taps for today's muscles ----
+  function cardHtml(workout, date, opts = {}) {
+    if (!hasSets(workout)) return "";
+    const ids = musclesTrained(workout, opts.musclesFor);
+    if (!ids.length) return "";
+    const fb = (workout && workout.feedback) || {};
+    const done = ids.filter(id => complete(fb[id])).length;
+    const row = id => {
+      const f = fb[id] || {};
+      return `<div class="mf-row${complete(f) ? " done" : ""}" data-mf-row="${id}"><div class="mf-name">${esc(LABEL[id])}</div>
+        ${KEYS.map(k => `<div class="mf-scale"><span class="mf-k">${SCALE[k].title}</span>${[1, 2, 3].map(v =>
+          `<button type="button" class="mf-tap${lvl(f[k]) === v ? " on" : ""}" data-mf="${k}" data-muscle="${id}" data-v="${v}" data-date="${esc(date)}" title="${esc(SCALE[k].words[v - 1])}" aria-label="${esc(SCALE[k].title + ": " + SCALE[k].words[v - 1])}" aria-pressed="${lvl(f[k]) === v}">${v}</button>`).join("")}</div>`).join("")}
+      </div>`;
+    };
+    return `<div class="card mf-card" data-mf-card="${esc(date)}"><h3>How did it feel? <small class="muted">${done}/${ids.length} rated</small></h3>
+      <p class="muted mf-legend">After a muscle's last set: pump 1 low · 3 great, soreness 1 none · 3 still sore, workload 1 easy · 3 too much. Next week's sets follow from this.</p>
+      ${ids.map(row).join("")}</div>`;
+  }
+
+  function arrow(d) { return d == null ? "·" : d > 0 ? "▲" : d < 0 ? "▼" : "="; }
+  function fmtSets(n) { return Number.isInteger(n) ? String(n) : n.toFixed(1); }
+
+  // ---- Progress card: next week's sets ----
+  function planHtml(docs, opts = {}) {
+    const p = plan(docs, opts);
+    const body = !p.rows.length
+      ? `<p class="muted mf-empty">Log some sets, then tap how each muscle felt on the Train tab. Next week's sets per muscle appear here.</p>`
+      : `<div class="tablewrap"><table class="mf-table"><thead><tr><th>Muscle</th><th class="n">This week</th><th class="n">Next week</th><th>Why</th></tr></thead><tbody>
+        ${p.rows.map(r => `<tr class="${r.delta > 0 ? "up" : r.delta < 0 ? "down" : r.delta === 0 ? "hold" : "none"}"><td>${esc(r.label)}</td><td class="n">${fmtSets(r.sets)}</td>
+          <td class="n"><b>${r.next}</b> <span class="mf-arrow">${arrow(r.delta)}</span>${r.lo != null ? `<small class="muted"> ${r.lo}–${r.hi}</small>` : ""}</td>
+          <td class="mf-why">${esc(r.reason)}${r.sessions > 1 ? ` <small class="muted">(${r.sessions} sessions)</small>` : ""}</td></tr>`).join("")}
+        </tbody></table></div>
+        ${p.rated ? "" : `<p class="muted mf-empty">No feedback this week yet, so every muscle stays. Rate pump, soreness and workload on the Train tab after training.</p>`}`;
+    return `<div class="card mf-plan"><h3>Next week's sets <small class="muted">from how each muscle felt</small></h3>${body}</div>`;
+  }
+
+  // ---- click handler: el inside [data-mf] ----
+  function handle(el, docs, date) {
+    const b = el && el.closest ? el.closest("[data-mf]") : null;
+    if (!b) return null;
+    const k = b.dataset.mf, id = b.dataset.muscle, v = lvl(b.dataset.v), d = isDate(b.dataset.date) ? b.dataset.date : date;
+    if (!KEYS.includes(k) || !(id in LABEL) || v == null || !isDate(d)) return null;
+    const cur = (docs && docs.workouts && docs.workouts[d]) || {};
+    const doc = JSON.parse(JSON.stringify(Object.assign({ date: d }, cur)));
+    doc.feedback = Object.assign({}, doc.feedback);
+    const f = Object.assign({}, doc.feedback[id]);
+    if (f[k] === v) delete f[k]; else f[k] = v;   // tapping the same level again clears it
+    f.at = Date.now();
+    if (KEYS.some(x => f[x] != null)) doc.feedback[id] = f; else delete doc.feedback[id];
+    if (!Object.keys(doc.feedback).length) delete doc.feedback;
+    return { collection: "workouts", id: d, doc };
+  }
+
+  function summary(docs, opts = {}) {
+    const p = plan(docs, opts);
+    if (!p.rows.length) return "Muscle feedback: nothing logged this week.";
+    const moved = p.rows.filter(r => r.delta);
+    const lines = p.rows.map(r => `${r.label}: ${fmtSets(r.sets)} → ${r.next}${r.lo != null ? ` (target ${r.lo}–${r.hi})` : ""}${r.sessions ? ` — ${r.reason}` : ""}`);
+    return `Next week's sets per muscle (${p.from} to ${p.to}, ${moved.length} change${moved.length === 1 ? "" : "s"}):\n` + lines.join("\n");
+  }
+
+  const css = [
+    ".mf-card h3 small,.mf-plan h3 small{font-weight:400;font-size:.8em;margin-left:6px}",
+    ".mf-legend{margin:0 0 8px;font-size:12px}",
+    ".mf-row{display:grid;grid-template-columns:minmax(72px,1fr) repeat(3,auto);gap:6px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line,rgba(127,127,127,.25))}",
+    ".mf-row.done .mf-name::after{content:' ✓';color:var(--good,#2a9d5c)}",
+    ".mf-name{font-weight:600}",
+    ".mf-scale{display:flex;align-items:center;gap:3px}",
+    ".mf-k{font-size:11px;color:var(--muted,#888);margin-right:4px;min-width:3.6em}",
+    ".mf-tap{min-width:30px;height:30px;padding:0 6px;border-radius:8px;border:1px solid var(--line,rgba(127,127,127,.35));background:var(--surface-2,transparent);color:inherit;font:inherit;font-size:13px;cursor:pointer}",
+    ".mf-tap.on{background:var(--accent,#3b82f6);color:var(--on-accent,#fff);border-color:var(--accent,#3b82f6)}",
+    "@media (max-width:420px){.mf-row{grid-template-columns:1fr 1fr}.mf-name{grid-column:1/-1}}",
+    ".mf-table td.mf-why{font-size:12px;color:var(--muted,#888);max-width:46vw}",
+    ".mf-table tr.up .mf-arrow{color:var(--good,#2a9d5c)}.mf-table tr.down .mf-arrow{color:var(--warn,#d97706)}.mf-table tr.hold .mf-arrow,.mf-table tr.none .mf-arrow{color:var(--muted,#888)}",
+    ".mf-empty{margin:6px 0 0}"
+  ].join("\n");
+
+  return { css, musclesTrained, sessionDelta, plan, cardHtml, planHtml, handle, summary, SCALE, MUSCLES: ORDER.slice() };
+})();
+if (typeof window !== "undefined") window.MuscleFeedback = MuscleFeedback;
+if (typeof module !== "undefined" && module.exports) module.exports = MuscleFeedback;
+</script>
+<script>
 /* Compare any two trends on one chart (MacroFactor-style overlay) for the Aziz Cut Tracker.
  * Plain JS, no imports, no network. Reads the app's own collections:
  *   docs = { weights: {date:{kg}}, days: {date:{food:[{kcal,p,eaten}], steps, sleep}}, cardio: {date:{sessions:[{min}]}},
@@ -17425,6 +17806,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
 .mi .mi-it.off .mi-nums,.mi .mi-it.off .mi-top input{opacity:.5}
 .mi .mi-top{display:flex;gap:6px;align-items:center}
 .mi .mi-top input{flex:1;min-width:0}
+.mi .mi-top .mg{margin-right:2px}
+.mi li .mg{margin-left:-1.4em;margin-right:.2em}
 .mi .mi-nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.3fr);gap:6px;margin-top:6px}
 .mi .mi-nums label{display:flex;flex-direction:column;font-size:.72rem;color:var(--muted);gap:2px}
 .mi input.mi-in,.mi select.mi-in{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:6px;padding:6px;font:inherit;font-size:.9rem}
@@ -17434,14 +17817,21 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
 .mi .mi-sub{font-size:.85rem}
 `;
 
-  function itemsTable(items, dislikes) {
+  // A–D grade pill from the MealGrade module when it is inlined; '' otherwise.
+  function gradeOf(it, kind, T) {
+    const MG = (typeof root !== 'undefined' && root.MealGrade) || (typeof window !== 'undefined' && window.MealGrade);
+    if (!MG) return '';
+    try { return MG.badge(MG.gradeItem(it, { kind, targets: T }), { small: true }); } catch (e) { return ''; }
+  }
+
+  function itemsTable(items, dislikes, T) {
     const tagged = annotate(items, { bannedReason: makeBanned(H.engine, dislikes), likeOf: H.engine.likeOf });
     const flagged = tagged.filter(it => it.needsCheck && !it.banned).length;
     const rows = tagged.map((it, i) => {
       const cls = it.banned ? 'off' : it.needsCheck ? 'flag' : '';
       const n = (k, label) => `<label>${label}<input class="mi-in n" inputmode="decimal" data-mik="${k}" data-i="${i}" value="${it[k] == null ? '' : esc(it[k])}" aria-label="${label} for ${esc(it.name)}"></label>`;
       return `<div class="mi-it ${cls}">
-        <div class="mi-top"><input class="mi-in" data-mik="name" data-i="${i}" value="${esc(it.name)}" aria-label="Name">
+        <div class="mi-top">${it.banned || it.skip ? '' : gradeOf(it, ['meal', 'salad', 'soup'].includes(it.section) ? 'meal' : 'snack', T)}<input class="mi-in" data-mik="name" data-i="${i}" value="${esc(it.name)}" aria-label="Name">
           ${!it.banned && it.needsCheck && complete(it) ? `<button class="btn small" data-mi="ok" data-i="${i}" title="The numbers match the menu">OK</button>` : ''}
           <button class="btn ghost small" data-mi="skip" data-i="${i}" title="${it.skip ? 'Use it again' : 'Leave it out'}" aria-label="${it.skip ? 'Use it again' : 'Leave it out'}">${it.skip ? 'Use' : '✕'}</button></div>
         <div class="mi-nums">${n('kcal', 'kcal')}${n('protein', 'Protein')}${n('carbs', 'Carbs')}${n('fat', 'Fat')}
@@ -17454,16 +17844,16 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
       ${flagged ? `<p class="mi-sub"><b>${flagged} item${flagged > 1 ? 's need' : ' needs'} a check.</b> Compare with the menu and tap OK, or fix the number. <button class="btn ghost small" data-mi="okall">All match the menu</button></p>` : ''}`;
   }
 
-  function resultHtml(res) {
+  function resultHtml(res, T) {
     if (!res) return '';
-    const line = it => `<li>${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r0(it.p)} P</span>${it.needsCheck ? ' <span class="pill warn">unconfirmed</span>' : ''}</li>`;
+    const line = (it, kind) => `<li>${gradeOf(it, kind, T)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r0(it.p)} P</span>${it.needsCheck ? ' <span class="pill warn">unconfirmed</span>' : ''}</li>`;
     const fixedLines = (res.fixed || []).map(x => `<li class="muted">${esc(x.name)} <span class="num" style="font-size:.85rem">${r0(x.kcal)} kcal · ${r0(x.p)} P${x.estimate ? ' (estimate)' : ''}</span></li>`).join('');
     return `${res.notes.length ? `<p class="muted mi-sub">${res.notes.map(esc).join(' ')}</p>` : ''}
       ${res.skipped.length ? `<p class="muted mi-sub">Left out: ${res.skipped.map(s => `${esc(s.name)} (${esc(s.reason)})`).join(', ')}</p>` : ''}
       ${res.error ? `<p class="note">${esc(res.error)}</p>` : ''}
       ${res.options.map((o, i) => `<div class="ex">
         <div class="spread"><b>${i === 0 ? 'Best option' : 'Option ' + (i + 1)}</b><span class="pill ${o.check.fits ? 'good' : 'warn'}">${o.check.fits ? 'Fits' : 'Closest'}</span></div>
-        <ul style="margin:0;padding-left:1.1em">${line(o.meal1)}${line(o.meal2)}${o.snacks.map(line).join('')}${fixedLines}</ul>
+        <ul style="margin:0;padding-left:1.1em">${line(o.meal1, 'meal')}${line(o.meal2, 'meal')}${o.snacks.map(s => line(s, 'snack')).join('')}${fixedLines}</ul>
         <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small" data-mi="use" data-i="${i}">Plan this day</button></div>
         <p class="muted mi-sub">${esc(o.check.verdict)}</p>
       </div>`).join('')}`;
@@ -17487,13 +17877,13 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
       ${ST.busy ? `<p class="muted mi-sub" aria-live="polite">${esc(ST.busy)} ${ST.ctl ? '<button class="btn ghost small" data-mi="stop">Stop</button>' : ''}</p>` : ''}
       ${ST.error ? `<p class="note">${esc(ST.error)}</p>` : ''}
       ${ST.warnings.length ? `<p class="muted mi-sub">${ST.warnings.map(esc).join(' ')}</p>` : ''}
-      ${ST.items && ST.items.length ? `${itemsTable(ST.items, bans)}
+      ${ST.items && ST.items.length ? `${itemsTable(ST.items, bans, T)}
         <div class="row" style="flex-wrap:wrap;gap:12px">
           <label class="mi-sub"><input type="checkbox" id="miAdonis"${ST.opts.adonis ? ' checked' : ''}> Adonis cookie dough</label>
           <label class="mi-sub"><input type="checkbox" id="miConfirmed"${ST.opts.onlyConfirmed ? ' checked' : ''}> Only use checked numbers</label>
           <button class="btn" data-mi="go">Find the best combo</button>
         </div>
-        ${resultHtml(ST.result)}` : ''}
+        ${resultHtml(ST.result, T)}` : ''}
     </div>`;
   }
 
@@ -18109,7 +18499,7 @@ function verdict(items){
   if(KT!==TARGET.kcal){ const cc=ccTarget(view.date), rm=reverseTarget(view.date)?.mode; msgs.push(["info", rm==="reverse" ? `Reverse diet: target ${KTs} this week` : rm==="maintain" ? `Maintenance: target ${KTs}` : dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
   if(t.p<TARGET.pMin) msgs.push(["warn",`Protein ${r0(TARGET.pMin-t.p)} g short`]); else msgs.push(["good","Protein hit"]);
   if(t.f>TARGET.fMax) msgs.push(["warn","Fat on the high side"]);
-  return `<div class="row">${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
+  return `<div class="row">${mgDay({food:items, date:view.date})}${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
 }
 
 /* ---------- TODAY ---------- */
@@ -18134,6 +18524,7 @@ window.addEventListener("unhandledrejection", e=>{ const r=e && e.reason; showEr
 function cdSafe(fn){ return safeMod("Cardio", fn); }
 function latestKg(){ const ws=weightsSorted(); return ws.length ? ws[ws.length-1].kg : undefined; }
 function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS}; }
+function mfOpts(){ return {today:TODAY, musclesFor:window.StrengthAnalytics?StrengthAnalytics.musclesFor:undefined, setTargets:S.docs.prefs.main?.setTargets, analysis:()=>window.StrengthAnalytics?StrengthAnalytics.analyze(S.docs, strengthOpts()):null}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
 function tcOpts(){ // Compare trends: reuse the trend line and the lift e1RM series the other Progress cards already compute
@@ -18244,7 +18635,7 @@ function effortBits(){
   const picker = has ? safe("Effort", ()=>EffortDeload.pickerHtml(d, w.effort)) : "";
   return {nudge, picker};
 }
-function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : shortCardioMin(view.date)===0 ? `<div class="card"><h3>Cardio</h3><p class="muted">Skipped today: the short session uses the time for lifting. <button class="btn ghost small" data-act="ssclear">Back to the full session</button></p></div>` : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocsDay(view.date), cardioOpts)}</div>`); return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + cardio; }
+function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : shortCardioMin(view.date)===0 ? `<div class="card"><h3>Cardio</h3><p class="muted">Skipped today: the short session uses the time for lifting. <button class="btn ghost small" data-act="ssclear">Back to the full session</button></p></div>` : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocsDay(view.date), cardioOpts)}</div>`); const feel = window.MuscleFeedback ? safe("Muscle feedback", ()=>MuscleFeedback.cardHtml(S.docs.workouts[view.date], view.date, mfOpts())) : ""; return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + feel + cardio; }
 function vTrainBody(){ return view.trainMode==="full" ? `<div class="card">${trainSwitch()}<p class="muted" style="font-size:.88rem">Templates, live workout with rest timer, PRs, plate calculator and history. Finished workouts also land in Today, Progress and the weekly report.</p></div>` : `<div>${trainSwitch()}</div>` + vTrainSession() + otherLogged() + strongCard(); }
 function otherLogged(){
   const d=view.date, wk=S.docs.workouts[d]; if(!wk||!wk.sets) return "";
@@ -18399,7 +18790,7 @@ function vFood(){
     ${day.food.length?`<div class="items">${day.food.map(i=>`
       <div class="item ${i.eaten?"":"planned"}">
         <input type="checkbox" data-act="eat" data-id="${i.id}" ${i.eaten?"checked":""} aria-label="Eaten">
-        <div class="nm"><b>${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
+        <div class="nm"><b>${mgBadge(i)} ${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
         <div class="mac">${r0(i.kcal)} kcal<br><span style="color:var(--protein)">${r1(+i.p||0)}P</span> <span style="color:var(--carbs)">${r1(+i.c||0)}C</span> <span style="color:var(--fat)">${r1(+i.f||0)}F</span></div>
         <button class="x" data-act="delfood" data-id="${i.id}" aria-label="Remove">×</button>
       </div>`).join("")}</div>
@@ -18411,7 +18802,7 @@ function vFood(){
     <div class="spread"><h3>Nutreeze snack menu</h3><span class="muted" style="font-size:.85rem">Pick any 2. Tap to add.</span></div>
     <div class="tablewrap"><table>
       <thead><tr><th>Snack</th><th>Type</th><th class="n">kcal</th><th class="n">P</th><th class="n">C</th><th class="n">F</th><th></th></tr></thead>
-      <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[1]}</td><td>${s[0]==="Banned"?"Never pick":s[0]}</td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody>
+      <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[0]==="Banned"?"":mgBadge({kcal:s[2],p:s[3],c:s[4],f:s[5]},"snack")+" "}${s[1]}</td><td>${s[0]==="Banned"?"Never pick":s[0]}</td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody>
     </table></div>
     <p class="muted" style="font-size:.88rem">With Meal 1 (pre-workout) prefer fruit or a light sweet. Nuts and Pro Mud Cake fit better with Meal 2, since fat slows digestion. If Meal 1 is 700+ kcal, move the sweet to the evening.</p>
   </div>
@@ -18432,7 +18823,7 @@ function pickerCard(d, training){
   const P = window.NutreezePicker; if(!P) return "";
   let draft=""; try{ draft=localStorage.getItem("aziz-cut-menu")||""; }catch(e){}
   const res = view.pick && view.pick.date===d ? view.pick : null;
-  const line = it => `<li>${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r1(it.p)} P</span></li>`;
+  const line = (it,kind) => `<li>${mgBadge(it,kind,d)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r1(it.p)} P</span></li>`;
   return `<div class="card">
     <div class="spread"><h3>Pick my meals</h3><span class="muted" style="font-size:.85rem">2 meals + 2 snacks + Adonis${training?" + Gatorade":""}</span></div>
     <p class="muted" style="font-size:.9rem">Paste the day's Nutreeze meals, one per line: <span class="num">name kcal protein carbs fat</span>. Never-pick meals are removed automatically.</p>
@@ -18442,7 +18833,7 @@ function pickerCard(d, training){
     ${res && res.skipped && res.skipped.length ? `<p class="muted" style="font-size:.85rem">Removed: ${res.skipped.map(esc).join(", ")}</p>` : ""}
     ${res && res.options ? res.options.map((o,i)=>`<div class="ex">
       <div class="spread"><b>${i===0?"Best option":"Option "+(i+1)}</b><span class="pill ${o.check.fits?"good":"warn"}">${esc(o.check.verdict)}</span></div>
-      <ul style="margin:0;padding-left:1.1em">${line(o.meal1)}${line(o.meal2)}${o.snacks.map(line).join("")}</ul>
+      <ul style="margin:0;padding-left:1.1em">${line(o.meal1,"meal")}${line(o.meal2,"meal")}${o.snacks.map(s=>line(s,"snack")).join("")}</ul>
       <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small" data-act="usepick" data-i="${i}">Use this plan</button></div>
       ${o.check.notes&&o.check.notes.length?`<p class="muted" style="font-size:.85rem">${o.check.notes.map(esc).join(" ")}</p>`:""}
     </div>`).join("") : ""}
@@ -18530,6 +18921,7 @@ function vProgress(){
   </div>
   ${trendCard}
   ${safeMod("StrengthAnalytics",()=>StrengthAnalytics.html(S.docs, strengthOpts()))}
+  ${safeMod("MuscleFeedback",()=>MuscleFeedback.planHtml(S.docs, mfOpts()))}
   ${safeMod("TrendCompare",()=>TrendCompare.html(S.docs, tcOpts()))}
   ${window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
     <div class="tablewrap"><table><thead><tr><th>Lift</th><th class="n">Baseline</th><th class="n">Latest best set</th><th>Status</th></tr></thead><tbody>
@@ -18635,6 +19027,8 @@ main.addEventListener("click",e=>{
   if(window.Cardio && e.target.closest("[data-cardio]")){ try{ if(Cardio.handle(e.target, {docs:cdDocs(), date:view.date, toast, weightKg:latestKg(), put:(c,id,doc)=>{ cardioOpts={}; put(c,id,doc); }, rerender:o=>{ cardioOpts=o||{}; render(); }})) return; }catch(err){ toast("Cardio: "+err.message); return; } }
   const rfw=window.RecoveryFatigue && e.target.closest("[data-rf]") ? RecoveryFatigue.handle(e.target, S.docs, view.date) : null;
   if(rfw){ put(rfw.collection, rfw.id, rfw.doc, {quiet:true}); render(); return; }
+  const mfw=window.MuscleFeedback && e.target.closest("[data-mf]") ? MuscleFeedback.handle(e.target, S.docs, view.date) : null;
+  if(mfw){ put(mfw.collection, mfw.id, mfw.doc, {quiet:true}); render(); return; }
   const cr=e.target.closest("[data-cr]");
   if(cr && window.CalendarReminders){ const r=CalendarReminders.apply(cr.dataset.cr, CalendarReminders.readForm(document), S.docs.prefs.main||{}, crCtx()); if(r.prefs) put("prefs","main",r.prefs); if(r.download) dioDownload(r.download.filename, r.download.text); if(r.toast) toast(r.toast); return; }
   const sd=e.target.closest("[data-sd]");
@@ -18765,6 +19159,8 @@ function ramadanCard(d){
     return Ramadan.html(d,{dayType:pickerDayType(d), train:pr.ramadanTrain||"after-iftar", cfg, targets:APPT||undefined}); }catch(e){ return ""; }
 }
 function trendSeries(){ try{ return window.TrendTDEE ? TrendTDEE.series(S.docs.weights,{today:TODAY}) : undefined; }catch(e){ return undefined; } }
+function mgBadge(it, kind, date){ try{ return window.MealGrade ? MealGrade.badge(MealGrade.gradeItem(it,{kind, targets:dayTargets(date||view.date)||{kcal:kcalTarget(date||view.date), pMin:TARGET.pMin, pMax:TARGET.pMax, fMin:TARGET.fMin, fMax:TARGET.fMax, cMin:TARGET.cMin, cMax:TARGET.cMax}}),{small:true}) : ""; }catch(e){ return ""; } }
+function mgDay(day){ try{ if(!window.MealGrade || !day.food.length) return ""; const all=day.food.every(i=>i.eaten); const T=dayTargets(day.date||view.date)||{kcal:kcalTarget(day.date||view.date), pMin:TARGET.pMin, pMax:TARGET.pMax, fMin:TARGET.fMin, fMax:TARGET.fMax, cMin:TARGET.cMin, cMax:TARGET.cMax}; return MealGrade.dayBadge(MealGrade.gradeDay(day.food,{targets:T, basis: all?"eaten":"plan"})); }catch(e){ return ""; } }
 function proteinGapRes(day){ try{ return (window.ProteinGap && day.food.length) ? ProteinGap.suggest(day.food,{dislikes:S.docs.prefs.main?.dislikes||[], targets:{kcal:kcalTarget(day.date||view.date), proteinMin:TARGET.pMin, proteinMax:TARGET.pMax}}) : null; }catch(e){ return null; } }
 function proteinGapHtml(day){
   if(day.food.filter(i=>/Meal/.test(i.slot)).length<2) return "";
@@ -18863,7 +19259,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
