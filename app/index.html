@@ -2307,6 +2307,88 @@ window.BreakRamp = (() => {
 if (typeof module !== "undefined") module.exports = { BreakRamp };
 </script>
 <script>
+/* PRCelebrate — celebrate a personal record the moment a set is checked off.
+ * Plain JS, no DOM of its own: describes the record (what was beaten and the old best),
+ * picks a vibration pattern, and fires toast + vibrate through callbacks the host passes in.
+ * Inputs follow the workout logger's shapes: `kinds` from setPRs() ('Est. 1RM', 'Weight',
+ * 'Volume', 'Reps', 'Distance', 'Time') and `R` from records() (previous bests, kg-based `v`).
+ */
+window.PRCelebrate = (() => {
+  const epley = (w, r) => (!w || !r) ? 0 : r === 1 ? w : w * (1 + r / 30);
+  const num = v => { const n = parseFloat(v); return isFinite(n) ? n : null; };
+  const fmtN = (n, d) => { if (n == null || !isFinite(n)) return ''; const s = (+n).toFixed(d); return s.indexOf('.') < 0 ? s : s.replace(/\.?0+$/, '') || '0'; };
+  const toKg = (v, unit) => unit === 'lb' ? v * 0.45359237 : v;
+  const fromKg = (v, unit) => unit === 'lb' ? v / 0.45359237 : v;
+  const dateTxt = (at, fmtDate) => {
+    if (!at) return '';
+    if (fmtDate) return fmtDate(at);
+    try { return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) { return ''; }
+  };
+  const setTxt = (r, unit) => r && r.w != null ? fmtN(r.w, 2) + ' ' + (r.unit || unit) + (r.r ? ' × ' + r.r : '') : '';
+
+  // describe(kinds, R, set, opts) -> { kinds, lines:[{kind, now, was, at}], headline, detail, text }
+  // opts: { name, unit ('kg'|'lb'), e1rm (fn), fmtDate (fn) }
+  function describe(kinds, R, set, opts) {
+    opts = opts || {}; R = R || {}; set = set || {};
+    const unit = opts.unit || 'kg', e1 = opts.e1rm || epley;
+    const w = num(set.w) || 0, r = num(set.r) || 0, wk = toKg(w, unit);
+    const lines = (kinds || []).map(kind => {
+      let now = '', was = '', at = '';
+      if (kind === 'Weight') { now = fmtN(w, 2) + ' ' + unit; if (R.weight) { was = setTxt(R.weight, unit); at = R.weight.at; } }
+      else if (kind === 'Est. 1RM') { now = fmtN(fromKg(e1(wk, r), unit), 1) + ' ' + unit; if (R.e1rm) { was = fmtN(fromKg(R.e1rm.v, unit), 1) + ' ' + unit + (R.e1rm.w != null ? ' (' + setTxt(R.e1rm, unit) + ')' : ''); at = R.e1rm.at; } }
+      else if (kind === 'Volume') { now = fmtN(w * r, 0) + ' ' + unit; if (R.volume) { was = fmtN(fromKg(R.volume.v, unit), 0) + ' ' + unit + (R.volume.w != null ? ' (' + setTxt(R.volume, unit) + ')' : ''); at = R.volume.at; } }
+      else if (kind === 'Reps') { now = r + ' reps'; if (R.reps) { was = R.reps.v + ' reps'; at = R.reps.at; } }
+      else if (kind === 'Distance') { now = fmtN(num(set.km), 2) + ' km'; if (R.km) { was = fmtN(R.km.v, 2) + ' km'; at = R.km.at; } }
+      else if (kind === 'Time') { const m = num(set.min) || 0, s = num(set.sec) || 0; now = (m ? m + ' min' : '') + (s ? (m ? ' ' : '') + s + ' s' : ''); const pm = R.min && R.min.v, ps = R.sec && R.sec.v; was = (pm ? pm + ' min' : '') + (ps ? (pm ? ' ' : '') + ps + ' s' : ''); at = (R.min && R.min.at) || (R.sec && R.sec.at) || ''; }
+      else { now = ''; }
+      return { kind, now, was, at };
+    });
+    const main = lines[0];
+    const headline = (opts.name ? opts.name + ': ' : '') + (lines.length > 1 ? lines.length + ' records' : lines.length ? lines[0].kind + ' record' : 'New record');
+    const detail = main ? [main.now, main.was ? 'was ' + main.was + (main.at ? ' on ' + dateTxt(main.at, opts.fmtDate) : '') : ''].filter(Boolean).join(' · ') : '';
+    const extra = lines.slice(1).map(l => l.kind + (l.was ? ' (was ' + l.was + ')' : '')).join(', ');
+    const text = headline + (detail ? ' · ' + detail : '') + (extra ? ' · also ' + extra : '');
+    return { kinds: kinds || [], lines, headline, detail, text };
+  }
+
+  // Short double tap for one record, a longer celebratory burst for several. Empty when nothing was beaten.
+  function vibration(kinds) {
+    const n = Array.isArray(kinds) ? kinds.length : (kinds | 0);
+    if (!n) return [];
+    if (n === 1) return [60, 60, 60];
+    if (n === 2) return [60, 60, 60, 60, 120];
+    return [60, 50, 60, 50, 60, 50, 200];
+  }
+
+  // Banner HTML for the gym view. `esc` is the host's HTML escaper.
+  function bannerHtml(d, esc) {
+    esc = esc || (s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])));
+    if (!d || !d.lines.length) return '';
+    return '<div class="lb-gym-pr pr-celebrate" role="status"><b>🏆 ' + esc(d.headline) + '</b>' +
+      '<span class="pr-celebrate-lines">' + d.lines.map(l => '<span>' + esc(l.kind) + ' ' + esc(l.now) + (l.was ? ' <small>was ' + esc(l.was) + '</small>' : '') + '</span>').join('') + '</span></div>';
+  }
+
+  // fire(d, { toast, vibrate, nav }) -> { toasted, vibrated }. `vibrate: false` respects the user's setting.
+  function fire(d, io) {
+    io = io || {};
+    const out = { toasted: false, vibrated: false };
+    if (!d || !d.kinds.length) return out;
+    if (typeof io.toast === 'function') { io.toast('🏆 ' + d.text); out.toasted = true; }
+    const nav = io.nav || (typeof navigator !== 'undefined' ? navigator : null);
+    if (io.vibrate !== false && nav && typeof nav.vibrate === 'function') {
+      try { out.vibrated = nav.vibrate(vibration(d.kinds)) !== false; } catch (e) { out.vibrated = false; }
+    }
+    return out;
+  }
+
+  const css = '.pr-celebrate b{display:block;font-size:1rem}.pr-celebrate-lines{display:block;margin-top:4px;font-weight:600;font-size:.88rem;opacity:.95}.pr-celebrate-lines>span{display:block}.pr-celebrate small{opacity:.8;font-weight:500}';
+
+  return { describe, vibration, bannerHtml, fire, css, epley };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = PRCelebrate;
+if (typeof globalThis !== 'undefined') globalThis.PRCelebrate = PRCelebrate;
+</script>
+<script>
 /* Liftbook: Strong-style workout logger for Aziz's fitness app.
  * Plain JS, no imports, no network. Mount with:
  *   WorkoutLogger.mount(element, { storage, onFinish, weights })
@@ -2704,6 +2786,13 @@ Stair Climber|Cardio|Cardio|`;
       ['r', 'km', 'min', 'sec'].forEach(f => { const k = f === 'r' ? 'reps' : f; const v = num(s[f]); if (v && R[k] && v > R[k].v) out.push(k === 'reps' ? 'Reps' : k === 'km' ? 'Distance' : 'Time'); });
     }
     return out;
+  }
+  // PR celebration (modules/pr-celebrate): what was beaten and the old best, for the toast and the gym banner.
+  const PRC = typeof PRCelebrate !== 'undefined' ? PRCelebrate : (typeof globalThis !== 'undefined' && globalThis.PRCelebrate) || null;
+  function celebration(e, s) {
+    if (!PRC || !s.pr || !s.pr.length) return null;
+    const ex = getEx(e.exId);
+    return PRC.describe(s.pr, records(e.exId, E.doc && E.doc.id), s, { name: ex.name, unit: e.unit, e1rm, fmtDate: at => fmtDate(at, { month: 'short', day: 'numeric' }) });
   }
   function workoutStats(w) {
     let vol = 0, sets = 0, prs = 0;
@@ -3586,7 +3675,7 @@ Stair Climber|Cardio|Cardio|`;
     const stepTxt = k => fmtN(stepFor(ex, e.unit, k), 2);
     let n = 0;
     let html = '<div class="lb-gym">' +
-      (E.flash ? '<div class="lb-gym-pr" role="status">New record · ' + esc(E.flash) + '</div>' : '') +
+      (E.flash ? (typeof E.flash === 'object' && PRC ? PRC.bannerHtml(E.flash, esc) : '<div class="lb-gym-pr" role="status">New record · ' + esc(E.flash) + '</div>') : '') +
       '<div class="lb-gym-top"><span>Exercise ' + (ei + 1) + ' of ' + d.exercises.length + '</span>' +
       (e.ss ? '<span class="lb-gym-ss ss' + (ssIds.indexOf(e.ss) % 4) + '">Superset ' + String.fromCharCode(65 + ssIds.indexOf(e.ss)) + ' · ' + (partners.findIndex(o => o.k === ei) + 1) + '/' + partners.length + '</span>' : '') + '</div>' +
       '<div class="lb-gym-headrow"><button class="lb-gym-name" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + ei + '" aria-label="Exercise options">•••</button></div>' +
@@ -3656,7 +3745,7 @@ Stair Climber|Cardio|Cardio|`;
   on('gDone', () => {
     const [ei, si] = E.cur, s = E.doc.exercises[ei].sets[si];
     if (!completeSet(ei, si, true)) return; // the gym screen shows its own record banner
-    E.flash = s.pr && s.pr.length ? getEx(E.doc.exercises[ei].exId).name + ': ' + s.pr.join(', ') : null;
+    E.flash = s.pr && s.pr.length ? (celebration(E.doc.exercises[ei], s) || getEx(E.doc.exercises[ei].exId).name + ': ' + s.pr.join(', ')) : null;
     const nx = nextPending(E.doc.exercises, [ei, si]); if (nx) E.cur = nx;
     touch(); renderEditor(); renderRest(); liveEl.querySelector('.lb-live-body').scrollTop = 0;
   });
@@ -3687,9 +3776,10 @@ Stair Climber|Cardio|Cardio|`;
     f.forEach(k => { const ph = phFor(prev, p, e, k); if ((s[k] === '' || s[k] == null) && ph !== '') s[k] = String(ph).replace(/,/g, ''); });
     if (f.every(k => s[k] === '' || s[k] == null)) { toast('Enter ' + (f[0] === 'w' ? 'weight and reps' : 'a value') + ' first'); return false; }
     s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id);
-    if (s.pr.length && !quiet) toast('New record: ' + ex.name + ' · ' + s.pr.join(', '));
+    const cel = celebration(e, s);
+    if (s.pr.length && !quiet) { if (cel) PRC.fire(cel, { toast, vibrate: !!S.settings.vibrate }); else toast('New record: ' + ex.name + ' · ' + s.pr.join(', ')); }
     if (ex.cat !== 'Cardio' && restAfter(E.doc.exercises, i, j)) startRest(restOf(e));
-    if (S.settings.vibrate && navigator.vibrate) try { navigator.vibrate(15); } catch (er) { }
+    if (S.settings.vibrate && navigator.vibrate && !(cel && !quiet)) try { navigator.vibrate(15); } catch (er) { }
     return true;
   }
   on('check', t => {
@@ -4134,7 +4224,7 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-gym-pair{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:stretch} .lb-gym-pair .lb-btn{min-height:76px;padding:0 18px}
 .lb-gym-nav{display:grid;grid-template-columns:1fr auto 1fr;gap:8px} .lb-gym-nav .lb-btn{min-height:52px;padding:6px 10px;font-size:.9rem}
 .lb-gym-nav .lb-btn:disabled{opacity:.4}
-.lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}
+.lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}.pr-celebrate b{display:block;font-size:1rem}.pr-celebrate-lines{display:block;margin-top:4px;font-weight:600;font-size:.88rem;opacity:.95}.pr-celebrate-lines>span{display:block}.pr-celebrate small{opacity:.8;font-weight:500}
 @keyframes lb-pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
 .lb-live.gym .lb-rest{padding-top:12px}
 .lb-live.gym .lb-rest-bar{height:8px;border-radius:4px}
@@ -12062,6 +12152,196 @@ Band Kneeling Crunch|Core|Band|15-25|Anchor high, kneel, crunch the elbows to th
 })(typeof window !== 'undefined' ? window : this);
 </script>
 <script>
+/* ShortSession: fit today's session into 30, 45 or 60 minutes.
+ * Plain JS, no imports, no network. Exposes window.ShortSession (or module.exports in Node).
+ *
+ * - estimate(items, {cardioMin}) -> {lifting, cardio, total} minutes from a simple timing model
+ *   (warm-up, work per set, rest by lift type, a superset halves the rest, a change-over per exercise).
+ * - plan(exercises, {minutes, mainLifts, cardioMin, swap}) -> the trimmed session: main compounds keep
+ *   all their sets; accessories are supersetted, then cut to 2 sets, then dropped (lowest priority
+ *   first: later in the list and a muscle already covered); the treadmill block scales 30 → 20 → 10 → 0
+ *   between those steps. Returns what changed and the new estimate.
+ * - apply(workoutDoc, plan) / clear / active store the choice on workouts/{date}.short.
+ * - cardHtml({...}) renders the Train-tab card; buttons carry data-act="ssmin|ssapply|ssclear".
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.ShortSession = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const BUDGETS = [30, 45, 60];
+  const TIMING = { warmup: 5, work: 0.75, restMain: 2.5, restAcc: 1.5, restSuperset: 0.75, change: 0.5 };
+  const CARDIO_STEPS = [20, 10, 0];
+  const DEFAULT_MAIN = ['Bench Press (Barbell)', 'Incline DB Press', 'Gundam (Chest Machine)', 'Seated DB Overhead Press', 'Lat Pulldown, Wide', 'Seated Row (Cable)', 'T-Bar Row', 'Hack Squat', 'Leg Extension', 'Lying Leg Curl'];
+  const MUSCLE_HINTS = [[/bench|chest|crossover|press/i, 'Chest'], [/lat|row|pullover/i, 'Back'], [/delt|raise|shoulder/i, 'Shoulders'], [/tricep/i, 'Triceps'], [/bicep|curl(?! \(leg\))/i, 'Biceps'], [/leg curl/i, 'Hamstrings'], [/squat|extension/i, 'Quads'], [/calf/i, 'Calves'], [/abs|crunch/i, 'Abs'], [/adductor|abductor|hip/i, 'Hips'], [/trap|shrug/i, 'Traps']];
+
+  const swapApi = o => (o && o.swap) || (typeof window !== 'undefined' && window.ExerciseSwap) || null;
+  const r1 = x => Math.round(x * 10) / 10;
+
+  function muscleOf(name, X) {
+    if (X && typeof X.lookup === 'function') { try { const e = X.lookup(name); if (e && e.muscle) return e.muscle; } catch (e) { /* fall through */ } }
+    if (/lying leg curl|seated leg curl/i.test(name)) return 'Hamstrings';
+    const hit = MUSCLE_HINTS.find(([re]) => re.test(name));
+    return hit ? hit[1] : 'Other';
+  }
+
+  /** exercises: names or shell PROGRAM rows [name, w, reps, sets, unit, note]. */
+  function normalize(exercises, o) {
+    const X = swapApi(o), mains = (o && o.mainLifts) || DEFAULT_MAIN;
+    return (exercises || []).map((e, i) => {
+      const name = Array.isArray(e) ? e[0] : typeof e === 'string' ? e : (e && e.name) || '';
+      const sets = Array.isArray(e) ? +e[3] || 1 : (e && +e.sets) || 1;
+      const reps = Array.isArray(e) ? e[2] : e && e.reps;
+      return { name, origSets: sets, sets, reps, main: mains.includes(name), muscle: muscleOf(name, X), i, pair: null, drop: false };
+    });
+  }
+
+  function estimate(items, o) {
+    o = o || {};
+    const t = Object.assign({}, TIMING, o.timing);
+    let lifting = items.some(it => !it.drop) ? t.warmup : 0;
+    items.forEach(it => {
+      if (it.drop || !it.sets) return;
+      const rest = it.main ? t.restMain : it.pair ? t.restSuperset : t.restAcc;
+      lifting += t.change + it.sets * (t.work + rest);
+    });
+    const cardio = Math.max(0, +o.cardioMin || 0);
+    return { lifting: r1(lifting), cardio, total: r1(lifting + cardio) };
+  }
+
+  /** Drop order for accessories: later in the session and a muscle already worked go first. */
+  function priority(items) {
+    const seen = new Set();
+    return items.map(it => {
+      let p = it.main ? -100 : it.i;
+      if (!it.main && seen.has(it.muscle)) p += 100;
+      seen.add(it.muscle);
+      return p;
+    });
+  }
+
+  /** Superset only accessories that sit together between main lifts, different muscles first. */
+  function pairAccessories(items) {
+    items.forEach(x => { if (!x.main) x.pair = null; });
+    const runs = []; let run = [];
+    items.forEach(it => { if (it.main) { if (run.length) runs.push(run); run = []; } else if (!it.drop) run.push(it); });
+    if (run.length) runs.push(run);
+    let letter = 0;
+    runs.forEach(acc => {
+      for (let a = 0; a < acc.length; a++) {
+        if (acc[a].pair) continue;
+        let b = acc.findIndex((x, j) => j > a && !x.pair && x.muscle !== acc[a].muscle);
+        if (b < 0) b = acc.findIndex((x, j) => j > a && !x.pair);
+        if (b < 0) continue;
+        acc[a].pair = acc[b].pair = String.fromCharCode(65 + letter++);
+      }
+    });
+    return items.filter(it => it.pair).length;
+  }
+
+  function plan(exercises, o) {
+    o = o || {};
+    const minutes = +o.minutes || 60;
+    const cardioOrig = o.cardioMin == null ? 30 : Math.max(0, +o.cardioMin || 0);
+    const items = normalize(exercises, o);
+    const full = estimate(items, { cardioMin: cardioOrig, timing: o.timing });
+    let cardioMin = cardioOrig;
+    const steps = [];
+    const est = () => estimate(items, { cardioMin, timing: o.timing });
+    const fits = () => est().total <= minutes + 0.01;
+    const pri = priority(items);
+    const byPriority = () => items.map((it, k) => ({ it, p: pri[k] })).filter(x => !x.it.main && !x.it.drop).sort((a, b) => b.p - a.p).map(x => x.it);
+    const scaleCardio = () => {
+      const next = CARDIO_STEPS.find(m => m < cardioMin);
+      if (next == null) return false;
+      steps.push(next ? 'Treadmill ' + cardioMin + ' → ' + next + ' min' : 'Skip the treadmill today');
+      cardioMin = next; return true;
+    };
+
+    if (!fits()) { const n = pairAccessories(items); if (n) steps.push('Superset the accessories (' + n + ' moves, shorter rests)'); }
+    if (!fits() && cardioMin > CARDIO_STEPS[0]) scaleCardio();
+    // trim accessory sets to 2, lowest priority first
+    while (!fits()) {
+      const it = byPriority().find(x => x.sets > 2);
+      if (!it) break;
+      it.sets = 2; steps.push(it.name + ': ' + it.origSets + ' → 2 sets');
+    }
+    // drop accessories: a second move for a muscle goes first, the treadmill goes before any first-of-muscle move
+    while (!fits()) {
+      if (cardioMin > 10 && scaleCardio()) continue;
+      const it = byPriority()[0];
+      if (!it) break;
+      if (pri[items.indexOf(it)] < 100 && cardioMin > 0) { scaleCardio(); continue; }
+      it.drop = true; it.pair = null; steps.push('Skip ' + it.name);
+      pairAccessories(items);
+    }
+    while (!fits() && scaleCardio()) { /* last resort: cardio to 0 */ }
+    while (!fits()) {
+      const it = items.filter(x => x.main && !x.drop && x.sets > 2).sort((a, b) => b.i - a.i)[0];
+      if (!it) break;
+      it.sets = 2; steps.push(it.name + ': ' + it.origSets + ' → 2 sets (main lift, still 2 hard sets)');
+    }
+    const e = est();
+    return { minutes, items, cardioMin, cardioOrig, est: e, full, steps, over: r1(Math.max(0, e.total - minutes)) };
+  }
+
+  // ---------- state on workouts/{date} ----------
+  function apply(doc, p) {
+    const w = Object.assign({}, doc);
+    const sets = {}; const pairs = {};
+    p.items.forEach(it => { if (!it.drop && it.sets !== it.origSets) sets[it.name] = it.sets; if (it.pair) (pairs[it.pair] = pairs[it.pair] || []).push(it.name); });
+    w.short = { minutes: p.minutes, sets, drop: p.items.filter(it => it.drop).map(it => it.name), pairs: Object.keys(pairs).sort().map(k => pairs[k]), cardioMin: p.cardioMin, est: p.est.total };
+    return w;
+  }
+  function clear(doc) { const w = Object.assign({}, doc); delete w.short; return w; }
+  const active = doc => (doc && doc.short && doc.short.minutes) || null;
+  /** Per-exercise view of a stored choice: {sets|null, drop, pair} for the shell's exercise rows. */
+  function slot(doc, name) {
+    const s = doc && doc.short; if (!s) return { sets: null, drop: false, pair: null };
+    const k = (s.pairs || []).findIndex(p => p.includes(name));
+    return { sets: s.sets && s.sets[name] != null ? s.sets[name] : null, drop: (s.drop || []).includes(name), pair: k < 0 ? null : String.fromCharCode(65 + k) };
+  }
+
+  // ---------- UI ----------
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const mins = m => Math.round(m) + ' min';
+  const css = `
+.ss-card .ss-mins{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.ss-card .ss-est{display:flex;gap:10px;flex-wrap:wrap;font-size:.88rem;color:var(--muted);margin:4px 0}
+.ss-card .ss-est b{color:var(--text,inherit)}
+.ss-card .ss-steps{margin:8px 0 0;padding-left:18px;font-size:.88rem;display:grid;gap:4px}
+.ss-card .ss-on{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+.ss-skip{opacity:.6}
+.ss-skip .sets,.ss-skip details{display:none}
+`;
+
+  /**
+   * cardHtml({session, exercises, minutes, active, open, mainLifts, cardioMin, swap, plan})
+   * minutes: the budget being previewed; active: minutes stored on the day's workout, else null.
+   */
+  function cardHtml(o) {
+    o = o || {};
+    const minutes = o.active || o.minutes || 45;
+    const p = o.plan || plan(o.exercises, { minutes, mainLifts: o.mainLifts, cardioMin: o.cardioMin, swap: o.swap });
+    const chips = BUDGETS.map(m => '<button class="chip" data-act="ssmin" data-min="' + m + '" aria-pressed="' + (m === minutes) + '">' + m + ' min</button>').join('');
+    const est = '<div class="ss-est"><span>Full session <b>' + mins(p.full.total) + '</b></span><span>This plan <b>' + mins(p.est.total) + '</b> (' + mins(p.est.lifting) + ' lifting' + (p.cardioMin ? ' + ' + mins(p.cardioMin) + ' treadmill' : '') + ')</span></div>';
+    const steps = p.steps.length ? '<ul class="ss-steps">' + p.steps.map(s => '<li>' + esc(s) + '</li>').join('') + '</ul>' : '<p class="muted" style="font-size:.88rem">The full session already fits. Nothing to trim.</p>';
+    const over = p.over ? '<p class="note" style="font-size:.85rem">Still about ' + mins(p.over) + ' over. Main lifts keep their sets; take shorter rests on the accessories.</p>' : '';
+    const body = o.active
+      ? '<div class="ss-on"><span class="pill good">Short session on · ' + o.active + ' min</span><button class="btn ghost small" data-act="ssclear">Back to the full session</button></div>'
+      : '<div class="ss-on"><button class="btn small" data-act="ssapply" data-min="' + minutes + '">Use the ' + minutes + ' min version today</button></div>';
+    return '<div class="card ss-card"><details' + (o.open || o.active ? ' open' : '') + ' data-keep="short"><summary><b>Short on time?</b> <span class="muted" style="font-size:.85rem">' + (o.active ? o.active + ' min version' : 'full session ~' + mins(p.full.total)) + '</span></summary>' +
+      '<div class="ss-mins">' + chips + '</div>' + est + steps + over + body + '</details></div>';
+  }
+
+  const api = { BUDGETS, TIMING, CARDIO_STEPS, normalize, estimate, plan, apply, clear, active, slot, cardHtml, css };
+  return api;
+});
+
+window.ShortSession=ShortSession;
+</script>
+<script>
 /* Progress photos for the Aziz Cut Tracker: weekly front / side / back photos, a before/after slider,
  * and an aligned timelapse with a weight / waist overlay.
  * Plain JS, no imports, no network. Mount with:
@@ -16692,6 +16972,638 @@ if (typeof window !== "undefined") window.MuscleFeedback = MuscleFeedback;
 if (typeof module !== "undefined" && module.exports) module.exports = MuscleFeedback;
 </script>
 <script>
+/**
+ * StrengthScore — one overall strength score (0–100) from each lift's est. 1RM relative to body
+ * weight, a level per muscle group, and push/pull, upper/lower and quad/hamstring imbalance flags.
+ * (The Fitbod "Strength Score" idea.) Plain JS, no imports, no network. Global `StrengthScore`.
+ *
+ *   StrengthScore.css
+ *   StrengthScore.compute(lifts, opts)      -> {overall, level, groups, muscles, lifts, flags, skipped, notes, bodyKg}
+ *   StrengthScore.fromDocs(docs, opts)      -> same, lifts from StrengthAnalytics.analyze(docs, opts) and body weight from docs.weights
+ *   StrengthScore.html(docs, opts)          -> one .card for the Progress tab
+ *   StrengthScore.summary(docs, opts)       -> plain text for the coach / a chat
+ *   StrengthScore.patternFor(name)          -> {id, ratios, kind, group} or null
+ *   StrengthScore.scoreOf(ratio, ratios)    -> 0–100
+ *   StrengthScore.levelOf(score)            -> "Starting" | "Beginner" | "Novice" | "Intermediate" | "Advanced" | "Elite"
+ *
+ * Method: a lift's ratio = est. 1RM (kg) ÷ body weight (kg). Each movement pattern has five ratio
+ * breakpoints (beginner, novice, intermediate, advanced, elite), mapped to 20 / 40 / 60 / 80 / 100 by
+ * straight lines, capped at 100. Dumbbell patterns use the per-hand load. Machine loads differ by
+ * brand, so machine lifts count 0.6 and cable lifts 0.8 toward a muscle. Standards are a generic
+ * table (opts.standards overrides it, opts.sex "female" scales it); nothing about one person is hard-coded.
+ */
+window.StrengthScore = (() => {
+  "use strict";
+
+  const DAY = 864e5;
+  const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const localIso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const diff = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / DAY);
+  const num = v => (typeof v === "number" && isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && isFinite(+v) ? +v : null);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const f0 = n => (n == null || !isFinite(n) ? "—" : String(Math.round(n)));
+  const f2 = n => (n == null || !isFinite(n) ? "—" : (Math.round(n * 100) / 100).toFixed(2));
+  const keyOf = s => String(s || "").toLowerCase().replace(/\(.*?\)/g, m => " " + m + " ").replace(/[^a-z0-9]+/g, " ").trim();
+
+  const LEVELS = ["Starting", "Beginner", "Novice", "Intermediate", "Advanced", "Elite"];
+  const STEPS = [20, 40, 60, 80, 100];
+
+  // Movement patterns. ratios = est. 1RM ÷ body weight at beginner / novice / intermediate / advanced / elite
+  // (male; generic standards in the spirit of strengthlevel-style tables, rounded). kind: free | cable | machine | bw.
+  // group: push | pull | legs. Dumbbell ("db") patterns are per hand.
+  const STANDARDS = {
+    benchBB:     { label: "Barbell bench press",      ratios: [0.50, 0.75, 1.00, 1.25, 1.50], kind: "free",    group: "push" },
+    benchDB:     { label: "Dumbbell press (per hand)", ratios: [0.15, 0.25, 0.35, 0.45, 0.55], kind: "free",    group: "push" },
+    chestMach:   { label: "Chest press (machine)",     ratios: [0.60, 0.90, 1.20, 1.50, 1.80], kind: "machine", group: "push" },
+    flyCable:    { label: "Fly / crossover",           ratios: [0.15, 0.25, 0.35, 0.45, 0.55], kind: "cable",   group: "push" },
+    ohpBB:       { label: "Barbell overhead press",    ratios: [0.35, 0.50, 0.65, 0.85, 1.05], kind: "free",    group: "push" },
+    ohpDB:       { label: "Dumbbell shoulder press (per hand)", ratios: [0.10, 0.17, 0.25, 0.33, 0.42], kind: "free", group: "push" },
+    ohpMach:     { label: "Shoulder press (machine)",  ratios: [0.40, 0.60, 0.80, 1.05, 1.30], kind: "machine", group: "push" },
+    lateral:     { label: "Lateral raise (per hand)",  ratios: [0.05, 0.08, 0.12, 0.17, 0.22], kind: "free",    group: "push" },
+    tricepsCable:{ label: "Triceps pushdown / rope",   ratios: [0.30, 0.45, 0.60, 0.80, 1.00], kind: "cable",   group: "push" },
+    dip:         { label: "Dip (body weight + load)",  ratios: [1.00, 1.15, 1.40, 1.70, 2.00], kind: "bw",      group: "push" },
+    pulldown:    { label: "Lat pulldown",              ratios: [0.50, 0.70, 0.90, 1.10, 1.30], kind: "cable",   group: "pull" },
+    pullup:      { label: "Pull-up (body weight + load)", ratios: [1.00, 1.10, 1.30, 1.50, 1.70], kind: "bw",   group: "pull" },
+    rowBB:       { label: "Barbell / T-bar row",       ratios: [0.50, 0.75, 1.00, 1.25, 1.50], kind: "free",    group: "pull" },
+    rowDB:       { label: "Dumbbell row (per hand)",   ratios: [0.20, 0.30, 0.40, 0.50, 0.60], kind: "free",    group: "pull" },
+    rowCable:    { label: "Seated / machine row",      ratios: [0.60, 0.85, 1.10, 1.35, 1.60], kind: "cable",   group: "pull" },
+    rearDelt:    { label: "Reverse fly / face pull",   ratios: [0.20, 0.35, 0.50, 0.65, 0.80], kind: "cable",   group: "pull" },
+    curlBB:      { label: "Barbell curl",              ratios: [0.20, 0.30, 0.45, 0.60, 0.75], kind: "free",    group: "pull" },
+    curlDB:      { label: "Dumbbell curl (per hand)",  ratios: [0.08, 0.13, 0.19, 0.26, 0.33], kind: "free",    group: "pull" },
+    curlCable:   { label: "Cable / machine curl",      ratios: [0.20, 0.30, 0.45, 0.60, 0.75], kind: "cable",   group: "pull" },
+    squatBB:     { label: "Barbell squat",             ratios: [0.75, 1.00, 1.50, 1.90, 2.30], kind: "free",    group: "legs" },
+    hackSquat:   { label: "Hack squat (machine)",      ratios: [0.75, 1.10, 1.50, 2.00, 2.50], kind: "machine", group: "legs" },
+    legPress:    { label: "Leg press",                 ratios: [1.00, 1.50, 2.20, 3.00, 3.80], kind: "machine", group: "legs" },
+    lunge:       { label: "Lunge / split squat (per hand)", ratios: [0.15, 0.25, 0.35, 0.45, 0.55], kind: "free", group: "legs" },
+    deadlift:    { label: "Deadlift",                  ratios: [1.00, 1.25, 1.75, 2.25, 2.75], kind: "free",    group: "legs" },
+    rdl:         { label: "Romanian deadlift / hip hinge", ratios: [0.75, 1.00, 1.40, 1.80, 2.20], kind: "free", group: "legs" },
+    legCurl:     { label: "Leg curl",                  ratios: [0.30, 0.50, 0.70, 0.90, 1.10], kind: "machine", group: "legs" },
+    legExt:      { label: "Leg extension",             ratios: [0.50, 0.75, 1.00, 1.30, 1.60], kind: "machine", group: "legs" },
+    hipThrust:   { label: "Hip thrust / glute bridge", ratios: [1.00, 1.40, 1.90, 2.40, 2.90], kind: "free",    group: "legs" },
+    calf:        { label: "Calf raise / press",        ratios: [0.80, 1.20, 1.70, 2.20, 2.70], kind: "machine", group: "legs" }
+  };
+  // Confidence per equipment kind (machine loads differ by brand; body-weight moves need the added load logged).
+  const KIND_WEIGHT = { free: 1, cable: 0.8, machine: 0.6, bw: 0.8 };
+  // Female standards: upper-body ratios × 0.65, lower × 0.75 (population averages, rounded).
+  const SEX_SCALE = { male: { push: 1, pull: 1, legs: 1 }, female: { push: 0.65, pull: 0.65, legs: 0.75 } };
+
+  // Name rules, first match wins (same key normalisation as StrengthAnalytics).
+  const RULES = [
+    [/treadmill|bike|cycling|elliptical|rower\b|rowing machine|stair|walk\b|run\b|jog|swim|cardio|hiit/, null],
+    [/\bcrunch|\babs\b|\bab\b|plank|leg raise|sit up|situp|russian twist|woodchop|cable twist/, null],
+    [/hip abduct|hip adduct|abductor|adductor|shrug|trap|forearm|wrist|neck|back extension|hyperextension|good morning/, null],
+    [/dip\b|dips\b/, "dip"],
+    [/pull up|pullup|chin up|chinup/, "pullup"],
+    [/lat pulldown|pulldown|pull down/, "pulldown"],
+    [/upright row/, "lateral"],
+    [/calf|calves/, "calf"],
+    [/glute kickback|hip thrust|glute bridge|glute/, "hipThrust"],
+    [/\bt bar\b|barbell row|bent over row|pendlay/, "rowBB"],
+    [/row.*(dumbbell|db)|(dumbbell|db).*row|single arm row|one arm row/, "rowDB"],
+    [/row|iso lateral|hammer strength/, "rowCable"],
+    [/reverse fly|rear delt|face pull|pec deck reverse|reverse pec/, "rearDelt"],
+    [/fly|flye|crossover|pec deck|chest machine|gundam/, (n) => /machine|gundam|press/.test(n) ? "chestMach" : "flyCable"],
+    [/(incline|flat|decline)?.*bench.*(dumbbell|db)|(dumbbell|db).*(bench|chest|incline).*press|(incline|flat|decline) (dumbbell|db) press|incline db/, "benchDB"],
+    [/chest press|incline press.*machine|press.*machine.*(chest|incline)|smith.*(bench|incline)/, "chestMach"],
+    [/bench press|incline press|floor press|close grip/, "benchBB"],
+    [/(shoulder|overhead|military|arnold).*(dumbbell|db)|(dumbbell|db).*(shoulder|overhead|arnold)/, "ohpDB"],
+    [/(shoulder|overhead).*(machine|smith)|(machine|smith).*(shoulder|overhead)/, "ohpMach"],
+    [/overhead press|shoulder press|military press|push press|ohp|strict press/, "ohpBB"],
+    [/lateral raise|side delt|side raise/, "lateral"],
+    [/triceps|tricep|pushdown|skull|skullcrusher|overhead extension/, "tricepsCable"],
+    [/(curl).*(dumbbell|db|hammer|incline|concentration|preacher dumbbell)|(dumbbell|db|hammer).*curl/, (n) => /leg|hamstring/.test(n) ? "legCurl" : "curlDB"],
+    [/(leg|lying|seated|standing|hamstring|nordic).*curl|leg curl/, "legCurl"],
+    [/(curl).*(barbell|ez|bb)|(barbell|ez|bb).*curl/, "curlBB"],
+    [/curl|bicep|biceps/, "curlCable"],
+    [/hack squat|hack/, "hackSquat"],
+    [/leg press|pendulum/, "legPress"],
+    [/leg extension|leg ext/, "legExt"],
+    [/lunge|split squat|bulgarian|step up/, "lunge"],
+    [/romanian|rdl|stiff leg|hip hinge|pull through/, "rdl"],
+    [/deadlift|trap bar/, "deadlift"],
+    [/squat|goblet|front squat|smith squat|belt squat/, "squatBB"]
+  ];
+
+  function patternFor(name, overrides) {
+    if (overrides) { const o = overrides[name] || overrides[keyOf(name)]; if (o) return STANDARDS[o] ? { id: o, ...STANDARDS[o] } : null; }
+    const n = keyOf(name);
+    for (const [re, id] of RULES) if (re.test(n)) {
+      const r = typeof id === "function" ? id(n) : id;
+      return r ? { id: r, ...STANDARDS[r] } : null;
+    }
+    return null;
+  }
+
+  // Piecewise-linear map from a ratio to 0–100 over the five breakpoints; below the first is 0–20, above elite capped.
+  function scoreOf(ratio, ratios) {
+    if (!(ratio > 0) || !ratios || ratios.length !== 5) return null;
+    if (ratio >= ratios[4]) return 100;
+    if (ratio < ratios[0]) return Math.max(0, 20 * ratio / ratios[0]);
+    for (let i = 0; i < 4; i++) if (ratio < ratios[i + 1]) return STEPS[i] + (STEPS[i + 1] - STEPS[i]) * (ratio - ratios[i]) / (ratios[i + 1] - ratios[i]);
+    return 100;
+  }
+  const levelOf = s => (s == null ? "—" : s >= 100 ? LEVELS[5] : s >= 80 ? LEVELS[4] : s >= 60 ? LEVELS[3] : s >= 40 ? LEVELS[2] : s >= 20 ? LEVELS[1] : LEVELS[0]);
+  const levelIdx = s => (s == null ? -1 : Math.min(5, Math.floor(s / 20)));
+
+  const MUSCLE_LABEL = { chest: "Chest", back: "Back", frontDelts: "Front delts", sideDelts: "Side delts", rearDelts: "Rear delts", biceps: "Biceps", triceps: "Triceps", quads: "Quads", hamstrings: "Hamstrings", glutes: "Glutes", calves: "Calves", traps: "Traps", forearms: "Forearms", abs: "Abs", adductors: "Adductors", abductors: "Abductors" };
+  const GROUPS = {
+    push:  { label: "Push",  muscles: ["chest", "frontDelts", "sideDelts", "triceps"] },
+    pull:  { label: "Pull",  muscles: ["back", "rearDelts", "biceps"] },
+    legs:  { label: "Legs",  muscles: ["quads", "hamstrings", "glutes", "calves"] }
+  };
+  const REGIONS = { upper: ["push", "pull"], lower: ["legs"] };
+  const GAP = 15; // points between two sides before a flag
+  const STALE_DAYS = 60;
+
+  function weighIns(weights) {
+    return Object.entries(weights || {})
+      .map(([k, w]) => ({ date: isDate(w && w.date) ? w.date : k, kg: num(w && w.kg) }))
+      .filter(w => isDate(w.date) && w.kg != null && w.kg > 20 && w.kg < 400)
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+  function bodyAt(ws, date) {
+    const upTo = ws.filter(w => w.date <= date);
+    const pool = upTo.length ? upTo : ws;
+    if (!pool.length) return null;
+    const last = pool[pool.length - 1];
+    const near = pool.filter(w => Math.abs(diff(w.date, last.date)) <= 3);
+    return { kg: near.reduce((a, w) => a + w.kg, 0) / near.length, date: last.date };
+  }
+
+  /**
+   * lifts: StrengthAnalytics.analyze(...).lifts — [{name, muscles:{primary,secondary}, points:[{date, e1rm}], unit}]
+   * or a plain [{name, e1rmKg, date, muscles?}] list. opts: today, bodyKg, bodyDate, sex, asOf, window, standards, patterns, sexScale.
+   */
+  function compute(lifts, opts) {
+    opts = opts || {};
+    const today = isDate(opts.today) ? opts.today : localIso(new Date());
+    const asOf = isDate(opts.asOf) ? opts.asOf : today;
+    const windowDays = opts.window > 0 ? opts.window : STALE_DAYS;
+    const sex = opts.sex === "female" ? "female" : "male";
+    const scale = opts.sexScale || SEX_SCALE[sex];
+    const std = Object.assign({}, STANDARDS, opts.standards || {});
+    const notes = [], skipped = [], rows = [];
+    const bodyKg = num(opts.bodyKg);
+    if (!bodyKg) return { today, asOf, bodyKg: null, overall: null, level: "—", groups: {}, regions: {}, muscles: [], lifts: [], flags: [], skipped: [], notes: ["Log a weigh-in first: the score is strength relative to body weight."] };
+
+    (lifts || []).forEach(l => {
+      const name = l.name || "";
+      const pat = patternFor(name, opts.patterns);
+      // Latest est. 1RM at or before asOf.
+      let e = null, date = null;
+      if (Array.isArray(l.points)) {
+        for (let i = l.points.length - 1; i >= 0; i--) { const p = l.points[i]; if (p.e1rm != null && p.date <= asOf) { e = p.e1rm; date = p.date; break; } }
+      } else if (num(l.e1rmKg) != null) { e = num(l.e1rmKg); date = isDate(l.date) ? l.date : asOf; }
+      if (!pat) { if (e != null) skipped.push({ name, why: "no standard for this exercise" }); return; }
+      const base = std[pat.id] || pat;
+      if (e == null) return; // cardio, no load, or never estimated: not a strength lift to score
+      if (diff(date, asOf) > windowDays) { skipped.push({ name, why: "last session " + diff(date, asOf) + " days ago" }); return; }
+      const ratios = base.ratios.map(r => r * (scale[base.group] || 1));
+      const ratio = base.kind === "bw" ? (bodyKg + e) / bodyKg : e / bodyKg;
+      const score = scoreOf(ratio, ratios);
+      const muscles = l.muscles && (l.muscles.primary || []).length ? l.muscles : { primary: GROUPS[base.group].muscles.slice(0, 1), secondary: [] };
+      rows.push({ name, pattern: pat.id, patternLabel: base.label, group: base.group, kind: base.kind, weight: KIND_WEIGHT[base.kind] || 0.6,
+        e1rmKg: e, date, ratio, score, level: levelOf(score), muscles, unit: l.unit || "kg" });
+    });
+
+    // Per muscle: weighted mean of lift scores (primary 1, secondary 0.5, × equipment confidence).
+    const acc = {};
+    rows.forEach(r => {
+      (r.muscles.primary || []).forEach(m => { (acc[m] = acc[m] || { s: 0, w: 0, lifts: [] }); acc[m].s += r.score * r.weight; acc[m].w += r.weight; acc[m].lifts.push(r.name); });
+      (r.muscles.secondary || []).forEach(m => { (acc[m] = acc[m] || { s: 0, w: 0, lifts: [] }); acc[m].s += r.score * r.weight * 0.5; acc[m].w += r.weight * 0.5; });
+    });
+    const muscleScore = {};
+    const muscles = Object.keys(acc).filter(m => acc[m].w > 0).map(m => {
+      const s = acc[m].s / acc[m].w; muscleScore[m] = s;
+      return { id: m, label: MUSCLE_LABEL[m] || m, score: s, level: levelOf(s), lifts: acc[m].lifts, weight: acc[m].w };
+    }).sort((a, b) => b.score - a.score);
+
+    // Groups: mean of the muscles present, weighted by the evidence behind each.
+    const groups = {};
+    Object.entries(GROUPS).forEach(([id, g]) => {
+      const ms = g.muscles.filter(m => muscleScore[m] != null);
+      if (!ms.length) { groups[id] = { id, label: g.label, score: null, level: "—", muscles: [], lifts: 0 }; return; }
+      const w = ms.reduce((a, m) => a + acc[m].w, 0);
+      const s = ms.reduce((a, m) => a + muscleScore[m] * acc[m].w, 0) / w;
+      groups[id] = { id, label: g.label, score: s, level: levelOf(s), muscles: ms, lifts: rows.filter(r => r.group === id).length };
+    });
+    const regions = {};
+    Object.entries(REGIONS).forEach(([id, gs]) => {
+      const have = gs.map(g => groups[g]).filter(g => g.score != null);
+      regions[id] = have.length ? have.reduce((a, g) => a + g.score, 0) / have.length : null;
+    });
+
+    const scored = Object.values(groups).filter(g => g.score != null);
+    const overall = scored.length ? scored.reduce((a, g) => a + g.score, 0) / scored.length : null;
+    const missing = Object.values(groups).filter(g => g.score == null).map(g => g.label);
+    if (overall != null && missing.length) notes.push("No " + missing.join(" or ").toLowerCase() + " lifts in the last " + windowDays + " days, so the overall score covers " + scored.map(g => g.label.toLowerCase()).join(" and ") + " only.");
+    if (rows.length && rows.length < 3) notes.push("Only " + rows.length + " scorable lift" + (rows.length === 1 ? "" : "s") + "; the score firms up with 3 or more.");
+    if (rows.some(r => r.kind === "machine")) notes.push("Machine loads differ by brand, so machine lifts count 0.6 toward a muscle.");
+    if (sex === "male" && !opts.sex) notes.push("Standards assume male; pass sex: \"female\" for female standards.");
+
+    // Imbalance flags.
+    const flags = [];
+    const gap = (a, b, aLabel, bLabel, what) => {
+      if (a == null || b == null) return;
+      const d = a - b;
+      if (Math.abs(d) < GAP) return;
+      const lag = d > 0 ? bLabel : aLabel, lead = d > 0 ? aLabel : bLabel;
+      flags.push({ id: what, lag, lead, gap: Math.abs(d), text: lag + " lags " + lead.toLowerCase() + " by " + f0(Math.abs(d)) + " points (" + f0(Math.max(a, b)) + " vs " + f0(Math.min(a, b)) + ")." });
+    };
+    gap(groups.push.score, groups.pull.score, "Push", "Pull", "push-pull");
+    gap(regions.upper, regions.lower, "Upper body", "Lower body", "upper-lower");
+    gap(muscleScore.quads, muscleScore.hamstrings, "Quads", "Hamstrings", "quads-hams");
+    gap(muscleScore.chest, muscleScore.back, "Chest", "Back", "chest-back");
+    const flagged = new Set(flags.flatMap(f => [f.lag, f.lead]));
+    // Advice line per flag: the lagging side gets the extra set.
+    flags.forEach(f => { f.advice = "Add a set or two per session for " + f.lag.toLowerCase() + ", or push its loads a little harder, and re-check in 4 weeks."; });
+    if (!flags.length && scored.length >= 2) notes.push("Push, pull and legs are within " + GAP + " points of each other: no imbalance to act on.");
+
+    return { today, asOf, bodyKg, bodyDate: isDate(opts.bodyDate) ? opts.bodyDate : null, sex, overall, level: levelOf(overall), groups, regions, muscles, lifts: rows.sort((a, b) => b.score - a.score), flags, skipped, notes, flagged: [...flagged] };
+  }
+
+  // Lifts from StrengthAnalytics (opts.lifts, opts.analytics, or the global), body weight from docs.weights.
+  function fromDocs(docs, opts) {
+    opts = opts || {};
+    const today = isDate(opts.today) ? opts.today : localIso(new Date());
+    const asOf = isDate(opts.asOf) ? opts.asOf : today;
+    let lifts = opts.lifts;
+    if (!lifts) {
+      const SA = opts.analytics || (typeof StrengthAnalytics !== "undefined" ? StrengthAnalytics : null);
+      if (SA && SA.analyze) { try { lifts = SA.analyze(docs || {}, Object.assign({}, opts, { today })).lifts; } catch (e) { lifts = []; } }
+      else lifts = [];
+    }
+    const ws = weighIns(docs && docs.weights);
+    const bw = num(opts.bodyKg) ? { kg: num(opts.bodyKg), date: null } : bodyAt(ws, asOf);
+    const out = compute(lifts, Object.assign({}, opts, { today, bodyKg: bw ? bw.kg : null, bodyDate: bw ? bw.date : null }));
+    if (bw && bw.date && diff(bw.date, asOf) > 14) out.notes.unshift("Body weight is from " + bw.date + "; log a weigh-in for a current score.");
+    // Change over 28 days: same lifts and the body weight back then.
+    if (out.overall != null && !opts.asOf) {
+      const back = compute(lifts, Object.assign({}, opts, { today, asOf: shift(asOf, -28), bodyKg: (bodyAt(ws, shift(asOf, -28)) || bw).kg }));
+      out.change28 = back.overall != null ? out.overall - back.overall : null;
+    }
+    return out;
+  }
+  const shift = (d, n) => { const t = new Date(Date.parse(d + "T00:00:00Z") + n * DAY); return t.toISOString().slice(0, 10); };
+
+  // ---- rendering ----
+  const css = `
+.ss-card .ss-hero{display:flex;align-items:center;gap:16px;margin:6px 0 10px}
+.ss-ring{position:relative;width:92px;height:92px;flex:none}
+.ss-ring svg{width:92px;height:92px;transform:rotate(-90deg)}
+.ss-ring circle{fill:none;stroke-width:9}
+.ss-ring .bg{stroke:var(--line,#2a2a35)}
+.ss-ring .fg{stroke:var(--accent,#6c8cff);stroke-linecap:round;transition:stroke-dasharray .4s}
+.ss-ring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:26px;font-variant-numeric:tabular-nums}
+.ss-level{font-size:18px;font-weight:600}
+.ss-sub{color:var(--muted,#9a9aa8);font-size:13px;margin-top:2px}
+.ss-chg{font-size:13px;margin-left:6px}
+.ss-chg.up{color:var(--ok,#3ccf7a)} .ss-chg.down{color:var(--bad,#ff6b6b)}
+.ss-groups{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
+.ss-g{background:var(--panel2,rgba(255,255,255,.04));border-radius:10px;padding:8px 10px}
+.ss-g .n{font-size:20px;font-variant-numeric:tabular-nums}
+.ss-g .l{font-size:12px;color:var(--muted,#9a9aa8)}
+.ss-g.lag{outline:1px solid var(--warn,#ffb347)}
+.ss-bar{height:6px;border-radius:3px;background:var(--line,#2a2a35);margin:6px 0 2px;overflow:hidden}
+.ss-bar i{display:block;height:100%;background:var(--accent,#6c8cff)}
+.ss-flag{border-left:3px solid var(--warn,#ffb347);padding:6px 10px;margin:8px 0;background:var(--panel2,rgba(255,255,255,.04));border-radius:0 8px 8px 0;font-size:14px}
+.ss-flag small{display:block;color:var(--muted,#9a9aa8);margin-top:2px}
+.ss-muscles{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin:6px 0;font-size:13px}
+.ss-m{display:flex;align-items:center;gap:8px}
+.ss-m span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ss-m .ss-bar{flex:1.2;margin:0}
+.ss-m b{width:26px;text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+.ss-card table{width:100%;border-collapse:collapse;font-size:13px}
+.ss-card td,.ss-card th{padding:4px 6px;text-align:left;border-bottom:1px solid var(--line,#2a2a35)}
+.ss-card td.r,.ss-card th.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ss-notes{color:var(--muted,#9a9aa8);font-size:12px;margin:8px 0 0;padding-left:16px}
+.ss-card details summary{cursor:pointer;color:var(--muted,#9a9aa8);font-size:13px;margin-top:8px}
+`;
+
+  function ring(score) {
+    const r = 40, c = 2 * Math.PI * r, p = Math.max(0, Math.min(100, score || 0)) / 100;
+    return '<div class="ss-ring"><svg viewBox="0 0 92 92"><circle class="bg" cx="46" cy="46" r="' + r + '"/><circle class="fg" cx="46" cy="46" r="' + r + '" stroke-dasharray="' + (c * p).toFixed(1) + " " + c.toFixed(1) + '"/></svg><b>' + f0(score) + "</b></div>";
+  }
+  const bar = s => '<div class="ss-bar"><i style="width:' + Math.max(0, Math.min(100, s || 0)).toFixed(0) + '%"></i></div>';
+
+  function html(docs, opts) {
+    const A = fromDocs(docs, opts);
+    let body;
+    if (A.overall == null) {
+      body = '<p class="ss-sub">' + esc(A.bodyKg ? "No scorable lifts in the last " + (opts && opts.window > 0 ? opts.window : STALE_DAYS) + " days. Log a few main lifts (press, row or pulldown, squat or leg press) and the score appears here." : A.notes[0]) + "</p>"
+        + (A.skipped.length ? '<ul class="ss-notes">' + A.skipped.slice(0, 6).map(s => "<li>" + esc(s.name) + ": " + esc(s.why) + "</li>").join("") + "</ul>" : "");
+    } else {
+      const chg = A.change28 == null ? "" : '<span class="ss-chg ' + (A.change28 >= 1 ? "up" : A.change28 <= -1 ? "down" : "") + '">' + (A.change28 >= 0 ? "+" : "") + f0(A.change28) + " in 28 days</span>";
+      const lagging = new Set(A.flags.map(f => f.lag));
+      body = '<div class="ss-hero">' + ring(A.overall) + '<div><div class="ss-level">' + esc(A.level) + chg + '</div><div class="ss-sub">Est. 1RM ÷ body weight (' + f0(A.bodyKg) + ' kg) across ' + A.lifts.length + ' lift' + (A.lifts.length === 1 ? "" : "s") + '. 0–100, 60 = intermediate.</div></div></div>'
+        + '<div class="ss-groups">' + ["push", "pull", "legs"].map(k => { const g = A.groups[k]; return '<div class="ss-g' + (lagging.has(g.label) ? " lag" : "") + '"><div class="n">' + f0(g.score) + '</div><div class="l">' + esc(g.label) + " · " + esc(g.level) + "</div>" + bar(g.score) + "</div>"; }).join("") + "</div>"
+        + A.flags.map(f => '<div class="ss-flag">' + esc(f.text) + "<small>" + esc(f.advice) + "</small></div>").join("")
+        + (A.muscles.length ? '<div class="ss-muscles">' + A.muscles.map(m => '<div class="ss-m"><span>' + esc(m.label) + "</span>" + bar(m.score) + "<b>" + f0(m.score) + "</b></div>").join("") + "</div>" : "")
+        + '<details><summary>Per lift (' + A.lifts.length + ")</summary><table><thead><tr><th>Lift</th><th class=\"r\">Est. 1RM</th><th class=\"r\">× BW</th><th class=\"r\">Score</th></tr></thead><tbody>"
+        + A.lifts.map(r => "<tr><td>" + esc(r.name) + '</td><td class="r">' + f0(r.e1rmKg) + ' kg</td><td class="r">' + f2(r.ratio) + '</td><td class="r">' + f0(r.score) + " · " + esc(r.level) + "</td></tr>").join("")
+        + "</tbody></table>" + (A.skipped.length ? '<ul class="ss-notes">' + A.skipped.map(s => "<li>Not scored: " + esc(s.name) + " (" + esc(s.why) + ")</li>").join("") + "</ul>" : "") + "</details>";
+    }
+    return '<section class="card ss-card"><h3>Strength score</h3>' + body + (A.notes.length ? '<ul class="ss-notes">' + A.notes.map(n => "<li>" + esc(n) + "</li>").join("") + "</ul>" : "") + "</section>";
+  }
+
+  function summary(docs, opts) {
+    const A = fromDocs(docs, opts);
+    if (A.overall == null) return "Strength score: not available yet (" + (A.notes[0] || "no scorable lifts") + ")";
+    const out = ["Strength score " + f0(A.overall) + "/100 (" + A.level + ")" + (A.change28 != null ? ", " + (A.change28 >= 0 ? "+" : "") + f0(A.change28) + " in 28 days" : "") + ", body weight " + f0(A.bodyKg) + " kg."];
+    out.push("Push " + f0(A.groups.push.score) + ", pull " + f0(A.groups.pull.score) + ", legs " + f0(A.groups.legs.score) + ".");
+    A.flags.forEach(f => out.push("Imbalance: " + f.text + " " + f.advice));
+    if (!A.flags.length) out.push("No push/pull or upper/lower imbalance.");
+    return out.join("\n");
+  }
+
+  return { css, compute, fromDocs, html, summary, patternFor, scoreOf, levelOf, levelIdx, STANDARDS, LEVELS, GROUPS, GAP, STALE_DAYS, KIND_WEIGHT };
+})();
+
+if (typeof module !== "undefined" && module.exports) module.exports = StrengthScore;
+</script>
+<script>
+/* Muscle recovery map for the fitness app (Train tab, above the session).
+ * A front/back body diagram coloured by how recovered each muscle is, built from the sets logged per
+ * muscle and the hours since. Plain JS, no imports, no network. Global `MuscleMap`.
+ * Reads:
+ *   lb_workouts/{id}   full logger sessions {start, end (ms), exercises:[{exId, sets:[{t, r, done}]}]}, read first
+ *   lb_exercises/{id}  custom exercise names (optional)
+ *   workouts/{date}    {session, sets:{"<exercise>":[{w, r}]}}; used only for dates the logger has no session
+ *   days/{date}.readiness.soreness (1-5, 5 = not sore; RecoveryFatigue) stretches today's recovery windows
+ * Exercise → muscles comes from StrengthAnalytics.musclesFor (same mapping as the Strength card); pass
+ * opts.musclesFor to override, opts.muscles for per-exercise overrides ({name: {primary, secondary}}).
+ * API:
+ *   MuscleMap.css                      -> string, inject once
+ *   MuscleMap.analyze(docs, opts)      -> {now, muscles:[{id, label, region, pct, status, sets, hoursSince, lastDate, readyInH}], next, soreness, notes}
+ *   MuscleMap.html(docs, opts)         -> HTML string: one card (diagram + list + next-session verdict)
+ *   MuscleMap.summary(docs, opts)      -> plain text for the coach / a chat
+ *   MuscleMap.svg(analysis)            -> the diagram alone
+ * opts (all optional):
+ *   now          ms, default Date.now(); today "YYYY-MM-DD" (defaults from now, local)
+ *   nextSession  {name, exercises:[names]} the session Aziz is about to do → verdict per muscle
+ *   names        {logger exId: name}; library {exId: {name}} (logger exercise library)
+ *   musclesFor   (name) => {primary, secondary, cardio?} | null; muscles {name: {primary, secondary}}
+ *   windows      {large, small} base recovery hours, default 48 / 36; fullSets default 8
+ * Model (see README): a session loads a muscle with dose = min(1, hardSets / 8) (helper muscles count ½ a set),
+ * that fades linearly over window = base × (0.6 + hardSets / 10) hours (base 48 h for big muscles, 36 h for
+ * small ones), capped at 1.6 × base. Doses from different sessions add up. Recovered % = 100 × (1 − fatigue).
+ */
+window.MuscleMap = (() => {
+  const H = 36e5, DAY = 864e5, WINDOW_DAYS = 7, FULL_SETS = 8;
+  const LARGE = new Set(["chest", "back", "quads", "hamstrings", "glutes"]);
+  const FALLBACK_MUSCLES = [
+    ["chest", "Chest", "upper"], ["back", "Back", "upper"], ["traps", "Traps", "upper"],
+    ["frontDelts", "Front delts", "upper"], ["sideDelts", "Side delts", "upper"], ["rearDelts", "Rear delts", "upper"],
+    ["biceps", "Biceps", "upper"], ["triceps", "Triceps", "upper"], ["forearms", "Forearms", "upper"],
+    ["quads", "Quads", "lower"], ["hamstrings", "Hamstrings", "lower"], ["glutes", "Glutes", "lower"],
+    ["adductors", "Adductors", "lower"], ["abductors", "Abductors", "lower"], ["calves", "Calves", "lower"],
+    ["abs", "Abs", "core"]
+  ].map(([id, label, region]) => ({ id, label, region }));
+  const STATUS = [[80, "ready", "Ready"], [50, "recovering", "Recovering"], [0, "fatigued", "Still fatigued"]];
+
+  const num = v => { const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v; return typeof n === "number" && isFinite(n) ? n : null; };
+  const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const localIso = t => { const d = new Date(t); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const atHour = (s, h) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d, h).getTime(); };
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const keyOf = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const unslug = id => String(id).split("-").map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
+  const asList = c => Array.isArray(c) ? c : Object.values(c || {});
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const hrs = h => h < 1 ? "<1 h" : h < 48 ? Math.round(h) + " h" : (Math.round(h / 24 * 10) / 10).toString().replace(/\.0$/, "") + " d";
+
+  const SA = () => (typeof window !== "undefined" && window.StrengthAnalytics) || (typeof StrengthAnalytics !== "undefined" ? StrengthAnalytics : null);
+  function mapper(opts) {
+    const sa = SA();
+    const base = opts.musclesFor || (sa && sa.musclesFor) || (() => null);
+    const over = opts.muscles || {};
+    return name => {
+      const o = over[name] || over[keyOf(name)];
+      if (o) return { primary: o.primary || [], secondary: o.secondary || [] };
+      return base(name, opts.musclesFor ? undefined : over) || null;
+    };
+  }
+  function muscleList(opts) {
+    const sa = SA();
+    return opts.muscleList || (sa && sa.MUSCLES) || FALLBACK_MUSCLES;
+  }
+
+  function lbName(e, opts, lbEx) {
+    const id = e.exId;
+    if (opts.names && opts.names[id]) return opts.names[id];
+    const lib = opts.library && (opts.library[id] || (Array.isArray(opts.library) && opts.library.find(x => x.id === id)));
+    if (lib && lib.name) return lib.name;
+    const c = lbEx[id];
+    return c && c.name ? c.name : unslug(id);
+  }
+
+  // Sessions in the last WINDOW_DAYS: [{at (ms), date, sets:{muscleId: hardSets}, names:[exercise]}]
+  function sessions(docs, opts) {
+    const now = opts.now, from = now - WINDOW_DAYS * DAY, to = mapper(opts), out = [], lbDates = new Set();
+    const lbEx = Object.fromEntries(asList(docs.lb_exercises).filter(x => x && x.id).map(x => [x.id, x]));
+    const addSets = (sess, name, n) => {
+      const m = to(name);
+      if (!m || m.cardio) { if (!m) sess.unknown.push(name); return; }
+      m.primary.forEach(id => { sess.sets[id] = (sess.sets[id] || 0) + n; });
+      (m.secondary || []).forEach(id => { sess.sets[id] = (sess.sets[id] || 0) + n / 2; });
+    };
+    asList(docs.lb_workouts).forEach(w => {
+      if (!w || !(w.start > 0) || !Array.isArray(w.exercises)) return;
+      const at = w.end > 0 ? w.end : w.start;
+      const date = localIso(w.start);
+      if (at <= now) lbDates.add(date);
+      if (at < from || at > now) return;
+      const sess = { at, date, name: w.templateName || w.name || "", sets: {}, unknown: [] };
+      w.exercises.forEach(e => {
+        if (!e || !e.exId || !Array.isArray(e.sets)) return;
+        const n = e.sets.filter(s => s && s.t !== "w" && s.done !== false && num(s.r) > 0).length;
+        if (n) addSets(sess, lbName(e, opts, lbEx), n);
+      });
+      if (Object.keys(sess.sets).length) out.push(sess);
+    });
+    Object.entries(docs.workouts || {}).forEach(([k, w]) => {
+      const date = isDate(w && w.date) ? w.date : k;
+      if (!isDate(date) || lbDates.has(date) || !w || !w.sets || typeof w.sets !== "object") return;
+      const at = atHour(date, 18); // Quick log has no clock time: assume an evening session
+      if (at < from || at > now) return;
+      const sess = { at, date, name: w.session || "", sets: {}, unknown: [] };
+      Object.entries(w.sets).forEach(([name, sets]) => {
+        if (!Array.isArray(sets)) return;
+        const n = sets.filter(s => s && num(s.r) > 0).length;
+        if (n) addSets(sess, name, n);
+      });
+      if (Object.keys(sess.sets).length) out.push(sess);
+    });
+    return out.sort((a, b) => a.at - b.at);
+  }
+
+  const baseHours = (id, opts) => ((opts.windows || {})[LARGE.has(id) ? "large" : "small"]) || (LARGE.has(id) ? 48 : 36);
+  const windowFor = (id, sets, opts) => clamp(baseHours(id, opts) * (0.6 + sets / 10), baseHours(id, opts) * 0.6, baseHours(id, opts) * 1.6);
+  const fullSets = opts => num(opts.fullSets) || FULL_SETS;
+
+  // Fatigue (0..1) on one muscle at time t, from the sessions that hit it.
+  function fatigueAt(loads, t, stretch) {
+    let f = 0;
+    loads.forEach(L => {
+      const h = (t - L.at) / H;
+      if (h < 0) return;
+      const w = L.window * stretch;
+      if (h < w) f += L.dose * (1 - h / w);
+    });
+    return Math.min(1, f);
+  }
+  const statusOf = pct => STATUS.find(([min]) => pct >= min);
+
+  function analyze(docs, opts = {}) {
+    docs = docs || {};
+    const now = num(opts.now) || Date.now();
+    const today = isDate(opts.today) ? opts.today : localIso(now);
+    const o = Object.assign({}, opts, { now, today });
+    const list = muscleList(o), sess = sessions(docs, o);
+    const day = (docs.days || {})[today];
+    const sore = num(day && day.readiness && day.readiness.soreness);
+    const stretch = sore === 1 ? 1.25 : sore === 2 ? 1.1 : 1;
+    const notes = [];
+    const muscles = list.map(m => {
+      const loads = sess.filter(s => s.sets[m.id] > 0).map(s => ({ at: s.at, date: s.date, sets: s.sets[m.id], dose: Math.min(1, s.sets[m.id] / fullSets(o)), window: windowFor(m.id, s.sets[m.id], o) }));
+      const f = fatigueAt(loads, now, stretch);
+      const pct = Math.round(100 * (1 - f));
+      const last = loads[loads.length - 1] || null;
+      let readyInH = 0;
+      if (pct < 80) { for (let h = 1; h <= 24 * WINDOW_DAYS; h++) if (100 * (1 - fatigueAt(loads, now + h * H, stretch)) >= 80) { readyInH = h; break; } }
+      const [, status, statusLabel] = statusOf(pct);
+      return {
+        id: m.id, label: m.label, region: m.region, pct, status: last ? status : "fresh", statusLabel: last ? statusLabel : "Fresh",
+        sets: loads.reduce((a, L) => a + L.sets, 0), lastSets: last ? last.sets : 0,
+        hoursSince: last ? (now - last.at) / H : null, lastDate: last ? last.date : null, readyInH
+      };
+    });
+    const unknown = [...new Set(sess.flatMap(s => s.unknown))];
+    if (unknown.length) notes.push("Not mapped to a muscle: " + unknown.join(", ") + ".");
+    if (stretch > 1) notes.push("You logged soreness " + sore + "/5 today, so recovery windows are stretched " + Math.round((stretch - 1) * 100) + "%.");
+    if (!sess.length) notes.push("No sets logged in the last 7 days, so everything shows as fresh.");
+
+    let next = null;
+    if (opts.nextSession && Array.isArray(opts.nextSession.exercises) && opts.nextSession.exercises.length) {
+      const to = mapper(o), hit = new Map();
+      opts.nextSession.exercises.forEach(n => { const m = to(n); if (!m || m.cardio) return; m.primary.forEach(id => hit.set(id, "primary")); (m.secondary || []).forEach(id => { if (!hit.has(id)) hit.set(id, "secondary"); }); });
+      const rows = [...hit].map(([id, role]) => { const m = muscles.find(x => x.id === id); return m ? { id, label: m.label, pct: m.pct, role, readyInH: m.readyInH } : null; }).filter(Boolean).sort((a, b) => a.pct - b.pct);
+      const prim = rows.filter(r => r.role === "primary"), low = (prim.length ? prim : rows).filter(r => r.pct < 80);
+      const worst = (prim.length ? prim : rows)[0];
+      let verdict, note;
+      if (!rows.length) { verdict = "unknown"; note = "No muscles recognised in this session."; }
+      else if (!worst || worst.pct >= 80) { verdict = "go"; note = "Everything this session hits is recovered."; }
+      else if (worst.pct >= 50) { verdict = "ok"; note = low.map(r => r.label + " " + r.pct + "%").join(", ") + " still recovering: train, but don't chase PRs there."; }
+      else { verdict = "wait"; note = low.map(r => r.label + " " + r.pct + "%").join(", ") + " still fatigued. Swap the sorest lifts, go lighter, or rest a day" + (worst.readyInH ? " (ready in about " + hrs(worst.readyInH) + ")" : "") + "."; }
+      next = { name: opts.nextSession.name || "", muscles: rows, verdict, note };
+    }
+    const fresh = muscles.filter(m => m.pct >= 80).map(m => m.label);
+    return { now, today, muscles, sessions: sess.length, next, soreness: sore, stretch, notes, fresh };
+  }
+
+  // ---------- diagram ----------
+  const RGB = { bad: [200, 53, 46], warn: [184, 110, 0], good: [30, 138, 76] };
+  function colour(pct) {
+    const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+    const c = pct <= 50 ? mix(RGB.bad, RGB.warn, pct / 50) : mix(RGB.warn, RGB.good, (pct - 50) / 50);
+    return "rgb(" + c.join(",") + ")";
+  }
+  // Shapes per view. Coordinates in a 100 × 220 box; each shape is mirrored where `mirror` is set.
+  const FRONT = [
+    ["chest", "M34 52 Q50 48 66 52 L64 68 Q50 74 36 68 Z"],
+    ["frontDelts", "M26 50 Q33 44 36 52 L34 64 Q28 62 26 50 Z", 1],
+    ["sideDelts", "M20 54 Q24 46 28 50 L26 64 Q20 62 20 54 Z", 1],
+    ["biceps", "M22 66 Q29 64 33 68 L31 86 Q26 88 22 84 Z", 1],
+    ["forearms", "M20 88 Q26 86 30 90 L26 114 Q22 116 18 112 Z", 1],
+    ["abs", "M41 72 L59 72 L58 104 Q50 108 42 104 Z"],
+    ["abductors", "M33 100 Q38 104 40 112 L36 124 Q32 118 33 100 Z", 1],
+    ["adductors", "M44 110 Q48 108 50 112 L48 136 Q44 136 42 128 Z", 1],
+    ["quads", "M34 114 Q41 110 47 114 L46 158 Q40 162 36 158 Z", 1],
+    ["calves", "M35 166 Q41 164 46 168 L44 198 Q40 200 36 196 Z", 1]
+  ];
+  const BACK = [
+    ["traps", "M38 42 Q50 36 62 42 L60 56 Q50 60 40 56 Z"],
+    ["rearDelts", "M22 50 Q28 44 34 50 L32 64 Q26 64 22 56 Z", 1],
+    ["back", "M36 58 Q50 54 64 58 L62 98 Q50 104 38 98 Z"],
+    ["triceps", "M22 66 Q29 64 33 68 L31 86 Q26 88 22 84 Z", 1],
+    ["forearms", "M20 88 Q26 86 30 90 L26 114 Q22 116 18 112 Z", 1],
+    ["glutes", "M36 102 Q50 98 64 102 L62 126 Q50 132 38 126 Z"],
+    ["hamstrings", "M35 128 Q41 124 47 128 L46 164 Q40 168 36 164 Z", 1],
+    ["calves", "M35 168 Q41 166 46 170 L44 200 Q40 202 36 198 Z", 1]
+  ];
+  const OUTLINE = "M50 8 a10 11 0 1 0 0.1 0 M44 30 L56 30 L68 44 L82 54 L84 90 L80 118 L72 116 L70 90 L66 70 L66 110 L60 160 L62 212 L50 212 L50 162 L50 212 L38 212 L40 160 L34 110 L34 70 L30 90 L28 116 L20 118 L16 90 L18 54 L32 44 Z";
+  const mirrorPath = d => d.replace(/(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g, (_, x, y) => (100 - Number(x)) + " " + y);
+
+  function figure(shapes, byId, title) {
+    const parts = shapes.map(([id, d, mirror]) => {
+      const m = byId[id], c = m ? colour(m.pct) : "var(--line)";
+      const t = m ? m.label + ": " + m.pct + "% recovered" : id;
+      const p = x => '<path d="' + x + '" fill="' + c + '" data-mm="' + id + '"><title>' + esc(t) + "</title></path>";
+      return p(d) + (mirror ? p(mirrorPath(d)) : "");
+    }).join("");
+    return '<svg viewBox="0 0 100 222" class="mm-fig" role="img" aria-label="' + esc(title) + '"><path d="' + OUTLINE + '" class="mm-outline"/>' + parts + '<text x="50" y="220" class="mm-cap">' + esc(title) + "</text></svg>";
+  }
+  function svg(A) {
+    const byId = Object.fromEntries(A.muscles.map(m => [m.id, m]));
+    return '<div class="mm-figs">' + figure(FRONT, byId, "Front") + figure(BACK, byId, "Back") + "</div>";
+  }
+
+  const css = `
+.mm-card .mm-figs{display:flex;gap:12px;justify-content:center;margin:6px 0 4px}
+.mm-fig{width:46%;max-width:170px;height:auto}
+.mm-outline{fill:color-mix(in srgb,var(--text,#222) 7%,transparent);stroke:var(--line,#ccc);stroke-width:1}
+.mm-fig path[data-mm]{stroke:var(--surface,#fff);stroke-width:.6;opacity:.92}
+.mm-cap{font-size:9px;fill:var(--muted,#777);text-anchor:middle}
+.mm-legend{display:flex;gap:10px;justify-content:center;font-size:12px;color:var(--muted,#777);flex-wrap:wrap}
+.mm-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.mm-next{border-radius:10px;padding:8px 10px;margin:8px 0;background:var(--accent-soft,#eef)}
+.mm-next.mm-go{background:color-mix(in srgb,var(--good,#1E8A4C) 14%,var(--surface,#fff))}
+.mm-next.mm-ok{background:color-mix(in srgb,var(--warn,#B86E00) 14%,var(--surface,#fff))}
+.mm-next.mm-wait{background:color-mix(in srgb,var(--bad,#C8352E) 14%,var(--surface,#fff))}
+.mm-list{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:13px;margin:6px 0}
+.mm-row{display:flex;align-items:center;gap:6px}
+.mm-row .mm-bar{flex:1;height:6px;border-radius:3px;background:var(--line,#ddd);overflow:hidden}
+.mm-row .mm-bar b{display:block;height:100%}
+.mm-row .mm-pct{width:36px;text-align:right;font-variant-numeric:tabular-nums}
+.mm-row .mm-ago{color:var(--muted,#777);font-size:11px;width:54px;text-align:right;white-space:nowrap}
+@media (max-width:360px){.mm-list{grid-template-columns:1fr}}
+`;
+
+  function html(docs, opts = {}) {
+    const A = analyze(docs, opts);
+    const trained = A.muscles.filter(m => m.lastDate).sort((a, b) => a.pct - b.pct);
+    let out = '<section class="card mm-card"><h3>Muscle recovery</h3>';
+    if (A.next) {
+      const cls = { go: "mm-go", ok: "mm-ok", wait: "mm-wait" }[A.next.verdict] || "";
+      const head = { go: "Good to go", ok: "Train, hold steady", wait: "Still recovering" }[A.next.verdict] || "Next session";
+      out += '<div class="mm-next ' + cls + '"><b>' + esc(head) + (A.next.name ? " · " + esc(A.next.name) : "") + "</b><br>" + esc(A.next.note) + "</div>";
+    }
+    out += svg(A);
+    out += '<div class="mm-legend"><span><i style="background:' + colour(100) + '"></i>Ready ≥80%</span><span><i style="background:' + colour(65) + '"></i>Recovering</span><span><i style="background:' + colour(20) + '"></i>Fatigued &lt;50%</span></div>';
+    if (trained.length) {
+      out += '<div class="mm-list">' + trained.map(m => '<div class="mm-row"><span>' + esc(m.label) + '</span><span class="mm-bar"><b style="width:' + m.pct + "%;background:" + colour(m.pct) + '"></b></span><span class="mm-pct">' + m.pct + '%</span><span class="mm-ago">' + hrs(m.hoursSince) + " ago</span></div>").join("") + "</div>";
+    }
+    if (A.notes.length) out += '<p class="muted small">' + A.notes.map(esc).join(" ") + "</p>";
+    out += '<p class="muted small">Recovered % = how much of the fatigue from the last 7 days of logged sets has faded: a full session (8+ hard sets) on a big muscle takes about 2–3 days, a small muscle about 1½–2 days; helper muscles count half a set.</p></section>';
+    return out;
+  }
+
+  function summary(docs, opts = {}) {
+    const A = analyze(docs, opts);
+    const trained = A.muscles.filter(m => m.lastDate).sort((a, b) => a.pct - b.pct);
+    const lines = ["Muscle recovery (" + A.today + "):"];
+    if (!trained.length) lines.push("Nothing logged in the last 7 days; all muscles fresh.");
+    else lines.push(trained.map(m => m.label + " " + m.pct + "% (" + hrs(m.hoursSince) + " ago)").join(", ") + ".");
+    if (A.next) lines.push("Next session " + (A.next.name ? A.next.name + ": " : "") + A.next.note);
+    return lines.join("\n");
+  }
+
+  return { css, analyze, html, svg, summary, colour, FULL_SETS, WINDOW_DAYS };
+})();
+if (typeof window !== "undefined") window.MuscleMap = MuscleMap;
+if (typeof module !== "undefined" && module.exports) module.exports = MuscleMap;
+</script>
+<script>
 /* Compare any two trends on one chart (MacroFactor-style overlay) for the Aziz Cut Tracker.
  * Plain JS, no imports, no network. Reads the app's own collections:
  *   docs = { weights: {date:{kg}}, days: {date:{food:[{kcal,p,eaten}], steps, sleep}}, cardio: {date:{sessions:[{min}]}},
@@ -19602,6 +20514,8 @@ function ddOpts(){ return {today:TODAY, selected:view.date, targets:ddTargets(),
 const CARDIO_DEFAULT = {kind:"treadmill", min:30, speed:4.0, incline:3};
 let cardioOpts = {};
 function cdDocs(){ const m=S.docs.prefs.main||{}; return {...S.docs, prefs:{...S.docs.prefs, main:{...m, cardio:{...CARDIO_DEFAULT, ...(m.cardio||{})}}}}; }
+function shortCardioMin(d){ const sh=(S.docs.workouts[d]||{}).short; return sh && sh.cardioMin!=null ? sh.cardioMin : null; }
+function cdDocsDay(d){ const docs=cdDocs(), m=shortCardioMin(d); return m ? {...docs, prefs:{...docs.prefs, main:{...docs.prefs.main, cardio:{...docs.prefs.main.cardio, min:m}}}} : docs; }
 /* Error guard: one broken card never freezes a tab. safe(label, fn) renders a small "couldn't load" box and lights the banner. */
 const brokenCards=[];
 function cardFail(label,e){ try{ console.error("[card] "+label, e); brokenCards.push(label); showErrBanner(); }catch(_){}
@@ -19619,6 +20533,7 @@ function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date,
 function mfOpts(){ return {today:TODAY, musclesFor:window.StrengthAnalytics?StrengthAnalytics.musclesFor:undefined, setTargets:S.docs.prefs.main?.setTargets, analysis:()=>window.StrengthAnalytics?StrengthAnalytics.analyze(S.docs, strengthOpts()):null}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
+function mmOpts(){ const ses=sessionFor(view.date); const name=ses&&ses.session; return {today:TODAY, nextSession:(name&&name!=="Rest"&&PROGRAM[name])?{name, exercises:PROGRAM[name].map(e=>e[0])}:null, library:S.docs.lb_exercises}; }
 function tcOpts(){ // Compare trends: reuse the trend line and the lift e1RM series the other Progress cards already compute
   let lifts; try{ if(window.StrengthAnalytics) lifts=StrengthAnalytics.analyze(S.docs, strengthOpts()).lifts; }catch(e){}
   const pick=S.docs.prefs.main?.trendCompare;
@@ -19727,7 +20642,7 @@ function effortBits(){
   const picker = has ? safe("Effort", ()=>EffortDeload.pickerHtml(d, w.effort)) : "";
   return {nudge, picker};
 }
-function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocs(), cardioOpts)}</div>`); const feel = window.MuscleFeedback ? safe("Muscle feedback", ()=>MuscleFeedback.cardHtml(S.docs.workouts[view.date], view.date, mfOpts())) : ""; return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + feel + cardio; }
+function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : shortCardioMin(view.date)===0 ? `<div class="card"><h3>Cardio</h3><p class="muted">Skipped today: the short session uses the time for lifting. <button class="btn ghost small" data-act="ssclear">Back to the full session</button></p></div>` : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocsDay(view.date), cardioOpts)}</div>`); const feel = window.MuscleFeedback ? safe("Muscle feedback", ()=>MuscleFeedback.cardHtml(S.docs.workouts[view.date], view.date, mfOpts())) : ""; return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + safeMod("MuscleMap",()=>MuscleMap.html(S.docs, mmOpts())) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + feel + cardio; }
 function vTrainBody(){ return view.trainMode==="full" ? `<div class="card">${trainSwitch()}<p class="muted" style="font-size:.88rem">Templates, live workout with rest timer, PRs, plate calculator and history. Finished workouts also land in Today, Progress and the weekly report.</p></div>` : `<div>${trainSwitch()}</div>` + vTrainSession() + otherLogged() + strongCard(); }
 function otherLogged(){
   const d=view.date, wk=S.docs.workouts[d]; if(!wk||!wk.sets) return "";
@@ -19776,6 +20691,15 @@ function travelApply(kit){
   put("workouts", d, TravelWorkout.apply(w, items, kit)); view.twOpen=false;
   toast(`Travel version on. Sets log under the ${TravelWorkout.kitOf(kit).label.toLowerCase()} moves; history stays with the plan lift.`);
 }
+/* Short on time: 30/45/60 min version of today's session (ShortSession module). */
+function shortCard(session, wk){
+  return safeMod("ShortSession", ()=>ShortSession.cardHtml({session, exercises:PROGRAM[session], minutes:view.ssMin||45, active:ShortSession.active(wk), open:!!view.ssOpen, mainLifts:MAIN_LIFTS, cardioMin:cdDocs().prefs.main.cardio.min}));
+}
+function shortApply(min){
+  const d=view.date, w=workoutDoc(d), p=ShortSession.plan(PROGRAM[w.session]||[], {minutes:min, mainLifts:MAIN_LIFTS, cardioMin:cdDocs().prefs.main.cardio.min});
+  put("workouts", d, ShortSession.apply(w, p)); view.ssOpen=false;
+  toast(`${min} min version on: about ${Math.round(p.est.total)} min. Main lifts keep their sets.`);
+}
 function vTrainSession(){
   const d=view.date, ses=sessionFor(d), wk=S.docs.workouts[d]||{};
   const cur = ses ? ses.session : null;
@@ -19792,10 +20716,13 @@ function vTrainSession(){
     <p class="muted" style="font-size:.88rem">Big compounds: rest 2.5–3 min. Work in 8–12 reps, 1–2 reps short of failure. Keep loads heavy during the cut.</p>
   </div>
   ${travelCard(cur, wk)}
+  ${shortCard(cur, wk)}
   <div class="card">
     ${ex.map(([planName,bw,br,bs,unit,note])=>{
       const swappedTo = usedFor(wk, planName), name = swappedTo || planName;
       const logged = (wk.sets&&wk.sets[name]) || [];
+      const ss = window.ShortSession ? ShortSession.slot(wk, planName) : {sets:null,drop:false,pair:null};
+      if(ss.sets!=null) bs = ss.sets;
       const n = Math.max(bs, logged.length);
       const hist = liftHistory(name).filter(h=>h.date<d);
       const last = hist[hist.length-1];
@@ -19805,8 +20732,8 @@ function vTrainSession(){
       let cmp="";
       const ref = last ? last.best : swappedTo ? null : {w:bw,r:br,v:e1rm(bw,br)};
       if(todayBest && ref){ cmp = todayBest.v>=ref.v-0.01 ? `<span class="pill good">At or above ${last?"last time":"baseline"}</span>` : `<span class="pill warn">Below ${last?"last time":"baseline"}</span>`; }
-      return `<div class="ex">
-        <div class="spread"><div><b>${esc(name)}</b> ${isMain?`<span class="pill info">Main lift</span>`:""}${swappedTo?` <span class="muted" style="font-size:.85rem">instead of ${esc(planName)}</span>`:""}</div><div class="row">${cmp}${window.ExerciseSwap?`<button class="btn ghost small" data-act="swap" data-n="${esc(planName)}">${swappedTo?"Change":"Swap"}</button>`:""}${swappedTo?`<button class="btn ghost small" data-act="unswap" data-n="${esc(planName)}">Back to plan</button>`:""}</div></div>
+      return `<div class="ex ${ss.drop&&!logged.length?"ss-skip":""}">
+        <div class="spread"><div><b>${esc(name)}</b> ${isMain?`<span class="pill info">Main lift</span>`:""}${ss.pair?` <span class="pill">Superset ${ss.pair}</span>`:""}${ss.drop?` <span class="pill warn">Skipped today</span>`:""}${swappedTo?` <span class="muted" style="font-size:.85rem">instead of ${esc(planName)}</span>`:""}</div><div class="row">${cmp}${window.ExerciseSwap?`<button class="btn ghost small" data-act="swap" data-n="${esc(planName)}">${swappedTo?"Change":"Swap"}</button>`:""}${swappedTo?`<button class="btn ghost small" data-act="unswap" data-n="${esc(planName)}">Back to plan</button>`:""}</div></div>
         <div class="muted" style="font-size:.88rem">Baseline <span class="num">${bw} ${unit} × ${br}, ×${bs}</span>${last?` · Last <span class="num">${last.best.w} × ${last.best.r}</span> (${fmt(last.date,{month:"short",day:"numeric"})})`:""}${note?` · ${esc(note)}`:""}</div>
         ${isMain&&dropping(name)?`<p class="note bad">Dropped 2 sessions in a row. Check sleep, pre-workout food and volume before touching calories.</p>`:""}
         <div class="sets">${Array.from({length:n},(_,i)=>{ const s=logged[i]||{}; return `<div class="set"><span class="i">${i+1}</span>
@@ -20002,6 +20929,7 @@ function vProgress(){
   ${trendCard}
   ${safeMod("StrengthAnalytics",()=>StrengthAnalytics.html(S.docs, strengthOpts()))}
   ${safeMod("MuscleFeedback",()=>MuscleFeedback.planHtml(S.docs, mfOpts()))}
+  ${safeMod("StrengthScore",()=>StrengthScore.html(S.docs, strengthOpts()))}
   ${safeMod("TrendCompare",()=>TrendCompare.html(S.docs, tcOpts()))}
   ${window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
     <div class="tablewrap"><table><thead><tr><th>Lift</th><th class="n">Baseline</th><th class="n">Latest best set</th><th>Status</th></tr></thead><tbody>
@@ -20162,6 +21090,9 @@ main.addEventListener("click",e=>{
   else if(a==="unswap"){ doSwap(el.dataset.n, null); }
   else if(a==="twkit"){ view.twKit=el.dataset.kit; view.twOpen=true; render(); }
   else if(a==="twapply"){ travelApply(el.dataset.kit||view.twKit||"dumbbell"); }
+  else if(a==="ssmin"){ view.ssMin=+el.dataset.min; view.ssOpen=true; render(); }
+  else if(a==="ssapply"){ shortApply(+el.dataset.min||view.ssMin||45); }
+  else if(a==="ssclear"){ put("workouts", view.date, ShortSession.clear(workoutDoc(view.date))); toast("Back to the full session."); }
   else if(a==="twclear"){ put("workouts", view.date, TravelWorkout.clear(workoutDoc(view.date))); toast("Back to the gym plan."); }
   else if(a==="pgadd"){ const day=getDay(d); const r=proteinGapRes(day); if(r&&r.best){ day.food=day.food.concat(ProteinGap.toFoodItems(r.best).map(it=>({...it,id:uid(),slot:"Extra",eaten:false}))); saveDay(day); toast("Added as planned. Tick it when you have it."); } }
   else if(a==="stepsadd"){ put("days", d, Steps.addSteps(getDay(d), +el.dataset.n)); }
@@ -20339,7 +21270,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
