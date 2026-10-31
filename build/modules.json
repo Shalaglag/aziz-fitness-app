@@ -42,6 +42,7 @@
     { "file": "modules/recovery-fatigue/recovery-fatigue.js", "expose": ["RecoveryFatigue"] },
     { "file": "modules/coach/coach.js", "expose": ["Coach"] },
     { "file": "modules/cardio/cardio.js", "expose": ["Cardio"] },
+    { "file": "modules/health-markers/health-markers.js", "expose": ["HealthMarkers"] },
     { "file": "modules/strength-analytics/strength-analytics.js", "expose": ["StrengthAnalytics"] },
     { "file": "modules/muscle-feedback/muscle-feedback.js", "expose": ["MuscleFeedback"] },
     { "file": "modules/strength-score/strength-score.js", "expose": ["StrengthScore"] },

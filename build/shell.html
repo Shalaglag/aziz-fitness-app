@@ -540,8 +540,8 @@ const LIB = {
 };
 
 /* ===================== Store (synced db when available, else this browser) ===================== */
-const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio"];
-const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading"};
+const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio","markers"];
+const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},markers:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading"};
 const LB_READ = ["lb_workouts","lb_exercises"];
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
@@ -791,6 +791,7 @@ function ddTargets(){ return APPT || {kcal:TARGET.kcal, proteinMin:TARGET.pMin, 
 function ddOpts(){ return {today:TODAY, selected:view.date, targets:ddTargets(), kcalTarget:kcalTarget, waterGoal:(d,training)=>training?3500:3000, rotation:ROTATION, sessionFor:x=>sessionFor(x), exerciseCount:s=>(PROGRAM[s]||[]).length||null, lbWorkouts:S.docs.lb_workouts, readiness:window.RecoveryFatigue?(x=>RecoveryFatigue.readiness(S.docs,{date:x})):undefined}; }
 const CARDIO_DEFAULT = {kind:"treadmill", min:30, speed:4.0, incline:3};
 let cardioOpts = {};
+let hmOpts = {};
 function cdDocs(){ const m=S.docs.prefs.main||{}; return {...S.docs, prefs:{...S.docs.prefs, main:{...m, cardio:{...CARDIO_DEFAULT, ...(m.cardio||{})}}}}; }
 function shortCardioMin(d){ const sh=(S.docs.workouts[d]||{}).short; return sh && sh.cardioMin!=null ? sh.cardioMin : null; }
 function cdDocsDay(d){ const docs=cdDocs(), m=shortCardioMin(d); return m ? {...docs, prefs:{...docs.prefs, main:{...docs.prefs.main, cardio:{...docs.prefs.main.cardio, min:m}}}} : docs; }
@@ -807,7 +808,7 @@ window.addEventListener("error", e=>{ if(e && e.error) showErrBanner("Something 
 window.addEventListener("unhandledrejection", e=>{ const r=e && e.reason; showErrBanner("Something went wrong: "+((r&&r.message)||r||"error")+"."); });
 function cdSafe(fn){ return safeMod("Cardio", fn); }
 function latestKg(){ const ws=weightsSorted(); return ws.length ? ws[ws.length-1].kg : undefined; }
-function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS}; }
+function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS, setTargets:S.docs.prefs.main?.setTargets, onTargets:t=>{ const m={...(S.docs.prefs.main||{}), setTargets:t}; put("prefs","main",m,{quiet:true}); }}; }
 function mfOpts(){ return {today:TODAY, musclesFor:window.StrengthAnalytics?StrengthAnalytics.musclesFor:undefined, setTargets:S.docs.prefs.main?.setTargets, analysis:()=>window.StrengthAnalytics?StrengthAnalytics.analyze(S.docs, strengthOpts()):null}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
@@ -1228,6 +1229,7 @@ function vProgress(){
     <p class="muted" style="font-size:.88rem">Goal on a cut: hold these. If one drops for 2+ sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>
   </div>`}
   ${cdSafe(()=>Cardio.progressHTML(cdDocs(), {today:TODAY}))}
+  ${safeMod("HealthMarkers",()=>HealthMarkers.html(S.docs, Object.assign({today:TODAY, date:view.date}, hmOpts)))}
   ${rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts()))}
   ${safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}))}
   ${safeMod("ReverseDiet",()=>ReverseDiet.html(dbDocs(), rdState(), rdOpts()))}
@@ -1320,8 +1322,10 @@ document.getElementById("goToday").onclick=()=>{ view.date=TODAY; render(); };
 function saveDay(day,opts){ put("days",day.date,day,opts); }
 function addFood(item){ const day=getDay(view.date); day.food.push({id:uid(),eaten:false,...item}); saveDay(day); }
 
+main.addEventListener("change",e=>{ if(window.HealthMarkers && e.target && e.target.dataset && e.target.dataset.hmSel){ try{ HealthMarkers.onPresetChange(e.target); }catch(err){} } });
 main.addEventListener("toggle",e=>{ const k=e.target && e.target.dataset && e.target.dataset.keep; if(k) view.open[k]=e.target.open; }, true);
 main.addEventListener("click",e=>{
+  if(window.HealthMarkers && e.target.closest("[data-hm]")){ try{ if(HealthMarkers.handle(e.target, {docs:S.docs, date:view.date, toast, uid, put:(c,id,doc)=>{ hmOpts={}; put(c,id,doc); }, remove:(c,id)=>{ hmOpts={}; remove(c,id); }, rerender:o=>{ hmOpts=o||{}; render(); }})) return; }catch(err){ toast("Markers: "+err.message); return; } }
   if(window.Cardio && e.target.closest("[data-cardio]")){ try{ if(Cardio.handle(e.target, {docs:cdDocs(), date:view.date, toast, weightKg:latestKg(), put:(c,id,doc)=>{ cardioOpts={}; put(c,id,doc); }, rerender:o=>{ cardioOpts=o||{}; render(); }})) return; }catch(err){ toast("Cardio: "+err.message); return; } }
   const rfw=window.RecoveryFatigue && e.target.closest("[data-rf]") ? RecoveryFatigue.handle(e.target, S.docs, view.date) : null;
   if(rfw){ put(rfw.collection, rfw.id, rfw.doc, {quiet:true}); render(); return; }
@@ -1559,7 +1563,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
