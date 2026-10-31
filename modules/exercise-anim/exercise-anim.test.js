@@ -30,7 +30,7 @@ test('animations are keyed by real logger ids with matching equipment', () => {
 
 test('no guessing: unknown and similar names get nothing', () => {
   assert.strictEqual(A.has('bench-press'), false);
-  assert.strictEqual(A.has('squat-machine'), false);
+  assert.strictEqual(A.has('row-machine'), false);
   assert.strictEqual(A.has('Seated Row (Cable)'), false, 'names are not ids');
   assert.strictEqual(A.frame('nope', 0), null);
 });
