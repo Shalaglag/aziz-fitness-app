@@ -31,6 +31,8 @@ async function openApp(browser, phone, data) {
   const errors = [];
   page.on("pageerror", e => errors.push(e.message));
   await page.route(/^https:\/\/(fonts\.|www\.gstatic\.com)/, r => r.fulfill({ body: "" }));
+  // The app ships Firebase in app/vendor; blank it too so these checks run in device-only mode with no sign-in sheet.
+  await page.route(/\/vendor\/firebase-/, r => r.fulfill({ body: "" }));
   await page.goto(APP);
   if (data) {
     const today = await page.evaluate(() => TODAY);
@@ -55,6 +57,25 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.deepStrictEqual([r.eaten.kcal, r.eaten.p, r.eaten.c, r.eaten.f], [870, 75, 85, 22]);
       assert.strictEqual(r.all.kcal, 1570);
       assert.strictEqual(r.autoEaten, 0, "auto-food rows are planned, never counted as eaten");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("entries saved on the phone without an account are added to the account once, never overwriting", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], null);
+      const r = await page.evaluate(() => {
+        S.docs.weights = { "2026-01-02": { date: "2026-01-02", kg: 90 } };            // already in the account
+        const local = { weights: { "2026-01-01": { date: "2026-01-01", kg: 91 }, "2026-01-02": { date: "2026-01-02", kg: 99 } } };
+        localStorage.setItem("aziz-cut-localAt", String(Date.now())); localStorage.removeItem("aziz-cut-uploadedAt");
+        uploadLocalOnly(local);
+        const first = JSON.parse(JSON.stringify(S.docs.weights));
+        S.docs.weights = { "2026-01-02": { date: "2026-01-02", kg: 90 } };
+        uploadLocalOnly(local);                                                        // second time: already uploaded
+        return { first, second: S.docs.weights };
+      });
+      assert.strictEqual(r.first["2026-01-01"].kg, 91, "missing entry added");
+      assert.strictEqual(r.first["2026-01-02"].kg, 90, "account copy kept");
+      assert.strictEqual(r.second["2026-01-01"], undefined, "not uploaded twice");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });

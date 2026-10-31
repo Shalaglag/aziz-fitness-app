@@ -20876,6 +20876,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = AppShortcu
  */
 window.CloudStore = (() => {
   const SDK = "https://www.gstatic.com/firebasejs/10.14.1/";
+  // Same files shipped inside the app (app/vendor), tried first so the Android app signs in and syncs
+  // offline from the first launch; the CDN is the fallback for an older copy without the folder.
+  const LOCAL_SDK = "vendor/firebase-10.14.1/";
   const PARTS = ["firebase-app-compat.js", "firebase-auth-compat.js", "firebase-firestore-compat.js"];
   const REQUIRED = ["apiKey", "authDomain", "projectId", "appId"];
 
@@ -20934,10 +20937,15 @@ window.CloudStore = (() => {
   function loadScript(src) {
     return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("load " + src)); document.head.appendChild(s); });
   }
-  async function loadSdk() {
-    if (window.firebase && window.firebase.firestore) return window.firebase;
-    for (const p of PARTS) await loadScript(SDK + p);
-    return window.firebase;
+  async function loadSdk(load) {
+    load = load || loadScript;
+    const g = typeof window !== "undefined" ? window : globalThis;
+    if (g.firebase && g.firebase.firestore) return g.firebase;
+    let last;
+    for (const base of [LOCAL_SDK, SDK]) {
+      try { for (const p of PARTS) await load(base + p); return g.firebase; } catch (e) { last = e; }
+    }
+    throw last;
   }
 
   function signInForm(mount, auth) {
@@ -20991,7 +20999,7 @@ window.CloudStore = (() => {
   function idToken() { return state.user && state.user.getIdToken ? state.user.getIdToken().catch(() => null) : Promise.resolve(null); }
   async function signOut() { if (state.auth) await state.auth.signOut(); state.user = null; }
 
-  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, idToken, authMessage, scoped, SDK };
+  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, idToken, authMessage, scoped, loadSdk, SDK, LOCAL_SDK };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = CloudStore;
@@ -21197,7 +21205,18 @@ const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barco
 const LB_READ = ["lb_workouts","lb_exercises"];
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
-function saveLocal(){ try{ const o={}; COLS.forEach(c=>o[c]=S.docs[c]); localStorage.setItem("aziz-cut", JSON.stringify(o)); }catch(e){} }
+function saveLocal(){ try{ const o={}; COLS.forEach(c=>o[c]=S.docs[c]); localStorage.setItem("aziz-cut", JSON.stringify(o)); localStorage.setItem("aziz-cut-localAt", String(Date.now())); }catch(e){} }
+// Entries saved on this device without an account (or before signing in) go up to the account once the
+// first server copy has arrived. Only docs the account doesn't have yet are added; nothing on the server is overwritten.
+function uploadLocalOnly(local){
+  let localAt=0, upAt=0; try{ localAt=+localStorage.getItem("aziz-cut-localAt")||0; upAt=+localStorage.getItem("aziz-cut-uploadedAt")||0; }catch(e){}
+  const has=COLS.some(c=>Object.keys(local[c]||{}).length);
+  if(window.claude || !has || (upAt && upAt>=localAt)) return;
+  let added=0, kept=0;
+  COLS.forEach(c=>Object.entries(local[c]||{}).forEach(([id,doc])=>{ if(S.docs[c][id]===undefined){ put(c,id,doc,{quiet:true}); added++; } else if(JSON.stringify(S.docs[c][id])!==JSON.stringify(doc)) kept++; }));
+  try{ localStorage.setItem("aziz-cut-uploadedAt", String(Date.now())); }catch(e){}
+  if(added){ render(); toast("Added "+added+" entr"+(added===1?"y":"ies")+" saved on this phone to your account."+(kept?" "+kept+" already in your account were left as they are.":"")); }
+}
 /* Outbox: every synced write is kept in localStorage until the db confirms it, retried on reconnect,
  * and days/prefs docs are sent as field merges so phone and PC edits to the same day don't erase each other. */
 const outbox = PendingWrites.create({
@@ -21284,10 +21303,11 @@ async function initStore(){
     try{ db = await CloudStore.connect({mount:document.body}); }catch(e){ toast("Couldn't reach your account. Saving on this device for now."); }
   }
   if(!db){ setSync(); return; }
+  let localOnly = {}; COLS.forEach(c=>localOnly[c]=S.docs[c]||{});
   S.db = db; S.mode="sync"; COLS.forEach(c=>S.docs[c]={});
   COLS.forEach(c=>{
     db.collection(c).onSnapshot(qs=>{
-      const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=outbox.overlay(c,o); S.synced.add(c); scheduleRender();
+      const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=outbox.overlay(c,o); S.synced.add(c); if(localOnly && COLS.every(k=>S.synced.has(k))){ const l=localOnly; localOnly=null; uploadLocalOnly(l); } scheduleRender();
     }, err=>{ toast("Sync problem: "+err.message); });
   });
   outbox.load(); COLS.forEach(c=>outbox.overlay(c,S.docs[c])); outbox.retryAll();

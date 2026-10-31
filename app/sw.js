@@ -1,7 +1,8 @@
 /* Offline mode: serve the app from cache when there is no signal, refresh the cache when there is.
  * Firestore traffic is not touched here; its own offline cache handles your data. */
-const CACHE = "cut-tracker-v1";
-const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg", "./cloud-config.js"];
+const CACHE = "cut-tracker-v2";
+const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg", "./cloud-config.js",
+  "./vendor/firebase-10.14.1/firebase-app-compat.js", "./vendor/firebase-10.14.1/firebase-auth-compat.js", "./vendor/firebase-10.14.1/firebase-firestore-compat.js"];
 const CDN = ["https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://www.gstatic.com/firebasejs/"];
 
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
