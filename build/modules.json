@@ -43,6 +43,7 @@
     { "file": "modules/coach/coach.js", "expose": ["Coach"] },
     { "file": "modules/cardio/cardio.js", "expose": ["Cardio"] },
     { "file": "modules/health-markers/health-markers.js", "expose": ["HealthMarkers"] },
+    { "file": "modules/run-tracker/run-tracker.js", "expose": ["RunTracker"] },
     { "file": "modules/strength-analytics/strength-analytics.js", "expose": ["StrengthAnalytics"] },
     { "file": "modules/muscle-feedback/muscle-feedback.js", "expose": ["MuscleFeedback"] },
     { "file": "modules/strength-score/strength-score.js", "expose": ["StrengthScore"] },
