@@ -48,6 +48,14 @@ Incline Cable Fly|Chest|Cable|
 Chest Press (Plate-loaded)|Chest|Plate-loaded|c
 Pullover (Dumbbell)|Chest|Dumbbell|
 Weighted Dip|Chest|Bodyweight|c
+Decline Bench Press (Smith Machine)|Chest|Smith machine|c
+Chest Press (Cable)|Chest|Cable|c
+Floor Press (Barbell)|Chest|Barbell|c
+Incline Chest Press (Plate-loaded)|Chest|Plate-loaded|c
+Decline Chest Press (Machine)|Chest|Machine|c
+Incline Push Up|Chest|Bodyweight|
+Decline Push Up|Chest|Bodyweight|
+Diamond Push Up|Chest|Bodyweight|
 Lat Pulldown - Wide Grip (Cable)|Back|Cable|c
 Lat Pulldown - Close Grip (Cable)|Back|Cable|c
 Lat Pulldown - Single Arm (Cable)|Back|Cable|
@@ -88,6 +96,19 @@ High Row (Machine)|Back|Machine|c
 Low Row (Machine)|Back|Machine|c
 Sumo Deadlift (Barbell)|Back|Barbell|cx
 Trap Bar Deadlift|Back|Barbell|cx
+Lat Pulldown (Plate-loaded)|Back|Plate-loaded|c
+Chin Up (Weighted)|Back|Bodyweight|
+Inverted Row|Back|Bodyweight|c
+Bent Over Row (Reverse Grip, Barbell)|Back|Barbell|c
+Pendlay Row (Barbell)|Back|Barbell|c
+Chest-Supported Row (Plate-loaded)|Back|Plate-loaded|c
+Row (Smith Machine)|Back|Smith machine|c
+Rear Delt Row (Dumbbell)|Back|Dumbbell|c
+Pullover (Cable)|Back|Cable|
+Straight-Arm Pulldown (Rope)|Back|Cable|c
+Rack Pull (Barbell)|Back|Barbell|cx
+Hyperextension (Weighted)|Back|Bodyweight|
+Shrug (Smith Machine)|Back|Smith machine|
 Overhead Press (Barbell)|Shoulders|Barbell|c
 Seated Overhead Press (Dumbbell)|Shoulders|Dumbbell|c
 Shoulder Press (Machine)|Shoulders|Machine|c
@@ -108,6 +129,17 @@ Overhead Press (Smith Machine)|Shoulders|Smith machine|c
 Shoulder Press (Plate-loaded)|Shoulders|Plate-loaded|c
 Lateral Raise (Single Arm, Cable)|Shoulders|Cable|
 Reverse Fly (Cable)|Shoulders|Cable|
+Seated Overhead Press (Smith Machine)|Shoulders|Smith machine|c
+Push Press (Barbell)|Shoulders|Barbell|c
+Lateral Raise (Seated, Dumbbell)|Shoulders|Dumbbell|
+Lateral Raise (Plate-loaded)|Shoulders|Plate-loaded|
+Front Raise (Barbell)|Shoulders|Barbell|
+Front Raise (Rope, Cable)|Shoulders|Cable|
+Reverse Fly (Seated, Dumbbell)|Shoulders|Dumbbell|
+Reverse Fly (Incline, Dumbbell)|Shoulders|Dumbbell|
+Upright Row (Barbell)|Shoulders|Barbell|c
+Upright Row (Dumbbell)|Shoulders|Dumbbell|c
+Rotator Cuff External Rotation (Cable)|Shoulders|Cable|
 Bicep Curl (Barbell)|Biceps|Barbell|
 Bicep Curl (Dumbbell)|Biceps|Dumbbell|
 Hammer Curl (Dumbbell)|Biceps|Dumbbell|
@@ -124,6 +156,13 @@ Bicep Curl (Single Arm, Cable)|Biceps|Cable|
 Bicep Curl (Seated, Dumbbell)|Biceps|Dumbbell|
 Hammer Curl (Cable Rope)|Biceps|Cable|
 Preacher Curl (Dumbbell)|Biceps|Dumbbell|
+Bicep Curl (Rope, Cable)|Biceps|Cable|
+Hammer Curl (Cross Body, Dumbbell)|Biceps|Dumbbell|
+Incline Hammer Curl (Dumbbell)|Biceps|Dumbbell|
+Preacher Curl (Cable)|Biceps|Cable|
+Preacher Curl (Barbell)|Biceps|Barbell|
+Spider Curl (Dumbbell)|Biceps|Dumbbell|
+Overhead Cable Curl|Biceps|Cable|
 Triceps Pushdown (Straight Bar)|Triceps|Cable|
 Triceps Rope Pushdown (Cable)|Triceps|Cable|
 Triceps Extension (Cable)|Triceps|Cable|
@@ -136,9 +175,22 @@ Triceps Dip|Triceps|Bodyweight|c
 Triceps Extension (Machine)|Triceps|Machine|
 Triceps Kickback (Dumbbell)|Triceps|Dumbbell|
 Triceps Pushdown (V-Bar)|Triceps|Cable|
+Triceps Kickback (Cable)|Triceps|Cable|
+Triceps Pushdown (Reverse Grip)|Triceps|Cable|
+Lying Triceps Extension (Dumbbell)|Triceps|Dumbbell|
+Skull Crusher (Dumbbell)|Triceps|Dumbbell|
+Skull Crusher (Cable)|Triceps|Cable|
+Overhead Triceps Extension (EZ Bar)|Triceps|Barbell|
+Overhead Triceps Extension (Single Arm, Dumbbell)|Triceps|Dumbbell|
+Close-Grip Bench Press (Smith Machine)|Triceps|Smith machine|c
+Close-Grip Push Up|Triceps|Bodyweight|
 Wrist Curl (Dumbbell)|Forearms|Dumbbell|
 Reverse Curl (EZ Bar)|Forearms|Barbell|
 Wrist Curl (Barbell)|Forearms|Barbell|
+Reverse Wrist Curl (Dumbbell)|Forearms|Dumbbell|
+Reverse Wrist Curl (Barbell)|Forearms|Barbell|
+Reverse Curl (Barbell)|Forearms|Barbell|
+Reverse Curl (Cable)|Forearms|Cable|
 Squat (Barbell)|Quads|Barbell|c
 Front Squat (Barbell)|Quads|Barbell|c
 Squat (Smith Machine)|Quads|Smith machine|c
@@ -157,6 +209,17 @@ Reverse Lunge (Dumbbell)|Quads|Dumbbell|c
 Split Squat (Dumbbell)|Quads|Dumbbell|c
 Step Up (Dumbbell)|Quads|Dumbbell|c
 Bodyweight Squat|Quads|Bodyweight|
+Sumo Squat (Dumbbell)|Quads|Dumbbell|c
+Front Squat (Smith Machine)|Quads|Smith machine|c
+Belt Squat (Machine)|Quads|Machine|c
+Leg Press (Single Leg)|Quads|Machine|c
+Leg Press (Horizontal)|Quads|Machine|c
+Reverse Lunge (Barbell)|Quads|Barbell|c
+Split Squat (Smith Machine)|Quads|Smith machine|c
+Bulgarian Split Squat (Smith Machine)|Quads|Smith machine|c
+Bulgarian Split Squat (Barbell)|Quads|Barbell|c
+Step Up (Barbell)|Quads|Barbell|c
+Single Leg Extension (Machine)|Quads|Machine|
 Lying Leg Curl (Machine)|Hamstrings|Machine|
 Seated Leg Curl (Machine)|Hamstrings|Machine|
 Standing Leg Curl (Machine)|Hamstrings|Machine|
@@ -165,6 +228,8 @@ Glute-Ham Raise|Hamstrings|Bodyweight|x
 Stiff-Leg Deadlift (Barbell)|Hamstrings|Barbell|cx
 Good Morning (Barbell)|Hamstrings|Barbell|cx
 Single-Leg Romanian Deadlift (Dumbbell)|Hamstrings|Dumbbell|cx
+Romanian Deadlift (Smith Machine)|Hamstrings|Smith machine|cx
+Lying Leg Curl (Single Leg)|Hamstrings|Machine|
 Hip Thrust (Barbell)|Glutes|Barbell|cx
 Hip Thrust (Machine)|Glutes|Machine|cx
 Reverse Hyper (Machine)|Glutes|Machine|x
@@ -173,11 +238,21 @@ Glute Kickback (Cable)|Glutes|Cable|
 Glute Kickback (Machine)|Glutes|Machine|
 Hip Abductor (Machine)|Glutes|Machine|
 Hip Thrust (Smith Machine)|Glutes|Smith machine|cx
+Hip Thrust (Dumbbell)|Glutes|Dumbbell|cx
+Single Leg Hip Thrust|Glutes|Bodyweight|cx
+Glute Bridge (Barbell)|Glutes|Barbell|
+Glute Bridge|Glutes|Bodyweight|
+Hip Abduction (Cable)|Glutes|Cable|
+Hip Adduction (Cable)|Glutes|Cable|
+Donkey Kick (Cable)|Glutes|Cable|
 Hip Adductor (Machine)|Adductors|Machine|
 Standing Calf Raise (Machine)|Calves|Machine|
 Seated Calf Raise (Machine)|Calves|Machine|
 Calf Press (Leg Press)|Calves|Machine|
 Calf Raise (Smith Machine)|Calves|Smith machine|
+Donkey Calf Raise (Machine)|Calves|Machine|
+Calf Raise (Dumbbell, Single Leg)|Calves|Dumbbell|
+Calf Raise (Bodyweight)|Calves|Bodyweight|
 Seated Abs (Machine)|Core|Machine|
 Cable Crunch|Core|Cable|
 Decline Crunch|Core|Reps only|
@@ -193,6 +268,18 @@ Captain's Chair Leg Raise|Core|Reps only|
 Side Plank|Core|Duration|
 Pallof Press (Cable)|Core|Cable|c
 Cable Woodchop|Core|Cable|
+Decline Sit Up|Core|Reps only|
+Reverse Crunch|Core|Reps only|
+Bicycle Crunch|Core|Reps only|
+V Up|Core|Reps only|
+Dead Bug|Core|Reps only|
+Bird Dog|Core|Reps only|
+Hollow Hold|Core|Duration|
+Mountain Climber|Core|Reps only|
+Side Bend (Dumbbell)|Core|Dumbbell|
+Oblique Crunch (Machine)|Core|Machine|
+Torso Rotation (Machine)|Core|Machine|
+Back Extension (Machine)|Core|Machine|
 Treadmill (Incline Walk)|Cardio|Cardio|
 Treadmill Run|Cardio|Cardio|
 Stationary Bike|Cardio|Cardio|
@@ -201,10 +288,15 @@ Rowing Machine|Cardio|Cardio|
 Stair Climber|Cardio|Cardio|
 Walking (Outdoor)|Cardio|Cardio|
 Running (Outdoor)|Cardio|Cardio|
-Cycling (Outdoor)|Cardio|Cardio|`;
+Cycling (Outdoor)|Cardio|Cardio|
+Swimming|Cardio|Cardio|
+Jump Rope|Cardio|Cardio|
+Air Bike|Cardio|Cardio|
+Kettlebell Swing|Other|Kettlebell|
+Goblet Squat (Kettlebell)|Other|Kettlebell|c`;
 
   const PARTS = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms', 'Quads', 'Hamstrings', 'Glutes', 'Adductors', 'Calves', 'Core', 'Cardio', 'Other'];
-  const CATS = ['Barbell', 'Dumbbell', 'Machine', 'Plate-loaded', 'Smith machine', 'Cable', 'Bodyweight', 'Assisted', 'Reps only', 'Duration', 'Cardio'];
+  const CATS = ['Barbell', 'Dumbbell', 'Kettlebell', 'Machine', 'Plate-loaded', 'Smith machine', 'Cable', 'Bodyweight', 'Assisted', 'Reps only', 'Duration', 'Cardio'];
   const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const LIB = {};
   LIB_SRC.split('\n').forEach(line => {
