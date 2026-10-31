@@ -41,7 +41,7 @@ Chest Fly (Dumbbell)|Chest|Dumbbell|Chest Fly (Dumbbell)|DB fly
 Low-to-High Cable Fly|Chest|Cable|Low-to-High Cable Fly|
 Seated DB Overhead Press|Shoulders (press)|Dumbbell|Seated Overhead Press (Dumbbell)|Seated Dumbbell Overhead Press
 Shoulder Press (Machine)|Shoulders (press)|Machine|Shoulder Press (Machine)|Machine shoulder press
-Smith Seated Press|Shoulders (press)|Smith machine||Smith seated shoulder press
+Smith Seated Press|Shoulders (press)|Smith machine|Seated Overhead Press (Smith Machine)|Smith seated shoulder press
 Arnold Press (Dumbbell)|Shoulders (press)|Dumbbell|Arnold Press (Dumbbell)|
 Lateral Raise (Cable)|Side delts|Cable|Lateral Raise (Cable)|Cable lateral raise
 Side Delts|Side delts|Dumbbell|Lateral Raise (Dumbbell)|Lateral Raise (Dumbbell);DB lateral raise
@@ -72,8 +72,8 @@ Iso-Lateral Low Row|Mid back|Plate-loaded|Iso-Lateral Low Row (Plate-loaded)|Iso
 Chest-Supported Row (Machine)|Mid back|Machine|Chest-Supported Row (Machine)|Chest-supported row
 Seated Row (Machine)|Mid back|Machine|Seated Row (Machine)|
 T-Bar Row|Mid back|Plate-loaded|T-Bar Row|
-Chest-Supported T-Bar Row|Mid back|Plate-loaded||Chest-supported T-bar row
-Chest-Supported DB Row|Mid back|Dumbbell||Chest-supported DB row
+Chest-Supported T-Bar Row|Mid back|Plate-loaded|Chest-Supported T-Bar Row (Machine)|Chest-supported T-bar row
+Chest-Supported DB Row|Mid back|Dumbbell|Chest-Supported Row (Dumbbell)|Chest-supported DB row
 Traps Machine|Traps|Machine|Shrug (Machine)|Shrug Machine
 Shrug (Dumbbell)|Traps|Dumbbell|Shrug (Dumbbell)|
 Shrug (Barbell)|Traps|Barbell|Shrug (Barbell)|
@@ -89,24 +89,24 @@ Hack Squat|Quads|Machine|Hack Squat (Machine)|
 Pendulum Squat (Machine)|Quads|Machine|Pendulum Squat (Machine)|Pendulum squat
 Leg Press (Machine)|Quads|Machine|Leg Press (Machine)|45° leg press;Leg press
 Smith Squat|Quads|Smith machine|Squat (Smith Machine)|Smith Machine Squat
-Belt Squat|Quads|Machine||
+Belt Squat|Quads|Machine|Belt Squat (Machine)|
 Leg Extension|Quads|Machine|Leg Extension (Machine)|
-Single-Leg Extension|Quads|Machine||Single-leg extension
-Smith Split Squat|Quads|Smith machine||Smith or DB split squat;Split squat
+Single-Leg Extension|Quads|Machine|Single Leg Extension (Machine)|Single-leg extension
+Smith Split Squat|Quads|Smith machine|Split Squat (Smith Machine)|Smith or DB split squat;Split squat
 Lying Leg Curl|Hamstrings|Machine|Lying Leg Curl (Machine)|
 Seated Leg Curl (Machine)|Hamstrings|Machine|Seated Leg Curl (Machine)|Seated leg curl
-Single-Leg Lying Curl|Hamstrings|Machine||Single-leg lying curl
+Single-Leg Lying Curl|Hamstrings|Machine|Lying Leg Curl (Single Leg)|Single-leg lying curl
 Standing Leg Curl (Machine)|Hamstrings|Machine|Standing Leg Curl (Machine)|
 Hip Adductor|Adductors|Machine|Hip Adductor (Machine)|Hip Adductor Machine
-Cable Adduction|Adductors|Cable||
-Copenhagen Plank|Adductors|Duration||
+Cable Adduction|Adductors|Cable|Hip Adduction (Cable)|
+Copenhagen Plank|Adductors|Duration|Copenhagen Plank|
 Hip Abductor|Glutes|Machine|Hip Abductor (Machine)|Hip Abductor Machine
-Cable Abduction|Glutes|Cable||
+Cable Abduction|Glutes|Cable|Hip Abduction (Cable)|
 Glute Kickback (Machine)|Glutes|Machine|Glute Kickback (Machine)|Glute kickback machine
 Glute Kickback (Cable)|Glutes|Cable|Glute Kickback (Cable)|Cable kickback
 Standing Calf Raise|Calves|Machine|Standing Calf Raise (Machine)|Calf raises
 Calf Press on Seated Leg Press|Calves|Machine|Calf Press (Leg Press)|Calf press on leg press
-Smith Standing Calf Raise|Calves|Smith machine||
+Smith Standing Calf Raise|Calves|Smith machine|Calf Raise (Smith Machine)|
 Seated Calf Raise (Machine)|Calves|Machine|Seated Calf Raise (Machine)|
 Seated Abs|Core|Machine|Seated Abs (Machine)|Seated Ab Crunch (machine)
 Cable Crunch|Core|Cable|Cable Crunch|
