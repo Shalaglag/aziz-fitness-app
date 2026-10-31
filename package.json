@@ -1,11 +1,25 @@
 {
   "name": "aziz-fitness-app",
   "private": true,
-  "description": "Aziz's cut tracker: app/index.html plus the modules it inlines",
+  "description": "Aziz's fitness app: app/index.html plus the modules it inlines, wrapped as an Android app (android/)",
   "scripts": {
-    "test": "node --test --test-reporter=dot \"modules/**/*.test.js\" \"modules/**/*.test.mjs\" \"modules/**/test.js\" \"netlify/**/*.test.js\" build/build.test.js tests/*.test.js && node build/build.js --check"
+    "test": "node --test --test-reporter=dot \"modules/**/*.test.js\" \"modules/**/*.test.mjs\" \"modules/**/test.js\" \"netlify/**/*.test.js\" build/build.test.js tests/*.test.js && node build/build.js --check",
+    "android:sync": "node build/build.js && npx cap sync android",
+    "android:apk": "npm run android:sync && cd android && ./gradlew assembleRelease -PversionCode=1 -PversionName=local",
+    "android:open": "npx cap open android"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4"
   }
 }
