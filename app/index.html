@@ -3649,6 +3649,10 @@ Stair Climber|Cardio|Cardio|`;
       const pTxt = fmtSet(p, { unit: pUnit, exId: e.exId }, ex) + (num(p.rir) != null ? ' · RIR ' + p.rir : p.rpe ? ' · @' + p.rpe : '');
       out += '<div class="lb-gym-last"><span>' + (p._base ? 'Plan target' : 'Last time') + '</span><b>' + esc(pTxt) + '</b></div>';
     } else out += '<div class="lb-gym-last"><span>Last time</span><b class="lb-muted">First time logging this set</b></div>';
+    // Back after 7+ days off this lift: the host's BreakRamp suggests 90% / 95% of the pre-break weights.
+    if (S.opts.breakRamp && isWeighted(ex) && s.t !== 'w') {
+      try { out += S.opts.breakRamp.noteHtml(S.opts.breakRamp.plan(S.opts.breakRamp.fromLogger(workouts(), e.exId, { excludeId: E.doc.id }), { today: Date.now(), step: weightStep(ex, e.unit) }), e.unit); } catch (err) {}
+    }
     if (p && isWeighted(ex)) {
       const d = compareSets(vals, p, e.unit, pUnit), chips = [];
       if (d && d.dw != null) chips.push('<span class="lb-delta ' + (d.dw > 0 ? 'up' : d.dw < 0 ? 'down' : '') + '">' + signed(d.dw, 2) + ' ' + e.unit + '</span>');
@@ -19993,6 +19997,13 @@ function shortApply(min){
   put("workouts", d, ShortSession.apply(w, p)); view.ssOpen=false;
   toast(`${min} min version on: about ${Math.round(p.est.total)} min. Main lifts keep their sets.`);
 }
+/* BreakRamp: lighter weights after 7+ days off a lift (nothing stored) */
+const brStep = (name,unit) => unit==="lb" ? 5 : /\bDB\b|Dumbbell/i.test(name) ? 2 : 2.5;
+function brPlan(name,unit){ try{ return window.BreakRamp ? BreakRamp.plan(BreakRamp.fromShell(S.docs.workouts, name).filter(h=>h.date<view.date), {today:view.date, step:brStep(name,unit)}) : null; }catch(e){ return null; } }
+function brCard(rows){ if(!window.BreakRamp) return ""; try{
+  return ["kg","lb"].map(u=>{ const names=rows.filter(r=>r.unit===u).map(r=>r.name); if(!names.length) return "";
+    const lifts=names.map(n=>({name:n, ...brPlan(n,u)})).filter(l=>l.ramp); return lifts.length ? BreakRamp.cardHtml({lifts, count:lifts.length}, u) : ""; }).join("");
+}catch(e){ return ""; } }
 function vTrainSession(){
   const d=view.date, ses=sessionFor(d), wk=S.docs.workouts[d]||{};
   const cur = ses ? ses.session : null;
@@ -20010,9 +20021,11 @@ function vTrainSession(){
   </div>
   ${travelCard(cur, wk)}
   ${shortCard(cur, wk)}
+  ${brCard(ex.map(([planName,,,,unit])=>({name:usedFor(wk, planName)||planName, unit})))}
   <div class="card">
     ${ex.map(([planName,bw,br,bs,unit,note])=>{
       const swappedTo = usedFor(wk, planName), name = swappedTo || planName;
+      const brp = brPlan(name, unit), brOn = brp && brp.ramp;
       const logged = (wk.sets&&wk.sets[name]) || [];
       const ss = window.ShortSession ? ShortSession.slot(wk, planName) : {sets:null,drop:false,pair:null};
       if(ss.sets!=null) bs = ss.sets;
@@ -20029,8 +20042,9 @@ function vTrainSession(){
         <div class="spread"><div><b>${esc(name)}</b> ${isMain?`<span class="pill info">Main lift</span>`:""}${ss.pair?` <span class="pill">Superset ${ss.pair}</span>`:""}${ss.drop?` <span class="pill warn">Skipped today</span>`:""}${swappedTo?` <span class="muted" style="font-size:.85rem">instead of ${esc(planName)}</span>`:""}</div><div class="row">${cmp}${window.ExerciseSwap?`<button class="btn ghost small" data-act="swap" data-n="${esc(planName)}">${swappedTo?"Change":"Swap"}</button>`:""}${swappedTo?`<button class="btn ghost small" data-act="unswap" data-n="${esc(planName)}">Back to plan</button>`:""}</div></div>
         <div class="muted" style="font-size:.88rem">Baseline <span class="num">${bw} ${unit} × ${br}, ×${bs}</span>${last?` · Last <span class="num">${last.best.w} × ${last.best.r}</span> (${fmt(last.date,{month:"short",day:"numeric"})})`:""}${note?` · ${esc(note)}`:""}</div>
         ${isMain&&dropping(name)?`<p class="note bad">Dropped 2 sessions in a row. Check sleep, pre-workout food and volume before touching calories.</p>`:""}
-        <div class="sets">${Array.from({length:n},(_,i)=>{ const s=logged[i]||{}; return `<div class="set"><span class="i">${i+1}</span>
-          <input type="number" inputmode="decimal" step="0.5" placeholder="${bw}" value="${esc(s.w??"")}" data-set="${esc(name)}" data-i="${i}" data-k="w" aria-label="${esc(name)} set ${i+1} weight ${unit}"><span class="muted">${unit} ×</span>
+        ${brOn?BreakRamp.noteHtml(brp, unit):""}
+        <div class="sets">${Array.from({length:n},(_,i)=>{ const s=logged[i]||{}; const phw = brOn && brp.sets[Math.min(i, brp.sets.length-1)] ? brp.sets[Math.min(i, brp.sets.length-1)].w : bw; return `<div class="set"><span class="i">${i+1}</span>
+          <input type="number" inputmode="decimal" step="0.5" placeholder="${phw}" value="${esc(s.w??"")}" data-set="${esc(name)}" data-i="${i}" data-k="w" aria-label="${esc(name)} set ${i+1} weight ${unit}"><span class="muted">${unit} ×</span>
           <input type="number" inputmode="numeric" placeholder="${br}" value="${esc(s.r??"")}" data-set="${esc(name)}" data-i="${i}" data-k="r" aria-label="${esc(name)} set ${i+1} reps"></div>`; }).join("")}
           <button class="btn ghost small" data-act="addset" data-n="${esc(name)}">+ set</button></div>
         ${lib?`<details><summary>How to do it</summary><p class="muted" style="font-size:.88rem;margin-top:4px">${lib[0]}</p><ul>${lib[1].map(c=>`<li>${c}</li>`).join("")}</ul><p style="font-size:.88rem;margin-top:4px"><b>Avoid:</b> ${lib[2]}</p></details>`:""}
@@ -20535,6 +20549,7 @@ function syncLogger(){
       storage, targets: APPT || undefined,
       formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE, { demoLinks: !(window.ExerciseDemos && window.EXERCISE_DEMOS) }) : undefined,
       anim: window.ExerciseAnim ? ExerciseAnim.create() : undefined,
+      breakRamp: window.BreakRamp || undefined,
       demos: (window.ExerciseDemos && window.EXERCISE_DEMOS) ? ExerciseDemos.create(window.EXERCISE_DEMOS, { library: WorkoutLogger.library }) : undefined,
       weights: { list: async()=>weightsSorted().map(w=>({date:w.date,kg:w.kg})), put: async(date,kg)=>put("weights",date,{date,kg:Math.round(kg*10)/10},{quiet:true}) },
       onFinish(workout, rec){
@@ -20563,7 +20578,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
