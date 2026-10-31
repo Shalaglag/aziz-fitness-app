@@ -16,7 +16,7 @@ Preview: `preview.html` (example data, saving only changes the page).
 - **Old days:** a day that only has the treadmill checkbox ticked counts as a session in "X of Y lift days" and the session count, but not in minutes or km.
 
 ## Data
-- New collection **`cardio/{date}`** = `{date, sessions:[{id, kind, min, speed, incline, km, kmCalc, hrAvg, hrMax, kcal, kcalSrc, effort, at, source, loggerId}]}`. `kind` ∈ treadmill, walk, bike, elliptical, rower, stairs; `effort` 1 Easy, 2 Steady, 3 Hard; `source` "manual" or "logger".
+- New collection **`cardio/{date}`** = `{date, sessions:[{id, kind, min, speed, incline, km, kmCalc, hrAvg, hrMax, kcal, kcalSrc, effort, at, source, loggerId}]}`. `kind` ∈ treadmill, walk, run, bike, elliptical, rower, stairs (a `run` session saved by RunTracker carries `runId` → `runs/{date}`); `effort` 1 Easy, 2 Steady, 3 Hard; `source` "manual" or "logger".
 - **`days/{date}.treadmill` stays a boolean.** `handle` sets it true when a treadmill session is saved and false when the last one is deleted, so DailyScore, the weekly report and the Today checklist keep working. Ticking the checkbox by hand still works.
 - **`prefs/main.cardio`** (optional): `{kind, min, speed, incline, hrCeiling, age}`, the usual session. Default `{kind:"treadmill", min:30}`; set Aziz's `{speed:4.0, incline:3}` from his plan when wiring.
 - Lift days come from `lb_workouts` (finished full-logger workouts with a lifted set) first, then `workouts/{date}` (Quick log), Rest skipped.
