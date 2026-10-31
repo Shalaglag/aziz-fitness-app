@@ -23,8 +23,6 @@
     { "file": "modules/trend-tdee/trend-tdee.js", "expose": ["TrendTDEE"] },
     { "file": "modules/form-cues/exercise-form-guide.json", "json": "FORM_GUIDE" },
     { "file": "modules/form-cues/form-cues.js" },
-    { "file": "modules/exercise-demos/demos.json", "json": "EXERCISE_DEMOS" },
-    { "file": "modules/exercise-demos/exercise-demos.js" },
     { "file": "modules/exercise-anim/exercise-anim.js" },
     { "file": "modules/photo-food/photo-food.js" },
     { "file": "modules/macro-target/macro-target.js", "expose": ["MacroTarget"] },
