@@ -1105,6 +1105,11 @@
         feet: { L: [0, 0.2, -0.78], R: [0, 0.07, -0.8] }, knees: { L: [0, 0, 1], R: [0, 0, 1] }, footDir: { L: [0, 0, -1], R: [0, 0, -1] } } }],
       props: mat },
 
+    'copenhagen-plank': { name: 'Copenhagen Plank', eq: 'Duration', hi: ['thighs', 'abs'], cam: { yaw: 0.9, pitch: 0.3 }, note: 'Top leg on the bench, bottom leg lifts up to meet it.',
+      keys: (() => { const B = { pelvis: [0, 0.6, 0], up: [0, 0.05, 1], fwd: [1, 0, 0], hands: { L: [0.0, 1.27, 0.54], R: [0.27, 0.04, 0.55] }, elbows: { L: [1, 0, 0], R: [-1, -1, 0] }, knees: { L: [0, 0, 1], R: [0, 0, 1] }, footDir: { L: [0, 0, -1], R: [0, 0, -1] } };
+        return rep(Object.assign({}, B, { feet: { L: [0, 0.52, -0.72], R: [0, 0.14, -0.74] } }), Object.assign({}, B, { feet: { L: [0, 0.52, -0.72], R: [0, 0.42, -0.72] } }), { c: 0.4 }); })(),
+      props: sk => E.bench(-1.0, -0.5, 0.45, 0.3).concat(mat(sk)) },
+
     'pallof-press-cable': { name: 'Pallof Press (Cable)', eq: 'Cable', hi: ['abs'], cam: { yaw: 0.8, pitch: 0.15 },
       keys: (() => { const S = { pelvis: [0, 0.98, 0], up: [0, 1, 0.02], elbows: one([0, -1, 0]), feet: one([0.17, 0.08, 0]), knees: one([0.2, 0, 1]) };
         return rep(Object.assign({}, S, { hands: one([0.06, 1.28, 0.2]) }), Object.assign({}, S, { hands: one([0.06, 1.3, 0.54]) }), { c: 0.35, h1: 0.2 }); })(),

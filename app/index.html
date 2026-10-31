@@ -2672,6 +2672,7 @@ Glute Kickback (Smith Machine)|Glutes|Smith machine|
 Frog Pump|Glutes|Bodyweight|
 Step Up (Weighted Glute Focus)|Glutes|Dumbbell|c
 Hip Adductor (Machine)|Adductors|Machine|
+Copenhagen Plank|Adductors|Duration|
 Standing Calf Raise (Machine)|Calves|Machine|
 Seated Calf Raise (Machine)|Calves|Machine|
 Calf Press (Leg Press)|Calves|Machine|
@@ -9423,6 +9424,11 @@ window.FORM_GUIDE={
         feet: { L: [0, 0.2, -0.78], R: [0, 0.07, -0.8] }, knees: { L: [0, 0, 1], R: [0, 0, 1] }, footDir: { L: [0, 0, -1], R: [0, 0, -1] } } }],
       props: mat },
 
+    'copenhagen-plank': { name: 'Copenhagen Plank', eq: 'Duration', hi: ['thighs', 'abs'], cam: { yaw: 0.9, pitch: 0.3 }, note: 'Top leg on the bench, bottom leg lifts up to meet it.',
+      keys: (() => { const B = { pelvis: [0, 0.6, 0], up: [0, 0.05, 1], fwd: [1, 0, 0], hands: { L: [0.0, 1.27, 0.54], R: [0.27, 0.04, 0.55] }, elbows: { L: [1, 0, 0], R: [-1, -1, 0] }, knees: { L: [0, 0, 1], R: [0, 0, 1] }, footDir: { L: [0, 0, -1], R: [0, 0, -1] } };
+        return rep(Object.assign({}, B, { feet: { L: [0, 0.52, -0.72], R: [0, 0.14, -0.74] } }), Object.assign({}, B, { feet: { L: [0, 0.52, -0.72], R: [0, 0.42, -0.72] } }), { c: 0.4 }); })(),
+      props: sk => E.bench(-1.0, -0.5, 0.45, 0.3).concat(mat(sk)) },
+
     'pallof-press-cable': { name: 'Pallof Press (Cable)', eq: 'Cable', hi: ['abs'], cam: { yaw: 0.8, pitch: 0.15 },
       keys: (() => { const S = { pelvis: [0, 0.98, 0], up: [0, 1, 0.02], elbows: one([0, -1, 0]), feet: one([0.17, 0.08, 0]), knees: one([0.2, 0, 1]) };
         return rep(Object.assign({}, S, { hands: one([0.06, 1.28, 0.2]) }), Object.assign({}, S, { hands: one([0.06, 1.3, 0.54]) }), { c: 0.35, h1: 0.2 }); })(),
@@ -12005,7 +12011,7 @@ Chest Fly (Dumbbell)|Chest|Dumbbell|Chest Fly (Dumbbell)|DB fly
 Low-to-High Cable Fly|Chest|Cable|Low-to-High Cable Fly|
 Seated DB Overhead Press|Shoulders (press)|Dumbbell|Seated Overhead Press (Dumbbell)|Seated Dumbbell Overhead Press
 Shoulder Press (Machine)|Shoulders (press)|Machine|Shoulder Press (Machine)|Machine shoulder press
-Smith Seated Press|Shoulders (press)|Smith machine||Smith seated shoulder press
+Smith Seated Press|Shoulders (press)|Smith machine|Seated Overhead Press (Smith Machine)|Smith seated shoulder press
 Arnold Press (Dumbbell)|Shoulders (press)|Dumbbell|Arnold Press (Dumbbell)|
 Lateral Raise (Cable)|Side delts|Cable|Lateral Raise (Cable)|Cable lateral raise
 Side Delts|Side delts|Dumbbell|Lateral Raise (Dumbbell)|Lateral Raise (Dumbbell);DB lateral raise
@@ -12036,8 +12042,8 @@ Iso-Lateral Low Row|Mid back|Plate-loaded|Iso-Lateral Low Row (Plate-loaded)|Iso
 Chest-Supported Row (Machine)|Mid back|Machine|Chest-Supported Row (Machine)|Chest-supported row
 Seated Row (Machine)|Mid back|Machine|Seated Row (Machine)|
 T-Bar Row|Mid back|Plate-loaded|T-Bar Row|
-Chest-Supported T-Bar Row|Mid back|Plate-loaded||Chest-supported T-bar row
-Chest-Supported DB Row|Mid back|Dumbbell||Chest-supported DB row
+Chest-Supported T-Bar Row|Mid back|Plate-loaded|Chest-Supported T-Bar Row (Machine)|Chest-supported T-bar row
+Chest-Supported DB Row|Mid back|Dumbbell|Chest-Supported Row (Dumbbell)|Chest-supported DB row
 Traps Machine|Traps|Machine|Shrug (Machine)|Shrug Machine
 Shrug (Dumbbell)|Traps|Dumbbell|Shrug (Dumbbell)|
 Shrug (Barbell)|Traps|Barbell|Shrug (Barbell)|
@@ -12053,24 +12059,24 @@ Hack Squat|Quads|Machine|Hack Squat (Machine)|
 Pendulum Squat (Machine)|Quads|Machine|Pendulum Squat (Machine)|Pendulum squat
 Leg Press (Machine)|Quads|Machine|Leg Press (Machine)|45° leg press;Leg press
 Smith Squat|Quads|Smith machine|Squat (Smith Machine)|Smith Machine Squat
-Belt Squat|Quads|Machine||
+Belt Squat|Quads|Machine|Belt Squat (Machine)|
 Leg Extension|Quads|Machine|Leg Extension (Machine)|
-Single-Leg Extension|Quads|Machine||Single-leg extension
-Smith Split Squat|Quads|Smith machine||Smith or DB split squat;Split squat
+Single-Leg Extension|Quads|Machine|Single Leg Extension (Machine)|Single-leg extension
+Smith Split Squat|Quads|Smith machine|Split Squat (Smith Machine)|Smith or DB split squat;Split squat
 Lying Leg Curl|Hamstrings|Machine|Lying Leg Curl (Machine)|
 Seated Leg Curl (Machine)|Hamstrings|Machine|Seated Leg Curl (Machine)|Seated leg curl
-Single-Leg Lying Curl|Hamstrings|Machine||Single-leg lying curl
+Single-Leg Lying Curl|Hamstrings|Machine|Lying Leg Curl (Single Leg)|Single-leg lying curl
 Standing Leg Curl (Machine)|Hamstrings|Machine|Standing Leg Curl (Machine)|
 Hip Adductor|Adductors|Machine|Hip Adductor (Machine)|Hip Adductor Machine
-Cable Adduction|Adductors|Cable||
-Copenhagen Plank|Adductors|Duration||
+Cable Adduction|Adductors|Cable|Hip Adduction (Cable)|
+Copenhagen Plank|Adductors|Duration|Copenhagen Plank|
 Hip Abductor|Glutes|Machine|Hip Abductor (Machine)|Hip Abductor Machine
-Cable Abduction|Glutes|Cable||
+Cable Abduction|Glutes|Cable|Hip Abduction (Cable)|
 Glute Kickback (Machine)|Glutes|Machine|Glute Kickback (Machine)|Glute kickback machine
 Glute Kickback (Cable)|Glutes|Cable|Glute Kickback (Cable)|Cable kickback
 Standing Calf Raise|Calves|Machine|Standing Calf Raise (Machine)|Calf raises
 Calf Press on Seated Leg Press|Calves|Machine|Calf Press (Leg Press)|Calf press on leg press
-Smith Standing Calf Raise|Calves|Smith machine||
+Smith Standing Calf Raise|Calves|Smith machine|Calf Raise (Smith Machine)|
 Seated Calf Raise (Machine)|Calves|Machine|Seated Calf Raise (Machine)|
 Seated Abs|Core|Machine|Seated Abs (Machine)|Seated Ab Crunch (machine)
 Cable Crunch|Core|Cable|Cable Crunch|

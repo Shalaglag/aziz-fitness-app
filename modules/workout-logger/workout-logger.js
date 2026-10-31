@@ -279,6 +279,7 @@ Glute Kickback (Smith Machine)|Glutes|Smith machine|
 Frog Pump|Glutes|Bodyweight|
 Step Up (Weighted Glute Focus)|Glutes|Dumbbell|c
 Hip Adductor (Machine)|Adductors|Machine|
+Copenhagen Plank|Adductors|Duration|
 Standing Calf Raise (Machine)|Calves|Machine|
 Seated Calf Raise (Machine)|Calves|Machine|
 Calf Press (Leg Press)|Calves|Machine|
