@@ -812,6 +812,7 @@ function rtCtx(){ return {docs:S.docs, date:view.date, toast, weightKg:latestKg(
 function latestKg(){ const ws=weightsSorted(); return ws.length ? ws[ws.length-1].kg : undefined; }
 function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS, setTargets:S.docs.prefs.main?.setTargets, onTargets:t=>{ const m={...(S.docs.prefs.main||{}), setTargets:t}; put("prefs","main",m,{quiet:true}); }}; }
 function mfOpts(){ return {today:TODAY, musclesFor:window.StrengthAnalytics?StrengthAnalytics.musclesFor:undefined, setTargets:S.docs.prefs.main?.setTargets, analysis:()=>window.StrengthAnalytics?StrengthAnalytics.analyze(S.docs, strengthOpts()):null}; }
+function mrOpts(){ return {today:TODAY, ym:view.mrYm, targets:dayTargets, sessionFor:x=>sessionFor(x)?.session, units:window.StrengthAnalytics?StrengthAnalytics.unitsFrom(PROGRAM):undefined, mainLifts:MAIN_LIFTS, start:START.date}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
 function mmOpts(){ const ses=sessionFor(view.date); const name=ses&&ses.session; return {today:TODAY, nextSession:(name&&name!=="Rest"&&PROGRAM[name])?{name, exercises:PROGRAM[name].map(e=>e[0])}:null, library:S.docs.lb_exercises}; }
@@ -1230,6 +1231,7 @@ function vProgress(){
   ${safeMod("MuscleFeedback",()=>MuscleFeedback.planHtml(S.docs, mfOpts()))}
   ${safeMod("StrengthScore",()=>StrengthScore.html(S.docs, strengthOpts()))}
   ${safeMod("TrendCompare",()=>TrendCompare.html(S.docs, tcOpts()))}
+  ${safeMod("MonthlyRecap",()=>MonthlyRecap.html(S.docs, mrOpts()))}
   ${window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
     <div class="tablewrap"><table><thead><tr><th>Lift</th><th class="n">Baseline</th><th class="n">Latest best set</th><th>Status</th></tr></thead><tbody>
     ${MAIN_LIFTS.map(n=>{ const base=Object.values(PROGRAM).flat().find(e=>e[0]===n); const h=liftHistory(n); const l=h[h.length-1];
@@ -1385,6 +1387,18 @@ main.addEventListener("click",e=>{
   }
   const af=e.target.closest("[data-af]");
   if(af && window.AutoFoods){ const r=AutoFoods.apply(af.dataset.af, af.dataset, S.docs.prefs.main||{}, getDay(view.date)); if(r.day) put("days",view.date,r.day,{quiet:true}); if(r.prefs) put("prefs","main",r.prefs); if(r.toast) toast(r.toast); return; }
+  const mr=e.target.closest("[data-mr-month],[data-mr-save],[data-mr-copy]");
+  if(mr && window.MonthlyRecap){
+    if(mr.hasAttribute("data-mr-month")){ view.mrYm=mr.dataset.mrMonth||undefined; render(); }
+    else if(mr.hasAttribute("data-mr-copy")){ const t=MonthlyRecap.summary(MonthlyRecap.compute(S.docs, mrOpts())); navigator.clipboard.writeText(t).then(()=>toast("Recap copied"),()=>toast("Copy blocked. Use Save as image instead.")); }
+    else { mr.disabled=true; MonthlyRecap.save(MonthlyRecap.compute(S.docs, mrOpts()), {name:"Cut tracker"}).then(res=>{
+        if(res.saved){ toast("Saved "+res.filename); return; }
+        if(res.cancelled) return;
+        const host=mr.closest(".card").querySelector("[data-mr-preview]"); if(host&&res.url){ host.hidden=false; host.innerHTML=`<img src="${res.url}" alt="Month recap image"><p class="muted" style="font-size:.85rem">Long-press (or right-click) the image to save it.</p>`; }
+        else toast("Couldn't make the image here.");
+      }).catch(()=>toast("Couldn't make the image here.")).finally(()=>{ mr.disabled=false; }); }
+    return;
+  }
   const el=e.target.closest("[data-act]"); if(!el) return;
   const a=el.dataset.act, d=view.date;
   if(a==="caldate"){ view.date=el.dataset.d; view.calYm=null; render(); window.scrollTo(0,0); return; }
@@ -1611,7 +1625,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
