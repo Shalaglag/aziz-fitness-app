@@ -26,6 +26,9 @@ function seed(today) {
   return { days: { [today]: { date: today, food, water: 1000, supps: {}, treadmill: false } }, weights, workouts: {}, prefs: {} };
 }
 
+// Sections live in a side drawer (☰) since Oct 31: open it, then tap the section.
+async function go(page, tab) { await page.click("#menuBtn"); await page.click(tab === "settings" ? "#openSettings" : `#tabs button[data-tab="${tab}"]`); await page.waitForTimeout(150); }
+
 async function openApp(browser, phone, data) {
   const page = await browser.newPage({ viewport: { width: phone.width, height: phone.height }, isMobile: true, hasTouch: true });
   const errors = [];
@@ -87,8 +90,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.deepStrictEqual(r, { target: 2200, base: 2200, tdee: 2200, coachFloor: 1800, ramadan: 2200 });
       const stale = [];
       for (const tab of TABS) {
-        await page.click(`#tabs button[data-tab="${tab}"]`);
-        await page.waitForTimeout(150);
+        await go(page, tab);
         const hits = await page.evaluate(() => (document.querySelector("#main").innerText.match(/[^\n]{0,40}\b2,?000\b(?! IU)[^\n]{0,30}/g) || []));
         // The "Your numbers" help names the plan default on purpose ("leave a box empty to keep your plan's value").
         hits.filter(h => !/plan's value/.test(h)).forEach(h => stale.push(tab + ": " + h));
@@ -111,7 +113,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
 
     await t.test("food diary: budget − eaten = remaining, no exercise calories, add sheet adds under the chosen meal and closes", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
-      await page.click('#tabs button[data-tab="food"]');
+      await go(page, "food");
       const r = await page.evaluate(() => { const v = [...document.querySelectorAll(".fsum .v")].map(e => e.textContent.trim()); return { v, target: kcalTarget(TODAY), labels: [...document.querySelectorAll(".fsum .label")].map(e => e.textContent.trim()) }; });
       assert.deepStrictEqual(r.v, ["2,000", "870", "1,130"], "budget, food, remaining");
       assert.deepStrictEqual(r.labels, ["Budget", "Food", "Remaining"]);
@@ -161,11 +163,11 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
 
     await t.test("full logger is the default Train screen, opens in List view, and Settings can switch it", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
-      await page.click('#tabs button[data-tab="train"]');
+      await go(page, "train");
       await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
       const order = await page.evaluate(() => ({ mode: view.trainMode, above: document.getElementById("lbHost").compareDocumentPosition(document.getElementById("main")) & Node.DOCUMENT_POSITION_FOLLOWING ? "logger-first" : "main-first", gym: WorkoutLogger.settings().gym }));
       assert.deepStrictEqual(order, { mode: "full", above: "logger-first", gym: false });
-      await page.click("#openSettings");
+      await go(page, "settings");
       await page.waitForSelector('[data-act="lbset"][data-s="gym"][data-k="gym"]');
       await page.click('[data-act="lbset"][data-s="gym"][data-k="gym"]');
       await page.waitForTimeout(100);
@@ -179,12 +181,12 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
 
     await t.test("guide: search filters sections and jump chips exist; progress has four sections", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
-      await page.click('#tabs button[data-tab="guide"]');
+      await go(page, "guide");
       assert.ok((await page.$$('.jump .chip')).length >= 7, "jump chips");
       await page.fill("#libq", "creatine"); await page.waitForTimeout(150);
       const cards = await page.$$eval('#main .card.guide h3', els => els.map(e => e.textContent));
       assert.deepStrictEqual(cards, ["Supplements"]);
-      await page.click('#tabs button[data-tab="progress"]');
+      await go(page, "progress");
       const tabs = await page.$$eval('.subnav [data-act="ptab"]', els => els.map(e => e.textContent));
       assert.deepStrictEqual(tabs, ["Weight", "Lifts", "Food", "Reviews"]);
       await page.click('[data-act="ptab"][data-k="reviews"]'); await page.waitForTimeout(100);
@@ -198,8 +200,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
         for (const data of [null, seed]) {
           const { page, errors } = await openApp(browser, phone, data);
           for (const tab of TABS.concat("settings")) {
-            if (tab === "settings") await page.click("#openSettings"); else await page.click(`#tabs button[data-tab="${tab}"]`);
-            await page.waitForTimeout(150);
+            await go(page, tab);
             const r = await page.evaluate(() => ({ tab: view.tab, wide: document.documentElement.scrollWidth - window.innerWidth, text: document.querySelector("#main").textContent.trim().length }));
             assert.strictEqual(r.tab, tab);
             assert.ok(r.text > 0, tab + " tab is empty");

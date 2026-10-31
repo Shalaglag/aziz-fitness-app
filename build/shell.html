@@ -292,20 +292,30 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background
 .datepick .d{min-width:9.5em;text-align:center;font-weight:600}
 .iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:36px;height:36px;cursor:pointer;display:grid;place-items:center}
 .today-link{border:0;background:none;color:var(--accent);cursor:pointer;font-weight:600;padding:4px}
-nav.tabs{display:flex;gap:4px;padding-bottom:8px}
-nav.tabs button{border:0;background:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-family:var(--display);font-size:1.1rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
-nav.tabs button[aria-current="page"]{background:var(--ink);color:var(--bg)}
+/* Side drawer (replaces the bottom tab bar, Oct 31) */
+.menubtn{font-size:1.25rem}
+.drawer-wrap{position:fixed;inset:0;z-index:45;display:flex}
+.drawer-wrap .scrim{position:absolute;inset:0;background:var(--overlay)}
+nav.drawer{position:relative;width:min(300px,82vw);height:100%;background:var(--surface);display:flex;flex-direction:column;padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(16px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));box-shadow:var(--shadow-2);animation:fit-drawer-in var(--dur-ui) var(--ease-out);overflow-y:auto}
+@keyframes fit-drawer-in{from{transform:translateX(-30px);opacity:0}}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px 14px}
+nav.drawer button[data-tab]{display:flex;align-items:center;gap:12px;width:100%;border:0;background:none;padding:14px 12px;border-radius:12px;cursor:pointer;font-family:var(--display);font-size:1.3rem;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);text-align:left;min-height:52px}
+nav.drawer button[data-tab] .ico{width:26px;text-align:center;font-size:1.1rem;font-family:var(--body)}
+nav.drawer button[aria-current="page"]{background:var(--ink);color:var(--bg)}
+nav.drawer .drawer-sep{height:1px;background:var(--line);margin:8px 12px}
+nav.drawer .drawer-foot{margin-top:auto;padding:12px;font-size:.8rem;color:var(--muted)}
 .sync{font-size:.75rem;color:var(--muted)}
 .unsaved{margin-left:8px;border:1px solid var(--warn,#c77d00);color:var(--warn,#c77d00);background:transparent;border-radius:999px;padding:1px 8px;font:inherit;font-size:.72rem;font-weight:600;cursor:pointer}
 @media (max-width:720px){
-  nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:9;background:var(--surface);border-top:1px solid var(--line);justify-content:space-around;padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
-  nav.tabs button{padding:8px 6px;font-size:1rem;flex:1}
-  main{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  main{padding-bottom:calc(40px + env(safe-area-inset-bottom,0px))}
   .datepick .d{min-width:8em}
 }
 
 #lbHost,#ppHost,#dioHost{padding-block:0 40px}
-@media (max-width:720px){#lbHost,#ppHost,#dioHost{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
+@media (max-width:720px){#lbHost,#ppHost,#dioHost{padding-bottom:calc(40px + env(safe-area-inset-bottom,0px))}}
+/* No bottom tab bar any more: floating things sit at the bottom edge */
+.co-fab{bottom:calc(20px + env(safe-area-inset-bottom,0px))!important}
+.lb-rest.floating{bottom:calc(12px + env(safe-area-inset-bottom,0px))!important}
 main{padding-block:18px 40px;display:flex;flex-direction:column;gap:18px}
 .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
@@ -367,7 +377,7 @@ details ul{margin:6px 0 0;padding-left:1.1em}
 .timer{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:8;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.25)}
 .timer .num{font-size:1.4rem}
 .timer button{background:transparent;border:1px solid var(--bg);color:var(--bg);border-radius:6px;padding:3px 8px;cursor:pointer}
-@media (max-width:720px){.timer{bottom:calc(80px + env(safe-area-inset-bottom,0px))}}
+
 
 /* tables */
 .tablewrap{overflow-x:auto}
@@ -449,7 +459,7 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 .timer .num{font-size:2rem;font-family:var(--display);font-weight:700;min-width:3em;text-align:center;line-height:1}
 .timer .tbar{position:absolute;left:0;top:0;height:3px;background:var(--accent);transition:width .5s linear}
 .timer button{min-width:44px;min-height:38px;padding:4px 10px;border-radius:8px;font-weight:600}
-@media (max-width:720px){.timer{bottom:calc(68px + env(safe-area-inset-bottom,0px));border-radius:14px;left:8px;right:8px;padding-bottom:12px}}
+@media (max-width:720px){.timer{bottom:calc(8px + env(safe-area-inset-bottom,0px));border-radius:14px;left:8px;right:8px;padding-bottom:12px}}
 body:has(#timer:not([hidden])) .co-fab{display:none}
 /* Settings */
 .set-list{display:flex;flex-direction:column}
@@ -507,27 +517,36 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 <header class="top">
   <div class="wrap">
     <div class="toprow">
-      <div>
+      <div class="row" style="flex-wrap:nowrap;gap:10px">
+        <button class="iconbtn menubtn" id="menuBtn" aria-label="Menu" aria-haspopup="dialog">☰</button>
+        <div>
         <div class="brand">Aziz <span>Cut</span> Tracker</div>
         <div class="sync"><span id="sync">Loading your data…</span><button class="unsaved" id="unsaved" hidden></button></div>
+        </div>
       </div>
       <div class="datepick">
         <button class="iconbtn" id="prevDay" aria-label="Previous day">‹</button>
         <div class="d" id="dateLabel"></div>
         <button class="iconbtn" id="nextDay" aria-label="Next day">›</button>
         <button class="today-link" id="goToday">Today</button>
-        <button class="iconbtn" id="openSettings" aria-label="Settings" title="Settings">⚙</button>
       </div>
     </div>
-    <nav class="tabs" id="tabs">
-      <button data-tab="today">Today</button>
-      <button data-tab="train">Train</button>
-      <button data-tab="food">Food</button>
-      <button data-tab="progress">Progress</button>
-      <button data-tab="guide">Guide</button>
-    </nav>
   </div>
 </header>
+<div class="drawer-wrap" id="drawer" hidden role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="scrim" data-close-drawer></div>
+  <nav class="drawer" id="tabs" aria-label="Sections">
+    <div class="drawer-head"><div class="brand">Aziz <span>Cut</span> Tracker</div><button class="iconbtn" id="drawerClose" aria-label="Close">✕</button></div>
+    <button data-tab="today"><span class="ico">☀</span>Today</button>
+    <button data-tab="train"><span class="ico">🏋</span>Train</button>
+    <button data-tab="food"><span class="ico">🍽</span>Food</button>
+    <button data-tab="progress"><span class="ico">📈</span>Progress</button>
+    <button data-tab="guide"><span class="ico">📖</span>Guide</button>
+    <div class="drawer-sep"></div>
+    <button data-tab="settings" id="openSettings"><span class="ico">⚙</span>Settings</button>
+    <div class="drawer-foot" id="drawerFoot"></div>
+  </nav>
+</div>
 <div class="wrap err-banner" id="errBanner" hidden role="alert"></div>
 <main class="wrap" id="main"></main>
 <div id="coachHost"></div>
@@ -1596,11 +1615,14 @@ function vSettings(){
 /* ===================== Events ===================== */
 // Android app (modules/android-shell): back button closes sheets, then returns to Today, then minimises.
 if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
-document.getElementById("tabs").addEventListener("click",e=>{ const b=e.target.closest("button[data-tab]"); if(!b) return; view.tab=b.dataset.tab; try{localStorage.setItem("aziz-cut-tab",view.tab)}catch(_){} render(); window.scrollTo(0,0); });
+function openDrawer(on){ const d=document.getElementById("drawer"); d.hidden=!on; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
+document.getElementById("menuBtn").onclick=()=>openDrawer(true);
+document.getElementById("drawerClose").onclick=()=>openDrawer(false);
+document.getElementById("drawer").addEventListener("click",e=>{ if(e.target.hasAttribute("data-close-drawer")) openDrawer(false); });
+document.getElementById("tabs").addEventListener("click",e=>{ const b=e.target.closest("button[data-tab]"); if(!b) return; openDrawer(false); view.tab=b.dataset.tab; try{localStorage.setItem("aziz-cut-tab",view.tab)}catch(_){} render(); window.scrollTo(0,0); });
 document.getElementById("prevDay").onclick=()=>{ view.date=addDays(view.date,-1); render(); };
 document.getElementById("nextDay").onclick=()=>{ view.date=addDays(view.date,1); render(); };
 document.getElementById("goToday").onclick=()=>{ view.date=TODAY; render(); };
-document.getElementById("openSettings").onclick=()=>{ view.tab = view.tab==="settings" ? "today" : "settings"; try{localStorage.setItem("aziz-cut-tab",view.tab)}catch(_){} render(); window.scrollTo(0,0); };
 
 function saveDay(day,opts){ put("days",day.date,day,opts); }
 /* Auto foods: rules in prefs/main.autoFoods are added to the viewed day as planned rows the first time it is opened */
