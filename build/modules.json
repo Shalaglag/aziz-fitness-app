@@ -8,6 +8,7 @@
     { "file": "modules/waterh-sync/waterh-import.js", "esm": "WaterH" },
     { "file": "modules/voice-log/voice-log.js", "expose": ["VoiceLog"] },
     { "file": "modules/workout-share/workout-share.js", "expose": ["WorkoutShare"] },
+    { "file": "modules/break-ramp/break-ramp.js", "expose": ["BreakRamp"] },
     { "file": "modules/workout-logger/workout-logger.js" },
     { "file": "modules/saved-meals/saved-meals.js" },
     { "file": "modules/effort-deload/effort-deload.js", "expose": ["EffortDeload"] },
@@ -47,6 +48,7 @@
     { "file": "modules/menu-import/menu-import.js" },
     { "file": "modules/pending-writes/pending-writes.js" },
     { "file": "modules/app-shortcuts/app-shortcuts.js", "expose": ["AppShortcuts"] },
-    { "file": "modules/cloud-store/cloud-store.js", "expose": ["CloudStore"] }
+    { "file": "modules/cloud-store/cloud-store.js", "expose": ["CloudStore"] },
+    { "file": "modules/android-shell/android-shell.js", "expose": ["AndroidShell"] }
   ]
 }
