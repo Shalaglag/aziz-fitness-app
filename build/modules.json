@@ -52,6 +52,7 @@
     { "file": "modules/strength-score/strength-score.js", "expose": ["StrengthScore"] },
     { "file": "modules/muscle-map/muscle-map.js", "expose": ["MuscleMap"] },
     { "file": "modules/trend-compare/trend-compare.js", "expose": ["TrendCompare"] },
+    { "file": "modules/lift-goals/lift-goals.js", "expose": ["LiftGoals"] },
     { "file": "modules/data-io/data-io.js", "expose": ["DataIO"] },
     { "file": "modules/calendar-reminders/calendar-reminders.js", "expose": ["CalendarReminders"] },
     { "file": "modules/menu-import/menu-import.js" },
