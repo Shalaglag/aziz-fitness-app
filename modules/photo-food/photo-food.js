@@ -22,11 +22,12 @@ const PhotoFood = (() => {
   const num = v => { const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : +v; return isFinite(n) && n > 0 ? n : 0; };
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  function prompt({ text, hasImage } = {}) {
+  function prompt({ text, hasImage, kcal } = {}) {
+    const target = typeof kcal === "number" && kcal > 0 ? Math.round(kcal).toLocaleString("en-US") : "2,000";
     const desc = String(text || "").trim().slice(0, 2000);
     return [
       "Estimate the calories and macros of the food " + (hasImage ? "in the attached photo" + (desc ? " and described below" : "") : "described below") + ".",
-      "Context: the eater is a 92 kg man in Kuwait on a 2,000 kcal cut. Most meals come from Nutreeze (a Kuwaiti meal-prep service) and often show a printed label; local food includes khubz, machboos, shawarma, mandi and similar.",
+      "Context: the eater is a 92 kg man in Kuwait on a " + target + " kcal cut. Most meals come from Nutreeze (a Kuwaiti meal-prep service) and often show a printed label; local food includes khubz, machboos, shawarma, mandi and similar.",
       "Rules:",
       "- If a nutrition label or menu card with numbers is readable, copy those numbers exactly and set confidence to \"high\".",
       "- Otherwise estimate from visible portion sizes (plate size, utensils, hand) and typical recipes. Restaurant and Gulf home cooking use more oil than you might assume; count it.",
@@ -130,7 +131,7 @@ const PhotoFood = (() => {
     try {
       const opts = { signal: S.ctl.signal, modelTier: "default" };
       if (S.image) opts.images = [S.image];
-      const v = await sample.json(prompt({ text, hasImage: !!S.image }), opts);
+      const v = await sample.json(prompt({ text, hasImage: !!S.image, kcal: O.kcal ? O.kcal() : undefined }), opts);
       const res = parse(v);
       S.result = res;
       if (!res.items.length) S.error = res.note || "No food found. Try another photo or describe it in words.";

@@ -891,14 +891,15 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
  */
 window.WeeklyReport = (() => {
   // Plan numbers; setTargets / opts.targets (an AppTargets object, plus optional startKg) replace them.
-  const PLAN = { START: "2026-10-25", START_KG: 91.9, GOAL: 80, KCAL: 2000, KCAL_LO: 1850, KCAL_HI: 2150, PRO: 160, PRO_MAX: 170, REVIEW: "2026-11-07" };
-  let START, START_KG, GOAL, KCAL, KCAL_LO, KCAL_HI, PRO, PRO_MAX, REVIEW;
+  const PLAN = { START: "2026-10-25", START_KG: 91.9, GOAL: 80, KCAL: 2000, KCAL_LO: 1850, KCAL_HI: 2150, FLOOR: 1800, PRO: 160, PRO_MAX: 170, REVIEW: "2026-11-07" };
+  let START, START_KG, GOAL, KCAL, KCAL_LO, KCAL_HI, FLOOR, PRO, PRO_MAX, REVIEW;
   function setTargets(t) {
     t = t || {};
     const n = v => typeof v === "number" && isFinite(v) && v > 0 ? v : typeof v === "string" && v.trim() && isFinite(+v) && +v > 0 ? +v : null;
     const d = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : null;
     START = d(t.start) || PLAN.START; START_KG = n(t.startKg) || PLAN.START_KG; GOAL = n(t.goalKg) || PLAN.GOAL;
     KCAL = n(t.kcal) || PLAN.KCAL;
+    FLOOR = n(t.kcalFloor) || PLAN.FLOOR;
     const lo = n(t.kcalLo), hi = n(t.kcalHi);
     KCAL_LO = lo && hi ? lo : n(t.kcal) ? KCAL - 150 : PLAN.KCAL_LO; KCAL_HI = lo && hi ? hi : n(t.kcal) ? KCAL + 150 : PLAN.KCAL_HI;
     PRO = n(t.proteinMin) || PLAN.PRO; PRO_MAX = n(t.proteinMax) || (n(t.proteinMin) ? PRO + 10 : PLAN.PRO_MAX);
@@ -987,7 +988,7 @@ window.WeeklyReport = (() => {
       avg: ws.length ? mean(ws) : null, min: ws.length ? Math.min(...ws) : null, max: ws.length ? Math.max(...ws) : null,
       kcalDays: k.length, kcalAvg: k.length ? mean(k.map(r => r.kcal)) : null,
       targetDays: tgt.length, onTarget: tgt.filter(r => r.kcal >= KCAL_LO && r.kcal <= KCAL_HI).length,
-      over: tgt.filter(r => r.kcal > KCAL_HI).length, tooLow: tgt.filter(r => r.kcal < 1700).length,
+      over: tgt.filter(r => r.kcal > KCAL_HI).length, tooLow: tgt.filter(r => r.kcal < FLOOR).length,
       freeKcal: k.filter(r => r.type === "free").map(r => r.kcal),
       proDays: pr.length, proHit: pr.filter(r => r.protein >= PRO).length, proAvg: pr.length ? mean(pr.map(r => r.protein)) : null,
     };
@@ -1061,7 +1062,7 @@ window.WeeklyReport = (() => {
     if (s.targetDays) {
       let t = s.onTarget + " of " + s.targetDays + " logged days on target (1,850–2,150 kcal eaten).";
       if (s.over) t += " " + s.over + " over.";
-      if (s.tooLow) t += " " + s.tooLow + " under 1,700, which the plan says to avoid.";
+      if (s.tooLow) t += " " + s.tooLow + " under " + FLOOR.toLocaleString("en-US") + ", the plan's safety floor.";
       v.push([s.onTarget >= s.targetDays * 0.7 ? "good" : "warn", "Calories", t]);
     } else v.push(["none", "Calories", "No eaten food ticked this week yet."]);
     if (s.proDays) v.push([s.proHit >= s.proDays * 0.7 ? "good" : "warn", "Protein", "Hit " + PRO + " g on " + s.proHit + " of " + s.proDays + " logged days (average " + fint(s.proAvg) + " g)."]);
@@ -1128,7 +1129,7 @@ window.WeeklyReport = (() => {
       g += '<text x="' + x(i) + '" y="' + (H - 10) + '" text-anchor="middle">' + WD[wday(r.date)] + (r.type === "free" ? "*" : "") + '</text>';
       if (r.kcal == null) { g += '<text x="' + x(i) + '" y="' + (y(0) - 6) + '" text-anchor="middle">—</text>'; return; }
       const h = Math.max(2, y(0) - y(r.kcal)), rx = Math.min(4, h / 2), x0 = x(i) - bw / 2, x1 = x(i) + bw / 2, top = y(0) - h;
-      const fill = r.type === "free" ? "url(#wr-hatch)" : r.kcal > KCAL_HI || r.kcal < 1700 ? "var(--warn)" : "var(--accent)";
+      const fill = r.type === "free" ? "url(#wr-hatch)" : r.kcal > KCAL_HI || r.kcal < FLOOR ? "var(--warn)" : "var(--accent)";
       g += '<path d="M' + x0 + ' ' + y(0) + 'V' + (top + rx) + 'Q' + x0 + ' ' + top + ' ' + (x0 + rx) + ' ' + top + 'H' + (x1 - rx) + 'Q' + x1 + ' ' + top + ' ' + x1 + ' ' + (top + rx) + 'V' + y(0) + 'Z" fill="' + fill + '"' + (r.type === "free" ? ' stroke="var(--muted)"' : "") + '><title>' + WD[wday(r.date)] + " " + short(r.date) + ": " + fint(r.kcal) + " kcal" + (r.protein != null ? ", " + fint(r.protein) + " g protein" : "") + (r.est ? " (includes estimates)" : "") + '</title></path>';
     });
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Calories eaten each day against the ' + kc(KCAL) + ' kcal target">' + g + '</svg>';
@@ -6137,7 +6138,11 @@ if (typeof module !== "undefined") module.exports = Ramadan;
  * half-logged today never counts. Only food marked eaten is counted.
  */
 window.TrendTDEE = (() => {
-  const START = "2026-10-25", REVIEW = "2026-11-07", KCAL = 2000, FLOOR = 1700;
+  const START = "2026-10-25", REVIEW = "2026-11-07";
+  // Plan defaults; opts.kcal (the cut target), opts.floor (lowest calories ever suggested) and opts.review override them.
+  const KCAL_DEFAULT = 2000, FLOOR_DEFAULT = 1800;
+  let KCAL = KCAL_DEFAULT, FLOOR = FLOOR_DEFAULT, REVIEW_AT = REVIEW;
+  const posNum = v => typeof v === "number" && isFinite(v) && v > 0 ? v : null;
   const ALPHA = 0.1, KCAL_PER_KG = 7700, MIN_DAYS = 14, MAX_DAYS = 28, MIN_FOOD = 10, MIN_WEIGH = 8;
   const PACE_LO = 0.5, PACE_HI = 0.8; // kg per week, the plan band
   const DAY = 864e5, MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -6206,6 +6211,7 @@ window.TrendTDEE = (() => {
    * } */
   function estimate(docs, opts = {}) {
     docs = docs || {};
+    KCAL = posNum(opts.kcal) || KCAL_DEFAULT; FLOOR = posNum(opts.floor) || FLOOR_DEFAULT; REVIEW_AT = isDate(opts.review) ? opts.review : REVIEW;
     const today = isDate(opts.today) ? opts.today : localToday();
     const ser = series(docs.weights, { today });
     const at = d => { const r = ser.find(x => x.date === d); return r ? r.trend : null; };
@@ -6217,7 +6223,7 @@ window.TrendTDEE = (() => {
     const R = {
       today, from, to, days, trendNow, trendDelta7: trendNow != null && wk != null ? trendNow - wk : null,
       weighIns: 0, foodDays: 0, estDays: 0, intakeAvg: null, rateKgWk: null, tdee: null, tdeeLo: null, tdeeHi: null,
-      suggest: null, readyOn: add(START, MIN_DAYS), reviewOpen: today > REVIEW, notes: [], ready: false, status: "empty",
+      suggest: null, readyOn: add(START, MIN_DAYS), reviewOpen: today > REVIEW_AT, notes: [], ready: false, status: "empty",
     };
     if (!ser.length) return R;
     R.status = "building";
@@ -6281,10 +6287,10 @@ window.TrendTDEE = (() => {
   function verdict(E) {
     if (!E.ready) return "";
     const s = E.suggest;
-    if (!E.reviewOpen) return "Hold 2,000 until the Nov 7 review. If it were today: " + (s.keep ? "keep 2,000." : "aim for " + fint(s.lo) + "–" + fint(s.hi) + " kcal.");
-    if (s.keep) return "2,000 kcal sits inside the " + fint(s.lo) + "–" + fint(s.hi) + " range for 0.5–0.8 kg a week. Keep it.";
-    if (KCAL > s.hi) return "At 2,000 you're losing slower than 0.5 kg a week. Move to " + fint(s.hi) + " kcal (range " + fint(s.lo) + "–" + fint(s.hi) + ").";
-    return "At 2,000 you're losing faster than 0.8 kg a week. You can eat up to " + fint(s.lo) + "–" + fint(s.hi) + " kcal and protect strength.";
+    if (!E.reviewOpen) return "Hold " + fint(KCAL) + " until the " + short(REVIEW_AT) + " review. If it were today: " + (s.keep ? "keep " + fint(KCAL) + "." : "aim for " + fint(s.lo) + "–" + fint(s.hi) + " kcal.");
+    if (s.keep) return fint(KCAL) + " kcal sits inside the " + fint(s.lo) + "–" + fint(s.hi) + " range for 0.5–0.8 kg a week. Keep it.";
+    if (KCAL > s.hi) return "At " + fint(KCAL) + " you're losing slower than 0.5 kg a week. Move to " + fint(s.hi) + " kcal (range " + fint(s.lo) + "–" + fint(s.hi) + ").";
+    return "At " + fint(KCAL) + " you're losing faster than 0.8 kg a week. You can eat up to " + fint(s.lo) + "–" + fint(s.hi) + " kcal and protect strength.";
   }
 
   function html(docs, opts) {
@@ -9181,11 +9187,12 @@ const PhotoFood = (() => {
   const num = v => { const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : +v; return isFinite(n) && n > 0 ? n : 0; };
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  function prompt({ text, hasImage } = {}) {
+  function prompt({ text, hasImage, kcal } = {}) {
+    const target = typeof kcal === "number" && kcal > 0 ? Math.round(kcal).toLocaleString("en-US") : "2,000";
     const desc = String(text || "").trim().slice(0, 2000);
     return [
       "Estimate the calories and macros of the food " + (hasImage ? "in the attached photo" + (desc ? " and described below" : "") : "described below") + ".",
-      "Context: the eater is a 92 kg man in Kuwait on a 2,000 kcal cut. Most meals come from Nutreeze (a Kuwaiti meal-prep service) and often show a printed label; local food includes khubz, machboos, shawarma, mandi and similar.",
+      "Context: the eater is a 92 kg man in Kuwait on a " + target + " kcal cut. Most meals come from Nutreeze (a Kuwaiti meal-prep service) and often show a printed label; local food includes khubz, machboos, shawarma, mandi and similar.",
       "Rules:",
       "- If a nutrition label or menu card with numbers is readable, copy those numbers exactly and set confidence to \"high\".",
       "- Otherwise estimate from visible portion sizes (plate size, utensils, hand) and typical recipes. Restaurant and Gulf home cooking use more oil than you might assume; count it.",
@@ -9289,7 +9296,7 @@ const PhotoFood = (() => {
     try {
       const opts = { signal: S.ctl.signal, modelTier: "default" };
       if (S.image) opts.images = [S.image];
-      const v = await sample.json(prompt({ text, hasImage: !!S.image }), opts);
+      const v = await sample.json(prompt({ text, hasImage: !!S.image, kcal: O.kcal ? O.kcal() : undefined }), opts);
       const res = parse(v);
       S.result = res;
       if (!res.items.length) S.error = res.note || "No food found. Try another photo or describe it in words.";
@@ -9933,6 +9940,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = MacroTarge
     return {
       basis: o.basis,
       totals: { kcal: Math.round(t.kcal), p: r1(t.p), c: r1(t.c), f: r1(t.f) },
+      kcalTarget: Math.round(o.targets.kcal),
       kcalLeft: Math.round(o.targets.kcal - t.kcal),
       proteinLeft: r1(Math.max(0, o.targets.proteinMin - t.p)),
       proteinToMax: r1(o.targets.proteinMax - t.p),
@@ -10020,12 +10028,13 @@ if (typeof module !== "undefined" && module.exports) module.exports = MacroTarge
   // One-line summary for a card or the copyable day text.
   function summary(res) {
     const head = `${res.proteinLeft} g protein and ${res.kcalLeft} kcal left`;
+    const cap = (res.kcalTarget || TARGETS.kcal).toLocaleString('en-US');
     if (res.status === 'met') return `Protein is covered (${res.totals.p} g). ${res.kcalLeft} kcal left.`;
-    if (res.status === 'no-room') return `${head}. No add fits without going over 2,000 kcal.`;
+    if (res.status === 'no-room') return `${head}. No add fits without going over ${cap} kcal.`;
     const b = res.best;
     const what = b.items.map(label).join(' + ');
     if (res.status === 'closable') return `${head}. Add ${what}: +${b.add.p} g protein, +${b.add.kcal} kcal (ends at ${b.after.p} g, ${b.after.kcal} kcal).`;
-    return `${head}. Nothing closes it under 2,000 kcal; ${what} gets closest (+${b.add.p} g, still ${b.short} g short).`;
+    return `${head}. Nothing closes it under ${cap} kcal; ${what} gets closest (+${b.add.p} g, still ${b.short} g short).`;
   }
 
   // Map a suggestion into days/{date}.food items (planned, slot "add").
@@ -14378,7 +14387,7 @@ window.Coach = (() => {
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   // Coaching rules, not personal targets: on-target band, safety floor for a suggested cut, size of one
   // suggested change, and the healthy loss pace in % of body weight a week. Overridable via opts.rules.
-  const RULES = { band: 150, floor: 1500, step: 150, paceLo: 0.5, paceHi: 1.0 };
+  const RULES = { band: 150, floor: 1800, step: 150, paceLo: 0.5, paceHi: 1.0 };
 
   const ms = s => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
   const iso = t => new Date(t).toISOString().slice(0, 10);
@@ -19807,6 +19816,7 @@ window.CalendarReminders = (() => {
   function events(s, ctx) {
     ctx = ctx || {};
     const from = validDate(ctx.from) ? ctx.from : isoOf(Date.now());
+    const kc = (typeof ctx.kcal === "number" && ctx.kcal > 0 ? Math.round(ctx.kcal) : 2000).toLocaleString("en-US");
     const out = [];
     if (s.weigh) out.push({
       uid: "cr-weigh", summary: "Morning weigh-in", start: from, time: s.weighTime, minutes: 5, rrule: "FREQ=DAILY", alarms: [0],
@@ -19815,7 +19825,7 @@ window.CalendarReminders = (() => {
     if (s.train && s.trainDays.length) out.push({
       uid: "cr-train", summary: "Train + 30 min treadmill", start: firstOn(from, s.trainDays), time: s.trainTime, minutes: 90,
       rrule: "FREQ=WEEKLY;BYDAY=" + s.trainDays.join(","), alarms: [30, 0],
-      description: "Meal 1 + both snacks about 90 min before. 1 L Gatorade during (it counts inside the 2,000). Adonis after. Open Train in the app to log sets.",
+      description: "Meal 1 + both snacks about 90 min before. 1 L Gatorade during (it counts inside the " + kc + "). Adonis after. Open Train in the app to log sets.",
     });
     if (s.train && s.satOn) out.push({
       uid: "cr-train-sat", summary: "Saturday session", start: firstOn(from, ["SA"]), time: s.satTime, minutes: 90,
@@ -19828,7 +19838,7 @@ window.CalendarReminders = (() => {
     }));
     if (s.review && validDate(ctx.review) && ctx.review >= from) out.push({
       uid: "cr-review-" + ctx.review.replace(/-/g, ""), summary: "14-day calorie review", start: ctx.review, time: s.reviewTime, minutes: 30, alarms: [1440, 0],
-      description: "Two weeks of weigh-ins are in. Open Progress: compare the 7-day averages and let the coach say whether 2,000 kcal stays. Decide on the trend, never one reading.",
+      description: "Two weeks of weigh-ins are in. Open Progress: compare the 7-day averages and let the coach say whether " + kc + " kcal stays. Decide on the trend, never one reading.",
     });
     if (s.supps && Array.isArray(ctx.supps)) ctx.supps.filter(p => p && p.on !== false && validTime(p.time) && p.name).forEach(p => out.push({
       uid: "cr-supp-" + String(p.key || p.name).toLowerCase().replace(/[^a-z0-9]+/g, "-"), summary: p.name + (p.dose ? " " + p.dose : ""), start: from, time: p.time, minutes: 5,
@@ -21106,10 +21116,13 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
 const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:220};
 const START = {date:"2026-10-25", kg:91.9}; let GOAL_KG = 80;
 // Plan defaults; "Your numbers" (prefs/main.profile) overrides them through AppTargets.
+// Lowest calories the app ever suggests or accepts for a cut (the plan: never 1,500–1,700). Coach, trend TDEE and the weekly report share it.
+const KCAL_FLOOR = 1800;
+const fkc = n => Math.round(+n||0).toLocaleString("en-US");
 const PLAN = {kcal:2000, kcalLo:1850, kcalHi:2150, proteinMin:160, proteinMax:170, fatLo:55, fatHi:70, carbsLo:180, carbsHi:220, goalKg:80, start:"2026-10-25"};
 const PLAN_START_KG = 91.9;
 let APPT = null;
-function syncModuleTargets(){ if(!APPT) return; const t={...APPT, startKg:START.kg};
+function syncModuleTargets(){ if(!APPT) return; const t={...APPT, startKg:START.kg, kcalFloor:KCAL_FLOOR};
   [window.BudgetRecovery, window.WeeklyReport, window.NutreezePicker].forEach(m=>{ try{ if(m && m.setTargets) m.setTargets(t); }catch(e){} }); }
 function dayTargets(date){ try{ return APPT ? AppTargets.forKcal(APPT, kcalTarget(date)) : undefined; }catch(e){ return APPT||undefined; } }
 function applyTargets(){
@@ -21430,7 +21443,8 @@ function ccTargets(){ return APPT || {kcal:TARGET.kcal, carbsLo:TARGET.cMin, car
 function ccTarget(d){ try{ return window.CalorieCycling && ccState().on ? CalorieCycling.target(ccTargets(), d, ccState(), ccOpts()) : null; }catch(e){ return null; } }
 // Reverse diet (back to maintenance after the goal): manual start, like diet breaks.
 function rdState(){ return {...(S.docs.prefs.main?.reverseDiet||{}), auto:false}; }
-function rdOpts(){ let tdee=null; try{ if(window.TrendTDEE){ const E=TrendTDEE.estimate(S.docs,{today:TODAY}); if(E&&E.ready) tdee={kcal:E.tdee, lo:E.tdeeLo, hi:E.tdeeHi}; } }catch(e){} return {today:TODAY, profile:dbProfile(), tdee, trend:trendSeries()}; }
+function tdeeOpts(){ return {today:TODAY, kcal:TARGET.kcal, floor:KCAL_FLOOR, review:STRICT.to}; }
+function rdOpts(){ let tdee=null; try{ if(window.TrendTDEE){ const E=TrendTDEE.estimate(S.docs,tdeeOpts()); if(E&&E.ready) tdee={kcal:E.tdee, lo:E.tdeeLo, hi:E.tdeeHi}; } }catch(e){} return {today:TODAY, profile:dbProfile(), tdee, trend:trendSeries()}; }
 function reverseTarget(d){ try{ return window.ReverseDiet ? ReverseDiet.target(dbDocs(), rdState(), d, rdOpts()) : null; }catch(e){ return null; } }
 function kcalTarget(d){
   const rt=reverseTarget(d); if(rt && rt.kcal && rt.mode!=="cut") return Math.round(rt.kcal);
@@ -21441,7 +21455,7 @@ function kcalTarget(d){
   return Math.max(base-150, base+adj); }
 function macroBars(items){
   const all=sum(items), eaten=sum(items.filter(i=>i.eaten)), KT=kcalTarget(view.date);
-  const rows=[["Calories","kcal",KT-100,KT+100,2400,"kcal",""],["Protein","p",TARGET.pMin,TARGET.pMax,220,"p","g"],["Carbs","c",TARGET.cMin,TARGET.cMax,280,"c","g"],["Fat","f",TARGET.fMin,TARGET.fMax,100,"f","g"]];
+  const rows=[["Calories","kcal",KT-100,KT+100,Math.max(2400,KT+400),"kcal",""],["Protein","p",TARGET.pMin,TARGET.pMax,220,"p","g"],["Carbs","c",TARGET.cMin,TARGET.cMax,280,"c","g"],["Fat","f",TARGET.fMin,TARGET.fMax,100,"f","g"]];
   return `<div class="macros">${rows.map(([lab,k,lo,hi,max,cls,u])=>`
     <div class="mrow"><span class="label">${lab}</span>
       <div class="mbar" aria-hidden="true"><span class="planned ${cls}" style="width:${Math.min(100,all[k]/max*100)}%"></span><span class="eaten ${cls}" style="width:${Math.min(100,eaten[k]/max*100)}%"></span><span class="zone" style="left:${lo/max*100}%;width:${(hi-lo)/max*100}%"></span></div>
@@ -21519,7 +21533,7 @@ const coachActions = {
     if(a.type==="set_calorie_target"){
       const cur=APPT && APPT.kcal, to=Math.round(+a.kcal);
       if(!(to>0)) return {ok:false, error:"No calorie number was given."};
-      if(to<1800) return {ok:false, error:"That is below the 1,800 kcal safety floor."};
+      if(to<KCAL_FLOOR) return {ok:false, error:"That is below the "+fkc(KCAL_FLOOR)+" kcal safety floor."};
       if(cur && Math.abs(to-cur)>150) return {ok:false, error:"Changes go in steps of up to 150 kcal; that would be "+coachFmt(Math.abs(to-cur))+"."};
       if(cur===to) return {ok:false, error:"That is already your target."};
       return {ok:true, change:"Daily calorie target "+(cur?coachFmt(cur)+" → ":"")+coachFmt(to)+" kcal (Guide, Your numbers). Diet-break and lift-day adjustments still apply on top."};
@@ -21586,13 +21600,13 @@ const coachActions = {
   }
 };
 let coachCache=null; // one computation per tick: the panel's getters all ask within the same call
-function coachOpts(){ if(coachCache) return coachCache; const o={today:TODAY, targets:APPT, rules:{floor:1800}, kcalTarget}; coachCache=o; setTimeout(()=>{ coachCache=null; },0);
+function coachOpts(){ if(coachCache) return coachCache; const o={today:TODAY, targets:APPT, rules:{floor:KCAL_FLOOR}, kcalTarget}; coachCache=o; setTimeout(()=>{ coachCache=null; },0);
   try{ if(window.StrengthAnalytics) o.strength=StrengthAnalytics.analyze(S.docs, strengthOpts()); }catch(e){}
   try{ if(window.RecoveryFatigue && RecoveryFatigue.summary) o.recoveryText=RecoveryFatigue.summary(S.docs, {today:TODAY, ...rfOpts()}); }catch(e){}
   try{ if(window.Cardio && Cardio.summary) o.cardioText=Cardio.summary(S.docs, {today:TODAY}); }catch(e){}
   try{ o.planToday=coachPlanToday(); o.exerciseNames=Object.values(PROGRAM).flat().map(t=>t[0]); o.exercise=coachExercise; }catch(e){}
   try{ if(window.EffortDeload) o.effort=EffortDeload.analyze(S.docs.workouts,{today:TODAY, dismissedAt:S.docs.prefs.main?.deloadDismissedAt}); }catch(e){}
-  try{ if(window.TrendTDEE) o.tdee=TrendTDEE.estimate(S.docs,{today:TODAY}); }catch(e){}
+  try{ if(window.TrendTDEE) o.tdee=TrendTDEE.estimate(S.docs,tdeeOpts()); }catch(e){}
   return o; }
 function coachSafe(fn){ return safeMod("Coach", fn); }
 function ddGlance(d){ return safeMod("DailyDashboard", ()=>DailyDashboard.glanceHtml(S.docs, d, ddOpts())); }
@@ -21606,7 +21620,7 @@ function vToday(){
   const waterTarget = training ? "3.5–4 L" : "3 L";
   const sesCard = ses ? `
       <div class="spread"><h2>${esc(ses.session)}</h2>${ses.chosen?`<span class="pill good">Set</span>`:`<span class="pill info">Next in rotation</span>`}</div>
-      ${ses.session==="Rest"?`<p>Rest day. Keep steps around 6k–10k and calories at 2,000.</p>`:`<p class="muted">${PROGRAM[ses.session].length} exercises, then 30 min treadmill at 4.0 km/h, incline 3.</p>`}
+      ${ses.session==="Rest"?`<p>Rest day. Keep steps around 6k–10k and calories at ${fkc(kcalTarget(view.date))}.</p>`:`<p class="muted">${PROGRAM[ses.session].length} exercises, then 30 min treadmill at 4.0 km/h, incline 3.</p>`}
       <div class="row">${ses.session!=="Rest"?`<button class="btn" data-act="gotrain">Open workout</button>`:""}${!ses.chosen?`<button class="btn ghost" data-act="setses" data-idx="${ses.idx}">Confirm</button>`:""}<button class="btn ghost" data-act="gotrain">Change</button></div>`
     : `<h2>Which session is today?</h2><p class="muted">Pick once and the app follows the 8-day rotation from there.</p>
       <div class="row">${ROTATION.map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}">${s}</button>`).join("")}</div>`;
@@ -21764,7 +21778,7 @@ function vTrainSession(){
   const cur = ses ? ses.session : null;
   const picker = `<div class="row">${ROTATION.map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}" aria-pressed="${cur===s && (ses.idx===i)}">${s}</button>`).join("")}</div>`;
   if(!cur) return `<div class="card"><h2>Pick today's session</h2>${picker}</div>`;
-  if(cur==="Rest") return `<div class="card"><h2>Rest day</h2><p>Recovery is where the strength comes back. Walk, stretch, sleep well, and keep food at 2,000 kcal.</p>${picker}</div>`;
+  if(cur==="Rest") return `<div class="card"><h2>Rest day</h2><p>Recovery is where the strength comes back. Walk, stretch, sleep well, and keep food at ${fkc(kcalTarget(view.date))} kcal.</p>${picker}</div>`;
   const ex = PROGRAM[cur];
   return `
   <div id="xsNotice"></div>
@@ -21968,7 +21982,7 @@ function vProgress(){
   ws.forEach((w,i)=>{ const a=avg7(w.date); table.push({...w,n:diffDays(START.date,w.date)+1,ch:prev?w.kg-prev.kg:null,a}); prev=w; });
   table.reverse();
   const report = safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, view.wrWeek==null?{}:{week:view.wrWeek}));
-  const trendCard = safeMod("TrendTDEE", ()=>TrendTDEE.html(S.docs));
+  const trendCard = safeMod("TrendTDEE", ()=>TrendTDEE.html(S.docs, tdeeOpts()));
   const co=coachOpts();
   return `${coachSafe(()=>Coach.insightsHtml(S.docs, {...co, seen:S.docs.prefs.main?.coachSeen||{}}))}${coachSafe(()=>Coach.reviewHtml(S.docs, co))}${coachSafe(()=>Coach.chatHtml(S.docs, co))}
   <div class="card hero">
@@ -21980,13 +21994,13 @@ function vProgress(){
       <div class="stat"><div class="v num">${wkNow?wkNow.avg.toFixed(1):"—"}</div><span class="label">Avg, last 7 days${wkNow?` (${wkNow.n})`:""}</span></div>
       <div class="stat"><div class="v num">${rate!==null?(rate>0?"+":"")+rate.toFixed(2):"—"}</div><span class="label">kg / week</span></div>
     </div>
-    ${rate!==null?`<p class="${rate<=-0.4&&rate>=-1?"muted":"note"}" style="font-size:.9rem">Expected at 2,000 kcal: about −0.5 to −0.8 kg a week (0.5–1% of body weight). ${rate>-0.3?"Slower than expected, but judge it over 2 weeks before changing calories.":rate<-1.0?"Faster than expected. Normal in week 1 (water and glycogen).":"Right on track."}</p>`:`<p class="muted" style="font-size:.9rem">Expected at 2,000 kcal: about −0.5 to −0.8 kg a week. Week 1 usually drops faster from water and glycogen.</p>`}
+    ${rate!==null?`<p class="${rate<=-0.4&&rate>=-1?"muted":"note"}" style="font-size:.9rem">Expected at ${fkc(TARGET.kcal)} kcal: about −0.5 to −0.8 kg a week (0.5–1% of body weight). ${rate>-0.3?"Slower than expected, but judge it over 2 weeks before changing calories.":rate<-1.0?"Faster than expected. Normal in week 1 (water and glycogen).":"Right on track."}</p>`:`<p class="muted" style="font-size:.9rem">Expected at ${fkc(TARGET.kcal)} kcal: about −0.5 to −0.8 kg a week. Week 1 usually drops faster from water and glycogen.</p>`}
     ${weightChart()}
     ${safeMod("GoalDate",()=>GoalDate.html(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}))}
     <details data-keep="wlog" ${view.open.wlog?"open":""}><summary>Weight log${TODAY<=addDays(STRICT.to,7)?" and 14-day tracking":""}</summary>
       ${TODAY<=addDays(STRICT.to,7)?`<div class="spread" style="margin-top:8px"><h3>14-day strict tracking</h3><span class="muted">${fmt(STRICT.from,{month:"short",day:"numeric"})} → ${fmt(STRICT.to,{month:"short",day:"numeric"})}</span></div>
       <div class="days14">${strictDays.map(d=>`<span class="${S.docs.weights[d]?"has":""} ${d===TODAY?"today":""}" title="${fmt(d)}">${parse(d).getDate()}</span>`).join("")}</div>
-      <p style="font-size:.92rem"><b class="num">${logged}/14</b> weigh-ins logged. First 7-day average on <b>${fmt(STRICT.firstAvg)}</b>. Calorie review only after <b>${fmt(STRICT.to)}</b>, based on the trend. Don't cut to 1,800 or 1,700 because of one reading.</p>`:""}
+      <p style="font-size:.92rem"><b class="num">${logged}/14</b> weigh-ins logged. First 7-day average on <b>${fmt(STRICT.firstAvg)}</b>. Calorie review only after <b>${fmt(STRICT.to)}</b>, based on the trend. Don't cut calories because of one reading.</p>`:""}
       <h3 style="margin-top:8px">Weight log</h3>
     ${table.length?`<div class="tablewrap"><table><thead><tr><th>Day</th><th>Date</th><th class="n">Weight</th><th class="n">Change</th><th class="n">7-day avg</th><th class="n">To ${GOAL_KG}</th></tr></thead>
     <tbody>${table.map(r=>`<tr><td class="n">${r.n}</td><td>${fmt(r.date)}</td><td class="n">${r.kg.toFixed(1)}</td><td class="n">${r.ch===null?"—":(r.ch>0?"+":"")+r.ch.toFixed(1)}</td><td class="n">${r.a?r.a.toFixed(2):"—"}</td><td class="n">${(r.kg-GOAL_KG).toFixed(1)}</td></tr>`).join("")}</tbody></table></div>`:`<p class="muted">No entries yet.</p>`}
@@ -22015,13 +22029,13 @@ function vProgress(){
   ${report?`<div class="card"><details data-keep="wr" ${view.open.wr?"open":""}><summary>Weekly report (week by week: weight, food, lifts)</summary>${report}</details></div>`:""}
   ${foodDays.length?`<div class="card"><h3>Calories eaten</h3>
     ${foodDays.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th class="n">kcal</th><th class="n">Protein</th><th>Status</th></tr></thead><tbody>
-    ${foodDays.map(x=>{ const t=sum(x.food.filter(i=>i.eaten)); const ok=t.kcal>=1850&&t.kcal<=2100&&t.p>=160; return `<tr><td>${fmt(x.date)}</td><td class="n">${r0(t.kcal)}</td><td class="n">${r0(t.p)} g</td><td>${ok?`<span class="pill good">On target</span>`:`<span class="pill warn">${t.kcal>2100?"Over":t.kcal<1850?"Under":"Low protein"}</span>`}</td></tr>`; }).join("")}
+    ${foodDays.map(x=>{ const t=sum(x.food.filter(i=>i.eaten)); const T=dayTargets(x.date)||{kcalLo:kcalTarget(x.date)-150,kcalHi:kcalTarget(x.date)+150}; const ok=t.kcal>=T.kcalLo&&t.kcal<=T.kcalHi&&t.p>=TARGET.pMin; return `<tr><td>${fmt(x.date)}</td><td class="n">${r0(t.kcal)}</td><td class="n">${r0(t.p)} g</td><td>${ok?`<span class="pill good">On target</span>`:`<span class="pill warn">${t.kcal>T.kcalHi?"Over":t.kcal<T.kcalLo?"Under":"Low protein"}</span>`}</td></tr>`; }).join("")}
     </tbody></table></div>`:`<p class="muted">Tick food as eaten on the Food tab and your daily totals show up here.</p>`}
   </div>`:""}`;
 }
 
 /* ---------- GUIDE ---------- */
-function crCtx(){ const p=S.docs.prefs.main||{}; return {from:TODAY, review:STRICT.to, supps: window.SuppDrinks?SuppDrinks.plan(p):[], now:new Date()}; }
+function crCtx(){ const p=S.docs.prefs.main||{}; return {from:TODAY, review:STRICT.to, kcal:TARGET.kcal, supps: window.SuppDrinks?SuppDrinks.plan(p):[], now:new Date()}; }
 function vGuide(){
   const q=view.q.toLowerCase();
   const libNames = Object.keys(LIB).filter(n=>!q || n.toLowerCase().includes(q) || LIB[n][0].toLowerCase().includes(q));
@@ -22029,12 +22043,12 @@ function vGuide(){
   return `
   <section class="grid guide">
     <div class="card hero"><h2>Your cut rules</h2><ul>
-      <li>2,000 kcal a day. Don't drop to 1,500–1,700, and don't add exercise calories back.</li>
+      <li>${fkc(TARGET.kcal)} kcal a day. Don't drop below ${fkc(KCAL_FLOOR)}, and don't add exercise calories back.</li>
       <li>Protein 160–170 g minimum. Fat ~55–70 g, carbs make up the rest (~180–220 g).</li>
       <li>Judge progress by weekly averages, never one weigh-in.</li>
       <li>Target loss: 0.5–1% of body weight a week, about 0.5–0.8 kg for you.</li>
       <li>Keep lifting heavy. The cut is for fat; the training keeps the muscle.</li>
-      <li>Gatorade counts inside the 2,000 on training days.</li>
+      <li>Gatorade counts inside the ${fkc(TARGET.kcal)} on training days.</li>
       <li>Friday is a free day, not a dirty day.</li>
     </ul></div>
     <div class="card"><h2>How to train on a cut</h2><ul>
@@ -22273,7 +22287,7 @@ function ramadanCard(d){
   if(!window.Ramadan) return "";
   try{ const pr=S.docs.prefs.main||{}; const cfg=pr.ramadanStart?{start:pr.ramadanStart}:{};
     if(Ramadan.dayOf(d, cfg)<=0) return "";
-    return Ramadan.html(d,{dayType:pickerDayType(d), train:pr.ramadanTrain||"after-iftar", cfg, targets:APPT||undefined}); }catch(e){ return ""; }
+    return Ramadan.html(d,{dayType:pickerDayType(d), train:pr.ramadanTrain||"after-iftar", cfg, targets:dayTargets(d)}); }catch(e){ return ""; }
 }
 function trendSeries(){ try{ return window.TrendTDEE ? TrendTDEE.series(S.docs.weights,{today:TODAY}) : undefined; }catch(e){ return undefined; } }
 function mgBadge(it, kind, date){ try{ return window.MealGrade ? MealGrade.badge(MealGrade.gradeItem(it,{kind, targets:dayTargets(date||view.date)||{kcal:kcalTarget(date||view.date), pMin:TARGET.pMin, pMax:TARGET.pMax, fMin:TARGET.fMin, fMax:TARGET.fMax, cMin:TARGET.cMin, cMax:TARGET.cMax}}),{small:true}) : ""; }catch(e){ return ""; } }
@@ -22393,7 +22407,7 @@ try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css
 ["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
-  if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
+  if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget,
     effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee, tab:()=>view.tab,
     strength:()=>coachOpts().strength, recoveryText:()=>coachOpts().recoveryText, cardioText:()=>coachOpts().cardioText,
     planToday:coachPlanToday, exerciseNames:()=>Object.values(PROGRAM).flat().map(t=>t[0]), exercise:coachExercise,
@@ -22414,7 +22428,7 @@ try{
     MacroTarget.bind(document, { date: () => view.date, render, onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items.map(it=>({id:uid(),eaten:false,...it}))); saveDay(day); toast("Added "+items[0].name+(items[0].eaten?"":". Tick it when you eat it.")); } }); }
   PhotoFood.bind(document, {
     getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
-    getDay, date: () => view.date, render,
+    getDay, date: () => view.date, render, kcal: () => kcalTarget(view.date),
     onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items); saveDay(day); toast(items.length===1 ? "Added as an estimate" : "Added "+items.length+" items as estimates"); }
   });
   if(window.VoiceLog){
