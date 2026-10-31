@@ -12,6 +12,9 @@
  */
 const CloudStore = (() => {
   const SDK = "https://www.gstatic.com/firebasejs/10.14.1/";
+  // Same files shipped inside the app (app/vendor), tried first so the Android app signs in and syncs
+  // offline from the first launch; the CDN is the fallback for an older copy without the folder.
+  const LOCAL_SDK = "vendor/firebase-10.14.1/";
   const PARTS = ["firebase-app-compat.js", "firebase-auth-compat.js", "firebase-firestore-compat.js"];
   const REQUIRED = ["apiKey", "authDomain", "projectId", "appId"];
 
@@ -70,10 +73,15 @@ const CloudStore = (() => {
   function loadScript(src) {
     return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("load " + src)); document.head.appendChild(s); });
   }
-  async function loadSdk() {
-    if (window.firebase && window.firebase.firestore) return window.firebase;
-    for (const p of PARTS) await loadScript(SDK + p);
-    return window.firebase;
+  async function loadSdk(load) {
+    load = load || loadScript;
+    const g = typeof window !== "undefined" ? window : globalThis;
+    if (g.firebase && g.firebase.firestore) return g.firebase;
+    let last;
+    for (const base of [LOCAL_SDK, SDK]) {
+      try { for (const p of PARTS) await load(base + p); return g.firebase; } catch (e) { last = e; }
+    }
+    throw last;
   }
 
   function signInForm(mount, auth) {
@@ -127,7 +135,7 @@ const CloudStore = (() => {
   function idToken() { return state.user && state.user.getIdToken ? state.user.getIdToken().catch(() => null) : Promise.resolve(null); }
   async function signOut() { if (state.auth) await state.auth.signOut(); state.user = null; }
 
-  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, idToken, authMessage, scoped, SDK };
+  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, idToken, authMessage, scoped, loadSdk, SDK, LOCAL_SDK };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = CloudStore;

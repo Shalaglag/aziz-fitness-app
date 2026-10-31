@@ -12,6 +12,12 @@ on:
 permissions:
   contents: write
 
+# One build per branch at a time; a newer push cancels the older build, so an older APK (lower version
+# number) can never replace the newest one on the android-latest release.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
