@@ -22,6 +22,8 @@
  *   names        {logger exId: name} on top of the logger's plan names; library {exId: {name}} for the rest
  *   muscles      {exercise name: {primary:[ids], secondary:[ids]}} overrides for unknown lifts
  *   volume       {lo, hi} weekly hard sets per major muscle, default 10–20
+ *   setTargets   {muscleId: {lo, hi}} per-muscle target ranges that override `volume` (what the ▲▼ arrows edit)
+ *   onTargets    fn(nextSetTargets) called when the user taps an arrow or Reset; persist it and pass it back
  *   weeks        how many 7-day windows to show, default 8
  * The lift picker (<select data-sa-lift>) re-draws its own chart; nothing for the host to wire.
  */
@@ -41,6 +43,24 @@ const StrengthAnalytics = (() => {
   const LABEL = Object.fromEntries(MUSCLES.map(m => [m.id, m.label]));
   // Muscles the weekly volume range applies to. Small or heavily indirect ones are shown without a verdict.
   const MAJOR = ["chest", "back", "sideDelts", "rearDelts", "biceps", "triceps", "quads", "hamstrings", "glutes"];
+  const STEP = 2; // one arrow tap moves a target range by this many sets
+
+  // Target range for one muscle: a saved override, else the default range for the 9 major muscles, else none.
+  function targetFor(id, setTargets, volume) {
+    const lo = (volume && num(volume.lo)) ?? 10, hi = (volume && num(volume.hi)) ?? 20;
+    const t = setTargets && setTargets[id];
+    if (t && num(t.lo) != null && num(t.hi) != null && num(t.lo) >= 0 && num(t.hi) >= num(t.lo)) return { lo: num(t.lo), hi: num(t.hi), custom: true };
+    return MAJOR.includes(id) ? { lo, hi, custom: false } : null;
+  }
+  // dir +1 / -1 shifts the whole range by STEP (never below 0); dir 0 clears the override. Returns a new object.
+  function adjustTargets(setTargets, id, dir, volume) {
+    const next = Object.assign({}, setTargets || {});
+    if (!dir) { delete next[id]; return next; }
+    const cur = targetFor(id, setTargets, volume) || { lo: (volume && num(volume.lo)) ?? 10, hi: (volume && num(volume.hi)) ?? 20 };
+    const d = dir > 0 ? STEP : -STEP, lo = Math.max(0, cur.lo + d);
+    next[id] = { lo, hi: Math.max(lo, cur.hi + d) };
+    return next;
+  }
 
   // Name rules, first match wins. [pattern, primary, secondary]; primary null = cardio (not counted).
   const RULES = [
@@ -271,8 +291,9 @@ const StrengthAnalytics = (() => {
     const muscles = MUSCLES.map(m => {
       const thisWeek = cur.sets[m.id], avg4 = avg(w => w.sets[m.id]), freq4 = avg(w => w.freq[m.id]);
       const major = MAJOR.includes(m.id);
-      const status = !major || !live4.length ? null : avg4 < lo ? "low" : avg4 > hi ? "high" : "ok";
-      return { id: m.id, label: m.label, region: m.region, major, thisWeek, avg4, freq4, status };
+      const target = targetFor(m.id, opts.setTargets, { lo, hi });
+      const status = !target || !live4.length ? null : avg4 < target.lo ? "low" : avg4 > target.hi ? "high" : "ok";
+      return { id: m.id, label: m.label, region: m.region, major, target, thisWeek, avg4, freq4, status };
     });
 
     // ---- balance (last 4 windows) ----
@@ -375,6 +396,17 @@ const StrengthAnalytics = (() => {
   function bind() {
     if (bound || typeof document === "undefined") return;
     bound = true;
+    document.addEventListener("click", ev => {
+      const b = ev.target && ev.target.closest && ev.target.closest("[data-sa-adj]");
+      if (!b || !LAST) return;
+      const [id, dir] = String(b.getAttribute("data-sa-adj")).split(":");
+      const o = LAST.opts || {};
+      const next = adjustTargets(o.setTargets, id, Number(dir), o.volume);
+      LAST.opts = Object.assign({}, o, { setTargets: next });
+      if (typeof o.onTargets === "function") { try { o.onTargets(Object.assign({}, next)); } catch (e) {} }
+      const card = b.closest(".sa-card");
+      if (card && LAST.docs) { const tmp = document.createElement("div"); tmp.innerHTML = html(LAST.docs, LAST.opts); card.replaceWith(tmp.firstElementChild); }
+    });
     document.addEventListener("change", ev => {
       const sel = ev.target && ev.target.closest && ev.target.closest("[data-sa-lift]");
       if (!sel || !LAST) return;
@@ -386,7 +418,7 @@ const StrengthAnalytics = (() => {
 
   function html(docs, opts = {}) {
     const A = analyze(docs, opts);
-    LAST = A; bind();
+    LAST = A; LAST.docs = docs; LAST.opts = opts; bind();
     const head = '<div class="spread"><h2>Strength</h2><span class="label">' + A.sessions + " session" + (A.sessions === 1 ? "" : "s") + " logged</span></div>";
     if (!A.lifts.length) return '<section class="card sa-card">' + head + '<p class="muted">Log a workout (Quick log, the full logger, or a Strong import) and your lift charts, weekly sets per muscle and balance show up here.</p></section>';
 
@@ -415,13 +447,19 @@ const StrengthAnalytics = (() => {
     const shown = A.muscles.filter(m => m.thisWeek > 0 || m.avg4 > 0);
     const maxV = Math.max(A.volume.hi * 1.2, ...shown.map(m => Math.max(m.thisWeek, m.avg4)));
     const pc = v => (v / maxV * 100).toFixed(1) + "%";
-    const statusTxt = { low: "avg < " + A.volume.lo, high: "avg > " + A.volume.hi, ok: "avg in range" };
-    const bars = shown.map(m => '<div class="sa-mrow"><span class="sa-mname">' + m.label + '</span><span class="sa-track"><i class="sa-band" style="left:' + pc(A.volume.lo) + ";width:" + (((A.volume.hi - A.volume.lo) / maxV) * 100).toFixed(1) + '%"' + (m.major ? "" : " hidden") + '></i><i class="sa-bar" style="width:' + pc(m.thisWeek) + '"></i><i class="sa-avg" style="left:' + pc(m.avg4) + '" title="4-week average ' + f1(m.avg4) + '"></i></span><b>' + f1(m.thisWeek) + '</b><span class="sa-freq">' + f1(m.freq4) + "×/wk</span>" + (m.status ? '<span class="sa-st ' + m.status + '">' + statusTxt[m.status] + "</span>" : '<span class="sa-st"></span>') + "</div>").join("");
+    const statusTxt = { low: "under", high: "over", ok: "on target" };
+    const editable = typeof opts.onTargets === "function";
+    const bars = shown.map(m => {
+      const t = m.target, band = t ? '<i class="sa-band" style="left:' + pc(t.lo) + ";width:" + (((t.hi - t.lo) / maxV) * 100).toFixed(1) + '%"></i>' : "";
+      const tgt = t ? '<span class="sa-tgt' + (t.custom ? " custom" : "") + '" title="' + (t.custom ? "Your target" : "Default target") + '">' + t.lo + "–" + t.hi + "</span>" : '<span class="sa-tgt muted">no target</span>';
+      const adj = editable ? '<span class="sa-adj"><button type="button" data-sa-adj="' + m.id + ':-1" aria-label="Lower ' + m.label + ' target">▼</button><button type="button" data-sa-adj="' + m.id + ':1" aria-label="Raise ' + m.label + ' target">▲</button>' + (t && t.custom ? '<button type="button" class="sa-reset" data-sa-adj="' + m.id + ':0" aria-label="Reset ' + m.label + ' target">↺</button>' : "") + "</span>" : "";
+      return '<div class="sa-mrow' + (m.status ? " " + m.status : "") + '"><span class="sa-mname">' + m.label + '</span><span class="sa-track">' + band + '<i class="sa-bar" style="width:' + pc(m.thisWeek) + '"></i><i class="sa-avg" style="left:' + pc(m.avg4) + '" title="4-week average ' + f1(m.avg4) + '"></i></span><b>' + f1(m.thisWeek) + '</b><span class="sa-freq">' + f1(m.freq4) + "×/wk</span>" + (m.status ? '<span class="sa-st ' + m.status + '">' + statusTxt[m.status] + "</span>" : '<span class="sa-st"></span>') + '<span class="sa-tgtrow">' + tgt + adj + "</span></div>";
+    }).join("");
     const wk = A.weeks;
     const table = '<details class="sa-details"><summary>Week by week</summary><div class="sa-scroll"><table class="sa-tbl"><thead><tr><th>Muscle</th>' + wk.map(w => "<th class=\"r\">" + short(w.from) + "</th>").join("") + "</tr></thead><tbody><tr><td>Sessions</td>" + wk.map(w => '<td class="r">' + w.sessions + "</td>").join("") + "</tr>" + shown.map(m => "<tr><td>" + m.label + "</td>" + wk.map(w => '<td class="r">' + (w.sets[m.id] ? f1(w.sets[m.id]) : "·") + "</td>").join("") + "</tr>").join("") + "</tbody></table></div></details>";
     const volHtml = '<div class="sa-sec"><div class="spread"><span class="label">Sets per muscle, last 7 days</span><span class="muted small">' + short(add(A.today, -6)) + "–" + short(A.today) + "</span></div>" +
       (shown.length ? '<div class="sa-bars">' + bars + "</div>" : '<p class="muted">No sets in the last 4 weeks.</p>') +
-      '<p class="muted small">Working sets; a set counts ½ for helper muscles (rows for biceps, presses for triceps). Tick = 4-week average, shaded band = ' + A.volume.lo + "–" + A.volume.hi + " sets, ×/wk = days that muscle was trained directly (4-week average).</p>" + table + "</div>";
+      '<p class="muted small">Working sets; a set counts ½ for helper muscles (rows for biceps, presses for triceps). Tick = 4-week average, shaded band = weekly target (default ' + A.volume.lo + "–" + A.volume.hi + " sets" + (editable ? ", ▼▲ move it by " + STEP + ", ↺ resets" : "") + "). Under / on target / over compare the 4-week average with the target. ×/wk = days that muscle was trained directly (4-week average).</p>" + table + "</div>";
 
     // balance
     const bal = A.balance.filter(b => b.ratio != null).map(b => {
@@ -450,8 +488,9 @@ const StrengthAnalytics = (() => {
     const ms7 = A.muscles.filter(m => m.thisWeek > 0 || m.avg4 > 0);
     if (ms7.length) out.push("Sets per muscle, last 7 days (4-wk avg): " + ms7.map(m => m.label + " " + f1(m.thisWeek) + " (" + f1(m.avg4) + ")").join(", "));
     const low = A.muscles.filter(m => m.status === "low").map(m => m.label), high = A.muscles.filter(m => m.status === "high").map(m => m.label);
-    if (low.length) out.push("Below " + A.volume.lo + " sets/week on average: " + low.join(", "));
-    if (high.length) out.push("Above " + A.volume.hi + " sets/week on average: " + high.join(", "));
+    const tg = m => " (target " + m.target.lo + "–" + m.target.hi + ")";
+    if (low.length) out.push("Under the weekly set target on average: " + A.muscles.filter(m => m.status === "low").map(m => m.label + tg(m)).join(", "));
+    if (high.length) out.push("Over the weekly set target on average: " + A.muscles.filter(m => m.status === "high").map(m => m.label + tg(m)).join(", "));
     A.balance.filter(b => b.ratio != null && b.flag).forEach(b => out.push(b.label + ": " + f1(b.a) + " : " + f1(b.b) + " sets (" + (b.lean === "even" ? "even" : "leans " + b.sides[b.lean === "a" ? 0 : 1]) + ")"));
     A.notes.forEach(n => out.push(n));
     return out.join("\n");
@@ -476,7 +515,11 @@ const StrengthAnalytics = (() => {
     ".sa-scroll{overflow-x:auto}",
     ".sa-tbl{width:100%;border-collapse:collapse;font-size:.82rem;font-variant-numeric:tabular-nums}.sa-tbl th,.sa-tbl td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.sa-tbl .r{text-align:right}.sa-tbl th{color:var(--muted);font-weight:600}",
     ".sa-bars{display:flex;flex-direction:column;gap:6px}",
-    ".sa-mrow{display:grid;grid-template-columns:6.5em 1fr 2.6em 3.8em 6.2em;align-items:center;gap:8px;font-size:.85rem}",
+    ".sa-mrow{display:grid;grid-template-columns:6.5em 1fr 2.6em 3.8em 5em 7.4em;align-items:center;gap:8px;font-size:.85rem}",
+    ".sa-mrow.low .sa-bar{background:var(--warn)}.sa-mrow.ok .sa-bar{background:var(--good)}.sa-mrow.high .sa-bar{background:var(--bad)}",
+    ".sa-tgtrow{display:flex;align-items:center;justify-content:flex-end;gap:4px}",
+    ".sa-tgt{white-space:nowrap;font-family:var(--mono);font-size:.78rem;font-variant-numeric:tabular-nums;color:var(--muted)}.sa-tgt.custom{color:var(--ink);font-weight:600}",
+    ".sa-adj{display:inline-flex;gap:2px}.sa-adj button{font:inherit;font-size:.7rem;line-height:1;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:6px;width:24px;height:24px;padding:0;cursor:pointer}.sa-adj button:active{background:var(--line)}",
     ".sa-mrow b{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}",
     ".sa-track{position:relative;height:10px;background:var(--sunk);border-radius:5px}",
     ".sa-band{position:absolute;top:0;bottom:0;background:var(--line);opacity:.8}",
@@ -484,7 +527,7 @@ const StrengthAnalytics = (() => {
     ".sa-avg{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--ink)}",
     ".sa-freq{color:var(--muted);font-size:.75rem;text-align:right}",
     ".sa-st{font-size:.72rem;color:var(--muted)}.sa-st.low{color:var(--warn)}.sa-st.high{color:var(--warn)}.sa-st.ok{color:var(--good)}",
-    "@media (max-width:420px){.sa-mrow{grid-template-columns:5.6em 1fr 2.4em 3.4em}.sa-mrow .sa-st{grid-column:2/-1;margin-top:-4px}}",
+    "@media (max-width:480px){.sa-mrow{grid-template-columns:5.6em 1fr 2.4em 3.4em}.sa-mrow .sa-st{grid-column:1/2;margin-top:-4px}.sa-mrow .sa-tgtrow{grid-column:2/-1;margin-top:-4px}}",
     ".sa-cutlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}",
     ".sa-cutlist li{display:grid;grid-template-columns:1fr auto 5em;gap:8px;font-size:.85rem;align-items:baseline}",
     ".sa-mono{font-family:var(--mono);font-size:.8rem;color:var(--muted)}",
@@ -495,7 +538,7 @@ const StrengthAnalytics = (() => {
     ".sa-empty{padding:8px 0}"
   ].join("\n");
 
-  return { css, analyze, html, summary, unitsFrom, musclesFor, e1rm, MUSCLES, RULES };
+  return { css, analyze, html, summary, unitsFrom, musclesFor, e1rm, targetFor, adjustTargets, MUSCLES, RULES, STEP };
 })();
 if (typeof window !== "undefined") window.StrengthAnalytics = StrengthAnalytics;
 if (typeof module !== "undefined" && module.exports) module.exports = StrengthAnalytics;
