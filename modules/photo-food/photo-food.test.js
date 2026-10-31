@@ -78,3 +78,8 @@ test("html escapes and shows the result card", () => {
   assert.match(h, /Log from a photo or description/);
   assert.match(h, /data-pf="go"/);
 });
+
+test("prompt names the day's calorie target", () => {
+  assert.match(PF.prompt({ text: "rice" }), /2,000 kcal cut/);
+  assert.match(PF.prompt({ text: "rice", kcal: 2150 }), /2,150 kcal cut/);
+});

@@ -114,3 +114,12 @@ test("readForm collects switches, times and the water list from a DOM-like root"
   assert.equal(v.weigh, false); assert.equal(v.weighTime, "06:45"); assert.deepEqual(v.waterTimes, ["10:00", "18:00"]);
   assert.deepEqual(CR.readForm({ querySelector: () => null }), {});
 });
+
+test("training and review reminders name the calorie target from ctx", () => {
+  const all = CR.settings({ train: true, review: true });
+  const txt = ev => CR.events(all, ev).map(e => e.description).join(" ");
+  assert.match(txt(CTX), /inside the 2,000/);
+  const t2 = txt({ ...CTX, kcal: 2150 });
+  assert.match(t2, /inside the 2,150\)/);
+  assert.match(t2, /whether 2,150 kcal stays/);
+});

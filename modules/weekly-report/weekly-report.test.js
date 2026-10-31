@@ -36,4 +36,15 @@ t("start date moves week 0 and the review", () => {
   assert.strictEqual(WR.START, "2026-10-25");
 });
 
+
+t("too-low days use the shared safety floor (1,800 by default, set via kcalFloor)", () => {
+  const low = { days: {}, weights: {} };
+  for (let i = 0; i < 7; i++) { const d = "2026-10-" + (25 + i); low.days[d] = eat(i < 2 ? 1750 : 2000, 165); }
+  WR.setTargets({});
+  assert.strictEqual(WR.build(low, { today: "2026-10-31", week: 0 }).s.tooLow, 2);
+  WR.setTargets({ kcal: 2000, kcalFloor: 1700 });
+  assert.strictEqual(WR.build(low, { today: "2026-10-31", week: 0 }).s.tooLow, 0);
+  WR.setTargets({});
+});
+
 console.log(n + " tests passed");

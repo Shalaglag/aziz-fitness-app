@@ -53,6 +53,7 @@ const CalendarReminders = (() => {
   function events(s, ctx) {
     ctx = ctx || {};
     const from = validDate(ctx.from) ? ctx.from : isoOf(Date.now());
+    const kc = (typeof ctx.kcal === "number" && ctx.kcal > 0 ? Math.round(ctx.kcal) : 2000).toLocaleString("en-US");
     const out = [];
     if (s.weigh) out.push({
       uid: "cr-weigh", summary: "Morning weigh-in", start: from, time: s.weighTime, minutes: 5, rrule: "FREQ=DAILY", alarms: [0],
@@ -61,7 +62,7 @@ const CalendarReminders = (() => {
     if (s.train && s.trainDays.length) out.push({
       uid: "cr-train", summary: "Train + 30 min treadmill", start: firstOn(from, s.trainDays), time: s.trainTime, minutes: 90,
       rrule: "FREQ=WEEKLY;BYDAY=" + s.trainDays.join(","), alarms: [30, 0],
-      description: "Meal 1 + both snacks about 90 min before. 1 L Gatorade during (it counts inside the 2,000). Adonis after. Open Train in the app to log sets.",
+      description: "Meal 1 + both snacks about 90 min before. 1 L Gatorade during (it counts inside the " + kc + "). Adonis after. Open Train in the app to log sets.",
     });
     if (s.train && s.satOn) out.push({
       uid: "cr-train-sat", summary: "Saturday session", start: firstOn(from, ["SA"]), time: s.satTime, minutes: 90,
@@ -74,7 +75,7 @@ const CalendarReminders = (() => {
     }));
     if (s.review && validDate(ctx.review) && ctx.review >= from) out.push({
       uid: "cr-review-" + ctx.review.replace(/-/g, ""), summary: "14-day calorie review", start: ctx.review, time: s.reviewTime, minutes: 30, alarms: [1440, 0],
-      description: "Two weeks of weigh-ins are in. Open Progress: compare the 7-day averages and let the coach say whether 2,000 kcal stays. Decide on the trend, never one reading.",
+      description: "Two weeks of weigh-ins are in. Open Progress: compare the 7-day averages and let the coach say whether " + kc + " kcal stays. Decide on the trend, never one reading.",
     });
     if (s.supps && Array.isArray(ctx.supps)) ctx.supps.filter(p => p && p.on !== false && validTime(p.time) && p.name).forEach(p => out.push({
       uid: "cr-supp-" + String(p.key || p.name).toLowerCase().replace(/[^a-z0-9]+/g, "-"), summary: p.name + (p.dose ? " " + p.dose : ""), start: from, time: p.time, minutes: 5,
