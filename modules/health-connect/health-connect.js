@@ -8,8 +8,9 @@
  *
  * Plugin interface this module expects (all methods return promises):
  *   isAvailable()                    → {status: "available"|"not_installed"|"not_supported"}
- *   checkPermissions()               → {granted: bool}
- *   requestPermissions()             → {granted: bool}
+ *   hasHydrationAccess()             → {granted: bool}
+ *   requestHydrationAccess()         → {granted: bool}
+ *   (not checkPermissions/requestPermissions: those are Capacitor Plugin built-ins)
  *   readHydration({startMs, endMs})  → {records: [Rec]}
  *   getChangesToken()                → {token}
  *   getChanges({token})              → {changes: [{type:"upsert", record: Rec} | {type:"delete", id}],
@@ -151,7 +152,7 @@ const HealthConnectSync = (() => {
       try {
         const a = await plugin.isAvailable();
         hc.status = (a && a.status) || "not_supported";
-        if (hc.status === "available") { const p = await plugin.checkPermissions(); hc.granted = !!(p && p.granted); }
+        if (hc.status === "available") { const p = await plugin.hasHydrationAccess(); hc.granted = !!(p && p.granted); }
       } catch (e) { hc.status = "not_supported"; st.lastError = errorText(e); }
       return status();
     }
@@ -160,7 +161,7 @@ const HealthConnectSync = (() => {
       if (!plugin) return false;
       await probe();
       if (hc.status !== "available") return false;
-      try { const p = await plugin.requestPermissions(); hc.granted = !!(p && p.granted); }
+      try { const p = await plugin.requestHydrationAccess(); hc.granted = !!(p && p.granted); }
       catch (e) { hc.granted = false; st.lastError = errorText(e); save(); }
       emit();
       return hc.granted;

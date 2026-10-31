@@ -14,8 +14,8 @@ function fakePlugin({ status = "available", granted = true } = {}) {
   const P = {
     calls: [], status, granted,
     async isAvailable() { P.calls.push("isAvailable"); return { status: P.status }; },
-    async checkPermissions() { return { granted: P.granted }; },
-    async requestPermissions() { P.calls.push("requestPermissions"); P.granted = P.grantOnRequest ?? P.granted; return { granted: P.granted }; },
+    async hasHydrationAccess() { return { granted: P.granted }; },
+    async requestHydrationAccess() { P.calls.push("requestPermissions"); P.granted = P.grantOnRequest ?? P.granted; return { granted: P.granted }; },
     async readHydration({ startMs, endMs }) { P.calls.push("readHydration"); if (!P.granted) throw new Error("SecurityException: permission denied"); return { records: [...records.values()].filter(r => r.startMs >= startMs && r.startMs < endMs) }; },
     async getChangesToken() { P.calls.push("getChangesToken"); return { token: `t${++tokens}:${log.length}` }; },
     async getChanges({ token }) {
@@ -215,4 +215,20 @@ test("html shows status, last sync time and the Sync now button; guide explains 
   P.granted = false; P.grantOnRequest = false; P.expireAll = true;
   await A.sync.syncNow();
   assert.match(A.sync.html(A.getDay("2026-10-26")), /not allowed yet/);
+});
+
+test("the compiled Android plugin is the same file as the module's source copy", () => {
+  const fs = require("fs"), path = require("path");
+  const root = path.resolve(__dirname, "../..");
+  const src = fs.readFileSync(path.join(__dirname, "android/HealthConnectPlugin.kt"), "utf8");
+  const built = fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/HealthConnectPlugin.kt"), "utf8");
+  assert.equal(built, src, "copy modules/health-connect/android/HealthConnectPlugin.kt into android/app/src/main/java/com/azizfitness/app/");
+  const manifest = fs.readFileSync(path.join(root, "android/app/src/main/AndroidManifest.xml"), "utf8");
+  assert.match(manifest, /android\.permission\.health\.READ_HYDRATION/);
+  assert.match(manifest, /VIEW_PERMISSION_USAGE/);
+  assert.match(fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/MainActivity.java"), "utf8"), /registerPlugin\(HealthConnectPlugin\.class\)/);
+  // the JS calls must exist on the plugin, and must not shadow Capacitor's built-in permission methods
+  for (const m of ["isAvailable", "hasHydrationAccess", "requestHydrationAccess", "readHydration", "getChangesToken", "getChanges", "openSettings"])
+    assert.match(src, new RegExp(`@PluginMethod\\s+fun ${m}\\(`), m);
+  assert.doesNotMatch(src, /fun (checkPermissions|requestPermissions)\(/);
 });

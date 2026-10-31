@@ -24,8 +24,7 @@ the status line says "no bottle records today yet" until a record really arrives
 - `health-connect.test.js`: `node --test modules/health-connect/health-connect.test.js` (13 tests with a
   simulated Health Connect: new record, re-sync, correction, deletion, manual water untouched, restart,
   expired token, offline, missing permission / Health Connect / plugin, overlap, zones, throttle, UI).
-- `android/HealthConnectPlugin.kt`: the Capacitor plugin (Kotlin, ~150 lines). The Android thread copies it
-  into `android/app/src/main/java/com/azizfitness/app/` and registers it.
+- `android/HealthConnectPlugin.kt`: the Capacitor plugin (Kotlin, ~150 lines), copied into the Android project.
 
 ## Data
 `days/{date}.waterh = { ml, at, source: "health-connect", records: { [hcId]: {ml, s, e, o, m} } }`
@@ -64,40 +63,19 @@ the status line says "no bottle records today yet" until a record really arrives
 - Samsung phones: Health Connect is built into Settings on One UI 6 / Android 14 and newer; older phones install
   it from Play. Samsung Health does not sync hydration through Health Connect, so WaterH must write directly.
 
-## Wiring for the Android thread
-`android/app/build.gradle`:
-```gradle
-dependencies {
-    implementation "androidx.health.connect:connect-client:1.1.0-alpha12"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
-}
-```
-`AndroidManifest.xml` (inside `<manifest>` and `<application>`):
-```xml
-<uses-permission android:name="android.permission.health.READ_HYDRATION" />
-<queries>
-  <package android:name="com.google.android.apps.healthdata" />
-</queries>
-<!-- inside <application>: the rationale screen Health Connect opens from its permission sheet -->
-<activity-alias
-    android:name="ViewPermissionUsageActivity"
-    android:exported="true"
-    android:targetActivity=".MainActivity"
-    android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
-  <intent-filter>
-    <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
-    <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
-  </intent-filter>
-</activity-alias>
-<activity android:name=".MainActivity" ...>
-  <intent-filter>
-    <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
-  </intent-filter>
-</activity>
-```
-`MainActivity.kt`: `registerPlugin(HealthConnectPlugin::class.java)` before `super.onCreate(...)`.
-Rationale text (shown when Health Connect opens the app with that action): the app reads hydration only to
-show it on the Water card; it is stored in the user's own Firestore account and nowhere else.
+## Android wiring (done, in `android/`)
+- `android/app/src/main/java/com/azizfitness/app/HealthConnectPlugin.kt`: compiled copy of `android/HealthConnectPlugin.kt`
+  in this folder (edit here, copy there; the module test fails if they differ).
+- `MainActivity.java`: `registerPlugin(HealthConnectPlugin.class)` before `super.onCreate`.
+- `AndroidManifest.xml`: `READ_HYDRATION`, `<queries>` for `com.google.android.apps.healthdata`, the
+  `ACTION_SHOW_PERMISSIONS_RATIONALE` intent filter on MainActivity (Android 13 and older) and the
+  `VIEW_PERMISSION_USAGE` activity-alias (Android 14+, without it the permission sheet never opens).
+- `app/build.gradle`: `androidx.health.connect:connect-client:1.1.0` + `kotlinx-coroutines-android`;
+  `variables.gradle` minSdk 24 → 26 (connect-client's floor; Android 8.0+).
+- Plugin methods are `hasHydrationAccess` / `requestHydrationAccess`, not `checkPermissions` /
+  `requestPermissions`, because Capacitor's Plugin base class already defines those two.
+- When Health Connect opens the app from its "why does this app need access" link, the app simply opens.
+  What it reads: hydration only, shown on the Water card, stored in Aziz's own Firestore account, nowhere else.
 
 ## Shell wiring (done in build/shell.html)
 - `hcSync = HealthConnectSync.create({plugin: window.Capacitor?.Plugins?.HealthConnect, getDay, put, storage: localStorage, onChange: render})`.

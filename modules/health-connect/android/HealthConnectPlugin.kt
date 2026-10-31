@@ -27,8 +27,9 @@ import java.time.Instant
  * Health Connect bridge for the Water card (modules/health-connect/health-connect.js).
  * Read-only: one permission (READ_HYDRATION), no writes, no network.
  *
- * Registration (MainActivity.kt, before super.onCreate):
- *   registerPlugin(HealthConnectPlugin::class.java)
+ * Registered in android/app/src/main/java/com/azizfitness/app/MainActivity.java (before super.onCreate).
+ * The copy that is compiled lives next to MainActivity; this file is its source of truth and
+ * modules/health-connect/health-connect.test.js checks the two are identical.
  *
  * See README.md next to this file for the manifest entries and the Gradle dependency.
  */
@@ -64,19 +65,20 @@ class HealthConnectPlugin : Plugin() {
         call.resolve(JSObject().put("status", status))
     }
 
+    // Not named checkPermissions/requestPermissions: Capacitor's Plugin base class already has those.
     @PluginMethod
-    fun checkPermissions(call: PluginCall) {
+    fun hasHydrationAccess(call: PluginCall) {
         val c = client() ?: return call.resolve(JSObject().put("granted", false))
         scope.launch {
             try {
                 val granted = c.permissionController.getGrantedPermissions()
                 call.resolve(JSObject().put("granted", granted.containsAll(permissions)))
-            } catch (e: Exception) { call.reject(e.message ?: "checkPermissions failed") }
+            } catch (e: Exception) { call.reject(e.message ?: "hasHydrationAccess failed") }
         }
     }
 
     @PluginMethod
-    fun requestPermissions(call: PluginCall) {
+    fun requestHydrationAccess(call: PluginCall) {
         val c = client() ?: return call.resolve(JSObject().put("granted", false))
         scope.launch {
             try {
@@ -87,7 +89,7 @@ class HealthConnectPlugin : Plugin() {
                 if (launcher == null) { call.reject("permission launcher not ready"); return@launch }
                 pendingPermissionCall = call
                 bridge.activity.runOnUiThread { launcher.launch(permissions) }
-            } catch (e: Exception) { call.reject(e.message ?: "requestPermissions failed") }
+            } catch (e: Exception) { call.reject(e.message ?: "requestHydrationAccess failed") }
         }
     }
 
@@ -164,8 +166,9 @@ class HealthConnectPlugin : Plugin() {
     fun openSettings(call: PluginCall) {
         try {
             val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-            if (intent.resolveActivity(context.packageManager) != null) context.startActivity(intent)
-            else context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val activity = bridge.activity
+            if (intent.resolveActivity(activity.packageManager) != null) activity.startActivity(intent)
+            else activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata")))
             call.resolve()
         } catch (e: Exception) { call.reject(e.message ?: "openSettings failed") }
     }

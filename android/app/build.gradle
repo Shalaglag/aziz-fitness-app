@@ -1,0 +1,73 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace = "com.azizfitness.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.azizfitness.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // CI passes -PversionCode=<run number> so every build installs over the previous one.
+        versionCode (project.hasProperty("versionCode") ? project.property("versionCode").toInteger() : 1)
+        versionName (project.hasProperty("versionName") ? project.property("versionName") : "1.0")
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    // One stable signing key for personal installs, so an updated APK installs over the old one and
+    // keeps its data. A real release key (Play Store) comes from the ANDROID_KEYSTORE_* secrets instead.
+    signingConfigs {
+        personal {
+            storeFile file(System.getenv("ANDROID_KEYSTORE_PATH") ?: "../keystore/aziz-personal.jks")
+            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "azizfitness"
+            keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "aziz"
+            keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: "azizfitness"
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.personal
+        }
+        release {
+            signingConfig signingConfigs.personal
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    // Health Connect (WaterH water sync, modules/health-connect). connect-client needs minSdk 26.
+    implementation "androidx.health.connect:connect-client:1.1.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
