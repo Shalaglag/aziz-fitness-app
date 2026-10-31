@@ -2400,11 +2400,9 @@ if (typeof globalThis !== 'undefined') globalThis.PRCelebrate = PRCelebrate;
  *   app shell's workouts/{date} shape: {date, session, idx, sets:{name:[{w,r}]}, treadmill}.
  * weights: optional { list() -> Promise<[{date:'YYYY-MM-DD', kg}]>, put(date, kg) -> Promise }
  *   so body weight logs go to the shell's own weights collection.
- * formCues: optional FormCues.create(guide) instance (form cues + demo links).
+ * formCues: optional FormCues.create(guide) instance (form cues, no external links).
  * anim: optional ExerciseAnim.create() instance. Exercises it has get a built-in 3D animated demo in Gym
  *   mode and the exercise sheet, and the Demo button opens it full screen.
- * demos: optional ExerciseDemos.create(data, {library}) instance. When given, every exercise gets a
- *   Demo button (a checked video, else a YouTube search) and the sheet lists its demo videos.
  * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
  *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
@@ -3219,12 +3217,10 @@ Stair Climber|Cardio|Cardio|`;
   let exTab = 'about';
   // Form cues (optional FormCues instance passed as opts.formCues).
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
-  // Demo button: ExerciseDemos (opts.demos) when given, else the form cues link for exercises in the guide.
-  function demoBtn(id, entry) {
-    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues, an = S.opts && S.opts.anim;
-    if (an && an.has(id)) return '<button type="button" class="lb-btn small ghost" data-ea-open="' + esc(id) + '">Demo</button>';
-    const l = dm ? dm.link(id, getEx(id).name) : (fc && entry ? { href: fc.demoUrl(entry), label: 'Demo ↗' } : null);
-    return l ? '<a class="lb-btn small ghost" href="' + esc(l.href) + '" target="_blank" rel="noopener noreferrer">' + esc(l.label) + '</a>' : '';
+  // Demo button: opens the built-in animation (opts.anim). No external video or search links.
+  function demoBtn(id) {
+    const an = S.opts && S.opts.anim;
+    return an && an.has(id) ? '<button type="button" class="lb-btn small ghost" data-ea-open="' + esc(id) + '">Demo</button>' : '';
   }
   on('exOpen', t => {
     const id = t.dataset.id; exTab = 'about';
@@ -3244,8 +3240,7 @@ Stair Climber|Cardio|Cardio|`;
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
         (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '') +
-        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '') +
-        (S.opts.demos ? S.opts.demos.sheetHtml(id, ex.name) : '');
+        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '');
     }
     if (!ss.length) return '<div class="lb-empty">No sets logged for this exercise yet.</div>';
     if (exTab === 'history') {
@@ -4308,12 +4303,10 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     if (opts.anim) {
       opts.anim.info = id => {
         const g = opts.formCues ? opts.formCues.find(id) || opts.formCues.find(getEx(id).name) : null;
-        const l = opts.demos ? opts.demos.link(id, getEx(id).name) : null;
-        return { title: getEx(id).name, cues: g ? g.cues : [], steps: g ? g.steps : [], video: l ? { href: l.href, label: l.verified ? 'Watch a video ↗' : 'Search videos ↗' } : null };
+        return { title: getEx(id).name, cues: g ? g.cues : [], steps: g ? g.steps : [] };
       };
       opts.anim.attach(document);
     }
-    if (opts.demos && !document.getElementById('ed-style')) { const st = document.createElement('style'); st.id = 'ed-style'; st.textContent = opts.demos.css; document.head.appendChild(st); }
     if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
     root = el; root.classList.add('lb');
     overlay = document.querySelector('.lb-overlay') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'lb-overlay' }));
@@ -8012,13 +8005,12 @@ window.FORM_GUIDE={
 
   function demoUrl(entry) {
     if (!entry) return '';
-    if (entry.demo) return entry.demo;
-    return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(entry.name.replace(/\(.*?\)/g, '').trim() + ' proper form');
+    return entry.demo || '';
   }
 
-  // opts.demoLinks false hides "Watch a demo" (the host shows ExerciseDemos links instead).
+  // "Watch a demo" shows only when opts.demoLinks is true and the entry has its own demo URL. There is no search fallback: the app shows built-in animations instead.
   function create(guide, opts) {
-    const showDemo = !(opts && opts.demoLinks === false);
+    const showDemo = !!(opts && opts.demoLinks === true);
     const exercises = (guide && guide.exercises) || [];
     const byId = {}, byKey = {};
     exercises.forEach(e => {
@@ -8047,7 +8039,7 @@ window.FORM_GUIDE={
         (entry.primary || []).map(m => '<span class="fc-chip p">' + esc(m) + '</span>').join('') +
         (entry.secondary || []).map(m => '<span class="fc-chip">' + esc(m) + '</span>').join('') + '</p>';
     }
-    const demo = entry => !showDemo ? '' : '<a class="fc-demo" href="' + esc(demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Watch a demo ↗</a>';
+    const demo = entry => !showDemo || !demoUrl(entry) ? '' : '<a class="fc-demo" href="' + esc(demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Watch a demo ↗</a>';
 
     // Collapsed panel for the live workout card. `key` keeps it open across re-renders.
     function inlineHtml(entry, key) {
@@ -8114,1632 +8106,6 @@ window.FORM_GUIDE={
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <script>
-window.EXERCISE_DEMOS={
-  "schemaVersion": 1,
-  "updated": "2026-10-25",
-  "note": "Keyed by workout-logger exercise id. An item shows in the app only when status is verified, checkedBy and checkedAt are set, and the entry equipment matches the logger library. Never add a URL nobody has opened.",
-  "demos": {
-    "hip-adductor-machine": {
-      "name": "Hip Adductor (Machine)",
-      "equipment": "Machine",
-      "muscle": "Adductors",
-      "pattern": "Hip ab/adduction",
-      "priority": 1,
-      "aliases": [
-        "Hip Adductor"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=ScqpbvOZWe8",
-          "angle": null,
-          "title": "Hip Adduction Machine: How To",
-          "source": "Hammer Fitness (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "iso-lateral-low-row-plate-loaded": {
-      "name": "Iso-Lateral Low Row (Plate-loaded)",
-      "equipment": "Plate-loaded",
-      "muscle": "Back",
-      "pattern": "Horizontal pull",
-      "priority": 1,
-      "aliases": [
-        "Iso-Lateral Low Row (plate)"
-      ],
-      "note": "Plate-loaded machines differ by brand (Hammer Strength style). Match the machine type, not just the name.",
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=k2S4G14cmts",
-          "angle": null,
-          "title": "Iso-Lateral Low Row - Plate Loaded - Hammer Strength",
-          "source": "Hammer Strength (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. From the machine maker; check it matches the machine at your gym."
-        }
-      ]
-    },
-    "lat-pulldown-single-arm-cable": {
-      "name": "Lat Pulldown - Single Arm (Cable)",
-      "equipment": "Cable",
-      "muscle": "Back",
-      "pattern": "Vertical pull",
-      "priority": 1,
-      "aliases": [
-        "Lat Pulldown, Single Arm"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=GJwgug4jytc",
-          "angle": null,
-          "title": "Single Arm Lat Pulldown: Fix Imbalances & Feel Your Lats",
-          "source": "Mike | J2FIT Strength & Conditioning (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "lat-pulldown-wide-grip-cable": {
-      "name": "Lat Pulldown - Wide Grip (Cable)",
-      "equipment": "Cable",
-      "muscle": "Back",
-      "pattern": "Vertical pull",
-      "priority": 1,
-      "aliases": [
-        "Lat Pulldown, Wide"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=j6KuKd_N8uU",
-          "angle": null,
-          "title": "How to Do Wide Grip Lat Pulldowns Correctly",
-          "source": "Cuirim Sports Recovery (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "pullover-machine": {
-      "name": "Pullover (Machine)",
-      "equipment": "Machine",
-      "muscle": "Back",
-      "pattern": "Shoulder extension (lats)",
-      "priority": 1,
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=pl8D87hN7vs",
-          "angle": null,
-          "title": "Lat Pullover Machine - Set Up & Execution",
-          "source": "Charlie Cuthbert (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "seated-row-cable": {
-      "name": "Seated Row (Cable)",
-      "equipment": "Cable",
-      "muscle": "Back",
-      "pattern": "Horizontal pull",
-      "priority": 1,
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=oFtfkSElE0s",
-          "angle": null,
-          "title": "Seated Cable Row: How to",
-          "source": "Hammer Fitness (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "shrug-machine": {
-      "name": "Shrug (Machine)",
-      "equipment": "Machine",
-      "muscle": "Back",
-      "pattern": "Shrug",
-      "priority": 1,
-      "aliases": [
-        "Traps Machine"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=HdoeBEuuS1c",
-          "angle": null,
-          "title": "Machine Shrugs | Proper Form Tutorial for Upper Traps",
-          "source": "FIT.nl (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "t-bar-row": {
-      "name": "T-Bar Row",
-      "equipment": "Plate-loaded",
-      "muscle": "Back",
-      "pattern": "Horizontal pull",
-      "priority": 1,
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=rvbjGSQ2tVE",
-          "angle": null,
-          "title": "How to perform T Bar Row - Back Exercise Tutorial",
-          "source": "Buff Dudes (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Check whether it shows a landmine or a plate-loaded machine and that it matches your gym."
-        }
-      ]
-    },
-    "bicep-curl-dumbbell": {
-      "name": "Bicep Curl (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 1,
-      "aliases": [
-        "DB Curl"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=ykJmrZ5v0Oo",
-          "angle": null,
-          "title": "How to Do a Dumbbell Biceps Curl | Arm Workout",
-          "source": "Howcast (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "seated-bicep-curl-machine": {
-      "name": "Seated Bicep Curl (Machine)",
-      "equipment": "Machine",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 1,
-      "aliases": [
-        "Seated Bicep Curl"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=g7hiWfUH6i8",
-          "angle": null,
-          "title": "How To Do A MACHINE SEATED PREACHER CURL | Exercise Demonstration Video and Guide",
-          "source": "Live Lean TV Daily Exercises (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "standing-bicep-curl-cable": {
-      "name": "Standing Bicep Curl (Cable)",
-      "equipment": "Cable",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 1,
-      "aliases": [
-        "Cable Standing Biceps"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=_hRnRorKRWs",
-          "angle": null,
-          "title": "How To Do A STANDING BICEP CABLE CURL WITH STRAIGHT BAR | Exercise Demonstration Video and Guide",
-          "source": "Live Lean TV Daily Exercises (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "calf-press-leg-press": {
-      "name": "Calf Press (Leg Press)",
-      "equipment": "Machine",
-      "muscle": "Calves",
-      "pattern": "Calf raise",
-      "priority": 1,
-      "aliases": [
-        "Calf Press on Seated Leg Press"
-      ],
-      "note": "Seated leg press calf press. Don't use a 45° sled or standing calf clip.",
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=OMUvfMZOcSA",
-          "angle": null,
-          "title": "Exercise Tutorial: Calf Raise On Leg Press Machine",
-          "source": "Travis Tarrant (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Your plan uses a seated leg press; check the clip is not a 45° sled."
-        }
-      ]
-    },
-    "standing-calf-raise-machine": {
-      "name": "Standing Calf Raise (Machine)",
-      "equipment": "Machine",
-      "muscle": "Calves",
-      "pattern": "Calf raise",
-      "priority": 1,
-      "aliases": [
-        "Standing Calf Raise"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=ucy86plaufg",
-          "angle": null,
-          "title": "How to: Machine Standing Calf Raise",
-          "source": "MenoMojo (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "treadmill-incline-walk": {
-      "name": "Treadmill (Incline Walk)",
-      "equipment": "Cardio",
-      "muscle": "Cardio",
-      "pattern": "Cardio",
-      "priority": 1,
-      "aliases": [
-        "Treadmill (30 min)"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=9ccVxEvWtpA",
-          "angle": null,
-          "title": "How to properly walk on incline on a treadmill",
-          "source": "VIVEHealthandFitness (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "bench-press-barbell": {
-      "name": "Bench Press (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Chest",
-      "pattern": "Horizontal push",
-      "priority": 1,
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=rT7DgCr-3pg",
-          "angle": null,
-          "title": "How To: Barbell Bench Press",
-          "source": "ScottHermanFitness (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "cable-crossover": {
-      "name": "Cable Crossover",
-      "equipment": "Cable",
-      "muscle": "Chest",
-      "pattern": "Chest fly",
-      "priority": 1,
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=50BDseX8lTY",
-          "angle": null,
-          "title": "Cable Crossover - Technique, Benefits, Rep Ranges, and Common Mistakes",
-          "source": "Mike | J2FIT Strength & Conditioning (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "gundam-chest-press-machine": {
-      "name": "Gundam Chest Press (Machine)",
-      "equipment": "Machine",
-      "muscle": "Chest",
-      "pattern": "Horizontal push",
-      "priority": 1,
-      "aliases": [
-        "Gundam (chest machine)"
-      ],
-      "note": "Brand/nickname. Best covered by a clip of the machine at your gym; generic chest-press videos may not match.",
-      "items": []
-    },
-    "incline-bench-press-dumbbell": {
-      "name": "Incline Bench Press (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Chest",
-      "pattern": "Incline push",
-      "priority": 1,
-      "aliases": [
-        "Incline DB Press"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=5iACxPVXKGg",
-          "angle": null,
-          "title": "Incline Dumbbell Press Correct Form & Technique | Build Massive Upper Chest | Gym",
-          "source": "Fit Abhay (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "seated-abs-machine": {
-      "name": "Seated Abs (Machine)",
-      "equipment": "Machine",
-      "muscle": "Core",
-      "pattern": "Core",
-      "priority": 1,
-      "aliases": [
-        "Seated Abs"
-      ],
-      "note": "Machine crunch. Don't use a cable crunch clip.",
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=0kLWho-pEdQ",
-          "angle": null,
-          "title": "Machine Ab Crunch: How To",
-          "source": "Hammer Fitness (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "hip-abductor-machine": {
-      "name": "Hip Abductor (Machine)",
-      "equipment": "Machine",
-      "muscle": "Glutes",
-      "pattern": "Hip ab/adduction",
-      "priority": 1,
-      "aliases": [
-        "Hip Abductor"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=5O_Y9l__iao",
-          "angle": null,
-          "title": "Seated Hip Abduction Machine: How To",
-          "source": "Hammer Fitness (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "lying-leg-curl-machine": {
-      "name": "Lying Leg Curl (Machine)",
-      "equipment": "Machine",
-      "muscle": "Hamstrings",
-      "pattern": "Knee flexion",
-      "priority": 1,
-      "aliases": [
-        "Lying Leg Curl"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=NlZeAGZ_YJw",
-          "angle": null,
-          "title": "How to do a Lying Leg Curl",
-          "source": "Blackstone Labs (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "hack-squat-machine": {
-      "name": "Hack Squat (Machine)",
-      "equipment": "Machine",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 1,
-      "aliases": [
-        "Hack Squat"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=-lAnEGH2blE",
-          "angle": null,
-          "title": "How to Do the Hack Squat | Build Stronger Legs with Proper Form",
-          "source": "Physio Plus Fitness (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Check it is the machine hack squat, not a barbell hack squat."
-        }
-      ]
-    },
-    "leg-extension-machine": {
-      "name": "Leg Extension (Machine)",
-      "equipment": "Machine",
-      "muscle": "Quads",
-      "pattern": "Knee extension",
-      "priority": 1,
-      "aliases": [
-        "Leg Extension"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=MXvSzXEBOTI",
-          "angle": null,
-          "title": "Leg Extension - Proper Form & Technique [4K]",
-          "source": "Steev (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "squat-smith-machine": {
-      "name": "Squat (Smith Machine)",
-      "equipment": "Smith machine",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 1,
-      "aliases": [
-        "Smith Squat"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=iAcRGCsG_PY",
-          "angle": null,
-          "title": "Exercise Tutorial: Smith Machine Squat",
-          "source": "Travis Tarrant (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "front-raise-dumbbell": {
-      "name": "Front Raise (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Shoulders",
-      "pattern": "Shoulder isolation",
-      "priority": 1,
-      "aliases": [
-        "Front Raise (DB)"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=wp_TDRF2Bug",
-          "angle": null,
-          "title": "Dumbbell Front Raise | Front Delt (Shoulder) Exercise | Proper Form Guide",
-          "source": "Lean Physique Lab (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "lateral-raise-cable": {
-      "name": "Lateral Raise (Cable)",
-      "equipment": "Cable",
-      "muscle": "Shoulders",
-      "pattern": "Shoulder isolation",
-      "priority": 1,
-      "note": "Shares one cues entry with the dumbbell raise. Needs its own cable demo (single-arm, low pulley).",
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=TamcQzxCe7o",
-          "angle": null,
-          "title": "How to Do Single Arm Cable Lateral Raises",
-          "source": "Mike P (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "lateral-raise-dumbbell": {
-      "name": "Lateral Raise (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Shoulders",
-      "pattern": "Shoulder isolation",
-      "priority": 1,
-      "note": "Shares one cues entry with the cable raise. Needs its own dumbbell demo. \"Side Delts\" is not mapped: it could mean the cable or the dumbbell raise.",
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=OK1k6NdNo1I",
-          "angle": null,
-          "title": "Dumbbell Lateral Raise - Proper Form",
-          "source": "Germain Craddock's EVA (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "reverse-fly-machine": {
-      "name": "Reverse Fly (Machine)",
-      "equipment": "Machine",
-      "muscle": "Shoulders",
-      "pattern": "Rear-delt isolation",
-      "priority": 1,
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=BWtVn4DpxUI",
-          "angle": null,
-          "title": "How To Do Rear Delt Flys on the Pec Deck (Perfect Form Guide)",
-          "source": "Marcus Savard (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "seated-overhead-press-dumbbell": {
-      "name": "Seated Overhead Press (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Shoulders",
-      "pattern": "Vertical push",
-      "priority": 1,
-      "aliases": [
-        "Seated DB Overhead Press"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=WKEl69bIGus",
-          "angle": null,
-          "title": "How to Do the Seated Dumbbell Shoulder Press | Perfect Form in 30 Seconds",
-          "source": "All Strength Training (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "standing-lateral-raise-machine": {
-      "name": "Standing Lateral Raise (Machine)",
-      "equipment": "Machine",
-      "muscle": "Shoulders",
-      "pattern": "Shoulder isolation",
-      "priority": 1,
-      "aliases": [
-        "Standing Side Delts (machine)"
-      ],
-      "note": "Standing side-delt machine, not the seated lateral raise machine.",
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=NG4vKphYYuU",
-          "angle": null,
-          "title": "Standing Lateral Raise Machine in 60 seconds",
-          "source": "Ascendancy Fitness (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Check it is a standing machine like yours, not a seated one."
-        }
-      ]
-    },
-    "triceps-extension-cable": {
-      "name": "Triceps Extension (Cable)",
-      "equipment": "Cable",
-      "muscle": "Triceps",
-      "pattern": "Elbow extension",
-      "priority": 1,
-      "note": "Guide assumes overhead cable extension (not yet confirmed). Confirm before matching a video.",
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=8WC7rIOkhi0",
-          "angle": null,
-          "title": "How to: Cable Overhead Tricep Extension",
-          "source": "Core Blend Training (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified. Assumes your cable extension is overhead (not yet confirmed)."
-        }
-      ]
-    },
-    "triceps-pushdown-straight-bar": {
-      "name": "Triceps Pushdown (Straight Bar)",
-      "equipment": "Cable",
-      "muscle": "Triceps",
-      "pattern": "Elbow extension",
-      "priority": 1,
-      "aliases": [
-        "Triceps Pushdown"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=aUMD6SwvELU",
-          "angle": null,
-          "title": "How To: Triceps Straight Bar Pushdown",
-          "source": "Ignore Limits (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "triceps-rope-pushdown-cable": {
-      "name": "Triceps Rope Pushdown (Cable)",
-      "equipment": "Cable",
-      "muscle": "Triceps",
-      "pattern": "Elbow extension",
-      "priority": 1,
-      "aliases": [
-        "Triceps Rope"
-      ],
-      "items": [
-        {
-          "kind": "link",
-          "url": "https://www.youtube.com/watch?v=K--j4Qh9d2s",
-          "angle": null,
-          "title": "Cable Rope Triceps Pushdown - Proper Form",
-          "source": "Germain Craddock's EVA (YouTube)",
-          "status": "review",
-          "checkedBy": null,
-          "checkedAt": null,
-          "note": "Found by search; title and channel confirmed on YouTube 2026-10-26. Not watched yet: check equipment, full rep and angle before marking verified."
-        }
-      ]
-    },
-    "swap-cable-adduction": {
-      "name": "Cable Adduction",
-      "equipment": "Cable",
-      "muscle": "Adductors",
-      "pattern": "Hip ab/adduction",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "swap-copenhagen-plank": {
-      "name": "Copenhagen Plank",
-      "equipment": "Duration",
-      "muscle": "Adductors",
-      "pattern": "Core",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "assisted-pull-up-machine": {
-      "name": "Assisted Pull Up (Machine)",
-      "equipment": "Assisted",
-      "muscle": "Back",
-      "pattern": "Vertical pull",
-      "priority": 2,
-      "items": []
-    },
-    "chest-supported-row-machine": {
-      "name": "Chest-Supported Row (Machine)",
-      "equipment": "Machine",
-      "muscle": "Back",
-      "pattern": "Horizontal pull",
-      "priority": 2,
-      "items": []
-    },
-    "iso-lateral-high-row-plate-loaded": {
-      "name": "Iso-Lateral High Row (Plate-loaded)",
-      "equipment": "Plate-loaded",
-      "muscle": "Back",
-      "pattern": "Horizontal pull",
-      "priority": 2,
-      "items": []
-    },
-    "lat-pulldown-close-grip-cable": {
-      "name": "Lat Pulldown - Close Grip (Cable)",
-      "equipment": "Cable",
-      "muscle": "Back",
-      "pattern": "Vertical pull",
-      "priority": 2,
-      "items": []
-    },
-    "lat-pulldown-machine": {
-      "name": "Lat Pulldown (Machine)",
-      "equipment": "Machine",
-      "muscle": "Back",
-      "pattern": "Vertical pull",
-      "priority": 2,
-      "items": []
-    },
-    "seated-row-machine": {
-      "name": "Seated Row (Machine)",
-      "equipment": "Machine",
-      "muscle": "Back",
-      "pattern": "Horizontal pull",
-      "priority": 2,
-      "items": []
-    },
-    "shrug-barbell": {
-      "name": "Shrug (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Back",
-      "pattern": "Shrug",
-      "priority": 2,
-      "items": []
-    },
-    "shrug-dumbbell": {
-      "name": "Shrug (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Back",
-      "pattern": "Shrug",
-      "priority": 2,
-      "items": []
-    },
-    "straight-arm-pulldown-cable": {
-      "name": "Straight-Arm Pulldown (Cable)",
-      "equipment": "Cable",
-      "muscle": "Back",
-      "pattern": "Shoulder extension (lats)",
-      "priority": 2,
-      "items": []
-    },
-    "bayesian-curl-cable": {
-      "name": "Bayesian Curl (Cable)",
-      "equipment": "Cable",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 2,
-      "items": []
-    },
-    "bicep-curl-barbell": {
-      "name": "Bicep Curl (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 2,
-      "items": []
-    },
-    "hammer-curl-dumbbell": {
-      "name": "Hammer Curl (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 2,
-      "items": []
-    },
-    "preacher-curl-ez-bar": {
-      "name": "Preacher Curl (EZ Bar)",
-      "equipment": "Barbell",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 2,
-      "items": []
-    },
-    "preacher-curl-machine": {
-      "name": "Preacher Curl (Machine)",
-      "equipment": "Machine",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 2,
-      "items": []
-    },
-    "seated-calf-raise-machine": {
-      "name": "Seated Calf Raise (Machine)",
-      "equipment": "Machine",
-      "muscle": "Calves",
-      "pattern": "Calf raise",
-      "priority": 2,
-      "items": []
-    },
-    "swap-smith-standing-calf-raise": {
-      "name": "Smith Standing Calf Raise",
-      "equipment": "Smith machine",
-      "muscle": "Calves",
-      "pattern": "Calf raise",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "bench-press-dumbbell": {
-      "name": "Bench Press (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Chest",
-      "pattern": "Horizontal push",
-      "priority": 2,
-      "items": []
-    },
-    "bench-press-smith-machine": {
-      "name": "Bench Press (Smith Machine)",
-      "equipment": "Smith machine",
-      "muscle": "Chest",
-      "pattern": "Horizontal push",
-      "priority": 2,
-      "items": []
-    },
-    "chest-fly-dumbbell": {
-      "name": "Chest Fly (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Chest",
-      "pattern": "Chest fly",
-      "priority": 2,
-      "items": []
-    },
-    "chest-press-machine": {
-      "name": "Chest Press (Machine)",
-      "equipment": "Machine",
-      "muscle": "Chest",
-      "pattern": "Horizontal push",
-      "priority": 2,
-      "items": []
-    },
-    "incline-bench-press-barbell": {
-      "name": "Incline Bench Press (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Chest",
-      "pattern": "Incline push",
-      "priority": 2,
-      "items": []
-    },
-    "incline-bench-press-smith-machine": {
-      "name": "Incline Bench Press (Smith Machine)",
-      "equipment": "Smith machine",
-      "muscle": "Chest",
-      "pattern": "Incline push",
-      "priority": 2,
-      "items": []
-    },
-    "incline-chest-press-machine": {
-      "name": "Incline Chest Press (Machine)",
-      "equipment": "Machine",
-      "muscle": "Chest",
-      "pattern": "Incline push",
-      "priority": 2,
-      "items": []
-    },
-    "low-to-high-cable-fly": {
-      "name": "Low-to-High Cable Fly",
-      "equipment": "Cable",
-      "muscle": "Chest",
-      "pattern": "Chest fly",
-      "priority": 2,
-      "items": []
-    },
-    "pec-deck-machine": {
-      "name": "Pec Deck (Machine)",
-      "equipment": "Machine",
-      "muscle": "Chest",
-      "pattern": "Chest fly",
-      "priority": 2,
-      "items": []
-    },
-    "cable-crunch": {
-      "name": "Cable Crunch",
-      "equipment": "Cable",
-      "muscle": "Core",
-      "pattern": "Core",
-      "priority": 2,
-      "items": []
-    },
-    "decline-crunch": {
-      "name": "Decline Crunch",
-      "equipment": "Reps only",
-      "muscle": "Core",
-      "pattern": "Core",
-      "priority": 2,
-      "items": []
-    },
-    "hanging-leg-raise": {
-      "name": "Hanging Leg Raise",
-      "equipment": "Reps only",
-      "muscle": "Core",
-      "pattern": "Core",
-      "priority": 2,
-      "items": []
-    },
-    "swap-cable-abduction": {
-      "name": "Cable Abduction",
-      "equipment": "Cable",
-      "muscle": "Glutes",
-      "pattern": "Hip ab/adduction",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "glute-kickback-machine": {
-      "name": "Glute Kickback (Machine)",
-      "equipment": "Machine",
-      "muscle": "Glutes",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 2,
-      "items": []
-    },
-    "seated-leg-curl-machine": {
-      "name": "Seated Leg Curl (Machine)",
-      "equipment": "Machine",
-      "muscle": "Hamstrings",
-      "pattern": "Knee flexion",
-      "priority": 2,
-      "items": []
-    },
-    "swap-single-leg-lying-curl": {
-      "name": "Single-Leg Lying Curl",
-      "equipment": "Machine",
-      "muscle": "Hamstrings",
-      "pattern": "Knee flexion",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "standing-leg-curl-machine": {
-      "name": "Standing Leg Curl (Machine)",
-      "equipment": "Machine",
-      "muscle": "Hamstrings",
-      "pattern": "Knee flexion",
-      "priority": 2,
-      "items": []
-    },
-    "swap-chest-supported-db-row": {
-      "name": "Chest-Supported DB Row",
-      "equipment": "Dumbbell",
-      "muscle": "Mid back",
-      "pattern": "Horizontal pull",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "swap-chest-supported-t-bar-row": {
-      "name": "Chest-Supported T-Bar Row",
-      "equipment": "Plate-loaded",
-      "muscle": "Mid back",
-      "pattern": "Horizontal pull",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "swap-belt-squat": {
-      "name": "Belt Squat",
-      "equipment": "Machine",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "leg-press-machine": {
-      "name": "Leg Press (Machine)",
-      "equipment": "Machine",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 2,
-      "items": []
-    },
-    "pendulum-squat-machine": {
-      "name": "Pendulum Squat (Machine)",
-      "equipment": "Machine",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 2,
-      "items": []
-    },
-    "swap-single-leg-extension": {
-      "name": "Single-Leg Extension",
-      "equipment": "Machine",
-      "muscle": "Quads",
-      "pattern": "Knee extension",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "swap-smith-split-squat": {
-      "name": "Smith Split Squat",
-      "equipment": "Smith machine",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "arnold-press-dumbbell": {
-      "name": "Arnold Press (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Shoulders",
-      "pattern": "Vertical push",
-      "priority": 2,
-      "items": []
-    },
-    "face-pull-cable": {
-      "name": "Face Pull (Cable)",
-      "equipment": "Cable",
-      "muscle": "Shoulders",
-      "pattern": "Shoulder isolation",
-      "priority": 2,
-      "items": []
-    },
-    "front-raise-cable": {
-      "name": "Front Raise (Cable)",
-      "equipment": "Cable",
-      "muscle": "Shoulders",
-      "pattern": "Shoulder isolation",
-      "priority": 2,
-      "items": []
-    },
-    "lateral-raise-machine": {
-      "name": "Lateral Raise (Machine)",
-      "equipment": "Machine",
-      "muscle": "Shoulders",
-      "pattern": "Shoulder isolation",
-      "priority": 2,
-      "items": []
-    },
-    "reverse-fly-dumbbell": {
-      "name": "Reverse Fly (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Shoulders",
-      "pattern": "Rear-delt isolation",
-      "priority": 2,
-      "items": []
-    },
-    "shoulder-press-machine": {
-      "name": "Shoulder Press (Machine)",
-      "equipment": "Machine",
-      "muscle": "Shoulders",
-      "pattern": "Vertical push",
-      "priority": 2,
-      "items": []
-    },
-    "swap-smith-seated-press": {
-      "name": "Smith Seated Press",
-      "equipment": "Smith machine",
-      "muscle": "Shoulders (press)",
-      "pattern": "Vertical push",
-      "priority": 2,
-      "note": "Only appears as a swap suggestion; not in the logger library yet.",
-      "items": []
-    },
-    "overhead-triceps-extension-dumbbell": {
-      "name": "Overhead Triceps Extension (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Triceps",
-      "pattern": "Elbow extension",
-      "priority": 2,
-      "items": []
-    },
-    "single-arm-pushdown-cable": {
-      "name": "Single-Arm Pushdown (Cable)",
-      "equipment": "Cable",
-      "muscle": "Triceps",
-      "pattern": "Elbow extension",
-      "priority": 2,
-      "items": []
-    },
-    "skull-crusher-ez-bar": {
-      "name": "Skull Crusher (EZ Bar)",
-      "equipment": "Barbell",
-      "muscle": "Triceps",
-      "pattern": "Elbow extension",
-      "priority": 2,
-      "items": []
-    },
-    "triceps-dip-machine": {
-      "name": "Triceps Dip (Machine)",
-      "equipment": "Machine",
-      "muscle": "Triceps",
-      "pattern": "Elbow extension",
-      "priority": 2,
-      "items": []
-    },
-    "bent-over-row-barbell": {
-      "name": "Bent Over Row (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Back",
-      "pattern": "Horizontal pull",
-      "priority": 3,
-      "items": []
-    },
-    "chin-up": {
-      "name": "Chin Up",
-      "equipment": "Bodyweight",
-      "muscle": "Back",
-      "pattern": "Vertical pull",
-      "priority": 3,
-      "items": []
-    },
-    "one-arm-row-dumbbell": {
-      "name": "One-Arm Row (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Back",
-      "pattern": "Horizontal pull",
-      "priority": 3,
-      "items": []
-    },
-    "pull-up": {
-      "name": "Pull Up",
-      "equipment": "Bodyweight",
-      "muscle": "Back",
-      "pattern": "Vertical pull",
-      "priority": 3,
-      "items": []
-    },
-    "concentration-curl-dumbbell": {
-      "name": "Concentration Curl (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 3,
-      "items": []
-    },
-    "incline-curl-dumbbell": {
-      "name": "Incline Curl (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Biceps",
-      "pattern": "Elbow flexion",
-      "priority": 3,
-      "items": []
-    },
-    "elliptical": {
-      "name": "Elliptical",
-      "equipment": "Cardio",
-      "muscle": "Cardio",
-      "pattern": "Cardio",
-      "priority": 3,
-      "items": []
-    },
-    "rowing-machine": {
-      "name": "Rowing Machine",
-      "equipment": "Cardio",
-      "muscle": "Cardio",
-      "pattern": "Cardio",
-      "priority": 3,
-      "items": []
-    },
-    "stair-climber": {
-      "name": "Stair Climber",
-      "equipment": "Cardio",
-      "muscle": "Cardio",
-      "pattern": "Cardio",
-      "priority": 3,
-      "items": []
-    },
-    "stationary-bike": {
-      "name": "Stationary Bike",
-      "equipment": "Cardio",
-      "muscle": "Cardio",
-      "pattern": "Cardio",
-      "priority": 3,
-      "items": []
-    },
-    "treadmill-run": {
-      "name": "Treadmill Run",
-      "equipment": "Cardio",
-      "muscle": "Cardio",
-      "pattern": "Cardio",
-      "priority": 3,
-      "items": []
-    },
-    "chest-dip": {
-      "name": "Chest Dip",
-      "equipment": "Bodyweight",
-      "muscle": "Chest",
-      "pattern": "Horizontal push",
-      "priority": 3,
-      "items": []
-    },
-    "decline-bench-press-barbell": {
-      "name": "Decline Bench Press (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Chest",
-      "pattern": "Horizontal push",
-      "priority": 3,
-      "items": []
-    },
-    "push-up": {
-      "name": "Push Up",
-      "equipment": "Bodyweight",
-      "muscle": "Chest",
-      "pattern": "Horizontal push",
-      "priority": 3,
-      "items": []
-    },
-    "ab-wheel-rollout": {
-      "name": "Ab Wheel Rollout",
-      "equipment": "Reps only",
-      "muscle": "Core",
-      "pattern": "Core",
-      "priority": 3,
-      "items": []
-    },
-    "plank": {
-      "name": "Plank",
-      "equipment": "Duration",
-      "muscle": "Core",
-      "pattern": "Core",
-      "priority": 3,
-      "items": []
-    },
-    "russian-twist": {
-      "name": "Russian Twist",
-      "equipment": "Reps only",
-      "muscle": "Core",
-      "pattern": "Core",
-      "priority": 3,
-      "items": []
-    },
-    "reverse-curl-ez-bar": {
-      "name": "Reverse Curl (EZ Bar)",
-      "equipment": "Barbell",
-      "muscle": "Forearms",
-      "pattern": "Forearm",
-      "priority": 3,
-      "items": []
-    },
-    "wrist-curl-dumbbell": {
-      "name": "Wrist Curl (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Forearms",
-      "pattern": "Forearm",
-      "priority": 3,
-      "items": []
-    },
-    "glute-kickback-cable": {
-      "name": "Glute Kickback (Cable)",
-      "equipment": "Cable",
-      "muscle": "Glutes",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 3,
-      "items": []
-    },
-    "nordic-curl": {
-      "name": "Nordic Curl",
-      "equipment": "Reps only",
-      "muscle": "Hamstrings",
-      "pattern": "Knee flexion",
-      "priority": 3,
-      "items": []
-    },
-    "bulgarian-split-squat-dumbbell": {
-      "name": "Bulgarian Split Squat (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 3,
-      "items": []
-    },
-    "front-squat-barbell": {
-      "name": "Front Squat (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 3,
-      "items": []
-    },
-    "goblet-squat-dumbbell": {
-      "name": "Goblet Squat (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 3,
-      "items": []
-    },
-    "squat-barbell": {
-      "name": "Squat (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 3,
-      "items": []
-    },
-    "walking-lunge-dumbbell": {
-      "name": "Walking Lunge (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Quads",
-      "pattern": "Squat / knee-dominant",
-      "priority": 3,
-      "items": []
-    },
-    "overhead-press-barbell": {
-      "name": "Overhead Press (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Shoulders",
-      "pattern": "Vertical push",
-      "priority": 3,
-      "items": []
-    },
-    "upright-row-cable": {
-      "name": "Upright Row (Cable)",
-      "equipment": "Cable",
-      "muscle": "Shoulders",
-      "pattern": "Shoulder isolation",
-      "priority": 3,
-      "items": []
-    },
-    "close-grip-bench-press-barbell": {
-      "name": "Close-Grip Bench Press (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Triceps",
-      "pattern": "Horizontal push",
-      "priority": 3,
-      "items": []
-    },
-    "back-extension": {
-      "name": "Back Extension",
-      "equipment": "Bodyweight",
-      "muscle": "Back",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 4,
-      "items": []
-    },
-    "deadlift-barbell": {
-      "name": "Deadlift (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Back",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 4,
-      "items": []
-    },
-    "cable-pull-through": {
-      "name": "Cable Pull-Through",
-      "equipment": "Cable",
-      "muscle": "Glutes",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 4,
-      "items": []
-    },
-    "hip-thrust-barbell": {
-      "name": "Hip Thrust (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Glutes",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 4,
-      "items": []
-    },
-    "hip-thrust-machine": {
-      "name": "Hip Thrust (Machine)",
-      "equipment": "Machine",
-      "muscle": "Glutes",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 4,
-      "items": []
-    },
-    "reverse-hyper-machine": {
-      "name": "Reverse Hyper (Machine)",
-      "equipment": "Machine",
-      "muscle": "Glutes",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 4,
-      "items": []
-    },
-    "glute-ham-raise": {
-      "name": "Glute-Ham Raise",
-      "equipment": "Bodyweight",
-      "muscle": "Hamstrings",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 4,
-      "items": []
-    },
-    "romanian-deadlift-barbell": {
-      "name": "Romanian Deadlift (Barbell)",
-      "equipment": "Barbell",
-      "muscle": "Hamstrings",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 4,
-      "items": []
-    },
-    "romanian-deadlift-dumbbell": {
-      "name": "Romanian Deadlift (Dumbbell)",
-      "equipment": "Dumbbell",
-      "muscle": "Hamstrings",
-      "pattern": "Hip hinge / hip extension",
-      "priority": 4,
-      "items": []
-    }
-  }
-};
-</script>
-<script>
-/* ExerciseDemos: one demo registry for every exercise, keyed by workout-logger exercise id.
-   Plain JS, no imports, no network. A demo is shown only when a person checked it and its
-   equipment matches the exercise, so a cable clip never stands in for a machine or dumbbell lift.
-   Usage: const demos = ExerciseDemos.create(window.EXERCISE_DEMOS, { library: WorkoutLogger.library });
-          demos.link('seated-row-machine') -> { href, label, verified } */
-(function (root) {
-  'use strict';
-
-  const STATUSES = ['verified', 'review', 'missing', 'incorrect', 'replace'];
-  const ITEM_STATUSES = ['verified', 'review', 'incorrect', 'replace'];
-  const slug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  const norm = s => String(s || '').trim().toLowerCase();
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  const isHttps = u => /^https:\/\/[^\s"'<>]+$/.test(String(u || ''));
-  // Self-hosted clips are published next to the app, so a relative path is fine for videos.
-  const isLocal = u => /^[a-z0-9][a-z0-9._\/-]*\.(mp4|webm)$/i.test(String(u || ''));
-  const okUrl = it => it && (isHttps(it.url) || (it.kind === 'video' && isLocal(it.url)));
-  const checked = it => !!(it && it.status === 'verified' && it.checkedBy && it.checkedAt && okUrl(it));
-
-  function searchUrl(name) {
-    // Keep the equipment words ("Seated Row Machine") so results show the right variation.
-    const q = String(name || '').replace(/[()]/g, ' ').replace(/\s+-\s+/g, ' ').replace(/\s+/g, ' ').trim();
-    return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q + ' proper form');
-  }
-
-  function create(data, opts) {
-    opts = opts || {};
-    const demos = (data && data.demos) || {};
-    const library = opts.library || {};
-    const byKey = {};
-    Object.keys(demos).forEach(id => {
-      const e = demos[id];
-      [id, e.name].forEach(n => { if (n) byKey[slug(n)] = id; });
-    });
-    // Aliases are exact alternative names (Strong / plan names). They never override a real id or name.
-    Object.keys(demos).forEach(id => (demos[id].aliases || []).forEach(a => { if (!byKey[slug(a)]) byKey['@' + norm(a)] = id; }));
-
-    // Exact matches only: id, name, or a listed alias. No fuzzy matching.
-    function id(idOrName) {
-      if (!idOrName) return null;
-      if (demos[idOrName]) return idOrName;
-      return byKey[slug(idOrName)] || byKey['@' + norm(idOrName)] || null;
-    }
-    const entry = idOrName => { const k = id(idOrName); return k ? demos[k] : null; };
-
-    // The entry's equipment must agree with the logger library (when the library has the exercise).
-    function equipOk(k) {
-      const e = demos[k], lib = library[k];
-      return !!e && (!lib || norm(lib.cat) === norm(e.equipment));
-    }
-
-    function status(idOrName) {
-      const k = id(idOrName), e = k && demos[k];
-      if (!e) return 'missing';
-      const items = e.items || [];
-      if (items.some(it => it.status === 'incorrect')) return 'incorrect';
-      if (items.some(checked) && equipOk(k)) return 'verified';
-      if (items.some(it => it.status === 'replace')) return 'replace';
-      if (items.some(it => it.status === 'review' || it.status === 'verified')) return 'review';
-      return 'missing';
-    }
-
-    // Verified items only, and only when equipment matches. `angle` picks front/side when there is one.
-    function verified(idOrName) {
-      const k = id(idOrName);
-      if (!k || !equipOk(k) || status(k) === 'incorrect') return [];
-      return (demos[k].items || []).filter(checked);
-    }
-    function best(idOrName, angle) {
-      const v = verified(idOrName);
-      return (angle && v.find(it => it.angle === angle)) || v.find(it => it.kind === 'video') || v[0] || null;
-    }
-    // Links someone found but nobody has checked yet. Never presented as a demo.
-    function candidates(idOrName) {
-      const k = id(idOrName);
-      return k ? (demos[k].items || []).filter(it => it.status === 'review' && okUrl(it)) : [];
-    }
-
-    // What the "Demo" button should do for an exercise. `name` is used when the id is unknown (custom lifts).
-    function link(idOrName, name) {
-      const b = best(idOrName);
-      if (b) return { href: b.url, label: 'Demo ↗', verified: true, item: b };
-      const e = entry(idOrName);
-      return { href: searchUrl((e && e.name) || name || idOrName), label: 'Search demos ↗', verified: false, item: null };
-    }
-
-    function summary() {
-      const out = { total: 0 };
-      STATUSES.forEach(s => { out[s] = 0; });
-      Object.keys(demos).forEach(k => { out.total++; out[status(k)]++; });
-      return out;
-    }
-
-    // Problems a person must fix before a demo can be trusted.
-    function validate() {
-      const problems = [];
-      const urlOwners = {};
-      Object.keys(library).forEach(k => { if (!demos[k]) problems.push({ id: k, problem: 'Library exercise has no registry entry' }); });
-      Object.keys(demos).forEach(k => {
-        const e = demos[k];
-        if (!STATUSES.includes(e.status || 'missing')) problems.push({ id: k, problem: 'Unknown entry status ' + e.status });
-        if (!equipOk(k)) problems.push({ id: k, problem: 'Equipment "' + e.equipment + '" does not match the library ("' + library[k].cat + '")' });
-        (e.items || []).forEach((it, i) => {
-          const at = k + ' item ' + (i + 1);
-          if (!ITEM_STATUSES.includes(it.status)) problems.push({ id: k, problem: at + ': unknown status ' + it.status });
-          if (!okUrl(it)) problems.push({ id: k, problem: at + ': URL must be https (or a local .mp4/.webm clip)' });
-          if (it.status === 'verified' && !(it.checkedBy && it.checkedAt)) problems.push({ id: k, problem: at + ': verified without checkedBy and checkedAt' });
-          if (it.kind === 'video' && !it.licence) problems.push({ id: k, problem: at + ': video file without a licence' });
-          if (it.url && it.status !== 'incorrect') (urlOwners[it.url] = urlOwners[it.url] || []).push(k);
-        });
-      });
-      Object.keys(urlOwners).forEach(u => {
-        const owners = [...new Set(urlOwners[u])];
-        const equips = [...new Set(owners.map(k => norm(demos[k].equipment)))];
-        if (equips.length > 1) problems.push({ id: owners.join(', '), problem: 'Same URL used for different equipment: ' + u });
-      });
-      return problems;
-    }
-
-    // Small block for the exercise sheet: verified demos, then unchecked finds, then the search.
-    function sheetHtml(idOrName, name) {
-      const k = id(idOrName), v = verified(idOrName), c = candidates(idOrName), st = status(idOrName);
-      const row = (it, cls, tag) => '<li><a class="ed-link ' + cls + '" href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer">' +
-        esc(it.title || it.source || 'Video') + ' ↗</a><small>' + esc([it.angle ? it.angle + ' view' : '', it.source, tag].filter(Boolean).join(' · ')) + '</small></li>';
-      return '<section class="ed-sheet"><h4>Demo video</h4>' +
-        (v.length ? '<ul>' + v.map(it => row(it, 'ok', 'checked ' + it.checkedAt)).join('') + '</ul>'
-          : '<p class="ed-muted">' + (st === 'incorrect' ? 'The saved video was marked wrong for this exercise.' : 'No checked video for this exercise yet.') + '</p>') +
-        (c.length ? '<p class="ed-lbl">Found, not checked yet</p><ul>' + c.map(it => row(it, 'unchecked', 'check equipment and range of motion')).join('') + '</ul>' : '') +
-        '<a class="ed-link" href="' + esc(searchUrl((k && demos[k].name) || name || idOrName)) + '" target="_blank" rel="noopener noreferrer">Search YouTube ↗</a></section>';
-    }
-
-    return { id, entry, status, verified, best, candidates, link, summary, validate, sheetHtml, searchUrl, css, size: Object.keys(demos).length };
-  }
-
-  const css = [
-    '.ed-sheet{margin-top:1rem}.ed-sheet h4{margin:0 0 .3rem}',
-    '.ed-sheet ul{margin:.2rem 0 .5rem;padding-left:1.15rem}.ed-sheet li{margin:.2rem 0}',
-    '.ed-sheet small{display:block;color:var(--muted);font-size:.78rem}',
-    '.ed-link{font-size:.85rem;font-weight:600;color:var(--accent)}',
-    '.ed-link.unchecked{color:var(--ink)}',
-    '.ed-lbl{margin:.45rem 0 .1rem;font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--warn)}',
-    '.ed-muted{color:var(--muted);font-size:.85rem;margin:.2rem 0}'
-  ].join('\n');
-
-  const api = { create, searchUrl, slug, STATUSES };
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  root.ExerciseDemos = api;
-})(typeof window !== 'undefined' ? window : globalThis);
-</script>
-<script>
 /* ExerciseAnim: built-in 3D animated exercise demos. An original mannequin rig (two-bone IK
    for arms and legs) drawn on a canvas with depth-sorted, shaded shapes. No images, no
    libraries, no network, so it works offline. Each exercise is authored on its own: key
@@ -9779,11 +8145,11 @@ window.EXERCISE_DEMOS={
 
   // ---------- poses ----------
   const BASE = { pelvis: [0, 0.99, 0], up: [0, 1, 0], fwd: [0, 0, 1], shrug: 0,
-    hands: { L: [0.23, 0.93, 0.04] }, elbows: { L: [0.2, -0.3, -1] }, feet: { L: [0.12, 0.08, 0] }, knees: { L: [0.15, 0, 1] }, footDir: null };
+    hands: { L: [0.23, 0.93, 0.04] }, elbows: { L: [0.2, -0.3, -1] }, feet: { L: [0.12, 0.08, 0] }, knees: { L: [0.15, 0, 1] }, footDir: null, handDir: null };
   const mirror = v => Array.isArray(v) ? [-v[0], v[1], v[2]] : (v && v.t ? { t: [-v.t[0], v.t[1], v.t[2]] } : v);
   function full(p) {
     const o = Object.assign({}, BASE, p);
-    ['hands', 'elbows', 'feet', 'knees', 'footDir'].forEach(k => {
+    ['hands', 'elbows', 'feet', 'knees', 'footDir', 'handDir'].forEach(k => {
       const v = p[k] || BASE[k];
       if (!v) { o[k] = null; return; }
       o[k] = Object.assign({}, v);
@@ -9831,9 +8197,9 @@ window.EXERCISE_DEMOS={
     [['L', 1], ['R', -1]].forEach(([k, s]) => {
       const sh = add(add(neckB, mul(side, s * B.shW)), mul(up, -0.035 + (p.shrug || 0)));
       const arm = ik(sh, at(p.hands[k]), B.upper, B.fore, p.elbows[k]);
-      const fdir = norm(sub(arm.end, arm.mid));
+      const fdir = norm(sub(arm.end, arm.mid)), hdir = p.handDir && p.handDir[k] ? norm(p.handDir[k]) : fdir;
       sk.sh[k] = sh; sk.el[k] = arm.mid; sk.wr[k] = arm.end;
-      sk.hand[k] = add(arm.end, mul(fdir, B.hand)); sk.grip[k] = add(arm.end, mul(fdir, 0.055));
+      sk.hand[k] = add(arm.end, mul(hdir, B.hand)); sk.grip[k] = add(arm.end, mul(hdir, 0.055));
       const hip = add(add(P, mul(side, s * B.hipW)), mul(up, -0.05));
       const leg = ik(hip, at(p.feet[k]), B.thigh, B.shin, p.knees[k]);
       const fd = norm(p.footDir && p.footDir[k] ? p.footDir[k] : flat);
@@ -9856,8 +8222,8 @@ window.EXERCISE_DEMOS={
   }
   const obox = (c, ax, col) => ({ k: 'box', c, ax, col });
 
-  function bodyShapes(sk, hi) {
-    const H = new Set(hi || []), c = t => H.has(t) ? 'hi' : 'body', out = [];
+  function bodyShapes(sk, hi, sec) {
+    const H = new Set(hi || []), S2 = new Set(sec || []), c = t => H.has(t) ? 'hi' : S2.has(t) ? 'sec' : 'body', out = [];
     const { P, up, neckB, head } = sk, waist = add(P, mul(up, 0.2));
     out.push(sph(P, 0.115, c('pelvis')));
     out.push(cap(P, waist, 0.115, 0.115, c('abs')));
@@ -9911,7 +8277,7 @@ window.EXERCISE_DEMOS={
   const SEAT = { pelvis: [0, 0.58, 0], up: [0, 1, -0.05], feet: { L: [0.16, 0.08, 0.45] }, knees: { L: [0, 0.5, 1] } };
   const seated = o => Object.assign({}, SEAT, o);
   const DEFS = {
-    'bench-press-barbell': { name: 'Bench Press (Barbell)', eq: 'Barbell', hi: ['torso'], cam: { yaw: 0.95, pitch: 0.3 },
+    'bench-press-barbell': { name: 'Bench Press (Barbell)', eq: 'Barbell', hi: ['torso'], sec: ['delts', 'arms'], cam: { yaw: 0.95, pitch: 0.3 },
       keys: rep({ pelvis: [0, 0.58, 0.1], up: [0, 0.08, -1], fwd: [0, 1, 0], hands: { L: [0.28, 1.14, -0.36] }, elbows: { L: [1, -0.8, 0.2] }, feet: { L: [0.3, 0.08, 0.55] }, knees: { L: [0.3, 1, 0] }, footDir: { L: [0.2, 0, 1] } },
         { pelvis: [0, 0.58, 0.1], up: [0, 0.08, -1], fwd: [0, 1, 0], hands: { L: [0.28, 0.8, -0.2] }, elbows: { L: [1, -0.8, 0.2] }, feet: { L: [0.3, 0.08, 0.55] }, knees: { L: [0.3, 1, 0] }, footDir: { L: [0.2, 0, 1] } }, { c: 0.45 }),
       props: sk => E.bench(-0.9, 0.45).concat(E.barbell(sk.grip.L, sk.grip.R)) },
@@ -9975,7 +8341,7 @@ window.EXERCISE_DEMOS={
       keys: rep({ pelvis: [0, 0.98, 0], up: [0, 1, 0.12], hands: { L: [0.08, 1.18, 0.3] }, elbows: { L: [0, -0.3, -1] } }, { pelvis: [0, 0.98, 0], up: [0, 1, 0.12], hands: { L: [0.2, 0.95, 0.15] }, elbows: { L: [0, -0.3, -1] } }),
       props: sk => E.pulley([0, 2.1, 0.45]).concat(E.rope([0, 2.1, 0.45], sk.grip.L, sk.grip.R)) },
 
-    'lat-pulldown-wide-grip-cable': { name: 'Lat Pulldown - Wide Grip (Cable)', eq: 'Cable', hi: ['torso'], cam: { yaw: 2.5, pitch: 0.15 },
+    'lat-pulldown-wide-grip-cable': { name: 'Lat Pulldown - Wide Grip (Cable)', eq: 'Cable', hi: ['torso'], sec: ['arms', 'forearms'], cam: { yaw: 2.5, pitch: 0.15 },
       keys: rep(seated({ up: [0, 1, -0.12], hands: { L: [0.42, 1.56, 0] }, elbows: { L: [1, -0.3, -0.3] } }), seated({ up: [0, 1, -0.12], hands: { L: [0.38, 1.17, 0.12] }, elbows: { L: [0.8, -1, -0.5] } }), { c: 0.38 }),
       props: sk => E.seat(0.5, 0).concat([box([0, 0.76, 0.38], [0.42, 0.08, 0.1], 'pad')], E.upright(0, -0.35, 2.4), E.bar(sk.grip.L, sk.grip.R, 0.14), [line([0, 2.3, 0.03], mid(sk.grip.L, sk.grip.R)), sph([0, 2.3, 0.03], 0.045, 'metal')]) },
 
@@ -10098,13 +8464,437 @@ window.EXERCISE_DEMOS={
         cap([0.38, 0.15, 0.8], [0.38, 1.1, 0.8], 0.022, 0.022, 'metal'), cap([-0.38, 0.15, 0.8], [-0.38, 1.1, 0.8], 0.022, 0.022, 'metal'),
         cap([0.38, 1.05, 0.8], [0.38, 1.05, 0.35], 0.02, 0.02, 'metal'), cap([-0.38, 1.05, 0.8], [-0.38, 1.05, 0.35], 0.02, 0.02, 'metal'), box([0, 1.18, 0.82], [0.7, 0.2, 0.08], 'frame', deg(25))] }
   };
-  Object.keys(DEFS).forEach(id => { const d = DEFS[id]; d.id = id; d.dur = d.dur || 3.4; d.keys.forEach(k => { k.full = full(k.p); }); });
+
+  // ---------- the rest of the library ----------
+  const LIE = { pelvis: [0, 0.58, 0.1], up: [0, 0.08, -1], fwd: [0, 1, 0], feet: { L: [0.3, 0.08, 0.55] }, knees: { L: [0.3, 1, 0] }, footDir: { L: [0.2, 0, 1] } };
+  const lying = o => Object.assign({}, LIE, o);
+  const INC = { pelvis: [0, 0.6, 0.12], up: [0, 0.77, -0.64], fwd: [0, 0.64, 0.77], feet: { L: [0.25, 0.08, 0.62] }, knees: { L: [0, 0.5, 1] } };
+  const incline = o => Object.assign({}, INC, o);
+  const one = v => ({ L: v });
+  const resolveKeys = id => { const d = DEFS[id]; if (typeof d.keys === 'function') d.keys = d.keys(); return d.keys; };
+  const like = (id, f) => () => resolveKeys(id).map(k => ({ at: k.at, p: f ? f(JSON.parse(JSON.stringify(k.p))) : k.p }));
+  const swapLR = p => { const o = JSON.parse(JSON.stringify(p)); ['feet', 'footDir', 'knees', 'hands', 'elbows', 'handDir'].forEach(k => { if (!o[k]) return; const L = o[k].L, R = o[k].R || mirror(L); o[k] = { L: mirror(R), R: mirror(L) }; }); return o; };
+  const pairDB = (sk, ax) => E.dumbbell(sk.grip.L, ax || [1, 0, 0]).concat(E.dumbbell(sk.grip.R, ax || [1, 0, 0]));
+  const hangBar = y => [cap([-0.62, y, 0], [0.62, y, 0], 0.02, 0.02, 'metal')].concat(E.upright(0.62, 0, y + 0.05), E.upright(-0.62, 0, y + 0.05));
+  const inclineBench = sk => E.seat(0.5, 0.12).concat(E.torsoPad(sk, [0, 0.33, -0.15], [0.19, 0.36, 0.035]));
+  const mat = () => [box([0, 0.005, 0.1], [0.7, 0.01, 1.9], 'pad')];
+  const levers = (sk, from, ax) => ['L', 'R'].flatMap(k => { const s = k === 'L' ? 1 : -1; return E.handle(sk.grip[k], ax || [0, 1, 0]).concat([cap([s * from[0], from[1], from[2]], sk.grip[k], 0.02, 0.02, 'metal')]); });
+  const cyc = (n, f) => Array.from({ length: n }, (_, i) => ({ at: i / n, p: f(2 * Math.PI * i / n) }));
+  const ez = sk => E.barbell(sk.grip.L, sk.grip.R, { len: 1.25, plateAt: 0.45, r: 0.13 });
+  function legPressProps(sk) {
+    const leg = norm(sub(mid(sk.an.L, sk.an.R), mid(sk.hip.L, sk.hip.R))), fd = norm(mid(sk.fd.L, sk.fd.R)), c = add(mid(sk.toe.L, sk.toe.R), mul(leg, 0.03));
+    return [obox(add(c, mul(fd, -0.08)), [[0.32, 0, 0], mul(fd, 0.3), mul(leg, 0.02)], 'metal'), box([0, 0.42, 0.05], [0.42, 0.08, 0.45], 'pad')].concat(E.torsoPad(sk, [0, 0.3, -0.14], [0.2, 0.36, 0.035]), E.handle([0.28, 0.55, 0.05], [0, 0, 1]), E.handle([-0.28, 0.55, 0.05], [0, 0, 1]), [box([0, 0.2, 0.2], [0.14, 0.4, 0.9], 'frame')]);
+  }
+
+  // Standing, lunge and squat poses reused below.
+  const STAND_DB = { hands: { L: { t: [0.24, -0.05, 0.03] } }, elbows: { L: [0, -0.3, -1] }, footDir: { L: [0, 0, 1] } };
+  const PUSH_UP = { fwd: [0, -1, 0], hands: { L: [0.27, 0.06, 0.5] }, elbows: { L: [0.6, 0.3, -1] }, feet: { L: [0.1, 0.18, -0.85] }, knees: { L: [0, -1, 0] }, footDir: { L: [0, -0.8, 0.6] } };
+  const NORDIC_TOP = { pelvis: [0, 0.59, 0], up: [0, 1, 0], fwd: [0, 0, 1], hands: { L: { t: [0.2, 0.25, 0.2] } }, elbows: { L: [0.3, -1, -0.2] }, feet: { L: [0.1, 0.11, -0.42] }, knees: { L: [0, -1, 0.3] }, footDir: { L: [0, -0.3, -1] } };
+  const shift = (p, dy) => { const o = JSON.parse(JSON.stringify(p)); o.pelvis[1] += dy; o.feet.L[1] += dy; return o; };
+  const LUNGE = { pelvis: [0, 0.55, 0], up: [0, 1, 0.05], hands: STAND_DB.hands, elbows: STAND_DB.elbows, feet: { L: [0.12, 0.08, 0.42], R: [-0.12, 0.12, -0.45] }, knees: { L: [0, 0, 1], R: [0, -1, 0.2] }, footDir: { L: [0, 0, 1], R: [0, -0.5, 0.87] } };
+  const ROW_A = { pelvis: [0, 0.85, -0.15], up: [0, 0.75, 0.66], hands: { L: [0.24, 0.69, 0.25] }, elbows: { L: [0.3, 0.3, -1] }, feet: { L: [0.2, 0.08, 0.05] }, knees: { L: [0.2, 0, 1] } };
+  const RDL_TOP = { pelvis: [0, 0.99, 0], up: [0, 1, 0], hands: { L: [0.22, 0.94, 0.08] }, elbows: { L: [0, -0.3, -1] }, feet: { L: [0.12, 0.08, 0] }, knees: { L: [0, 0, 1] } };
+  const RDL_BOT = Object.assign({}, RDL_TOP, { pelvis: [0, 0.92, -0.15], up: [0, 0.55, 0.835], hands: { L: [0.22, 0.66, 0.22] } });
+  const RDL_MID = Object.assign({}, RDL_TOP, { pelvis: [0, 0.96, -0.08], up: [0, 0.88, 0.474], hands: { L: [0.22, 0.82, 0.12] } });
+  const HANG = { pelvis: [0, 1.24, 0], hands: { L: [0.35, 2.25, 0] }, elbows: { L: [1, -0.3, 0] }, feet: { L: { t: [0.08, -0.85, -0.12] } }, knees: { L: [0, 0, 1] } };
+  const HIP_THRUST_A = { pelvis: [0, 0.32, 0], up: [0, 0.536, -0.844], fwd: [0, 0.844, 0.536], hands: { L: { t: [0.3, 0.05, 0.18] } }, elbows: { L: [0.5, 1, 0] }, feet: { L: [0.17, 0.08, 0.55] }, knees: { L: [0.2, 1, 0.3] } };
+  const HIP_THRUST_B = Object.assign({}, HIP_THRUST_A, { pelvis: [0, 0.6, 0.12], up: [0, -0.05, -1], fwd: [0, 1, -0.05] });
+  const KICK_A = { pelvis: [0, 0.97, 0], up: [0, 1, 0.35], hands: { L: [0.22, 1.2, 0.45] }, elbows: { L: [0.3, -1, -0.3] }, feet: { L: [0.12, 0.12, 0.05], R: [-0.12, 0.08, 0.05] }, knees: { L: [0, -0.3, 1], R: [0, 0, 1] }, footDir: { L: [0, -0.3, 1], R: [0, 0, 1] } };
+  const KICK_B = Object.assign({}, KICK_A, { feet: { L: [0.12, 0.45, -0.55], R: [-0.12, 0.08, 0.05] }, footDir: { L: [0, -0.9, -0.3], R: [0, 0, 1] } });
+
+  Object.assign(DEFS, {
+    // ----- chest -----
+    'incline-bench-press-barbell': { name: 'Incline Bench Press (Barbell)', eq: 'Barbell', hi: ['torso', 'delts'], cam: { yaw: 0.9, pitch: 0.15 },
+      keys: rep(incline({ hands: one([0.27, 1.33, 0.13]), elbows: one([1, -0.6, -0.3]) }), incline({ hands: one([0.3, 1.06, -0.04]), elbows: one([1, -0.6, -0.3]) }), { c: 0.45 }),
+      props: sk => inclineBench(sk).concat(E.barbell(sk.grip.L, sk.grip.R)) },
+
+    'decline-bench-press-barbell': { name: 'Decline Bench Press (Barbell)', eq: 'Barbell', hi: ['torso'], cam: { yaw: 1.1, pitch: 0.2 },
+      keys: (() => { const D = { pelvis: [0, 0.68, 0.25], up: [0, -0.25, -0.97], fwd: [0, 0.97, -0.25], elbows: one([1, -0.8, 0]), feet: one([0.12, 0.36, 0.75]), knees: one([0, 1, 0.2]), footDir: one([0, -0.2, 1]) };
+        return rep(Object.assign({}, D, { hands: one([0.25, 1.03, -0.2]) }), Object.assign({}, D, { hands: one([0.28, 0.76, -0.08]) }), { c: 0.45 }); })(),
+      props: sk => E.torsoPad(sk, [0, 0.3, -0.15], [0.19, 0.42, 0.035]).concat([box([0, 0.27, 0.15], [0.12, 0.5, 0.12], 'frame'), cap([0.2, 0.42, 0.66], [-0.2, 0.42, 0.66], 0.05, 0.05, 'pad')], E.barbell(sk.grip.L, sk.grip.R)) },
+
+    'close-grip-bench-press-barbell': { name: 'Close-Grip Bench Press (Barbell)', eq: 'Barbell', hi: ['arms', 'torso'], cam: { yaw: 0.95, pitch: 0.3 },
+      keys: rep(lying({ hands: one([0.16, 1.14, -0.34]), elbows: one([0.3, -0.8, 0.6]) }), lying({ hands: one([0.16, 0.8, -0.16]), elbows: one([0.3, -0.8, 0.6]) }), { c: 0.45 }),
+      props: sk => E.bench(-0.9, 0.45).concat(E.barbell(sk.grip.L, sk.grip.R)) },
+
+    'bench-press-dumbbell': { name: 'Bench Press (Dumbbell)', eq: 'Dumbbell', hi: ['torso'], cam: { yaw: 0.95, pitch: 0.3 },
+      keys: rep(lying({ hands: one([0.13, 1.13, -0.37]), elbows: one([1, -0.8, 0.2]) }), lying({ hands: one([0.33, 0.82, -0.33]), elbows: one([1, -0.8, 0.2]) }), { c: 0.45 }),
+      props: sk => E.bench(-0.9, 0.45).concat(pairDB(sk)) },
+
+    'bench-press-smith-machine': { name: 'Bench Press (Smith Machine)', eq: 'Smith machine', hi: ['torso'], cam: { yaw: 0.95, pitch: 0.3 },
+      keys: like('bench-press-barbell'),
+      props: sk => E.bench(-0.9, 0.45).concat(E.barbell(sk.grip.L, sk.grip.R), E.upright(0.78, -0.3, 2.1), E.upright(-0.78, -0.3, 2.1)) },
+
+    'incline-bench-press-smith-machine': { name: 'Incline Bench Press (Smith Machine)', eq: 'Smith machine', hi: ['torso', 'delts'], cam: { yaw: 0.9, pitch: 0.15 },
+      keys: like('incline-bench-press-barbell'),
+      props: sk => inclineBench(sk).concat(E.barbell(sk.grip.L, sk.grip.R), E.upright(0.78, 0.05, 2.1), E.upright(-0.78, 0.05, 2.1)) },
+
+    'chest-press-machine': { name: 'Chest Press (Machine)', eq: 'Machine', hi: ['torso'],
+      keys: like('gundam-chest-press-machine'),
+      props: sk => E.seat(0.5, 0).concat(E.back([0, 0.95, -0.17], 0.6), E.upright(0.42, -0.25, 1.5), E.upright(-0.42, -0.25, 1.5), levers(sk, [0.42, 1.1, -0.2])) },
+
+    'incline-chest-press-machine': { name: 'Incline Chest Press (Machine)', eq: 'Machine', hi: ['torso', 'delts'],
+      keys: rep(seated({ up: [0, 1, -0.06], hands: one([0.25, 1.12, 0.12]), elbows: one([1, -0.5, -0.6]) }), seated({ up: [0, 1, -0.06], hands: one([0.17, 1.33, 0.44]), elbows: one([1, -0.5, -0.6]) })),
+      props: sk => E.seat(0.5, 0).concat(E.back([0, 0.98, -0.17], 0.7), E.upright(0.42, -0.25, 1.8), E.upright(-0.42, -0.25, 1.8), levers(sk, [0.42, 1.75, -0.2])) },
+
+    'chest-fly-dumbbell': { name: 'Chest Fly (Dumbbell)', eq: 'Dumbbell', hi: ['torso'], cam: { yaw: 0.4, pitch: 0.45 },
+      keys: rep(lying({ hands: one([0.12, 1.1, -0.38]), elbows: one([1, -0.6, 0]) }), lying({ hands: one([0.6, 0.74, -0.37]), elbows: one([0.4, -1, 0]) }), { c: 0.45 }),
+      props: sk => E.bench(-0.9, 0.45).concat(pairDB(sk, [0, 0, 1])) },
+
+    'pec-deck-machine': { name: 'Pec Deck (Machine)', eq: 'Machine', hi: ['torso'], cam: { yaw: 0.5, pitch: 0.3 },
+      keys: rep(seated({ up: [0, 1, -0.06], hands: one([0.62, 1.15, 0.12]), elbows: one([0, -0.4, -1]) }), seated({ up: [0, 1, -0.06], hands: one([0.09, 1.15, 0.42]), elbows: one([0, -0.4, -1]) })),
+      props: sk => E.seat(0.5, 0).concat(E.back([0, 0.98, -0.17], 0.7), E.upright(0, -0.3, 1.8), levers(sk, [0.2, 1.75, -0.1])) },
+
+    'low-to-high-cable-fly': { name: 'Low-to-High Cable Fly', eq: 'Cable', hi: ['torso'], cam: { yaw: 0.6, pitch: 0.15 },
+      keys: (() => { const S = { pelvis: [0, 0.97, 0], up: [0, 1, 0.1], elbows: one([0, -0.6, -1]), feet: { L: [0.14, 0.08, 0.22], R: [-0.14, 0.08, -0.22] }, knees: { L: [0.1, 0, 1], R: [-0.1, 0, 1] } };
+        return rep(Object.assign({}, S, { hands: one([0.36, 0.93, 0.1]) }), Object.assign({}, S, { hands: one([0.08, 1.3, 0.48]) })); })(),
+      props: sk => [].concat(E.pulley([1.0, 0.15, -0.1]), E.pulley([-1.0, 0.15, -0.1]), [line([1.0, 0.15, -0.1], sk.grip.L), line([-1.0, 0.15, -0.1], sk.grip.R)], E.handle(sk.grip.L, [0, 1, 0]), E.handle(sk.grip.R, [0, 1, 0])) },
+
+    'push-up': { name: 'Push Up', eq: 'Bodyweight', hi: ['torso', 'arms'], cam: { yaw: 1.3, pitch: 0.25 },
+      keys: rep(Object.assign({}, PUSH_UP, { pelvis: [0, 0.437, 0.012], up: [0, 0.285, 0.958] }), Object.assign({}, PUSH_UP, { pelvis: [0, 0.225, 0.049], up: [0, 0.05, 0.999] }), { c: 0.42 }),
+      props: mat },
+
+    'chest-dip': { name: 'Chest Dip', eq: 'Bodyweight', hi: ['torso', 'arms'], cam: { yaw: 1.2, pitch: 0.15 },
+      keys: (() => { const D = { hands: one([0.25, 1.2, 0.08]), elbows: one([0, 0, -1]), feet: one({ t: [0.1, -0.72, -0.3] }), knees: one([0, 0, 1]) };
+        return rep(Object.assign({}, D, { pelvis: [0, 1.25, -0.05], up: [0, 1, 0.2] }), Object.assign({}, D, { pelvis: [0, 0.96, -0.1], up: [0, 1, 0.35] }), { c: 0.45 }); })(),
+      props: () => [cap([0.27, 1.16, -0.35], [0.27, 1.16, 0.45], 0.022, 0.022, 'metal'), cap([-0.27, 1.16, -0.35], [-0.27, 1.16, 0.45], 0.022, 0.022, 'metal')]
+        .concat(E.upright(0.27, 0.45, 1.16), E.upright(-0.27, 0.45, 1.16), E.upright(0.27, -0.35, 1.16), E.upright(-0.27, -0.35, 1.16)) },
+
+    // ----- back -----
+    'lat-pulldown-close-grip-cable': { name: 'Lat Pulldown - Close Grip (Cable)', eq: 'Cable', hi: ['torso'], cam: { yaw: 1.0, pitch: 0.15 },
+      keys: rep(seated({ up: [0, 1, -0.12], hands: one([0.1, 1.58, 0.06]), elbows: one([0.5, -0.3, -0.3]) }), seated({ up: [0, 1, -0.12], hands: one([0.1, 1.17, 0.2]), elbows: one([0.3, -1, -0.6]) }), { c: 0.38 }),
+      props: sk => E.seat(0.5, 0).concat([box([0, 0.76, 0.38], [0.42, 0.08, 0.1], 'pad')], E.upright(0, -0.35, 2.4), E.bar(sk.grip.L, sk.grip.R, 0.03), [line([0, 2.3, 0.05], mid(sk.grip.L, sk.grip.R)), sph([0, 2.3, 0.05], 0.045, 'metal')]) },
+
+    'lat-pulldown-machine': { name: 'Lat Pulldown (Machine)', eq: 'Machine', hi: ['torso'], cam: { yaw: 2.5, pitch: 0.15 },
+      keys: like('lat-pulldown-wide-grip-cable'),
+      props: sk => E.seat(0.5, 0).concat([box([0, 0.76, 0.38], [0.42, 0.08, 0.1], 'pad')], E.upright(0, -0.35, 2.3), levers(sk, [0.15, 2.1, -0.3], [0, 0, 1])) },
+
+    'pull-up': { name: 'Pull Up', eq: 'Bodyweight', hi: ['torso'], cam: { yaw: 0.6, pitch: 0.1 },
+      keys: rep(HANG, Object.assign({}, HANG, { pelvis: [0, 1.5, 0.02] }), { c: 0.42 }),
+      props: () => hangBar(2.3) },
+
+    'chin-up': { name: 'Chin Up', eq: 'Bodyweight', hi: ['torso', 'arms'], cam: { yaw: 1.0, pitch: 0.1 },
+      keys: rep(Object.assign({}, HANG, { hands: one([0.17, 2.25, 0]), elbows: one([0.2, -0.4, 1]) }), Object.assign({}, HANG, { pelvis: [0, 1.5, 0.02], hands: one([0.17, 2.25, 0]), elbows: one([0.2, -0.4, 1]) }), { c: 0.42 }),
+      props: () => hangBar(2.3) },
+
+    'assisted-pull-up-machine': { name: 'Assisted Pull Up (Machine)', eq: 'Assisted', hi: ['torso'], cam: { yaw: 1.0, pitch: 0.12 },
+      keys: (() => { const A = { pelvis: [0, 1.04, 0], hands: one([0.35, 2.05, 0.05]), elbows: one([1, -0.3, 0]), feet: one({ t: [0.1, -0.45, -0.45] }), knees: one([0, -0.3, 1]) };
+        return rep(A, Object.assign({}, A, { pelvis: [0, 1.3, 0.02] }), { c: 0.42 }); })(),
+      props: sk => { const k = add(mid(sk.kn.L, sk.kn.R), [0, -0.08, -0.05]); return [box(k, [0.42, 0.06, 0.32], 'pad'), cap(add(k, [0, -0.03, -0.1]), [0, 0.15, -0.45], 0.025, 0.025, 'metal')].concat(hangBar(2.1)); } },
+
+    'seated-row-machine': { name: 'Seated Row (Machine)', eq: 'Machine', hi: ['torso'], cam: { yaw: 1.1, pitch: 0.2 },
+      keys: rep(seated({ up: [0, 1, 0.12], hands: one([0.2, 1.0, 0.56]), elbows: one([0.3, -0.2, -1]) }), seated({ up: [0, 1, 0.12], hands: one([0.24, 1.0, 0.2]), elbows: one([0.3, -0.2, -1]) })),
+      props: sk => E.seat(0.5, 0).concat([box([0, 1.0, 0.27], [0.32, 0.42, 0.08], 'pad')], E.upright(0, 0.85, 1.75), levers(sk, [0.25, 1.6, 0.85])) },
+
+    'iso-lateral-high-row-plate-loaded': { name: 'Iso-Lateral High Row (Plate-loaded)', eq: 'Plate-loaded', hi: ['torso'], cam: { yaw: 1.1, pitch: 0.2 },
+      keys: rep(seated({ up: [0, 1, 0.08], hands: one([0.27, 1.48, 0.36]), elbows: one([1, -0.3, -0.3]) }), seated({ up: [0, 1, 0.08], hands: one([0.28, 1.15, 0.12]), elbows: one([0.6, -1, -0.6]) })),
+      props: sk => E.seat(0.5, 0).concat([box([0, 1.0, 0.25], [0.32, 0.42, 0.08], 'pad'), box([0, 0.76, 0.38], [0.42, 0.08, 0.1], 'pad')], E.upright(0, -0.35, 2.1),
+        ['L', 'R'].flatMap(k => { const s = k === 'L' ? 1 : -1, pv = [s * 0.3, 1.95, -0.15]; return E.handle(sk.grip[k], [0, 1, 0]).concat([cap(pv, sk.grip[k], 0.022, 0.022, 'metal'), disc(add(pv, [s * 0.1, 0, -0.05]), [1, 0, 0], 0.17, 'plate')]); })) },
+
+    'bent-over-row-barbell': { name: 'Bent Over Row (Barbell)', eq: 'Barbell', hi: ['torso'], cam: { yaw: 1.3, pitch: 0.2 },
+      keys: rep(ROW_A, Object.assign({}, ROW_A, { hands: one([0.24, 0.84, 0.2]) })),
+      props: sk => E.barbell(sk.grip.L, sk.grip.R) },
+
+    'one-arm-row-dumbbell': { name: 'One-Arm Row (Dumbbell)', eq: 'Dumbbell', hi: ['torso'], cam: { yaw: 1.2, pitch: 0.2 },
+      keys: (() => { const A = { pelvis: [0.05, 0.85, -0.25], up: [0, 0.29, 0.96], fwd: [0, -0.96, 0.29], hands: { L: [0.24, 0.47, 0.28], R: [-0.15, 0.5, 0.3] }, elbows: { L: [0, 0.3, -1], R: [-0.3, 0, -1] },
+        feet: { L: [0.22, 0.08, -0.05], R: [-0.15, 0.08, -0.5] }, knees: { L: [0.2, 0, 1], R: [-0.1, 0, 1] } };
+        return rep(A, Object.assign({}, A, { hands: { L: [0.25, 0.83, 0.02], R: [-0.15, 0.5, 0.3] }, elbows: { L: [0.2, 1, -0.6], R: [-0.3, 0, -1] } })); })(),
+      props: sk => [box([-0.17, 0.21, 0.5], [0.35, 0.42, 0.9], 'pad')].concat(E.dumbbell(sk.grip.L, [0, 0, 1])) },
+
+    'chest-supported-row-machine': { name: 'Chest-Supported Row (Machine)', eq: 'Machine', hi: ['torso'], cam: { yaw: 1.2, pitch: 0.2 },
+      keys: rep(seated({ up: [0, 1, 0.35], hands: one([0.2, 0.86, 0.58]), elbows: one([0.3, 0.2, -1]) }), seated({ up: [0, 1, 0.35], hands: one([0.25, 0.98, 0.0]), elbows: one([0.3, 0.4, -1]) })),
+      props: sk => E.seat(0.5, 0).concat(E.torsoPad(sk, [0, 0.3, 0.18], [0.18, 0.25, 0.035]), E.upright(0, 0.85, 1.75), levers(sk, [0.25, 1.7, 0.7])) },
+
+    'straight-arm-pulldown-cable': { name: 'Straight-Arm Pulldown (Cable)', eq: 'Cable', hi: ['torso'], cam: { yaw: 1.25, pitch: 0.12 },
+      keys: (() => { const S = { pelvis: [0, 0.95, -0.05], up: [0, 1, 0.3], elbows: one([0, 1, -0.2]), feet: one([0.14, 0.08, 0]) };
+        return rep(Object.assign({}, S, { hands: one([0.22, 1.7, 0.55]) }), Object.assign({}, S, { hands: one([0.22, 0.95, 0.25]) })); })(),
+      props: sk => E.pulley([0, 2.1, 0.95]).concat(E.bar(sk.grip.L, sk.grip.R, 0.1), [line([0, 2.1, 0.95], mid(sk.grip.L, sk.grip.R))]) },
+
+    'shrug-dumbbell': { name: 'Shrug (Dumbbell)', eq: 'Dumbbell', hi: ['torso'], cam: { yaw: 0.5, pitch: 0.1 },
+      keys: like('shrug-machine'), props: sk => pairDB(sk, [0, 0, 1]) },
+
+    'shrug-barbell': { name: 'Shrug (Barbell)', eq: 'Barbell', hi: ['torso'], cam: { yaw: 0.9, pitch: 0.1 },
+      keys: rep({ hands: one([0.24, 0.94, 0.1]), elbows: one([0, -0.3, -1]) }, { shrug: 0.07, hands: one([0.24, 1.01, 0.1]), elbows: one([0, -0.3, -1]) }, { c: 0.3, h1: 0.14 }),
+      props: sk => E.barbell(sk.grip.L, sk.grip.R) },
+
+    'deadlift-barbell': { name: 'Deadlift (Barbell)', eq: 'Barbell', hi: ['pelvis', 'thighs', 'torso'], cam: { yaw: 1.25, pitch: 0.12 },
+      keys: (() => { const F = { feet: one([0.16, 0.08, 0.02]), knees: one([0.2, 0, 1]) }, A = Object.assign({ pelvis: [0, 0.62, -0.3], up: [0, 0.45, 0.89], hands: one([0.24, 0.3, 0.15]), elbows: one([0, 0, -1]) }, F),
+          M = Object.assign({ pelvis: [0, 0.8, -0.1], up: [0, 0.8, 0.6], hands: one([0.22, 0.68, 0.15]), elbows: one([0, -0.2, -1]) }, F), T = Object.assign({ pelvis: [0, 0.99, 0], up: [0, 1, 0], hands: one([0.22, 0.94, 0.08]), elbows: one([0, -0.3, -1]) }, F);
+        return [{ at: 0, p: A }, { at: 0.06, p: A }, { at: 0.26, p: M }, { at: 0.46, p: T }, { at: 0.56, p: T }, { at: 0.78, p: M }]; })(),
+      props: sk => E.barbell(sk.grip.L, sk.grip.R, { r: 0.21 }) },
+
+    'romanian-deadlift-barbell': { name: 'Romanian Deadlift (Barbell)', eq: 'Barbell', hi: ['pelvis', 'thighs'], cam: { yaw: 1.3, pitch: 0.12 },
+      keys: [{ at: 0, p: RDL_TOP }, { at: 0.06, p: RDL_TOP }, { at: 0.26, p: RDL_MID }, { at: 0.46, p: RDL_BOT }, { at: 0.54, p: RDL_BOT }, { at: 0.77, p: RDL_MID }], props: sk => E.barbell(sk.grip.L, sk.grip.R) },
+
+    'romanian-deadlift-dumbbell': { name: 'Romanian Deadlift (Dumbbell)', eq: 'Dumbbell', hi: ['pelvis', 'thighs'], cam: { yaw: 1.3, pitch: 0.12 },
+      keys: like('romanian-deadlift-barbell'), props: sk => pairDB(sk) },
+
+    'back-extension': { name: 'Back Extension', eq: 'Bodyweight', hi: ['torso', 'pelvis'], cam: { yaw: 1.4, pitch: 0.15 },
+      keys: (() => { const A = { pelvis: [0, 0.95, -0.1], up: [0, 0.814, 0.581], fwd: [0, -0.581, 0.814], hands: one({ t: [0.08, 0.36, 0.16] }), elbows: one([1, 0, 0]), feet: one([0.12, 0.25, -0.6]), knees: one([0, -1, 0.3]), footDir: one([0, -0.6, 0.8]) };
+        return rep(A, Object.assign({}, A, { up: [0, -0.5, 0.866], fwd: [0, -0.866, -0.5] }), { h0: 0.1, c: 0.4, h1: 0.06 }); })(),
+      props: () => { const u = [0, 0.814, 0.581], f = [0, -0.581, 0.814];
+        return [obox([0, 0.84, 0.055], [[0.2, 0, 0], mul(u, 0.14), mul(f, 0.045)], 'pad'), obox([0, 0.2, -0.62], [[0.22, 0, 0], [0, 0.07, 0.1], [0, 0.015, -0.01]], 'metal'),
+          cap([0, 0.1, -0.75], [0, 0.78, -0.02], 0.03, 0.03, 'frame'), cap([0, 0.05, -0.85], [0, 0.05, 0.4], 0.03, 0.03, 'frame')]; } },
+
+    // ----- shoulders -----
+    'overhead-press-barbell': { name: 'Overhead Press (Barbell)', eq: 'Barbell', hi: ['delts'], cam: { yaw: 1.1, pitch: 0.12 },
+      keys: rep({ hands: one([0.25, 1.47, 0.16]), elbows: one([0.3, -1, 0.6]) }, { hands: one([0.22, 1.98, 0.03]), elbows: one([1, -0.3, 0.1]) }, { c: 0.4 }),
+      props: sk => E.barbell(sk.grip.L, sk.grip.R, { len: 1.9, plateAt: 0.78 }) },
+
+    'shoulder-press-machine': { name: 'Shoulder Press (Machine)', eq: 'Machine', hi: ['delts'],
+      keys: like('seated-overhead-press-dumbbell'),
+      props: sk => E.seat(0.5, 0).concat(E.back([0, 0.98, -0.17], 0.7), levers(sk, [0.38, 1.05, -0.3], [0, 0, 1])) },
+
+    'arnold-press-dumbbell': { name: 'Arnold Press (Dumbbell)', eq: 'Dumbbell', hi: ['delts'], cam: { yaw: 0.7, pitch: 0.1 },
+      keys: rep(seated({ up: [0, 1, -0.04], hands: one([0.12, 1.3, 0.17]), elbows: one([0.2, -0.6, 1]) }), seated({ up: [0, 1, -0.04], hands: one([0.15, 1.6, 0]), elbows: one([1, -0.6, 0.1]) })),
+      props: sk => E.seat(0.5, 0).concat(E.back([0, 0.98, -0.17], 0.7), pairDB(sk)) },
+
+    'lateral-raise-machine': { name: 'Lateral Raise (Machine)', eq: 'Machine', hi: ['delts'], cam: { yaw: 0.45, pitch: 0.15 },
+      keys: rep(seated({ hands: one([0.24, 0.66, 0.27]), elbows: one([1, -0.8, -0.4]) }), seated({ hands: one([0.48, 1.07, 0.26]), elbows: one([1, 0, -0.6]) })),
+      props: sk => E.seat(0.5, 0).concat([box([0, 0.98, 0.24], [0.3, 0.42, 0.08], 'pad')], E.upright(0, 0.4, 1.5),
+        ['L', 'R'].flatMap(k => { const s = k === 'L' ? 1 : -1, pad = add(sk.el[k], [s * 0.05, 0, 0]); return [cap(pad, add(pad, mul(norm(sub(sk.wr[k], sk.el[k])), 0.12)), 0.045, 0.045, 'pad'), cap([s * 0.1, 1.12, 0.3], pad, 0.018, 0.018, 'metal')]; })) },
+
+    'front-raise-cable': { name: 'Front Raise (Cable)', eq: 'Cable', hi: ['delts'], cam: { yaw: 1.0, pitch: 0.12 },
+      keys: like('front-raise-dumbbell'),
+      props: sk => E.pulley([0, 0.15, -0.45], 0.5).concat(E.bar(sk.grip.L, sk.grip.R, 0.06), [line([0, 0.15, -0.45], mid(sk.grip.L, sk.grip.R))]) },
+
+    'reverse-fly-dumbbell': { name: 'Reverse Fly (Dumbbell)', eq: 'Dumbbell', hi: ['delts'], cam: { yaw: 0.5, pitch: 0.35 },
+      keys: (() => { const A = { pelvis: [0, 0.9, -0.15], up: [0, 0.5, 0.866], hands: one([0.17, 0.62, 0.32]), elbows: one([0.5, 0.3, -1]), feet: one([0.14, 0.08, 0]), knees: one([0.1, 0, 1]) };
+        return rep(A, Object.assign({}, A, { hands: one([0.7, 1.0, 0.3]), elbows: one([0, 0.6, -1]) })); })(),
+      props: sk => pairDB(sk, [0, 0, 1]) },
+
+    'face-pull-cable': { name: 'Face Pull (Cable)', eq: 'Cable', hi: ['delts'], cam: { yaw: 0.8, pitch: 0.2 },
+      keys: (() => { const S = { pelvis: [0, 0.99, -0.02], up: [0, 1, -0.05], feet: { L: [0.14, 0.08, 0.15], R: [-0.14, 0.08, -0.2] }, knees: { L: [0.1, 0, 1], R: [-0.1, 0, 1] } };
+        return rep(Object.assign({}, S, { hands: one([0.08, 1.48, 0.47]), elbows: one([1, 0, -0.3]) }), Object.assign({}, S, { hands: one([0.3, 1.6, 0.08]), elbows: one([1, 0.4, -0.4]) })); })(),
+      props: sk => E.pulley([0, 1.75, 0.95]).concat(E.rope([0, 1.75, 0.95], sk.grip.L, sk.grip.R)) },
+
+    'upright-row-cable': { name: 'Upright Row (Cable)', eq: 'Cable', hi: ['delts'], cam: { yaw: 0.8, pitch: 0.1 },
+      keys: rep({ hands: one([0.1, 0.95, 0.12]), elbows: one([1, 0, -0.2]) }, { hands: one([0.12, 1.42, 0.15]), elbows: one([1, 0.6, -0.2]) }),
+      props: sk => E.pulley([0, 0.12, 0.5], 0.5).concat(E.bar(sk.grip.L, sk.grip.R, 0.08), [line([0, 0.12, 0.5], mid(sk.grip.L, sk.grip.R))]) },
+
+    // ----- arms -----
+    'bicep-curl-barbell': { name: 'Bicep Curl (Barbell)', eq: 'Barbell', hi: ['arms'], cam: { yaw: 0.9, pitch: 0.1 },
+      keys: rep({ hands: one([0.2, 0.94, 0.08]), elbows: one([0, -0.4, -1]) }, { hands: one([0.2, 1.3, 0.27]), elbows: one([0, -0.4, -1]) }),
+      props: sk => E.barbell(sk.grip.L, sk.grip.R, { len: 1.5, plateAt: 0.6, r: 0.16 }) },
+
+    'hammer-curl-dumbbell': { name: 'Hammer Curl (Dumbbell)', eq: 'Dumbbell', hi: ['arms', 'forearms'], cam: { yaw: 0.8, pitch: 0.1 },
+      keys: like('bicep-curl-dumbbell'),
+      props: sk => ['L', 'R'].flatMap(k => E.dumbbell(sk.grip[k], cross(norm(sub(sk.wr[k], sk.el[k])), [1, 0, 0]))) },
+
+    'incline-curl-dumbbell': { name: 'Incline Curl (Dumbbell)', eq: 'Dumbbell', hi: ['arms'], cam: { yaw: 1.2, pitch: 0.15 },
+      keys: (() => { const A = { pelvis: [0, 0.6, 0.12], up: [0, 0.866, -0.5], fwd: [0, 0.5, 0.866], elbows: one([0, -1, -0.4]), feet: one([0.25, 0.08, 0.62]), knees: one([0, 0.5, 1]) };
+        return rep(Object.assign({}, A, { hands: one([0.2, 0.48, -0.1]) }), Object.assign({}, A, { hands: one([0.2, 0.82, 0.1]) })); })(),
+      props: sk => inclineBench(sk).concat(pairDB(sk)) },
+
+    'preacher-curl-machine': { name: 'Preacher Curl (Machine)', eq: 'Machine', hi: ['arms'], cam: { yaw: 1.2, pitch: 0.15 },
+      keys: rep(seated({ up: [0, 1, 0.1], hands: one([0.18, 0.82, 0.45]), elbows: one([0, -1, 0.5]) }), seated({ up: [0, 1, 0.1], hands: one([0.17, 1.22, 0.3]), elbows: one([0, -1, 0.5]) })),
+      props: sk => E.seat(0.5, 0).concat([obox(add(mid(sk.el.L, sk.el.R), [0, -0.07, -0.03]), [[0.3, 0, 0], [0, -0.09, 0.13], [0, 0.03, 0.02]], 'pad')], E.bar(sk.grip.L, sk.grip.R, 0.08),
+        ['L', 'R'].map(k => cap([k === 'L' ? 0.32 : -0.32, 0.82, 0.3], add(sk.grip[k], [k === 'L' ? 0.08 : -0.08, 0, 0]), 0.02, 0.02, 'metal'))) },
+
+    'preacher-curl-ez-bar': { name: 'Preacher Curl (EZ Bar)', eq: 'Barbell', hi: ['arms'], cam: { yaw: 1.2, pitch: 0.15 },
+      keys: like('preacher-curl-machine'),
+      props: sk => E.seat(0.5, 0).concat([obox(add(mid(sk.el.L, sk.el.R), [0, -0.07, -0.03]), [[0.3, 0, 0], [0, -0.09, 0.13], [0, 0.03, 0.02]], 'pad'), box([0, 0.4, 0.3], [0.08, 0.8, 0.08], 'frame')], ez(sk)) },
+
+    'bayesian-curl-cable': { name: 'Bayesian Curl (Cable)', eq: 'Cable', hi: ['arms'], cam: { yaw: 1.4, pitch: 0.12 },
+      keys: (() => { const S = { up: [0, 1, 0.08], elbows: { L: [0, -1, -0.4], R: [0, -0.3, -1] }, feet: { L: [0.14, 0.08, 0.2], R: [-0.14, 0.08, -0.2] }, knees: { L: [0.1, 0, 1], R: [-0.1, 0, 1] } };
+        return rep(Object.assign({}, S, { hands: { L: [0.22, 1.02, -0.23], R: [-0.22, 0.95, 0.05] } }), Object.assign({}, S, { hands: { L: [0.2, 1.35, 0.14], R: [-0.22, 0.95, 0.05] } })); })(),
+      props: sk => E.pulley([0.25, 0.15, -0.8], 0.5).concat(E.handle(sk.grip.L, [1, 0, 0]), [line([0.25, 0.15, -0.8], sk.grip.L)]) },
+
+    'concentration-curl-dumbbell': { name: 'Concentration Curl (Dumbbell)', eq: 'Dumbbell', hi: ['arms'], cam: { yaw: 0.5, pitch: 0.25 },
+      keys: (() => { const A = { pelvis: [0, 0.5, 0], up: [0, 0.8, 0.6], elbows: { L: [-0.3, -1, 0.3], R: [-0.5, -0.3, -0.5] }, feet: one([0.35, 0.08, 0.45]), knees: one([0.5, 1, 0.5]) };
+        return rep(Object.assign({}, A, { hands: { L: [0.15, 0.45, 0.5], R: [-0.3, 0.55, 0.4] } }), Object.assign({}, A, { hands: { L: [0.08, 0.85, 0.45], R: [-0.3, 0.55, 0.4] } })); })(),
+      props: sk => [box([0, 0.2, -0.05], [1.0, 0.4, 0.35], 'pad')].concat(E.dumbbell(sk.grip.L, [1, 0, 0])) },
+
+    'single-arm-pushdown-cable': { name: 'Single-Arm Pushdown (Cable)', eq: 'Cable', hi: ['arms'], cam: { yaw: 0.9, pitch: 0.12 },
+      keys: (() => { const S = { pelvis: [0, 0.98, 0], up: [0, 1, 0.12], elbows: { L: [0, -0.3, -1], R: [-1, 0, -0.5] } };
+        return rep(Object.assign({}, S, { hands: { L: [0.13, 1.18, 0.3], R: { t: [-0.2, 0.05, 0.05] } } }), Object.assign({}, S, { hands: { L: [0.15, 0.93, 0.18], R: { t: [-0.2, 0.05, 0.05] } } })); })(),
+      props: sk => E.pulley([0.13, 2.1, 0.45]).concat(E.handle(sk.grip.L, [1, 0, 0]), [line([0.13, 2.1, 0.45], sk.grip.L)]) },
+
+    'skull-crusher-ez-bar': { name: 'Skull Crusher (EZ Bar)', eq: 'Barbell', hi: ['arms'], cam: { yaw: 1.15, pitch: 0.25 },
+      keys: rep(lying({ hands: one([0.15, 1.14, -0.36]), elbows: one([0, 1, 0.3]) }), lying({ hands: one([0.15, 0.82, -0.63]), elbows: one([0, 1, 0.3]) }), { c: 0.45 }),
+      props: sk => E.bench(-0.9, 0.45).concat(ez(sk)) },
+
+    'overhead-triceps-extension-dumbbell': { name: 'Overhead Triceps Extension (Dumbbell)', eq: 'Dumbbell', hi: ['arms'], cam: { yaw: 1.25, pitch: 0.1 },
+      keys: rep({ hands: one([0.04, 1.98, 0.02]), elbows: one([0.3, 1, 0.2]) }, { hands: one([0.04, 1.43, -0.2]), elbows: one([0.3, 1, 0.2]) }),
+      props: sk => E.dumbbell(add(mid(sk.grip.L, sk.grip.R), mul(norm(add(sub(sk.wr.L, sk.el.L), sub(sk.wr.R, sk.el.R))), 0.06)), add(sub(sk.wr.L, sk.el.L), sub(sk.wr.R, sk.el.R))) },
+
+    'triceps-dip-machine': { name: 'Triceps Dip (Machine)', eq: 'Machine', hi: ['arms'], cam: { yaw: 1.1, pitch: 0.12 },
+      keys: rep(seated({ hands: one([0.25, 0.85, 0.05]), elbows: one([0, 0, -1]) }), seated({ hands: one([0.25, 0.56, 0.0]), elbows: one([0, 0, -1]) })),
+      props: sk => E.seat(0.5, 0).concat(E.back([0, 0.98, -0.17], 0.7), levers(sk, [0.32, 0.95, -0.35], [0, 0, 1])) },
+
+    'wrist-curl-dumbbell': { name: 'Wrist Curl (Dumbbell)', eq: 'Dumbbell', hi: ['forearms'], cam: { yaw: 1.2, pitch: 0.3 },
+      keys: (() => { const A = { pelvis: [0, 0.5, 0], up: [0, 0.85, 0.5], hands: one([0.13, 0.55, 0.55]), elbows: one([0, -1, -0.3]), feet: one([0.15, 0.08, 0.5]), knees: one([0, 1, 0.6]) };
+        return rep(Object.assign({}, A, { handDir: one([0, -0.7, 0.7]) }), Object.assign({}, A, { handDir: one([0, 0.7, 0.7]) }), { c: 0.3, h1: 0.1 }); })(),
+      props: sk => [box([0, 0.2, -0.05], [0.5, 0.4, 0.5], 'pad')].concat(pairDB(sk)) },
+
+    'reverse-curl-ez-bar': { name: 'Reverse Curl (EZ Bar)', eq: 'Barbell', hi: ['forearms', 'arms'], cam: { yaw: 0.9, pitch: 0.1 },
+      keys: like('bicep-curl-barbell'), props: ez },
+
+    // ----- legs -----
+    'squat-barbell': { name: 'Squat (Barbell)', eq: 'Barbell', hi: ['thighs', 'pelvis'], cam: { yaw: 1.15, pitch: 0.15 },
+      keys: like('squat-smith-machine'),
+      props: sk => { const c = add(add(sk.P, mul(sk.up, 0.5)), mul(sk.f, -0.07)); return E.barbell(add(c, [-0.3, 0, 0]), add(c, [0.3, 0, 0]), { len: 1.9, plateAt: 0.8, r: 0.2 }); } },
+
+    'front-squat-barbell': { name: 'Front Squat (Barbell)', eq: 'Barbell', hi: ['thighs'], cam: { yaw: 1.15, pitch: 0.15 },
+      keys: (() => { const S = { hands: one({ t: [0.2, 0.47, 0.2] }), elbows: one([0.2, 0.3, 1]), feet: one([0.2, 0.08, 0.12]), knees: one([0.3, 0, 1]), footDir: one([0.25, 0, 1]) };
+        return rep(Object.assign({}, S, { pelvis: [0, 0.97, -0.02], up: [0, 1, 0.03] }), Object.assign({}, S, { pelvis: [0, 0.56, -0.2], up: [0, 0.94, 0.34] }), { c: 0.45 }); })(),
+      props: sk => { const c = add(add(sk.P, mul(sk.up, 0.5)), mul(sk.f, 0.15)); return E.barbell(add(c, [-0.3, 0, 0]), add(c, [0.3, 0, 0]), { len: 1.9, plateAt: 0.8, r: 0.2 }); } },
+
+    'pendulum-squat-machine': { name: 'Pendulum Squat (Machine)', eq: 'Machine', hi: ['thighs'], cam: { yaw: 1.3, pitch: 0.15 },
+      keys: like('hack-squat-machine'),
+      props: sk => E.torsoPad(sk, [0, 0.3, -0.14], [0.2, 0.36, 0.035]).concat(['L', 'R'].map(k => sph(add(sk.sh[k], mul(sk.up, 0.07)), 0.06, 'pad')),
+        [cap(add(sk.P, mul(sk.up, 0.3)), [0, 1.9, -1.0], 0.035, 0.035, 'frame'), sph([0, 1.9, -1.0], 0.06, 'metal'), box([0, 0.95, -1.05], [0.12, 1.9, 0.12], 'frame'), box([0, 0.08, 0.32], [0.6, 0.05, 0.5], 'metal', deg(-20))]) },
+
+    'leg-press-machine': { name: 'Leg Press (Machine)', eq: 'Machine', hi: ['thighs', 'pelvis'], cam: { yaw: 1.3, pitch: 0.2 },
+      keys: (() => { const A = { pelvis: [0, 0.5, 0], up: [0, 0.75, -0.66], fwd: [0, 0.66, 0.75], hands: one([0.28, 0.55, 0.05]), elbows: one([0.3, -0.2, -1]), knees: one([0.2, 1, 0]), footDir: one([0, 0.88, -0.47]) };
+        return rep(Object.assign({}, A, { feet: one([0.14, 0.86, 0.73]) }), Object.assign({}, A, { feet: one([0.14, 0.66, 0.39]) }), { c: 0.45 }); })(),
+      props: legPressProps },
+
+    'bulgarian-split-squat-dumbbell': { name: 'Bulgarian Split Squat (Dumbbell)', eq: 'Dumbbell', hi: ['thighs', 'pelvis'], cam: { yaw: 1.3, pitch: 0.12 },
+      keys: (() => { const A = Object.assign({}, STAND_DB, { feet: { L: [0.12, 0.08, 0.25], R: [-0.12, 0.5, -0.65] }, knees: { L: [0, 0, 1], R: [0, -1, 0.3] }, footDir: { L: [0, 0, 1], R: [0, -0.3, -1] } });
+        return rep(Object.assign({}, A, { pelvis: [0, 0.9, -0.05], up: [0, 1, 0.05] }), Object.assign({}, A, { pelvis: [0, 0.55, -0.1], up: [0, 1, 0.15] }), { c: 0.45 }); })(),
+      props: sk => [box([0, 0.21, -0.75], [0.4, 0.42, 0.4], 'pad')].concat(pairDB(sk, [0, 0, 1])) },
+
+    'walking-lunge-dumbbell': { name: 'Walking Lunge (Dumbbell)', eq: 'Dumbbell', hi: ['thighs', 'pelvis'], cam: { yaw: 1.3, pitch: 0.12 }, dur: 4.2,
+      keys: (() => { const S = Object.assign({}, STAND_DB, { feet: { L: [0.12, 0.08, 0] }, knees: { L: [0.1, 0, 1] } }), R = swapLR(LUNGE);
+        return [{ at: 0, p: S }, { at: 0.05, p: S }, { at: 0.25, p: LUNGE }, { at: 0.3, p: LUNGE }, { at: 0.5, p: S }, { at: 0.55, p: S }, { at: 0.75, p: R }, { at: 0.8, p: R }]; })(),
+      props: sk => pairDB(sk, [0, 0, 1]) },
+
+    'goblet-squat-dumbbell': { name: 'Goblet Squat (Dumbbell)', eq: 'Dumbbell', hi: ['thighs', 'pelvis'], cam: { yaw: 1.15, pitch: 0.15 },
+      keys: like('squat-smith-machine', p => Object.assign(p, { hands: one({ t: [0.07, 0.38, 0.2] }), elbows: one([0.3, -1, 0.3]) })),
+      props: sk => E.dumbbell(add(mid(sk.grip.L, sk.grip.R), mul(sk.up, -0.04)), sk.up) },
+
+    'seated-leg-curl-machine': { name: 'Seated Leg Curl (Machine)', eq: 'Machine', hi: ['thighs'], cam: { yaw: 1.25, pitch: 0.15 },
+      keys: (() => { const A = { pelvis: [0, 0.62, 0], up: [0, 1, -0.1], hands: one([0.3, 0.58, 0.1]), elbows: one([0.3, -0.2, -1]), knees: one([0, 1, 0.3]) };
+        return rep(Object.assign({}, A, { feet: one([0.11, 0.6, 0.85]), footDir: one([0, 1, 0.1]) }), Object.assign({}, A, { feet: one([0.11, 0.22, 0.38]), footDir: one([0, 0.3, 1]) })); })(),
+      props: sk => { const sh = norm(sub(sk.an.L, sk.kn.L)), n = mul(norm(cross([1, 0, 0], sh)), 0.065);
+        return E.seat(0.56, 0.17).concat(E.back([0, 0.95, -0.17], 0.6, deg(-6)), E.roller(sk, n), [box(add(mid(sk.kn.L, sk.kn.R), [0, 0.1, -0.1]), [0.42, 0.06, 0.16], 'pad')]); } },
+
+    'standing-leg-curl-machine': { name: 'Standing Leg Curl (Machine)', eq: 'Machine', hi: ['thighs'], cam: { yaw: 1.35, pitch: 0.12 },
+      keys: (() => { const A = { up: [0, 1, 0.15], hands: one({ t: [0.25, 0.35, 0.25] }), elbows: one([0.3, -1, -0.3]), knees: { L: [0, 0, 1], R: [0, 0, 1] } };
+        return rep(Object.assign({}, A, { feet: { L: [0.12, 0.08, 0], R: [-0.12, 0.08, 0] }, footDir: { L: [0, 0, 1], R: [0, 0, 1] } }), Object.assign({}, A, { feet: { L: [0.12, 0.5, -0.38], R: [-0.12, 0.08, 0] }, footDir: { L: [0, -0.6, -0.8], R: [0, 0, 1] } })); })(),
+      props: sk => [cap(add(sk.an.L, [0.12, 0.02, -0.06]), add(sk.an.L, [-0.08, 0.02, -0.06]), 0.045, 0.045, 'pad'), box([0, 0.85, 0.2], [0.35, 0.3, 0.08], 'pad'), box([0, 0.65, 0.35], [0.12, 1.3, 0.12], 'frame')] },
+
+    'nordic-curl': { name: 'Nordic Curl', eq: 'Reps only', hi: ['thighs'], cam: { yaw: 1.4, pitch: 0.15 },
+      keys: rep(NORDIC_TOP, Object.assign({}, NORDIC_TOP, { pelvis: [0, 0.38, 0.4], up: [0, 0.57, 0.82], fwd: [0, -0.82, 0.57] }), { c: 0.5, h1: 0.04 }),
+      props: sk => [box([0, 0.03, -0.1], [0.5, 0.06, 0.6], 'pad')].concat(E.roller(sk, [0, 0.07, 0])) },
+
+    'glute-ham-raise': { name: 'Glute-Ham Raise', eq: 'Bodyweight', hi: ['thighs', 'pelvis'], cam: { yaw: 1.4, pitch: 0.15 },
+      keys: rep(shift(NORDIC_TOP, 0.5), Object.assign(shift(NORDIC_TOP, 0.5), { pelvis: [0, 0.67, 0.485], up: [0, 0.15, 0.99], fwd: [0, -0.99, 0.15] }), { c: 0.45 }),
+      props: sk => [box([0, 0.52, 0.12], [0.42, 0.1, 0.32], 'pad'), box([0, 0.6, -0.5], [0.4, 0.3, 0.04], 'metal'), box([0, 0.25, -0.1], [0.12, 0.5, 0.9], 'frame')].concat(E.roller(sk, [0, 0.07, 0])) },
+
+    'hip-thrust-barbell': { name: 'Hip Thrust (Barbell)', eq: 'Barbell', hi: ['pelvis'], cam: { yaw: 1.3, pitch: 0.15 },
+      keys: rep(HIP_THRUST_A, HIP_THRUST_B, { c: 0.38, h1: 0.12 }),
+      props: sk => [box([0, 0.21, -0.55], [1.2, 0.42, 0.4], 'pad')].concat(E.barbell(sk.grip.L, sk.grip.R, { r: 0.22 })) },
+
+    'hip-thrust-machine': { name: 'Hip Thrust (Machine)', eq: 'Machine', hi: ['pelvis'], cam: { yaw: 1.3, pitch: 0.15 },
+      keys: like('hip-thrust-barbell'),
+      props: sk => [box([0, 0.21, -0.55], [0.7, 0.42, 0.4], 'pad')].concat(E.torsoPad(sk, [0, 0.02, 0.17], [0.26, 0.07, 0.03]),
+        ['L', 'R'].map(k => cap([k === 'L' ? 0.32 : -0.32, 0.3, -0.5], add(sk.P, add(mul(sk.f, 0.17), mul(sk.side, k === 'L' ? 0.26 : -0.26))), 0.025, 0.025, 'metal')), E.upright(0.32, -0.5, 0.6), E.upright(-0.32, -0.5, 0.6)) },
+
+    'reverse-hyper-machine': { name: 'Reverse Hyper (Machine)', eq: 'Machine', hi: ['pelvis'], cam: { yaw: 1.4, pitch: 0.2 },
+      keys: (() => { const A = { pelvis: [0, 1.05, -0.05], up: [0, 0, 1], fwd: [0, -1, 0], hands: one([0.2, 0.85, 0.75]), elbows: one([0.5, 0, -0.5]), knees: one([0, -1, 0]) };
+        return rep(Object.assign({}, A, { feet: one([0.12, 0.25, -0.2]), footDir: one([0, -0.5, 0.8]) }), Object.assign({}, A, { feet: one([0.12, 1.0, -0.85]), footDir: one([0, -0.9, -0.3]) }), { c: 0.38, h1: 0.1 }); })(),
+      props: sk => [box([0, 0.9, 0.32], [0.4, 0.08, 0.75], 'pad'), box([0, 0.45, 0.35], [0.12, 0.9, 0.12], 'frame'), cap([0, 0.9, -0.05], add(mid(sk.an.L, sk.an.R), [0, 0, -0.06]), 0.025, 0.025, 'metal')]
+        .concat(E.roller(sk, [0, 0, -0.06]), E.handle([0.2, 0.85, 0.78], [1, 0, 0]), E.handle([-0.2, 0.85, 0.78], [1, 0, 0])) },
+
+    'cable-pull-through': { name: 'Cable Pull-Through', eq: 'Cable', hi: ['pelvis'], cam: { yaw: 1.3, pitch: 0.12 },
+      keys: (() => { const S = { feet: one([0.2, 0.08, 0]), knees: one([0.3, 0, 1]) };
+        return rep(Object.assign({}, S, { pelvis: [0, 0.97, 0], up: [0, 1, 0], hands: one([0.06, 0.97, 0.12]), elbows: one([0, -0.3, -1]) }), Object.assign({}, S, { pelvis: [0, 0.88, -0.12], up: [0, 0.55, 0.835], hands: one([0.06, 0.68, 0.12]), elbows: one([0, 0, -1]) }), { c: 0.45 }); })(),
+      props: sk => E.pulley([0, 0.15, -0.9], 0.5).concat(E.rope([0, 0.15, -0.9], sk.grip.L, sk.grip.R)) },
+
+    'glute-kickback-cable': { name: 'Glute Kickback (Cable)', eq: 'Cable', hi: ['pelvis'], cam: { yaw: 1.4, pitch: 0.15 },
+      keys: rep(KICK_A, KICK_B, { c: 0.38, h1: 0.1 }),
+      props: sk => E.pulley([0.12, 0.12, 0.65], 0.5).concat([line([0.12, 0.12, 0.65], sk.an.L), cap([0.3, 1.2, 0.5], [-0.3, 1.2, 0.5], 0.02, 0.02, 'metal')], E.upright(0.3, 0.55, 1.2), E.upright(-0.3, 0.55, 1.2)) },
+
+    'glute-kickback-machine': { name: 'Glute Kickback (Machine)', eq: 'Machine', hi: ['pelvis'], cam: { yaw: 1.4, pitch: 0.15 },
+      keys: like('glute-kickback-cable'),
+      props: sk => E.torsoPad(sk, [0, 0.35, 0.18], [0.18, 0.18, 0.035]).concat([cap(add(sk.an.L, [0.1, 0, -0.07]), add(sk.an.L, [-0.06, 0, -0.07]), 0.045, 0.045, 'pad'), cap([0.25, 0.95, -0.02], add(sk.an.L, [0.1, 0, -0.07]), 0.022, 0.022, 'metal'),
+        cap([0.3, 1.2, 0.5], [-0.3, 1.2, 0.5], 0.02, 0.02, 'metal')], E.upright(0.3, 0.55, 1.2), E.upright(-0.3, 0.55, 1.2)) },
+
+    'seated-calf-raise-machine': { name: 'Seated Calf Raise (Machine)', eq: 'Machine', hi: ['calves'], cam: { yaw: 1.25, pitch: 0.15 },
+      keys: rep(seated({ pelvis: [0, 0.55, 0], up: [0, 1, 0.15], hands: one([0.22, 0.68, 0.38]), elbows: one([0.3, -1, -0.3]), feet: one([0.12, 0.17, 0.45]), knees: one([0, 1, 0.3]), footDir: one([0, -0.25, 1]) }),
+        seated({ pelvis: [0, 0.55, 0], up: [0, 1, 0.15], hands: one([0.22, 0.68, 0.38]), elbows: one([0.3, -1, -0.3]), feet: one([0.12, 0.26, 0.48]), knees: one([0, 1, 0.3]), footDir: one([0, -0.75, 0.66]) }), { c: 0.32, h1: 0.12 }),
+      props: sk => E.seat(0.5, 0).concat([box([0, 0.06, 0.6], [0.5, 0.12, 0.2], 'metal'), box(add(mid(sk.kn.L, sk.kn.R), [0, 0.09, 0.02]), [0.45, 0.07, 0.18], 'pad'), cap(add(mid(sk.kn.L, sk.kn.R), [0, 0.09, 0.1]), [0, 0.15, 0.9], 0.025, 0.025, 'metal')]) },
+
+    // ----- abs -----
+    'cable-crunch': { name: 'Cable Crunch', eq: 'Cable', hi: ['abs'], cam: { yaw: 1.35, pitch: 0.15 },
+      keys: (() => { const A = { hands: one({ t: [0.1, 0.55, 0.12] }), elbows: one([0.5, -1, 0.3]), feet: one([0.1, 0.11, -0.42]), knees: one([0, -1, 0.3]), footDir: one([0, -0.3, -1]) };
+        return rep(Object.assign({}, A, { pelvis: [0, 0.6, 0], up: [0, 0.95, 0.3] }), Object.assign({}, A, { pelvis: [0, 0.58, 0.05], up: [0, 0.2, 1] }), { c: 0.35, h1: 0.1 }); })(),
+      props: sk => E.pulley([0, 2.2, 0.25]).concat(E.rope([0, 2.2, 0.25], sk.grip.L, sk.grip.R), [box([0, 0.02, -0.1], [0.5, 0.04, 0.6], 'pad')]) },
+
+    'decline-crunch': { name: 'Decline Crunch', eq: 'Reps only', hi: ['abs'], cam: { yaw: 1.35, pitch: 0.2 },
+      keys: (() => { const A = { pelvis: [0, 0.7, 0.2], hands: one({ t: [0.12, 0.5, 0.1] }), elbows: one([1, 0, 0]), feet: one([0.12, 0.5, 0.7]), knees: one([0, 1, 0.2]), footDir: one([0, 0.3, 1]) };
+        return rep(Object.assign({}, A, { up: [0, -0.3, -0.95], fwd: [0, 0.95, -0.3] }), Object.assign({}, A, { up: [0, 0.45, -0.89], fwd: [0, 0.89, 0.45] }), { c: 0.35, h1: 0.1 }); })(),
+      props: () => { const u = norm([0, -0.3, -0.95]), f = norm([0, 0.95, -0.3]);
+        return [obox(add(add([0, 0.7, 0.2], mul(f, -0.175)), mul(u, 0.25)), [[0.19, 0, 0], mul(u, 0.5), mul(f, 0.035)], 'pad'), cap([0.18, 0.44, 0.76], [-0.18, 0.44, 0.76], 0.045, 0.045, 'pad'), box([0, 0.25, 0.3], [0.1, 0.5, 0.1], 'frame')]; } },
+
+    'hanging-leg-raise': { name: 'Hanging Leg Raise', eq: 'Reps only', hi: ['abs'], cam: { yaw: 1.2, pitch: 0.1 },
+      keys: (() => { const A = { pelvis: [0, 1.24, 0], hands: one([0.3, 2.25, 0]), elbows: one([1, -0.3, 0]), knees: one([0, -1, 0.1]) };
+        return rep(Object.assign({}, A, { feet: one([0.1, 0.38, 0.05]), footDir: one([0, -0.3, 1]) }), Object.assign({}, A, { up: [0, 1, -0.08], feet: one([0.1, 1.15, 0.8]), footDir: one([0, 1, 0.2]) }), { c: 0.4 }); })(),
+      props: () => hangBar(2.3) },
+
+    'ab-wheel-rollout': { name: 'Ab Wheel Rollout', eq: 'Reps only', hi: ['abs'], cam: { yaw: 1.35, pitch: 0.2 },
+      keys: (() => { const A = { elbows: one([0.3, -0.2, -1]), feet: one([0.1, 0.11, -0.42]), knees: one([0, -1, 0.2]), footDir: one([0, -0.3, -1]) };
+        return rep(Object.assign({}, A, { pelvis: [0, 0.55, 0.05], up: [0, 0.3, 0.95], fwd: [0, -0.95, 0.3], hands: one([0.13, 0.16, 0.58]) }), Object.assign({}, A, { pelvis: [0, 0.3, 0.35], up: [0, 0.08, 1], fwd: [0, -1, 0.08], hands: one([0.13, 0.16, 1.3]) }), { c: 0.45 }); })(),
+      props: sk => { const m = mid(sk.grip.L, sk.grip.R), c = [m[0], 0.1, m[2]]; return [disc(c, [1, 0, 0], 0.1, 'plate'), cap(add(c, [0.16, 0, 0]), add(c, [-0.16, 0, 0]), 0.018, 0.018, 'metal'), box([0, 0.02, -0.25], [0.5, 0.04, 0.5], 'pad')]; } },
+
+    'russian-twist': { name: 'Russian Twist', eq: 'Reps only', hi: ['abs'], cam: { yaw: 0.6, pitch: 0.35 }, dur: 2.6,
+      keys: (() => { const A = { pelvis: [0, 0.17, 0], up: [0, 0.85, -0.5], hands: one({ t: [0.07, 0.3, 0.33] }), elbows: one([0.5, -1, 0]), feet: one([0.12, 0.3, 0.6]), knees: one([0, 1, 0]) };
+        return rep(Object.assign({}, A, { fwd: [0.6, 0.35, 0.7] }), Object.assign({}, A, { fwd: [-0.6, 0.35, 0.7] }), { h0: 0.04, c: 0.42, h1: 0.04 }); })(),
+      props: sk => [disc(mid(sk.grip.L, sk.grip.R), sk.f, 0.14, 'plate')].concat(mat()) },
+
+    'plank': { name: 'Plank', eq: 'Duration', hi: ['abs'], cam: { yaw: 1.3, pitch: 0.25 }, still: true, note: 'Hold the position. The view turns slowly.',
+      keys: [{ at: 0, p: { pelvis: [0, 0.3, 0.037], up: [0, 0.17, 0.985], fwd: [0, -1, 0], hands: one([0.15, 0.06, 0.78]), elbows: one([0, -1, -0.2]), feet: one([0.1, 0.15, -0.85]), knees: one([0, -1, 0]), footDir: one([0, -0.6, 0.8]) } }],
+      props: mat },
+
+    // ----- cardio -----
+    'treadmill-run': { name: 'Treadmill Run', eq: 'Cardio', hi: ['thighs', 'calves'], cam: { yaw: 1.35, pitch: 0.15 }, dur: 0.75, ease: 'linear',
+      keys: (() => {
+        const k0 = { pelvis: [0, 0.97, 0], up: [0, 1, 0.08], feet: { L: [0.1, 0.15, 0.35], R: [-0.1, 0.35, -0.35] }, footDir: { L: [0, 0.2, 1], R: [0, -0.6, 0.8] }, knees: { L: [0, 0, 1], R: [0, 0, 1] }, hands: { L: [0.22, 1.05, -0.15], R: [-0.22, 1.2, 0.22] }, elbows: { L: [0, -1, -0.3], R: [0, -1, -0.3] } };
+        const k1 = { pelvis: [0, 1.03, 0], up: [0, 1, 0.08], feet: { L: [0.1, 0.15, 0], R: [-0.1, 0.45, 0.1] }, footDir: { L: [0, 0, 1], R: [0, -0.3, 1] }, knees: { L: [0, 0, 1], R: [0, 0, 1] }, hands: { L: [0.22, 1.12, 0.03], R: [-0.22, 1.12, 0.03] }, elbows: { L: [0, -1, -0.3], R: [0, -1, -0.3] } };
+        return [{ at: 0, p: k0 }, { at: 0.25, p: k1 }, { at: 0.5, p: swapLR(k0) }, { at: 0.75, p: swapLR(k1) }];
+      })(),
+      props: () => [box([0, 0.09, 0.05], [0.72, 0.06, 1.8], 'frame'), box([0, 0.125, 0.05], [0.5, 0.01, 1.6], 'pad'),
+        cap([0.38, 0.15, 0.8], [0.38, 1.1, 0.8], 0.022, 0.022, 'metal'), cap([-0.38, 0.15, 0.8], [-0.38, 1.1, 0.8], 0.022, 0.022, 'metal'), box([0, 1.18, 0.82], [0.7, 0.2, 0.08], 'frame', deg(25))] },
+
+    'stationary-bike': { name: 'Stationary Bike', eq: 'Cardio', hi: ['thighs'], cam: { yaw: 1.4, pitch: 0.15 }, dur: 1.2, ease: 'linear',
+      keys: cyc(8, a => { const ped = b => [0.12, 0.38 + 0.16 * Math.sin(b), 0.2 + 0.16 * Math.cos(b)], r = ped(a + Math.PI);
+        return { pelvis: [0, 0.95, -0.15], up: [0, 0.9, 0.45], hands: one([0.22, 1.05, 0.42]), elbows: one([0.3, -1, -0.3]), feet: { L: ped(a), R: [-r[0], r[1], r[2]] }, knees: one([0, 0.3, 1]), footDir: one([0, -0.2, 1]) }; }),
+      props: sk => [box([0, 0.85, -0.17], [0.16, 0.06, 0.26], 'pad'), cap([0, 0.82, -0.15], [0, 0.38, 0.2], 0.035, 0.035, 'frame'), cap([0, 0.38, 0.2], [0, 1.0, 0.45], 0.035, 0.035, 'frame'),
+        cap([0.24, 1.05, 0.46], [-0.24, 1.05, 0.46], 0.02, 0.02, 'metal'), disc([0, 0.38, 0.55], [1, 0, 0], 0.25, 'plate'), box([0, 0.03, 0.15], [0.5, 0.06, 1.0], 'frame'),
+        line([0, 0.38, 0.2], sk.an.L, 'metal'), line([0, 0.38, 0.2], sk.an.R, 'metal')] },
+
+    'elliptical': { name: 'Elliptical', eq: 'Cardio', hi: ['thighs', 'pelvis'], cam: { yaw: 1.3, pitch: 0.15 }, dur: 1.4, ease: 'linear',
+      keys: cyc(8, a => ({ pelvis: [0, 1.12, 0], up: [0, 1, 0.05], knees: { L: [0, 0, 1], R: [0, 0, 1] }, footDir: { L: [0, 0, 1], R: [0, 0, 1] }, elbows: { L: [0, -1, -0.5], R: [0, -1, -0.5] },
+        feet: { L: [0.12, 0.32 + 0.05 * Math.sin(a), 0.22 * Math.cos(a)], R: [-0.12, 0.32 - 0.05 * Math.sin(a), -0.22 * Math.cos(a)] },
+        hands: { L: [0.25, 1.22, 0.2 - 0.15 * Math.cos(a)], R: [-0.25, 1.22, 0.2 + 0.15 * Math.cos(a)] } })),
+      props: sk => ['L', 'R'].flatMap(k => [box(add(sk.an[k], [0, -0.06, 0.06]), [0.14, 0.03, 0.34], 'metal'), cap(sk.grip[k], [k === 'L' ? 0.28 : -0.28, 0.3, 0.6], 0.02, 0.02, 'metal')])
+        .concat([box([0, 0.05, 0], [0.5, 0.1, 1.6], 'frame'), box([0, 0.6, 0.7], [0.12, 1.2, 0.12], 'frame'), box([0, 1.25, 0.72], [0.4, 0.18, 0.06], 'frame', deg(25))]) },
+
+    'rowing-machine': { name: 'Rowing Machine', eq: 'Cardio', hi: ['torso', 'thighs'], cam: { yaw: 1.4, pitch: 0.2 }, dur: 2.6,
+      keys: rep({ pelvis: [0, 0.35, 0.2], up: [0, 0.85, 0.5], hands: one([0.15, 0.62, 0.85]), elbows: one([0.5, -0.3, -1]), feet: one([0.12, 0.25, 0.72]), knees: one([0.15, 1, 0]), footDir: one([0, 0.6, 0.8]) },
+        { pelvis: [0, 0.35, -0.1], up: [0, 0.94, -0.34], hands: one([0.12, 0.72, 0.0]), elbows: one([0.4, 0, -1]), feet: one([0.12, 0.25, 0.72]), knees: one([0.15, 1, 0]), footDir: one([0, 0.6, 0.8]) }, { h0: 0.03, c: 0.3, h1: 0.05 }),
+      props: sk => [box([0, 0.15, 0.2], [0.14, 0.06, 2.0], 'frame'), box([sk.P[0], 0.21, sk.P[2]], [0.3, 0.05, 0.3], 'pad'), box([0, 0.25, 0.8], [0.4, 0.04, 0.22], 'metal', deg(-50)), box([0, 0.4, 1.15], [0.35, 0.5, 0.3], 'frame')]
+        .concat(E.handle(mid(sk.grip.L, sk.grip.R), [1, 0, 0]), [line(mid(sk.grip.L, sk.grip.R), [0, 0.55, 1.0])]) },
+
+    'stair-climber': { name: 'Stair Climber', eq: 'Cardio', hi: ['thighs', 'pelvis'], cam: { yaw: 1.35, pitch: 0.15 }, dur: 1.4,
+      keys: (() => {
+        const k0 = { pelvis: [0, 1.0, 0], up: [0, 1, 0.1], hands: { L: [0.25, 1.1, 0.25] }, elbows: { L: [0, -1, -0.4] }, feet: { L: [0.12, 0.4, 0.25], R: [-0.12, 0.12, 0] }, knees: { L: [0, 0, 1], R: [0, 0, 1] }, footDir: { L: [0, 0, 1], R: [0, 0, 1] } };
+        const k1 = Object.assign({}, k0, { pelvis: [0, 1.05, 0.02], feet: { L: [0.12, 0.26, 0.12], R: [-0.12, 0.3, 0.1] } });
+        return [{ at: 0, p: k0 }, { at: 0.25, p: k1 }, { at: 0.5, p: swapLR(k0) }, { at: 0.75, p: swapLR(k1) }];
+      })(),
+      props: sk => ['L', 'R'].map(k => box(add(sk.an[k], [0, -0.07, 0.06]), [0.3, 0.04, 0.3], 'metal'))
+        .concat([box([0, 0.9, -0.3], [0.6, 1.8, 0.1], 'frame'), cap([0.3, 1.1, 0.4], [0.3, 1.1, -0.25], 0.02, 0.02, 'metal'), cap([-0.3, 1.1, 0.4], [-0.3, 1.1, -0.25], 0.02, 0.02, 'metal')]) }
+  });
+
+  Object.keys(DEFS).forEach(id => { const d = DEFS[id]; d.id = id; d.dur = d.dur || 3.4; resolveKeys(id).forEach(k => { k.full = full(k.p); }); });
 
   function frame(id, t) {
     const def = DEFS[id];
     if (!def) return null;
     const sk = skeleton(sample(def, t));
-    return { sk, shapes: bodyShapes(sk, def.hi).concat(def.props ? def.props(sk) : []) };
+    return { sk, shapes: bodyShapes(sk, def.hi, def.sec).concat(def.props ? def.props(sk) : []) };
   }
 
   // ---------- drawing ----------
@@ -10167,7 +8957,7 @@ window.EXERCISE_DEMOS={
       }
     });
     items.sort((a, b) => b.z - a.z);
-    const rgbOf = col => col === 'hi' ? colors.hi : (colors[col] || colors.body);
+    const rgbOf = col => col === 'hi' ? colors.hi : (colors[col] || colors.body);  // colors.sec is optional (secondary muscles)
     items.forEach(it => {
       const rgb = rgbOf(it.col);
       if (it.k === 'face') {
@@ -10257,7 +9047,7 @@ window.EXERCISE_DEMOS={
       cards.forEach(el => {
         if (!el.isConnected) { cards.delete(el); return; }
         const id = el.dataset.ea, st = state(id);
-        if (st.playing && !seen.has(id)) { st.t = (st.t + dt * st.speed / DEFS[id].dur) % 1; seen.add(id); }
+        if (st.playing && !seen.has(id)) { st.t = (st.t + dt * st.speed / DEFS[id].dur) % 1; if (DEFS[id].still && st.view === '3d') st.yaw += dt * 0.35 * st.speed; seen.add(id); }
         if (el._eaVis !== false) paint(el);
         if (st.playing && el._eaVis !== false) moving = true;
       });
@@ -10331,7 +9121,6 @@ window.EXERCISE_DEMOS={
         '<div class="ea-full-body">' + (d.note ? '<p class="ea-note">' + esc(d.note) + '</p>' : '') +
         (cues.length ? '<p class="ea-lbl">Cues</p><ul>' + cues.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
         (steps.length ? '<p class="ea-lbl">The rep</p><ol>' + steps.map(x => '<li>' + esc(x) + '</li>').join('') + '</ol>' : '') +
-        (info.video ? '<a class="ea-link" href="' + esc(info.video.href) + '" target="_blank" rel="noopener noreferrer">' + esc(info.video.label || 'Watch a video ↗') + '</a>' : '') +
         '<p class="ea-muted">Animated guide drawn for this app. The highlighted area is the main muscle worked.</p></div>';
       document.body.appendChild(el);
       scan(el);
@@ -10358,7 +9147,6 @@ window.EXERCISE_DEMOS={
     '.ea-full-body{max-width:640px;font-size:.92rem;color:var(--ink,#111)}.ea-full-body ul,.ea-full-body ol{margin:.2rem 0 .6rem;padding-left:1.2rem}',
     '.ea-lbl{margin:.5rem 0 .1rem;font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted,#6b7280)}',
     '.ea-note{margin:.3rem 0;padding:.4rem .55rem;border-left:3px solid var(--warn,#b7791f);background:var(--surface,#fff);font-size:.85rem}',
-    '.ea-link{display:inline-block;margin:.3rem 0;font-weight:600;color:var(--accent,#e8672f)}',
     '.ea-muted{color:var(--muted,#6b7280);font-size:.8rem}',
     '@media (prefers-reduced-motion: reduce){.ea-ctl button{transition:none}}'
   ].join('\n');
@@ -23572,10 +22360,9 @@ function syncLogger(){
   try{
     WorkoutLogger.mount(host, {
       storage, targets: APPT || undefined,
-      formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE, { demoLinks: !(window.ExerciseDemos && window.EXERCISE_DEMOS) }) : undefined,
+      formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE) : undefined,
       anim: window.ExerciseAnim ? ExerciseAnim.create() : undefined,
       breakRamp: window.BreakRamp || undefined,
-      demos: (window.ExerciseDemos && window.EXERCISE_DEMOS) ? ExerciseDemos.create(window.EXERCISE_DEMOS, { library: WorkoutLogger.library }) : undefined,
       weights: { list: async()=>weightsSorted().map(w=>({date:w.date,kg:w.kg})), put: async(date,kg)=>put("weights",date,{date,kg:Math.round(kg*10)/10},{quiet:true}) },
       onFinish(workout, rec){
         if(!rec || !rec.date) return;

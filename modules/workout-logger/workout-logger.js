@@ -8,11 +8,9 @@
  *   app shell's workouts/{date} shape: {date, session, idx, sets:{name:[{w,r}]}, treadmill}.
  * weights: optional { list() -> Promise<[{date:'YYYY-MM-DD', kg}]>, put(date, kg) -> Promise }
  *   so body weight logs go to the shell's own weights collection.
- * formCues: optional FormCues.create(guide) instance (form cues + demo links).
+ * formCues: optional FormCues.create(guide) instance (form cues, no external links).
  * anim: optional ExerciseAnim.create() instance. Exercises it has get a built-in 3D animated demo in Gym
  *   mode and the exercise sheet, and the Demo button opens it full screen.
- * demos: optional ExerciseDemos.create(data, {library}) instance. When given, every exercise gets a
- *   Demo button (a checked video, else a YouTube search) and the sheet lists its demo videos.
  * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
  *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
@@ -827,12 +825,10 @@ Stair Climber|Cardio|Cardio|`;
   let exTab = 'about';
   // Form cues (optional FormCues instance passed as opts.formCues).
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
-  // Demo button: ExerciseDemos (opts.demos) when given, else the form cues link for exercises in the guide.
-  function demoBtn(id, entry) {
-    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues, an = S.opts && S.opts.anim;
-    if (an && an.has(id)) return '<button type="button" class="lb-btn small ghost" data-ea-open="' + esc(id) + '">Demo</button>';
-    const l = dm ? dm.link(id, getEx(id).name) : (fc && entry ? { href: fc.demoUrl(entry), label: 'Demo ↗' } : null);
-    return l ? '<a class="lb-btn small ghost" href="' + esc(l.href) + '" target="_blank" rel="noopener noreferrer">' + esc(l.label) + '</a>' : '';
+  // Demo button: opens the built-in animation (opts.anim). No external video or search links.
+  function demoBtn(id) {
+    const an = S.opts && S.opts.anim;
+    return an && an.has(id) ? '<button type="button" class="lb-btn small ghost" data-ea-open="' + esc(id) + '">Demo</button>' : '';
   }
   on('exOpen', t => {
     const id = t.dataset.id; exTab = 'about';
@@ -852,8 +848,7 @@ Stair Climber|Cardio|Cardio|`;
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
         (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '') +
-        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '') +
-        (S.opts.demos ? S.opts.demos.sheetHtml(id, ex.name) : '');
+        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '');
     }
     if (!ss.length) return '<div class="lb-empty">No sets logged for this exercise yet.</div>';
     if (exTab === 'history') {
@@ -1916,12 +1911,10 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     if (opts.anim) {
       opts.anim.info = id => {
         const g = opts.formCues ? opts.formCues.find(id) || opts.formCues.find(getEx(id).name) : null;
-        const l = opts.demos ? opts.demos.link(id, getEx(id).name) : null;
-        return { title: getEx(id).name, cues: g ? g.cues : [], steps: g ? g.steps : [], video: l ? { href: l.href, label: l.verified ? 'Watch a video ↗' : 'Search videos ↗' } : null };
+        return { title: getEx(id).name, cues: g ? g.cues : [], steps: g ? g.steps : [] };
       };
       opts.anim.attach(document);
     }
-    if (opts.demos && !document.getElementById('ed-style')) { const st = document.createElement('style'); st.id = 'ed-style'; st.textContent = opts.demos.css; document.head.appendChild(st); }
     if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
     root = el; root.classList.add('lb');
     overlay = document.querySelector('.lb-overlay') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'lb-overlay' }));

@@ -52,14 +52,13 @@ t('unknown exercises return null and render nothing', () => {
   assert.strictEqual(fc.detailHtml(null), '');
 });
 
-t('inline panel has cues, watch-outs, muscles and demo link', () => {
+t('inline panel has cues, watch-outs, muscles and no external link', () => {
   const h = fc.inlineHtml(fc.find('bench-press-barbell'), 'bench-press-barbell');
   assert.ok(h.includes('Bend the bar'));
   assert.ok(h.includes('Watch for'));
   assert.ok(h.includes('class="fc-chip p">Chest'));
   assert.ok(h.includes('Triceps'));
-  assert.ok(h.includes('https://www.youtube.com/results?search_query=Bench%20Press%20proper%20form'));
-  assert.ok(h.includes('rel="noopener noreferrer"'));
+  assert.ok(!h.includes('youtube') && !h.includes('fc-demo'), 'no search link by default');
   assert.ok(!/ open>/.test(h.split('<summary>')[0]));
 });
 
@@ -106,12 +105,13 @@ t('machine variants do not borrow cable or dumbbell cues', () => {
   assert.ok(fc.find('Seated Row (Cable)'));
 });
 
-t('demoLinks false hides the demo link', () => {
-  const quiet = FormCues.create(guide, { demoLinks: false });
-  const e = quiet.find('bench-press-barbell');
-  assert.ok(!quiet.detailHtml(e).includes('fc-demo'));
-  assert.ok(!quiet.inlineHtml(e).includes('fc-demo'));
-  assert.ok(fc.detailHtml(e).includes('fc-demo'));
+t('demo link only when opted in and the entry has its own url', () => {
+  const e = fc.find('bench-press-barbell');
+  assert.ok(!fc.detailHtml(e).includes('fc-demo'));
+  const on = FormCues.create({ exercises: [Object.assign({}, e, { demo: 'https://example.com/v' })] }, { demoLinks: true });
+  assert.ok(on.detailHtml(on.find('bench-press-barbell')).includes('https://example.com/v'));
+  const noUrl = FormCues.create(guide, { demoLinks: true });
+  assert.ok(!noUrl.detailHtml(noUrl.find('bench-press-barbell')).includes('fc-demo'), 'no search fallback');
 });
 
 console.log(n + ' tests passed');
