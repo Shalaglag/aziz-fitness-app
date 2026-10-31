@@ -82,4 +82,40 @@ t('shell record keeps RIR when it was logged', () => {
   assert.deepStrictEqual(b, [{ w: 60, r: 8, unit: 'kg', rir: 2 }, { w: 60, r: 7, unit: 'kg' }]);
 });
 
+
+// ---- Machine weight steps ----
+const { snapStep, stepWeight, warmSets, loadableUp } = globalThis.WorkoutLogger.gym;
+t('an exercise can override the weight step; it converts when logging in the other unit', () => {
+  assert.strictEqual(weightStep({ cat: 'Machine', step: 5, stepUnit: 'kg' }, 'kg'), 5);
+  assert.strictEqual(weightStep({ cat: 'Machine', step: 1.25, stepUnit: 'kg' }, 'kg'), 1.25);
+  assert.strictEqual(weightStep({ cat: 'Dumbbell', step: 0, stepUnit: 'kg' }, 'kg'), 2, 'zero means default');
+  assert.strictEqual(weightStep({ cat: 'Machine', step: 5, stepUnit: 'kg' }, 'lb'), 11, '5 kg -> 11.02 lb, rounded to 0.25');
+  assert.strictEqual(weightStep({ cat: 'Machine', step: 10, stepUnit: 'lb' }, 'kg'), 4.5);
+  assert.strictEqual(weightStep({ cat: 'Machine', step: 7, unit: 'kg' }, 'kg'), 7, 'old docs without stepUnit use the exercise unit');
+});
+
+t('stepping a weight lands on the machine grid', () => {
+  assert.strictEqual(stepWeight('61', 1, 2.5), 62.5);
+  assert.strictEqual(stepWeight('61', -1, 2.5), 57.5);
+  assert.strictEqual(stepWeight('60', 1, 2.5), 62.5);
+  assert.strictEqual(stepWeight('', 1, 5), 5);
+  assert.strictEqual(stepWeight('3', -1, 5), 0, 'never below zero');
+  assert.strictEqual(stepWeight('22.5', 1, 1.25), 23.75);
+  assert.strictEqual(snapStep(63.5, 2.5), 62.5);
+  assert.strictEqual(snapStep(63.5, 0), 63.5, 'no step, no snapping');
+});
+
+t('warm-up sets round to the given step', () => {
+  const w = warmSets(100, 'kg', 20, 5).map(s => s.w);
+  assert.deepStrictEqual(w, [20, 50, 70, 85]);
+  const fine = warmSets(61, 'kg', 20).map(s => s.w);
+  assert.ok(fine.every(v => Math.abs(v / 2.5 - Math.round(v / 2.5)) < 1e-9), 'default 2.5 grid: ' + fine);
+});
+
+t('plate rounding finds the next loadable per-side weight', () => {
+  assert.strictEqual(loadableUp(20, 'kg'), 20, 'already loadable');
+  assert.strictEqual(loadableUp(21, 'kg'), 21.25, '21 -> 20 + 1.25 plate');
+  assert.strictEqual(loadableUp(0.6, 'kg'), 1.25);
+});
+
 console.log('\n' + n + ' tests passed');
