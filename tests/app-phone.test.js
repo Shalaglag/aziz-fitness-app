@@ -109,12 +109,96 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("food diary: budget − eaten = remaining, no exercise calories, add sheet adds under the chosen meal and closes", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await page.click('#tabs button[data-tab="food"]');
+      const r = await page.evaluate(() => { const v = [...document.querySelectorAll(".fsum .v")].map(e => e.textContent.trim()); return { v, target: kcalTarget(TODAY), labels: [...document.querySelectorAll(".fsum .label")].map(e => e.textContent.trim()) }; });
+      assert.deepStrictEqual(r.v, ["2,000", "870", "1,130"], "budget, food, remaining");
+      assert.deepStrictEqual(r.labels, ["Budget", "Food", "Remaining"]);
+      assert.strictEqual(r.target, 2000, "the budget is the chosen target, never lowered on its own");
+      // Open the sheet for Meal 2, add a food, and it lands under Meal 2 with the sheet closed
+      await page.click('.mealgrp:has(.mh span:text-is("Meal 2")) [data-act="foodadd"]');
+      await page.waitForSelector('#foodSheet[role="dialog"]');
+      assert.strictEqual(await page.$eval("#foodSheet h2", e => e.textContent), "Add to Meal 2");
+      await page.fill("#fname", "Greek yoghurt"); await page.fill("#fk", "150"); await page.fill("#fp", "15"); await page.check("#featen");
+      await page.click('#foodSheet button[type="submit"]');
+      await page.waitForTimeout(200);
+      const after = await page.evaluate(() => ({ sheet: !!document.getElementById("foodSheet"), meal2: [...document.querySelectorAll('.mealgrp')].find(g => /^Meal 2/.test(g.textContent)).textContent, remaining: document.querySelector(".fsum .v.big").textContent.trim() }));
+      assert.strictEqual(after.sheet, false, "sheet closes after adding");
+      assert.ok(/Greek yoghurt/.test(after.meal2), "new food is under Meal 2");
+      assert.strictEqual(after.remaining, "980", "remaining drops by the eaten 150 kcal");
+      // Edit: tap the item, scale the portion ×2, save
+      await page.click('.mealgrp [data-act="foodedit"]:has-text("Greek yoghurt")');
+      await page.waitForSelector("#fedit", { state: "attached" }); await page.click('[data-act="portion"][data-m="2"]'); await page.click('#foodSheet button[type="submit"]');
+      await page.waitForTimeout(200);
+      const it = await page.evaluate(() => getDay(TODAY).food.find(i => i.name === "Greek yoghurt"));
+      assert.deepStrictEqual([it.kcal, it.p, it.slot, it.eaten], [300, 30, "Meal 2", true]);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("quick log: Strong-style rows, ticking a set fills it from the plan and starts the rest timer, kg/lb per exercise converts what is shown and keeps what was logged", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], today => { const d = seed(today); d.workouts = { [today]: { date: today, session: "Push A", idx: 0, sets: {} } }; return d; });
+      await page.evaluate(() => { view.tab = "train"; view.trainMode = "quick"; render(); });
+      const head = await page.evaluate(() => [...document.querySelector(".xcard .srow.head").children].map(e => e.textContent.trim()));
+      assert.deepStrictEqual(head, ["Set", "Previous", "kg", "Reps", "✓"]);
+      await page.click('[data-act="setdone"][data-n="Bench Press (Barbell)"][data-i="0"]');
+      await page.waitForTimeout(150);
+      let r = await page.evaluate(() => ({ set: S.docs.workouts[TODAY].sets["Bench Press (Barbell)"][0], timer: !document.getElementById("timer").hidden, text: document.getElementById("timer").textContent }));
+      assert.deepStrictEqual([r.set.w, r.set.r, r.set.unit, r.set.done], ["90", "8", "kg", true], "ticked set takes the plan's 90 kg × 8");
+      assert.ok(r.timer && /Rest/.test(r.text), "rest timer bar shows");
+      // Switch this exercise to lb: the column, placeholders and previous values convert; the logged set keeps its kg value and unit
+      await page.click('.srow.head .unitbtn[data-n="Bench Press (Barbell)"]');
+      await page.waitForTimeout(150);
+      r = await page.evaluate(() => ({ unit: exUnit("Bench Press (Barbell)"), head: document.querySelector('.srow.head .unitbtn[data-n="Bench Press (Barbell)"]').textContent, ph: document.querySelector('input[data-set="Bench Press (Barbell)"][data-i="1"][data-k="w"]').placeholder, set: S.docs.workouts[TODAY].sets["Bench Press (Barbell)"][0], eff: programEff()["Push A"][0] }));
+      assert.strictEqual(r.unit, "lb"); assert.strictEqual(r.head, "lb");
+      assert.strictEqual(r.ph, "198.5", "90 kg baseline shows as 198.5 lb");
+      assert.deepStrictEqual([r.set.w, r.set.unit], ["90", "kg"], "logged set untouched");
+      assert.deepStrictEqual([r.eff[1], r.eff[4]], [198.5, "lb"], "analytics and imports see the lb baseline");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("full logger is the default Train screen, opens in List view, and Settings can switch it", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await page.click('#tabs button[data-tab="train"]');
+      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      const order = await page.evaluate(() => ({ mode: view.trainMode, above: document.getElementById("lbHost").compareDocumentPosition(document.getElementById("main")) & Node.DOCUMENT_POSITION_FOLLOWING ? "logger-first" : "main-first", gym: WorkoutLogger.settings().gym }));
+      assert.deepStrictEqual(order, { mode: "full", above: "logger-first", gym: false });
+      await page.click("#openSettings");
+      await page.waitForSelector('[data-act="lbset"][data-s="gym"][data-k="gym"]');
+      await page.click('[data-act="lbset"][data-s="gym"][data-k="gym"]');
+      await page.waitForTimeout(100);
+      assert.strictEqual(await page.evaluate(() => WorkoutLogger.settings().gym), true);
+      await page.click('[data-act="tmode"][data-m="quick"]');
+      await page.waitForTimeout(100);
+      assert.strictEqual(await page.evaluate(() => view.trainMode + ":" + localStorage.getItem("aziz-cut-tmode")), "quick:quick");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("guide: search filters sections and jump chips exist; progress has four sections", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await page.click('#tabs button[data-tab="guide"]');
+      assert.ok((await page.$$('.jump .chip')).length >= 7, "jump chips");
+      await page.fill("#libq", "creatine"); await page.waitForTimeout(150);
+      const cards = await page.$$eval('#main .card.guide h3', els => els.map(e => e.textContent));
+      assert.deepStrictEqual(cards, ["Supplements"]);
+      await page.click('#tabs button[data-tab="progress"]');
+      const tabs = await page.$$eval('.subnav [data-act="ptab"]', els => els.map(e => e.textContent));
+      assert.deepStrictEqual(tabs, ["Weight", "Lifts", "Food", "Reviews"]);
+      await page.click('[data-act="ptab"][data-k="reviews"]'); await page.waitForTimeout(100);
+      assert.ok(await page.$('details.fold[data-keep="f:wr"]'), "weekly report folded under Reviews");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     for (const phone of PHONES) {
       await t.test(phone.name + ": every tab renders with no errors and no sideways scroll", async () => {
         for (const data of [null, seed]) {
           const { page, errors } = await openApp(browser, phone, data);
-          for (const tab of TABS) {
-            await page.click(`#tabs button[data-tab="${tab}"]`);
+          for (const tab of TABS.concat("settings")) {
+            if (tab === "settings") await page.click("#openSettings"); else await page.click(`#tabs button[data-tab="${tab}"]`);
             await page.waitForTimeout(150);
             const r = await page.evaluate(() => ({ tab: view.tab, wide: document.documentElement.scrollWidth - window.innerWidth, text: document.querySelector("#main").textContent.trim().length }));
             assert.strictEqual(r.tab, tab);

@@ -311,7 +311,7 @@ Cycling (Outdoor)|Cardio|Cardio|`;
   const goalKg = () => { const t = S.opts && S.opts.targets; return t ? (t.goalKg != null ? +t.goalKg : null) : 80; };
 
   const DEFAULT_SETTINGS = {
-    unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: true,
+    unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: false,
     bar: 20, barLb: 45, platesKg: [25, 20, 15, 10, 5, 2.5, 1.25], platesLb: [45, 35, 25, 10, 5, 2.5],
     rotOverride: null, seeded: false
   };
@@ -1871,31 +1871,33 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-live-body > *{max-width:720px;margin-left:auto;margin-right:auto}
 .lb-title-in{width:100%;border:0;background:transparent;font-family:var(--lb-display);font-size:1.9rem;font-weight:700;padding:2px 0;color:var(--lb-ink)}
 .lb-notes{margin-top:6px}
-.lb-exblock{margin-top:14px;padding:12px;background:var(--lb-surface);border:1px solid var(--lb-line);border-radius:var(--lb-r)}
+.lb-exblock{margin-top:16px;padding:16px 14px;background:var(--lb-surface);border:1px solid var(--lb-line);border-radius:var(--lb-r)}
 .lb-exblock.ss{border-left:4px solid var(--lb-accent)}
 .lb-exblock.ss1{border-left-color:#1f5fbf}.lb-exblock.ss2{border-left-color:#1f8a4c}.lb-exblock.ss3{border-left-color:#e3b300}
 .lb-sslabel{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--lb-muted)}
 .lb-exhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lb-exhead h3{color:var(--lb-accent);font-size:1.2rem}
 .lb-memo{color:var(--lb-muted);font-style:italic}
 .lb-memo-btn{display:block;width:100%;text-align:left;background:none;border:1px dashed var(--lb-line);color:var(--lb-muted);border-radius:10px;padding:6px 10px;font:inherit;font-size:.85rem;font-style:italic;cursor:pointer;margin:4px 0}
 .lb-memo-btn:not(.empty){border-style:solid;color:inherit;font-style:normal}
 .lb-chips{margin:-4px 0 6px}
 .lb-hint{color:var(--lb-good);font-weight:600}
 .lb-sets{margin-top:8px}
-.lb-setrow{display:grid;grid-template-columns:var(--cols);gap:6px;align-items:center;padding:4px 2px;border-radius:8px}
+.lb-setrow{display:grid;grid-template-columns:var(--cols);gap:8px;align-items:center;padding:5px 2px;border-radius:10px;min-height:46px}
 .lb-setrow.head{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--lb-muted);font-weight:700}
 .lb-setrow.head span{text-align:center} .lb-setrow.head span:nth-child(2){text-align:left}
 .lb-setrow.done{background:color-mix(in srgb,var(--lb-good) 16%,transparent)}
 .lb-prev{font-size:.82rem;color:var(--lb-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums;text-align:left}
 .lb-prev.base{font-style:italic}
-.lb-cell{width:100%;min-width:0;height:2.3rem;text-align:center;border-radius:8px;border:1px solid transparent;background:var(--lb-sunk);color:var(--lb-ink);font-weight:600;font-variant-numeric:tabular-nums;padding:0 4px}
+.lb-cell{width:100%;min-width:0;height:2.6rem;font-size:1.05rem;text-align:center;border-radius:8px;border:1px solid transparent;background:var(--lb-sunk);color:var(--lb-ink);font-weight:600;font-variant-numeric:tabular-nums;padding:0 4px}
 .lb-cell::placeholder{color:var(--lb-muted);opacity:.75;font-weight:500}
 .lb-cell:focus{border-color:var(--lb-accent);outline:none;background:var(--lb-surface)}
 .lb-setrow.done .lb-cell{background:transparent}
-.lb-chk{height:2.3rem;border-radius:8px;background:var(--lb-sunk);color:var(--lb-muted);font-weight:800;font-size:1rem;display:flex;align-items:center;justify-content:center}
+.lb-chk{height:2.6rem;border-radius:8px;background:var(--lb-sunk);color:var(--lb-muted);font-weight:800;font-size:1rem;display:flex;align-items:center;justify-content:center}
 .lb-setrow.done .lb-chk{background:var(--lb-good);color:#fff}
 .lb-prrow{grid-column:2/-1;font-size:.72rem;font-weight:700;color:var(--lb-good);letter-spacing:.03em}
-.lb-exfoot{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.lb-exfoot{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px}
+.lb-exfoot .lb-btn{flex:1}
 .lb-rest{position:absolute;left:0;right:0;bottom:0;background:var(--lb-surface);border-top:1px solid var(--lb-line);padding:8px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));box-shadow:0 -6px 20px rgba(0,0,0,.12)}
 .lb-rest.floating{position:fixed;z-index:15;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));border-radius:14px;border:1px solid var(--lb-line);max-width:480px;margin:0 auto}
 .lb-rest-bar{height:5px;background:var(--lb-sunk);border-radius:3px;overflow:hidden} .lb-rest-bar i{display:block;height:100%;background:var(--lb-accent);transition:width .5s linear}
@@ -1995,7 +1997,10 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   }
   // Called by a host when its storage changed underneath (another device): reload and redraw.
   async function refresh() { await loadAll(); if (!E && !sheets.length) renderMain(); }
-  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+  // Host settings screen: read the logger's settings and change some of them (gym, unit, rest) without opening its Tools tab.
+  function settings() { return clone(S.settings); }
+  function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
+  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, settings, setSettings, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
