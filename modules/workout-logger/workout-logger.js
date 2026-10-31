@@ -9,8 +9,12 @@
  * weights: optional { list() -> Promise<[{date:'YYYY-MM-DD', kg}]>, put(date, kg) -> Promise }
  *   so body weight logs go to the shell's own weights collection.
  * formCues: optional FormCues.create(guide) instance (form cues + demo links).
+ * anim: optional ExerciseAnim.create() instance. Exercises it has get a built-in 3D animated demo in Gym
+ *   mode and the exercise sheet, and the Demo button opens it full screen.
  * demos: optional ExerciseDemos.create(data, {library}) instance. When given, every exercise gets a
  *   Demo button (a checked video, else a YouTube search) and the sheet lists its demo videos.
+ * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
+ *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
  * Live workouts open in Gym mode (one set at a time, big steppers, RIR, rest countdown with "up next");
  *   "List view" in the header switches to the full table. Sets may carry rir (0-4, 4 = 4+).
@@ -392,6 +396,13 @@ Stair Climber|Cardio|Cardio|`;
     }
     return out;
   }
+  // PR celebration (modules/pr-celebrate): what was beaten and the old best, for the toast and the gym banner.
+  const PRC = typeof PRCelebrate !== 'undefined' ? PRCelebrate : (typeof globalThis !== 'undefined' && globalThis.PRCelebrate) || null;
+  function celebration(e, s) {
+    if (!PRC || !s.pr || !s.pr.length) return null;
+    const ex = getEx(e.exId);
+    return PRC.describe(s.pr, records(e.exId, E.doc && E.doc.id), s, { name: ex.name, unit: e.unit, e1rm, fmtDate: at => fmtDate(at, { month: 'short', day: 'numeric' }) });
+  }
   function workoutStats(w) {
     let vol = 0, sets = 0, prs = 0;
     w.exercises.forEach(e => working(e).forEach(s => { sets++; vol += toKg(num(s.w) || 0, e.unit) * (num(s.r) || 0); if (s.pr && s.pr.length) prs++; }));
@@ -435,12 +446,24 @@ Stair Climber|Cardio|Cardio|`;
     const atTop = ws.filter(s => (num(s.w) || 0) === top);
     const minR = Math.min(...atTop.map(s => num(s.r)));
     const step = weightStep(ex, unit);
-    if (minR >= 12) return 'All sets hit 12 last time. Try ' + fmtN(top + step, 2) + ' ' + unit + '.';
+    if (minR >= 12) return 'All sets hit 12 last time. Try ' + fmtN(stepWeight(top, 1, step), 2) + ' ' + unit + '.';
     return 'Beat last time: aim for ' + fmtN(top, 2) + ' ' + unit + ' × ' + (minR + 1) + ' on one set.';
   }
 
   // ---------- Gym mode helpers ----------
-  const weightStep = (ex, unit) => unit === 'lb' ? 5 : (ex.cat === 'Dumbbell' ? 2 : 2.5);
+  // Weight increment per exercise. Default by equipment; an exercise can save its machine's real step (ex.step,
+  // in ex.stepUnit) so steppers, progression hints and warm-ups land on weights the stack actually has.
+  const defaultStep = (ex, unit) => unit === 'lb' ? 5 : (ex.cat === 'Dumbbell' ? 2 : 2.5);
+  const weightStep = (ex, unit) => {
+    const st = num(ex.step);
+    if (!st || st <= 0) return defaultStep(ex, unit);
+    const su = ex.stepUnit || ex.unit || S.settings.unit;
+    if (su === unit) return st;
+    return Math.max(0.25, Math.round((unit === 'lb' ? st / LB : st * LB) * 4) / 4);
+  };
+  const snapStep = (v, step) => step > 0 ? Math.round(Math.round(v / step) * step * 100) / 100 : Math.round(v * 100) / 100;
+  // One click on a weight stepper: move by the step and land on the step grid (61 kg + 2.5 -> 62.5, not 63.5).
+  const stepWeight = (v, d, step) => Math.max(0, snapStep((num(v) || 0) + d * step, step));
   const FIELD_STEP = { r: 1, km: 0.1, min: 1, sec: 5 };
   const stepFor = (ex, unit, k) => k === 'w' ? weightStep(ex, unit) : FIELD_STEP[k];
   const bumpVal = (v, d) => Math.max(0, Math.round(((num(v) || 0) + d) * 100) / 100);
@@ -650,7 +673,7 @@ Stair Climber|Cardio|Cardio|`;
         const st = workoutStats(w);
         return '<p class="lb-muted">' + fmtDate(w.start, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + ' · ' + fmtTime(w.start) + '</p><div class="lb-tiles"><div><b>' + fmtDur(st.dur) + '</b><span>Duration</span></div><div><b>' + fmtN(st.vol, 0) + '</b><span>Volume kg</span></div><div><b>' + st.sets + '</b><span>Sets</span></div><div><b>' + st.prs + '</b><span>PRs</span></div></div>' + (w.notes ? '<p class="lb-note">' + esc(w.notes) + '</p>' : '') +
           w.exercises.map(e => { const ex = getEx(e.exId); let n = 0; return '<div class="lb-hex"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button>' + (e.notes ? '<p class="lb-muted small">' + esc(e.notes) + '</p>' : '') + '<table class="lb-tbl"><tbody>' + e.sets.map(s => '<tr><td class="lb-settag ' + s.t + '">' + (s.t === 'n' ? ++n : s.t.toUpperCase()) + '</td><td>' + esc(fmtSet(s, e, ex)) + (s.rpe ? ' <span class="lb-muted">@' + s.rpe + '</span>' : '') + (num(s.rir) != null ? ' <span class="lb-muted">RIR ' + s.rir + '</span>' : '') + '</td><td class="r">' + (isWeighted(ex) && s.t !== 'w' && num(s.r) ? '<span class="lb-muted small">1RM ' + fmtN(e1rm(+s.w, +s.r), 1) + '</span>' : '') + (s.pr && s.pr.length ? ' <span class="lb-pr" title="' + esc(s.pr.join(', ')) + '">PR</span>' : '') + '</td></tr>').join('') + '</tbody></table></div>'; }).join('') +
-          '<div class="lb-row"><button class="lb-btn primary" data-a="again" data-id="' + id + '">Perform again</button><button class="lb-btn ghost" data-a="editWorkout" data-id="' + id + '">Edit</button><button class="lb-btn ghost" data-a="saveAsTpl" data-id="' + id + '">Save as template</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + id + '">Copy summary</button><button class="lb-btn ghost danger" data-a="askDelW">Delete</button></div><div class="lb-confirm" id="lb-delw" hidden><p>Delete this workout from your history? This can’t be undone.</p><button class="lb-btn danger" data-a="delW" data-id="' + id + '">Delete workout</button></div>';
+          '<div class="lb-row"><button class="lb-btn primary" data-a="again" data-id="' + id + '">Perform again</button><button class="lb-btn ghost" data-a="editWorkout" data-id="' + id + '">Edit</button><button class="lb-btn ghost" data-a="saveAsTpl" data-id="' + id + '">Save as template</button><button class="lb-btn ghost" data-a="shareWorkout" data-id="' + id + '">Share</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + id + '">Copy summary</button><button class="lb-btn ghost danger" data-a="askDelW">Delete</button></div><div class="lb-confirm" id="lb-delw" hidden><p>Delete this workout from your history? This can’t be undone.</p><button class="lb-btn danger" data-a="delW" data-id="' + id + '">Delete workout</button></div>';
       }
     });
   });
@@ -673,6 +696,41 @@ Stair Climber|Cardio|Cardio|`;
     }
   }
   on('copySummary', t => copyText(summaryText(S.data.workouts[t.dataset.id])));
+
+  // Share: WhatsApp-ready text + PNG card via the WorkoutShare module (opts.share or window.WorkoutShare).
+  // Without the module, Share falls back to copying the plain summary.
+  function shareModule() { return S.opts.share || (typeof window !== 'undefined' && window.WorkoutShare) || null; }
+  function shareWorkout(w) {
+    const WS = shareModule();
+    if (!w) return;
+    if (!WS) return copyText(summaryText(w));
+    let sum, cv;
+    try { sum = WS.summarize(w, getEx); cv = WS.draw(sum, { footer: S.opts.shareFooter || '' }); }
+    catch (e) { return copyText(summaryText(w)); }
+    const txt = WS.text(sum, { footer: S.opts.shareFooter || '' });
+    const canFiles = typeof navigator !== 'undefined' && !!navigator.share;
+    openSheet({
+      title: 'Share workout',
+      body: () => '<div class="lb-share"><img alt="' + esc(sum.name) + ' workout card"></div>' +
+        '<div class="lb-row"><button class="lb-btn primary" data-a="shareSend">' + (canFiles ? 'Share…' : 'Save image') + '</button><button class="lb-btn ghost" data-a="shareCopy">Copy text</button>' + (canFiles ? '<button class="lb-btn ghost" data-a="shareSave">Save image</button>' : '') + '</div>' +
+        '<details class="lb-share-text"><summary class="lb-muted small">Preview the text</summary><pre>' + esc(txt) + '</pre></details>',
+      mount: el => { const img = el.querySelector('img'); try { img.src = cv.toDataURL('image/png'); } catch (e) { img.remove(); } }
+    });
+    shareCtx = { sum, cv, txt, WS };
+  }
+  let shareCtx = null;
+  on('shareWorkout', t => shareWorkout(S.data.workouts[t.dataset.id]));
+  on('shareSend', async () => {
+    if (!shareCtx) return;
+    const r = await shareCtx.WS.share(shareCtx.sum, { canvas: shareCtx.cv, footer: S.opts.shareFooter || '' });
+    if (r === 'shared') toast('Shared'); else if (r === 'shared-text') toast('Shared the text (this browser can\u2019t share images)'); else if (r === 'copied') toast('Text copied, image downloaded'); else if (r === 'saved') toast('Image downloaded'); else if (r === 'failed') copyText(shareCtx.txt);
+  });
+  on('shareCopy', () => { if (shareCtx) copyText(shareCtx.txt); });
+  on('shareSave', () => {
+    if (!shareCtx) return;
+    const name = (shareCtx.sum.name || 'workout').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() + '-' + isoDate(shareCtx.sum.start) + '.png';
+    try { shareCtx.WS.download(shareCtx.cv.toDataURL('image/png'), name); toast('Image downloaded'); } catch (e) { toast('Could not save the image'); }
+  });
 
   // Exercises tab
   function filteredExercises() {
@@ -713,6 +771,7 @@ Stair Climber|Cardio|Cardio|`;
       title: id ? 'Edit exercise' : 'New exercise',
       body: () => '<label class="lb-field">Name<input id="lb-exname" class="lb-input" value="' + esc(ex.name) + '"' + (id && LIB[id] ? ' disabled' : '') + '></label><label class="lb-field">Body part<select id="lb-expart" class="lb-input"' + (id && LIB[id] ? ' disabled' : '') + '>' + PARTS.map(p => '<option' + (p === ex.part ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label><label class="lb-field">Equipment<select id="lb-excat" class="lb-input"' + (id && LIB[id] ? ' disabled' : '') + '>' + CATS.map(c => '<option' + (c === ex.cat ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label>' +
         '<label class="lb-field">Default unit<select id="lb-exunit" class="lb-input"><option value="">App default (' + S.settings.unit + ')</option><option value="kg"' + (ex.unit === 'kg' ? ' selected' : '') + '>kg</option><option value="lb"' + (ex.unit === 'lb' ? ' selected' : '') + '>lb</option></select></label><label class="lb-field">Rest timer (seconds)<input id="lb-exrest" class="lb-input" inputmode="numeric" placeholder="' + (ex.compound ? S.settings.restCompound : S.settings.restIso) + '" value="' + esc(ex.rest || '') + '"></label><label class="lb-field">Machine settings and notes<textarea id="lb-exmemo" class="lb-input" rows="3" placeholder="Seat height 4, pad on notch 6…">' + esc(ex.memo || '') + '</textarea></label>' +
+        stepFieldHtml(ex) +
         '<label class="lb-check"><input type="checkbox" id="lb-excomp"' + (ex.compound ? ' checked' : '') + '> Big compound lift (uses the longer rest)</label>' +
         '<div class="lb-row"><button class="lb-btn primary wide" data-a="saveEx" data-id="' + (id || '') + '">Save</button></div>',
       onSave: after
@@ -725,12 +784,43 @@ Stair Climber|Cardio|Cardio|`;
     const name = v('#lb-exname');
     if (!isLib && !name) { toast('Give the exercise a name'); return; }
     const newId = id || ('c-' + slug(name) + '-' + uid().slice(-4));
-    const doc = Object.assign({}, S.data.exercises[newId] || {}, { id: newId, unit: v('#lb-exunit') || undefined, rest: num(v('#lb-exrest')) || undefined, memo: v('#lb-exmemo'), compound: el.querySelector('#lb-excomp').checked });
+    const unit = v('#lb-exunit') || undefined, step = num(v('#lb-exstep'));
+    const doc = Object.assign({}, S.data.exercises[newId] || {}, { id: newId, unit, rest: num(v('#lb-exrest')) || undefined, memo: v('#lb-exmemo'), compound: el.querySelector('#lb-excomp').checked, step: step > 0 ? step : undefined, stepUnit: step > 0 ? (unit || S.settings.unit) : undefined });
     if (!isLib) Object.assign(doc, { name, part: v('#lb-expart'), cat: v('#lb-excat'), custom: true });
     put('exercises', JSON.parse(JSON.stringify(doc)));
     const after = topSheet().o.onSave;
     closeSheet(); toast('Saved');
     if (after) after(newId);
+    const sh = topSheet(); if (sh) sh.render();
+  });
+  // Weight increment input with the common stack steps as chips. Saved in the exercise's logging unit.
+  function stepFieldHtml(ex) {
+    const unit = ex.unit || S.settings.unit, cur = num(ex.step) && (ex.stepUnit || unit) === unit ? +ex.step : '';
+    const chips = unit === 'lb' ? [2.5, 5, 10] : [1, 1.25, 2, 2.5, 5];
+    return '<label class="lb-field">Weight step (' + unit + ')<input id="lb-exstep" class="lb-input num" inputmode="decimal" placeholder="' + fmtN(defaultStep(ex, unit), 2) + ' (' + esc(ex.cat || 'Machine') + ' default)" value="' + cur + '"></label>' +
+      '<div class="lb-row tight lb-chips">' + chips.map(c => '<button type="button" class="lb-btn small' + (cur === c ? ' primary' : ' ghost') + '" data-a="stepChip" data-v="' + c + '">' + fmtN(c, 2) + '</button>').join('') + '</div>' +
+      '<p class="lb-muted small">The smallest jump this machine or dumbbell rack allows. Steppers, "try X next" hints and warm-ups round to it.</p>';
+  }
+  on('stepChip', t => { const el = topSheet().el, inp = el.querySelector('#lb-exstep'); if (inp) inp.value = t.dataset.v; el.querySelectorAll('[data-a="stepChip"]').forEach(b => { b.classList.toggle('primary', b === t); b.classList.toggle('ghost', b !== t); }); });
+  // Quick machine setup while logging: seat / pin notes and the weight step, without leaving the workout.
+  function memoHtml(ex, editable) {
+    const txt = ex.memo ? esc(ex.memo).replace(/\n+/g, ' · ') : '';
+    if (!editable) return txt ? '<p class="lb-memo small">' + txt + '</p>' : '';
+    return '<button class="lb-memo-btn' + (txt ? '' : ' empty') + '" data-a="exSetup" data-id="' + esc(ex.id) + '" aria-label="Machine settings">' + (txt ? '⚙ ' + txt : '⚙ Add seat, pin or weight step') + '</button>';
+  }
+  on('exSetup', t => {
+    const id = t.dataset.id;
+    openSheet({
+      title: () => 'Machine settings · ' + getEx(id).name,
+      body: () => { const ex = getEx(id); return '<label class="lb-field">Seat, pins, grips, notes<textarea id="lb-exmemo" class="lb-input" rows="3" placeholder="Seat 4, chest pad 6, handles wide…">' + esc(ex.memo || '') + '</textarea></label>' + stepFieldHtml(ex) + '<div class="lb-row"><button class="lb-btn primary wide" data-a="saveSetup" data-id="' + esc(id) + '">Save</button></div>'; }
+    });
+  });
+  on('saveSetup', t => {
+    const el = topSheet().el, id = t.dataset.id, ex = getEx(id), unit = ex.unit || S.settings.unit, step = num(el.querySelector('#lb-exstep').value);
+    const doc = Object.assign({}, S.data.exercises[id] || {}, { id, memo: el.querySelector('#lb-exmemo').value.trim(), step: step > 0 ? step : undefined, stepUnit: step > 0 ? unit : undefined });
+    put('exercises', JSON.parse(JSON.stringify(doc)));
+    closeSheet(); toast('Saved');
+    if (E) renderEditor(); else renderMain();
     const sh = topSheet(); if (sh) sh.render();
   });
 
@@ -739,7 +829,8 @@ Stair Climber|Cardio|Cardio|`;
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
   // Demo button: ExerciseDemos (opts.demos) when given, else the form cues link for exercises in the guide.
   function demoBtn(id, entry) {
-    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues;
+    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues, an = S.opts && S.opts.anim;
+    if (an && an.has(id)) return '<button type="button" class="lb-btn small ghost" data-ea-open="' + esc(id) + '">Demo</button>';
     const l = dm ? dm.link(id, getEx(id).name) : (fc && entry ? { href: fc.demoUrl(entry), label: 'Demo ↗' } : null);
     return l ? '<a class="lb-btn small ghost" href="' + esc(l.href) + '" target="_blank" rel="noopener noreferrer">' + esc(l.label) + '</a>' : '';
   }
@@ -756,7 +847,7 @@ Stair Climber|Cardio|Cardio|`;
   function exDetail(id) {
     const ex = getEx(id), ss = sessions(id), R = records(id), weighted = isWeighted(ex);
     if (exTab === 'about') {
-      return '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div></div>' +
+      return (S.opts.anim ? S.opts.anim.cardHtml(id) : '') + '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div>' + (weighted ? '<div><b>' + fmtN(weightStep(ex, ex.unit || S.settings.unit), 2) + ' ' + (ex.unit || S.settings.unit) + '</b><span>Weight step' + (num(ex.step) ? '' : ' (default)') + '</span></div>' : '') + '</div>' +
         (ex.avoided ? '<p class="lb-warnbox">Your plan avoids this lift (no deadlifts, RDLs, hip thrusts, back extensions, glute-ham raises, reverse hypers or cable pull-throughs). Pick a machine-based option instead.</p>' : '') +
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
@@ -906,6 +997,11 @@ Stair Climber|Cardio|Cardio|`;
     list.forEach(p => { while (rem >= p - 1e-9) { out.push(p); rem = Math.round((rem - p) * 100) / 100; } });
     return { plates: out, rem };
   }
+  // Smallest total you can actually load at or above this per-side weight.
+  function loadableUp(perSide, unit) {
+    const list = unit === 'lb' ? S.settings.platesLb : S.settings.platesKg, small = Math.min(...list), r = platesFor(Math.max(0, perSide), unit);
+    return r.rem > 0 ? Math.round((perSide - r.rem + small) * 100) / 100 : Math.round(perSide * 100) / 100;
+  }
   const PLATE_COLORS = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'];
   function plateSvg(plates, unit) {
     const list = unit === 'lb' ? S.settings.platesLb : S.settings.platesKg;
@@ -921,7 +1017,7 @@ Stair Climber|Cardio|Cardio|`;
     const r = platesFor(Math.max(0, per), plate.unit);
     return '<div class="lb-row tight"><div class="lb-seg"><button data-a="plateMode" data-k="total" class="' + (plate.mode === 'total' ? 'on' : '') + '">Total weight</button><button data-a="plateMode" data-k="side" class="' + (plate.mode === 'side' ? 'on' : '') + '">Per side</button></div><div class="lb-seg"><button data-a="plateUnit" data-k="kg" class="' + (plate.unit === 'kg' ? 'on' : '') + '">kg</button><button data-a="plateUnit" data-k="lb" class="' + (plate.unit === 'lb' ? 'on' : '') + '">lb</button></div></div>' +
       '<div class="lb-row tight"><label class="lb-field inline">' + (plate.mode === 'total' ? 'Total' : 'Per side') + '<input class="lb-input num" id="lb-plateval" inputmode="decimal" value="' + plate.val + '" data-in="plateVal"></label><label class="lb-field inline">Bar<input class="lb-input num" inputmode="decimal" value="' + bar + '" data-in="barVal"></label></div>' +
-      '<div id="lb-plateout">' + (per < 0 ? '<p class="lb-muted">That is lighter than the bar.</p>' : plateSvg(r.plates, plate.unit) + '<p><b>Each side:</b> ' + (r.plates.length ? r.plates.join(' + ') + ' ' + plate.unit : 'empty bar') + (r.rem > 0 ? ' <span class="lb-warn">(' + fmtN(r.rem, 2) + ' ' + plate.unit + ' left over)</span>' : '') + '</p><p class="lb-muted small">Total on the bar: ' + fmtN(total - r.rem * 2, 2) + ' ' + plate.unit + ' · ' + fmtN(Math.max(0, per), 2) + ' per side</p>') + '</div>';
+      '<div id="lb-plateout">' + (per < 0 ? '<p class="lb-muted">That is lighter than the bar.</p>' : plateSvg(r.plates, plate.unit) + '<p><b>Each side:</b> ' + (r.plates.length ? r.plates.join(' + ') + ' ' + plate.unit : 'empty bar') + (r.rem > 0 ? ' <span class="lb-warn">(' + fmtN(r.rem, 2) + ' ' + plate.unit + ' left over)</span>' : '') + '</p>' + (r.rem > 0 ? '<p class="lb-hint small">Load ' + fmtN(total - r.rem * 2, 2) + ' or ' + fmtN(loadableUp(per, plate.unit) * 2 + bar, 2) + ' ' + plate.unit + ' instead.</p>' : '') + '<p class="lb-muted small">Total on the bar: ' + fmtN(total - r.rem * 2, 2) + ' ' + plate.unit + ' · ' + fmtN(Math.max(0, per), 2) + ' per side</p>') + '</div>';
   }
   function refreshTool(id, html) { const el = root.querySelector(id) || (topSheet() && topSheet().el.querySelector(id)); if (el) el.innerHTML = html; }
   on('plateMode', t => { const bar = plate.unit === 'lb' ? S.settings.barLb : S.settings.bar; if (t.dataset.k !== plate.mode) plate.val = t.dataset.k === 'side' ? Math.max(0, (plate.val - bar) / 2) : plate.val * 2 + bar; plate.mode = t.dataset.k; rerenderTools(); });
@@ -931,8 +1027,8 @@ Stair Climber|Cardio|Cardio|`;
   function partialPlate() { const tmp = document.createElement('div'); tmp.innerHTML = plateTool(); refreshTool('#lb-plateout', tmp.querySelector('#lb-plateout').innerHTML); }
   function rerenderTools() { const sh = topSheet(); if (sh && sh.o.tool) sh.render(); else renderMain(); }
   let settingsT; function saveSettingsSoon() { clearTimeout(settingsT); settingsT = setTimeout(saveSettings, 600); }
-  function warmSets(w, unit, bar) {
-    const step = unit === 'lb' ? 5 : 2.5, rd = v => Math.max(bar, Math.round(v / step) * step);
+  function warmSets(w, unit, bar, step) {
+    step = step || (unit === 'lb' ? 5 : 2.5); const rd = v => Math.max(bar, snapStep(v, step));
     const plan = [[0, 10], [0.5, 8], [0.7, 5], [0.85, 3]];
     const out = []; plan.forEach(([p, r]) => { const v = p ? rd(w * p) : bar; if (v < w && !out.some(o => o.w === v)) out.push({ w: v, r }); });
     return out;
@@ -1089,8 +1185,38 @@ Stair Climber|Cardio|Cardio|`;
   }
   on('minimize', () => { closeEditor(); });
   function headHtml() {
-    if (E.mode === 'live') return '<button class="lb-link" data-a="minimize" aria-label="Minimize workout">Hide</button><span class="lb-headmid"><span class="lb-mono lb-elapsed" data-clock="' + E.doc.start + '">' + clock(Date.now() - E.doc.start) + '</span><button class="lb-link small" data-a="gymToggle">' + (E.view === 'gym' ? 'List view' : 'Gym mode') + '</button></span><button class="lb-btn primary small" data-a="finish">Finish</button>';
+    if (E.mode === 'live') return '<button class="lb-link" data-a="minimize" aria-label="Minimize workout">Hide</button><span class="lb-headmid"><span class="lb-mono lb-elapsed" data-clock="' + E.doc.start + '">' + clock(Date.now() - E.doc.start) + '</span><button class="lb-link small" data-a="gymToggle">' + (E.view === 'gym' ? 'List view' : 'Gym mode') + '</button></span><span class="lb-headend">' + (global.VoiceLog ? '<button class="lb-mic" data-a="voice" aria-label="Log by voice" title="Log by voice">' + MIC_ICON + '</button>' : '') + '<button class="lb-btn primary small" data-a="finish">Finish</button></span>';
     return '<button class="lb-link" data-a="cancelEdit">Cancel</button><b>' + (E.mode === 'template' ? 'Edit template' : 'Edit workout') + '</b><button class="lb-btn primary small" data-a="saveEdit">Save</button>';
+  }
+  // ---------- Voice logging (VoiceLog module, optional) ----------
+  const MIC_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4zm6-4a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.06A8 8 0 0 1 4 11a1 1 0 1 1 2 0 6 6 0 0 0 12 0z"/></svg>';
+  on('voice', () => {
+    if (!global.VoiceLog || !E) return;
+    const cur = E.view === 'gym' && fixCur() ? E.doc.exercises[E.cur[0]] : null;
+    global.VoiceLog.open({ exercises: allExercises(), unit: S.settings.unit, current: cur ? cur.exId : undefined, prefer: E.doc.exercises.map(e => e.exId), onApply: applyVoice });
+  });
+  // entries: [{exId, unit, sets:[{t,w,r,km,min,sec,done}]}] from VoiceLog. Fills the exercise's pending sets first, then appends.
+  function applyVoice(entries) {
+    if (!E) return 0;
+    let n = 0; const names = [];
+    (entries || []).forEach(en => {
+      let ei = E.doc.exercises.findIndex(x => x.exId === en.exId), e = E.doc.exercises[ei];
+      if (!e) { e = { exId: en.exId, unit: en.unit || defUnit(en.exId), notes: '', sets: [] }; E.doc.exercises.push(e); ei = E.doc.exercises.length - 1; }
+      const ex = getEx(en.exId); names.push(ex.name);
+      en.sets.forEach(src => {
+        const vals = Object.assign({}, src);
+        if (vals.w && en.unit && en.unit !== e.unit) vals.w = fmtN(en.unit === 'lb' ? +vals.w * LB : +vals.w / LB, 1).replace(/,/g, '');
+        let j = e.sets.findIndex(x => !x.done && x.t !== 'w');
+        if (j < 0) { e.sets.push({ t: 'n', w: '', r: '', km: '', min: '', sec: '', done: false }); j = e.sets.length - 1; }
+        const s = e.sets[j];
+        ['w', 'r', 'km', 'min', 'sec'].forEach(k => { if (vals[k] !== '' && vals[k] != null) s[k] = String(vals[k]); });
+        s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id); n++;
+      });
+    });
+    if (!n) return 0;
+    touch(); renderEditor(); renderRest();
+    toast('Logged ' + n + ' set' + (n > 1 ? 's' : '') + ': ' + [...new Set(names)].join(', '));
+    return n;
   }
   function prevFor(e) {
     if (E.mode === 'template') { const s = sessions(e.exId)[0]; return { sets: s ? s.e.sets : [], src: 'last', unit: s ? s.e.unit : e.unit }; }
@@ -1134,7 +1260,7 @@ Stair Climber|Cardio|Cardio|`;
         (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') +
         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
-        (ex.memo ? '<p class="lb-memo small">' + esc(ex.memo) + '</p>' : '') +
+        memoHtml(ex, live) +
         (hint ? '<p class="lb-hint small">' + esc(hint) + '</p>' : '') +
         (e.showNote || e.notes ? '<textarea class="lb-input lb-notes" rows="1" placeholder="Note for this exercise" data-in="eNote" data-ei="' + i + '">' + esc(e.notes || '') + '</textarea>' : '') +
         '<div class="lb-sets" style="--cols:' + cols + '"><div class="lb-setrow head"><span>Set</span><span>Previous</span>' + f.map(k => '<span>' + ({ w: e.unit.toUpperCase(), r: 'Reps', km: 'Km', min: 'Min', sec: 'Sec' }[k]) + '</span>').join('') + xc.map(k => '<span>' + k.toUpperCase() + '</span>').join('') + '<span>' + (live ? '✓' : '') + '</span></div>';
@@ -1181,6 +1307,10 @@ Stair Climber|Cardio|Cardio|`;
       const pTxt = fmtSet(p, { unit: pUnit, exId: e.exId }, ex) + (num(p.rir) != null ? ' · RIR ' + p.rir : p.rpe ? ' · @' + p.rpe : '');
       out += '<div class="lb-gym-last"><span>' + (p._base ? 'Plan target' : 'Last time') + '</span><b>' + esc(pTxt) + '</b></div>';
     } else out += '<div class="lb-gym-last"><span>Last time</span><b class="lb-muted">First time logging this set</b></div>';
+    // Back after 7+ days off this lift: the host's BreakRamp suggests 90% / 95% of the pre-break weights.
+    if (S.opts.breakRamp && isWeighted(ex) && s.t !== 'w') {
+      try { out += S.opts.breakRamp.noteHtml(S.opts.breakRamp.plan(S.opts.breakRamp.fromLogger(workouts(), e.exId, { excludeId: E.doc.id }), { today: Date.now(), step: weightStep(ex, e.unit) }), e.unit); } catch (err) {}
+    }
     if (p && isWeighted(ex)) {
       const d = compareSets(vals, p, e.unit, pUnit), chips = [];
       if (d && d.dw != null) chips.push('<span class="lb-delta ' + (d.dw > 0 ? 'up' : d.dw < 0 ? 'down' : '') + '">' + signed(d.dw, 2) + ' ' + e.unit + '</span>');
@@ -1207,17 +1337,18 @@ Stair Climber|Cardio|Cardio|`;
     const stepTxt = k => fmtN(stepFor(ex, e.unit, k), 2);
     let n = 0;
     let html = '<div class="lb-gym">' +
-      (E.flash ? '<div class="lb-gym-pr" role="status">New record · ' + esc(E.flash) + '</div>' : '') +
+      (E.flash ? (typeof E.flash === 'object' && PRC ? PRC.bannerHtml(E.flash, esc) : '<div class="lb-gym-pr" role="status">New record · ' + esc(E.flash) + '</div>') : '') +
       '<div class="lb-gym-top"><span>Exercise ' + (ei + 1) + ' of ' + d.exercises.length + '</span>' +
       (e.ss ? '<span class="lb-gym-ss ss' + (ssIds.indexOf(e.ss) % 4) + '">Superset ' + String.fromCharCode(65 + ssIds.indexOf(e.ss)) + ' · ' + (partners.findIndex(o => o.k === ei) + 1) + '/' + partners.length + '</span>' : '') + '</div>' +
       '<div class="lb-gym-headrow"><button class="lb-gym-name" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + ei + '" aria-label="Exercise options">•••</button></div>' +
+      (S.opts.anim ? S.opts.anim.cardHtml(e.exId) : '') +
       (e.ss ? '<p class="lb-muted small">Alternate with ' + esc(partners.filter(o => o.k !== ei).map(o => getEx(o.x.exId).name).join(', ')) + ', rest after the round.</p>' : '') +
       '<div class="lb-gym-tools">' + demoBtn(e.exId, entry) +
       '<button class="lb-btn small ghost" data-a="exOpen" data-id="' + e.exId + '">How to</button><button class="lb-btn small ghost" data-a="restEdit" data-ei="' + ei + '">Rest ' + restLabel(restOf(e)) + '</button>' +
       (isWeighted(ex) ? '<button class="lb-btn small ghost" data-a="exPlates" data-ei="' + ei + '">Plates</button>' : '') + '</div>' +
       (fc && entry ? fc.inlineHtml(entry, e.exId) : '') +
       (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
-      (ex.memo ? '<p class="lb-memo small">' + esc(ex.memo) + '</p>' : '') +
+      memoHtml(ex, true) +
       '<div class="lb-gym-dots" role="group" aria-label="Sets">' + e.sets.map((x, j) => '<button class="lb-gym-dot ' + x.t + (x.done ? ' done' : '') + (j === si ? ' cur' : '') + '" data-a="gGo" data-ei="' + ei + '" data-si="' + j + '" aria-label="' + esc(setLabel(e, j)) + (x.done ? ', done' : '') + '">' + (x.t === 'n' ? ++n : x.t.toUpperCase()) + '</button>').join('') + '<button class="lb-gym-dot add" data-a="gAdd" aria-label="Add a set">+</button></div>' +
       '<section class="lb-gym-card' + (s.done ? ' done' : '') + '">' +
       '<div class="lb-gym-setlabel">' + esc(setLabel(e, si)) + (s.done ? ' <span class="lb-gym-ok">✓ done</span>' : '') + '</div>' +
@@ -1260,7 +1391,7 @@ Stair Climber|Cardio|Cardio|`;
   on('gNext', () => { const nx = nextPending(E.doc.exercises, E.cur); if (nx) gymGo(nx[0], nx[1]); });
   on('gStep', t => {
     const c = gymCtx(), k = t.dataset.k, start = c.vals[k] === '' || c.vals[k] == null ? 0 : String(c.vals[k]).replace(/,/g, '');
-    c.s[k] = String(bumpVal(start, +t.dataset.d * stepFor(c.ex, c.e.unit, k)));
+    c.s[k] = String(k === 'w' ? stepWeight(start, +t.dataset.d, weightStep(c.ex, c.e.unit)) : bumpVal(start, +t.dataset.d * stepFor(c.ex, c.e.unit, k)));
     if (c.s.done) c.s.pr = setPRs(c.e.exId, c.e.unit, c.s, E.doc.id);
     touch();
     const inp = liveEl.querySelector('.lb-gym-num[data-k="' + k + '"]'); if (inp) inp.value = c.s[k];
@@ -1276,7 +1407,7 @@ Stair Climber|Cardio|Cardio|`;
   on('gDone', () => {
     const [ei, si] = E.cur, s = E.doc.exercises[ei].sets[si];
     if (!completeSet(ei, si, true)) return; // the gym screen shows its own record banner
-    E.flash = s.pr && s.pr.length ? getEx(E.doc.exercises[ei].exId).name + ': ' + s.pr.join(', ') : null;
+    E.flash = s.pr && s.pr.length ? (celebration(E.doc.exercises[ei], s) || getEx(E.doc.exercises[ei].exId).name + ': ' + s.pr.join(', ')) : null;
     const nx = nextPending(E.doc.exercises, [ei, si]); if (nx) E.cur = nx;
     touch(); renderEditor(); renderRest(); liveEl.querySelector('.lb-live-body').scrollTop = 0;
   });
@@ -1307,9 +1438,10 @@ Stair Climber|Cardio|Cardio|`;
     f.forEach(k => { const ph = phFor(prev, p, e, k); if ((s[k] === '' || s[k] == null) && ph !== '') s[k] = String(ph).replace(/,/g, ''); });
     if (f.every(k => s[k] === '' || s[k] == null)) { toast('Enter ' + (f[0] === 'w' ? 'weight and reps' : 'a value') + ' first'); return false; }
     s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id);
-    if (s.pr.length && !quiet) toast('New record: ' + ex.name + ' · ' + s.pr.join(', '));
+    const cel = celebration(e, s);
+    if (s.pr.length && !quiet) { if (cel) PRC.fire(cel, { toast, vibrate: !!S.settings.vibrate }); else toast('New record: ' + ex.name + ' · ' + s.pr.join(', ')); }
     if (ex.cat !== 'Cardio' && restAfter(E.doc.exercises, i, j)) startRest(restOf(e));
-    if (S.settings.vibrate && navigator.vibrate) try { navigator.vibrate(15); } catch (er) { }
+    if (S.settings.vibrate && navigator.vibrate && !(cel && !quiet)) try { navigator.vibrate(15); } catch (er) { }
     return true;
   }
   on('check', t => {
@@ -1481,13 +1613,13 @@ Stair Climber|Cardio|Cardio|`;
         (prs.length ? '<h4>New records</h4><ul class="lb-prlist">' + prs.map(p => '<li><b>' + esc(p.ex) + '</b> ' + esc(fmtSet(p.s, p.e)) + ' <span class="lb-pr">' + esc(p.s.pr.join(', ')) + '</span></li>').join('') + '</ul>' : '') +
         (drops.length ? '<p class="lb-warnbox">' + esc(drops.map(x => x.name).join(', ')) + ' dropped 2 sessions in a row. Check sleep, pre-workout food and volume before changing calories.</p>' : '') +
         (tread ? '' : '<p class="lb-note">Don’t forget your 30 min treadmill (about 4.0 km/h, incline 3).</p>') +
-        '<div class="lb-row"><button class="lb-btn ghost" data-a="copySummary" data-id="' + w.id + '">Copy summary</button><button class="lb-btn ghost" data-a="histOpen" data-id="' + w.id + '">View details</button></div>'
+        '<div class="lb-row"><button class="lb-btn primary" data-a="shareWorkout" data-id="' + w.id + '">Share</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + w.id + '">Copy summary</button><button class="lb-btn ghost" data-a="histOpen" data-id="' + w.id + '">View details</button></div>'
     });
   }
 
   // ---------- Rest timer ----------
-  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); }
-  function stopRest() { rest = null; persistRest(); renderRest(); }
+  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec } })); } catch (e) { } }
+  function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
   on('restManual', t => { primeAudio(); startRest(+t.dataset.s); toast('Rest timer ' + mmss(+t.dataset.s)); renderRest(); });
   on('restAdj', t => { if (!rest) return; rest.end += +t.dataset.d * 1000; rest.total = Math.max(rest.total + +t.dataset.d, 1); persistRest(); renderRest(); });
@@ -1685,6 +1817,9 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-sslabel{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--lb-muted)}
 .lb-exhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .lb-memo{color:var(--lb-muted);font-style:italic}
+.lb-memo-btn{display:block;width:100%;text-align:left;background:none;border:1px dashed var(--lb-line);color:var(--lb-muted);border-radius:10px;padding:6px 10px;font:inherit;font-size:.85rem;font-style:italic;cursor:pointer;margin:4px 0}
+.lb-memo-btn:not(.empty){border-style:solid;color:inherit;font-style:normal}
+.lb-chips{margin:-4px 0 6px}
 .lb-hint{color:var(--lb-good);font-weight:600}
 .lb-sets{margin-top:8px}
 .lb-setrow{display:grid;grid-template-columns:var(--cols);gap:6px;align-items:center;padding:4px 2px;border-radius:8px}
@@ -1707,6 +1842,8 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-rest-row{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:6px;max-width:720px;margin-left:auto;margin-right:auto}
 .lb-rest-time{font-size:1.7rem;font-weight:700;min-width:5.5rem;text-align:center}
 .lb-headmid{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.15}
+.lb-headend{display:flex;align-items:center;gap:8px}
+.lb-mic{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:1px solid var(--lb-line);background:var(--lb-sunk);color:var(--lb-accent);cursor:pointer;padding:0}
 .lb-live.gym .lb-live-body{padding-bottom:200px}
 .lb-gym{display:flex;flex-direction:column;gap:12px}
 .lb-gym-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.74rem;letter-spacing:.12em;text-transform:uppercase;color:var(--lb-muted);font-weight:700}
@@ -1752,7 +1889,7 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-gym-pair{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:stretch} .lb-gym-pair .lb-btn{min-height:76px;padding:0 18px}
 .lb-gym-nav{display:grid;grid-template-columns:1fr auto 1fr;gap:8px} .lb-gym-nav .lb-btn{min-height:52px;padding:6px 10px;font-size:.9rem}
 .lb-gym-nav .lb-btn:disabled{opacity:.4}
-.lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}
+.lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}.pr-celebrate b{display:block;font-size:1rem}.pr-celebrate-lines{display:block;margin-top:4px;font-weight:600;font-size:.88rem;opacity:.95}.pr-celebrate-lines>span{display:block}.pr-celebrate small{opacity:.8;font-weight:500}
 @keyframes lb-pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
 .lb-live.gym .lb-rest{padding-top:12px}
 .lb-live.gym .lb-rest-bar{height:8px;border-radius:4px}
@@ -1762,6 +1899,7 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-rest-next b{color:var(--lb-ink)}
 @media (max-width:360px){.lb-gym-field{grid-template-columns:60px minmax(0,1fr) 60px}.lb-gym-num{font-size:2.5rem}.lb-gym-name{font-size:1.8rem}.lb-live.gym .lb-rest-row{gap:6px}.lb-live.gym .lb-rest-time{font-size:2.6rem;min-width:5rem}.lb-live.gym .lb-rest-row .lb-btn{min-width:52px;padding:6px 8px}}
 .lb-done-hero{text-align:center;padding:10px 0 14px} .lb-done-hero b{display:block;font-family:var(--lb-display);font-size:1.9rem} .lb-done-hero span{color:var(--lb-muted)}
+.lb-share{background:var(--lb-sunk);border-radius:var(--lb-r);padding:8px;margin-bottom:10px} .lb-share img{display:block;width:100%;height:auto;border-radius:calc(var(--lb-r)*.7);box-shadow:0 6px 24px rgba(0,0,0,.18)} .lb-share-text{margin-top:10px} .lb-share-text pre{white-space:pre-wrap;font:inherit;font-size:.9rem;background:var(--lb-sunk);padding:10px;border-radius:var(--lb-r);margin:6px 0 0}
 .lb-prlist{list-style:none;padding:0;margin:0} .lb-prlist li{padding:6px 0;border-bottom:1px solid var(--lb-line)}
 .lb-toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--lb-ink);color:var(--lb-surface);padding:10px 16px;border-radius:999px;font-weight:600;font-size:.9rem;opacity:0;transition:opacity .2s,transform .2s;z-index:40;max-width:calc(100% - 32px);text-align:center;pointer-events:none}
 .lb-toast.show{opacity:1;transform:translate(-50%,0)}
@@ -1775,6 +1913,14 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     opts = opts || {};
     S.opts = opts; S.storage = opts.storage || localStorageAdapter('lb:');
     if (!document.getElementById('lb-style')) { const st = document.createElement('style'); st.id = 'lb-style'; st.textContent = CSS; document.head.appendChild(st); }
+    if (opts.anim) {
+      opts.anim.info = id => {
+        const g = opts.formCues ? opts.formCues.find(id) || opts.formCues.find(getEx(id).name) : null;
+        const l = opts.demos ? opts.demos.link(id, getEx(id).name) : null;
+        return { title: getEx(id).name, cues: g ? g.cues : [], steps: g ? g.steps : [], video: l ? { href: l.href, label: l.verified ? 'Watch a video ↗' : 'Search videos ↗' } : null };
+      };
+      opts.anim.attach(document);
+    }
     if (opts.demos && !document.getElementById('ed-style')) { const st = document.createElement('style'); st.id = 'ed-style'; st.textContent = opts.demos.css; document.head.appendChild(st); }
     if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
     root = el; root.classList.add('lb');
@@ -1791,8 +1937,8 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   }
   // Called by a host when its storage changed underneath (another device): reload and redraw.
   async function refresh() { await loadAll(); if (!E && !sheets.length) renderMain(); }
-  const api = { mount, refresh, buildProgram, toShellRecord, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
-    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal } };
+  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 

@@ -1,0 +1,13 @@
+# The website is the app/ folder as committed (app/index.html is built by build/build.js and checked in).
+[build]
+  publish = "app"
+  command = ""
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
