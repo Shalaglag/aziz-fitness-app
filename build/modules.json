@@ -29,6 +29,7 @@
     { "file": "modules/meal-grade/meal-grade.js" },
     { "file": "modules/protein-gap/protein-gap.js" },
     { "file": "modules/barcode-scanner/barcode-food.js", "expose": ["BarcodeFood"] },
+    { "file": "modules/label-scan/label-scan.js", "expose": ["LabelScan"] },
     { "file": "modules/exercise-swap/exercise-swap.js" },
     { "file": "modules/travel-workout/travel-workout.js" },
     { "file": "modules/short-session/short-session.js", "expose": ["ShortSession"] },
