@@ -1206,6 +1206,7 @@ function vProgress(){
   ${trendCard}
   ${safeMod("StrengthAnalytics",()=>StrengthAnalytics.html(S.docs, strengthOpts()))}
   ${safeMod("MuscleFeedback",()=>MuscleFeedback.planHtml(S.docs, mfOpts()))}
+  ${safeMod("StrengthScore",()=>StrengthScore.html(S.docs, strengthOpts()))}
   ${safeMod("TrendCompare",()=>TrendCompare.html(S.docs, tcOpts()))}
   ${window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
     <div class="tablewrap"><table><thead><tr><th>Lift</th><th class="n">Baseline</th><th class="n">Latest best set</th><th>Status</th></tr></thead><tbody>
@@ -1546,7 +1547,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
