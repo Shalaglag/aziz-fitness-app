@@ -189,3 +189,44 @@ test("html and summary render, empty state has no fake numbers", () => {
   assert.match(s, /Bench Press \(Barbell\): 114 → 114 kg/);
   assert.doesNotMatch(s, /NaN|undefined/);
 });
+
+test("set targets: default 10–20 for major muscles, overrides apply, arrows shift by STEP, reset clears", () => {
+  assert.deepEqual(SA.targetFor("chest", null, null), { lo: 10, hi: 20, custom: false });
+  assert.equal(SA.targetFor("calves", null, null), null);
+  assert.deepEqual(SA.targetFor("chest", { chest: { lo: 12, hi: 18 } }), { lo: 12, hi: 18, custom: true });
+  assert.deepEqual(SA.targetFor("calves", { calves: { lo: 6, hi: 12 } }), { lo: 6, hi: 12, custom: true });
+  assert.deepEqual(SA.targetFor("chest", { chest: { lo: 15, hi: 5 } }), { lo: 10, hi: 20, custom: false }, "a bad override falls back");
+  const up = SA.adjustTargets(null, "chest", 1);
+  assert.deepEqual(up, { chest: { lo: 10 + SA.STEP, hi: 20 + SA.STEP } });
+  const down = SA.adjustTargets({ chest: { lo: 1, hi: 11 } }, "chest", -1);
+  assert.deepEqual(down.chest, { lo: 0, hi: 11 - SA.STEP });
+  const calves = SA.adjustTargets({}, "calves", 1);
+  assert.deepEqual(calves.calves, { lo: 12, hi: 22 }, "a muscle without a default starts from the default range");
+  const reset = SA.adjustTargets({ chest: { lo: 12, hi: 22 }, back: { lo: 8, hi: 14 } }, "chest", 0);
+  assert.deepEqual(reset, { back: { lo: 8, hi: 14 } });
+  const same = { chest: { lo: 12, hi: 22 } };
+  SA.adjustTargets(same, "chest", 1);
+  assert.deepEqual(same, { chest: { lo: 12, hi: 22 } }, "input is not mutated");
+});
+
+test("set targets change the under / on / over status and the rendered row", () => {
+  const start = "2026-10-25", o = { today: add(start, 28), cutStart: start };
+  const base = SA.analyze(cutDocs(), o);
+  const chest = base.muscles.find(m => m.id === "chest");
+  assert.equal(chest.status, "low");
+  assert.deepEqual(chest.target, { lo: 10, hi: 20, custom: false });
+  const lowered = SA.analyze(cutDocs(), { ...o, setTargets: { chest: { lo: 2, hi: 6 } } }).muscles.find(m => m.id === "chest");
+  assert.equal(lowered.status, "ok");
+  assert.equal(lowered.target.custom, true);
+  const tiny = SA.analyze(cutDocs(), { ...o, setTargets: { chest: { lo: 0, hi: 1 } } }).muscles.find(m => m.id === "chest");
+  assert.equal(tiny.status, "high");
+  const h = SA.html(cutDocs(), { ...o, setTargets: { chest: { lo: 2, hi: 6 } }, onTargets: () => {} });
+  assert.match(h, /sa-mrow ok/);
+  assert.match(h, /data-sa-adj="chest:1"/);
+  assert.match(h, /data-sa-adj="chest:0"/, "reset shows for a custom target");
+  assert.match(h, /sa-tgt custom[^>]*>2–6</);
+  const ro = SA.html(cutDocs(), o);
+  assert.doesNotMatch(ro, /data-sa-adj/, "no arrows without onTargets");
+  const s = SA.summary(cutDocs(), { ...o, setTargets: { chest: { lo: 0, hi: 1 } } });
+  assert.match(s, /Over the weekly set target on average: Chest \(target 0–1\)/);
+});
