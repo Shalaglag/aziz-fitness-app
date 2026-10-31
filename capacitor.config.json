@@ -1,0 +1,14 @@
+{
+  "appId": "com.azizfitness.app",
+  "appName": "Aziz Fitness",
+  "webDir": "app",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#F2F4F6"
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 0 },
+    "Keyboard": { "resize": "body", "resizeOnFullScreen": true },
+    "LocalNotifications": { "smallIcon": "ic_stat_notify" }
+  }
+}
