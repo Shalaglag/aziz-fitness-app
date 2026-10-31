@@ -49,7 +49,7 @@ const Coach = (() => {
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   // Coaching rules, not personal targets: on-target band, safety floor for a suggested cut, size of one
   // suggested change, and the healthy loss pace in % of body weight a week. Overridable via opts.rules.
-  const RULES = { band: 150, floor: 1500, step: 150, paceLo: 0.5, paceHi: 1.0 };
+  const RULES = { band: 150, floor: 1800, step: 150, paceLo: 0.5, paceHi: 1.0 };
 
   const ms = s => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
   const iso = t => new Date(t).toISOString().slice(0, 10);

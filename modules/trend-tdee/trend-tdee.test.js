@@ -112,10 +112,22 @@ test("too few weigh-ins blocks the estimate", () => {
   assert.ok(E.notes[0].includes("weigh-ins (5 so far)"));
 });
 
-test("suggestion never goes under the 1,700 floor", () => {
+test("suggestion never goes under the 1,800 safety floor (same floor as the coach)", () => {
   const E = T.estimate(make({ n: 21, kcal: 1600, lossPerWeek: 0 }), { today: "2026-11-15" });
-  assert.equal(E.suggest.lo, 1700);
-  assert.equal(E.suggest.hi, 1700);
+  assert.equal(E.suggest.lo, 1800);
+  assert.equal(E.suggest.hi, 1800);
+  const F = T.estimate(make({ n: 21, kcal: 1600, lossPerWeek: 0 }), { today: "2026-11-15", floor: 1900 });
+  assert.equal(F.suggest.lo, 1900, "opts.floor overrides");
+});
+
+test("verdict uses the target passed in, not a fixed 2,000", () => {
+  const docs = make({ n: 21 });
+  const a = T.html(docs, { today: "2026-11-15" });
+  const b = T.html(docs, { today: "2026-11-15", kcal: 2200 });
+  assert.match(a, /2,000 kcal sits inside/);
+  assert.match(b, /2,200 kcal sits inside/, "the verdict names the target passed in");
+  const early = T.html(docs, { today: "2026-11-15", review: "2026-12-01" });
+  assert.match(early, /Hold 2,000 until the Dec 1 review/);
 });
 
 test("html escapes and has the chart", () => {

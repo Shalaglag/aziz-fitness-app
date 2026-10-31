@@ -13,14 +13,15 @@
  */
 const WeeklyReport = (() => {
   // Plan numbers; setTargets / opts.targets (an AppTargets object, plus optional startKg) replace them.
-  const PLAN = { START: "2026-10-25", START_KG: 91.9, GOAL: 80, KCAL: 2000, KCAL_LO: 1850, KCAL_HI: 2150, PRO: 160, PRO_MAX: 170, REVIEW: "2026-11-07" };
-  let START, START_KG, GOAL, KCAL, KCAL_LO, KCAL_HI, PRO, PRO_MAX, REVIEW;
+  const PLAN = { START: "2026-10-25", START_KG: 91.9, GOAL: 80, KCAL: 2000, KCAL_LO: 1850, KCAL_HI: 2150, FLOOR: 1800, PRO: 160, PRO_MAX: 170, REVIEW: "2026-11-07" };
+  let START, START_KG, GOAL, KCAL, KCAL_LO, KCAL_HI, FLOOR, PRO, PRO_MAX, REVIEW;
   function setTargets(t) {
     t = t || {};
     const n = v => typeof v === "number" && isFinite(v) && v > 0 ? v : typeof v === "string" && v.trim() && isFinite(+v) && +v > 0 ? +v : null;
     const d = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : null;
     START = d(t.start) || PLAN.START; START_KG = n(t.startKg) || PLAN.START_KG; GOAL = n(t.goalKg) || PLAN.GOAL;
     KCAL = n(t.kcal) || PLAN.KCAL;
+    FLOOR = n(t.kcalFloor) || PLAN.FLOOR;
     const lo = n(t.kcalLo), hi = n(t.kcalHi);
     KCAL_LO = lo && hi ? lo : n(t.kcal) ? KCAL - 150 : PLAN.KCAL_LO; KCAL_HI = lo && hi ? hi : n(t.kcal) ? KCAL + 150 : PLAN.KCAL_HI;
     PRO = n(t.proteinMin) || PLAN.PRO; PRO_MAX = n(t.proteinMax) || (n(t.proteinMin) ? PRO + 10 : PLAN.PRO_MAX);
@@ -109,7 +110,7 @@ const WeeklyReport = (() => {
       avg: ws.length ? mean(ws) : null, min: ws.length ? Math.min(...ws) : null, max: ws.length ? Math.max(...ws) : null,
       kcalDays: k.length, kcalAvg: k.length ? mean(k.map(r => r.kcal)) : null,
       targetDays: tgt.length, onTarget: tgt.filter(r => r.kcal >= KCAL_LO && r.kcal <= KCAL_HI).length,
-      over: tgt.filter(r => r.kcal > KCAL_HI).length, tooLow: tgt.filter(r => r.kcal < 1700).length,
+      over: tgt.filter(r => r.kcal > KCAL_HI).length, tooLow: tgt.filter(r => r.kcal < FLOOR).length,
       freeKcal: k.filter(r => r.type === "free").map(r => r.kcal),
       proDays: pr.length, proHit: pr.filter(r => r.protein >= PRO).length, proAvg: pr.length ? mean(pr.map(r => r.protein)) : null,
     };
@@ -183,7 +184,7 @@ const WeeklyReport = (() => {
     if (s.targetDays) {
       let t = s.onTarget + " of " + s.targetDays + " logged days on target (1,850–2,150 kcal eaten).";
       if (s.over) t += " " + s.over + " over.";
-      if (s.tooLow) t += " " + s.tooLow + " under 1,700, which the plan says to avoid.";
+      if (s.tooLow) t += " " + s.tooLow + " under " + FLOOR.toLocaleString("en-US") + ", the plan's safety floor.";
       v.push([s.onTarget >= s.targetDays * 0.7 ? "good" : "warn", "Calories", t]);
     } else v.push(["none", "Calories", "No eaten food ticked this week yet."]);
     if (s.proDays) v.push([s.proHit >= s.proDays * 0.7 ? "good" : "warn", "Protein", "Hit " + PRO + " g on " + s.proHit + " of " + s.proDays + " logged days (average " + fint(s.proAvg) + " g)."]);
@@ -250,7 +251,7 @@ const WeeklyReport = (() => {
       g += '<text x="' + x(i) + '" y="' + (H - 10) + '" text-anchor="middle">' + WD[wday(r.date)] + (r.type === "free" ? "*" : "") + '</text>';
       if (r.kcal == null) { g += '<text x="' + x(i) + '" y="' + (y(0) - 6) + '" text-anchor="middle">—</text>'; return; }
       const h = Math.max(2, y(0) - y(r.kcal)), rx = Math.min(4, h / 2), x0 = x(i) - bw / 2, x1 = x(i) + bw / 2, top = y(0) - h;
-      const fill = r.type === "free" ? "url(#wr-hatch)" : r.kcal > KCAL_HI || r.kcal < 1700 ? "var(--warn)" : "var(--accent)";
+      const fill = r.type === "free" ? "url(#wr-hatch)" : r.kcal > KCAL_HI || r.kcal < FLOOR ? "var(--warn)" : "var(--accent)";
       g += '<path d="M' + x0 + ' ' + y(0) + 'V' + (top + rx) + 'Q' + x0 + ' ' + top + ' ' + (x0 + rx) + ' ' + top + 'H' + (x1 - rx) + 'Q' + x1 + ' ' + top + ' ' + x1 + ' ' + (top + rx) + 'V' + y(0) + 'Z" fill="' + fill + '"' + (r.type === "free" ? ' stroke="var(--muted)"' : "") + '><title>' + WD[wday(r.date)] + " " + short(r.date) + ": " + fint(r.kcal) + " kcal" + (r.protein != null ? ", " + fint(r.protein) + " g protein" : "") + (r.est ? " (includes estimates)" : "") + '</title></path>';
     });
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Calories eaten each day against the ' + kc(KCAL) + ' kcal target">' + g + '</svg>';

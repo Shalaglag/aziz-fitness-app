@@ -80,6 +80,24 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("one calorie target everywhere: change it in Your numbers and no card still says 2,000", async () => {
+      const seed2200 = today => { const d = seed(today); d.prefs = { main: { profile: { cutKcal: 2200 } } }; return d; };
+      const { page, errors } = await openApp(browser, PHONES[0], seed2200);
+      const r = await page.evaluate(() => ({ target: kcalTarget(TODAY), base: TARGET.kcal, tdee: tdeeOpts().kcal, coachFloor: coachOpts().rules.floor, ramadan: dayTargets(TODAY).kcal }));
+      assert.deepStrictEqual(r, { target: 2200, base: 2200, tdee: 2200, coachFloor: 1800, ramadan: 2200 });
+      const stale = [];
+      for (const tab of TABS) {
+        await page.click(`#tabs button[data-tab="${tab}"]`);
+        await page.waitForTimeout(150);
+        const hits = await page.evaluate(() => (document.querySelector("#main").innerText.match(/[^\n]{0,40}\b2,?000\b(?! IU)[^\n]{0,30}/g) || []));
+        // The "Your numbers" help names the plan default on purpose ("leave a box empty to keep your plan's value").
+        hits.filter(h => !/plan's value/.test(h)).forEach(h => stale.push(tab + ": " + h));
+      }
+      assert.deepStrictEqual(stale, [], "cards still showing the old 2,000 target");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("7-day average needs 7 weigh-ins and averages them", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       const r = await page.evaluate(() => ({ a7: avg7(TODAY), yesterday: avg7(addDays(TODAY, -1)) }));

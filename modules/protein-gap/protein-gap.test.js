@@ -87,3 +87,10 @@ test('sandwich rule keeps French Tacos', () => {
   assert.ok(!PG.isDisliked('French Tacos Chicken Sandwich'));
   assert.ok(!PG.isDisliked('Grilled Chicken'));
 });
+
+test('summary names the day target passed in, not a fixed 2,000', () => {
+  const r = PG.suggest([item('Day so far', 2190, 120)], { targets: { kcal: 2200, proteinMin: 160, proteinMax: 170 } });
+  assert.equal(r.kcalTarget, 2200);
+  assert.match(PG.summary(r), /2,200 kcal/);
+  assert.doesNotMatch(PG.summary(r), /2,000/);
+});
