@@ -830,6 +830,83 @@ function coachExercise(name){
   }catch(err){ return null; }
 }
 function coachPlanToday(){ const sf=sessionFor(TODAY); const ex=(PROGRAM[sf.session]||[]).map(t=>({name:t[0], w:t[1], reps:t[2], sets:t[3], unit:t[4]||"kg"})); return {session:sf.session, chosen:!!sf.chosen, exercises:ex}; }
+const coachNorm = s => String(s||"").toLowerCase().replace(/\(.*?\)/g," ").replace(/[^a-z0-9]+/g," ").trim();
+const coachFmt = n => Math.round(n).toLocaleString("en-US");
+let coachAnim=null;
+function coachMeal(name){ const k=coachNorm(name); return Object.values(S.docs.meals||{}).find(m=>m && Array.isArray(m.items) && coachNorm(m.name)===k) || null; }
+function coachMenuItem(name){ const mn=(S.docs.menus||{})[TODAY], k=coachNorm(name); return mn && Array.isArray(mn.items) ? mn.items.find(i=>i && i.name && !i.skip && coachNorm(i.name)===k) || null : null; }
+function coachPlanName(name){ const w=workoutDoc(TODAY), k=coachNorm(name); return (PROGRAM[w.session]||[]).map(e=>e[0]).find(n=>coachNorm(n)===k) || null; }
+const coachActions = {
+  check(a){
+    if(a.type==="set_calorie_target"){
+      const cur=APPT && APPT.kcal, to=Math.round(+a.kcal);
+      if(!(to>0)) return {ok:false, error:"No calorie number was given."};
+      if(to<1800) return {ok:false, error:"That is below the 1,800 kcal safety floor."};
+      if(cur && Math.abs(to-cur)>150) return {ok:false, error:"Changes go in steps of up to 150 kcal; that would be "+coachFmt(Math.abs(to-cur))+"."};
+      if(cur===to) return {ok:false, error:"That is already your target."};
+      return {ok:true, change:"Daily calorie target "+(cur?coachFmt(cur)+" → ":"")+coachFmt(to)+" kcal (Guide, Your numbers). Diet-break and lift-day adjustments still apply on top."};
+    }
+    if(a.type==="add_saved_meal"){
+      const m=coachMeal(a.name); if(!m) return {ok:false, error:"There is no saved meal called \""+a.name+"\"."};
+      const k=m.items.reduce((t,i)=>t+(+i.kcal||0),0), p=m.items.reduce((t,i)=>t+(+i.p||0),0);
+      return {ok:true, change:"Add \""+m.name+"\" to today as planned, not eaten: "+m.items.length+" item"+(m.items.length===1?"":"s")+", "+coachFmt(k)+" kcal, "+Math.round(p)+" g protein."};
+    }
+    if(a.type==="add_menu_item"){
+      const it=coachMenuItem(a.name); if(!it) return {ok:false, error:"\""+a.name+"\" isn't on today's imported menu."};
+      if(it.kcal==null) return {ok:false, error:"Its calories weren't readable on the menu, so it can't be added from the chat."};
+      return {ok:true, change:"Add \""+it.name+"\" from today's menu as planned, not eaten: "+coachFmt(it.kcal)+" kcal"+(it.protein!=null?", "+Math.round(it.protein)+" g protein":"")+"."};
+    }
+    if(a.type==="swap_exercise"){
+      if(!window.ExerciseSwap) return {ok:false, error:"Exercise swaps aren't available here."};
+      const w=workoutDoc(TODAY), from=coachPlanName(a.from), to=String(a.to||"").trim();
+      if(!w.session || w.session==="Rest") return {ok:false, error:"Today is a rest day."};
+      if(!from) return {ok:false, error:"\""+a.from+"\" isn't in today's "+w.session+" session."};
+      if(!to || coachNorm(to)===coachNorm(from)) return {ok:false, error:"No replacement was given."};
+      if(ExerciseSwap.isAvoided(to)) return {ok:false, error:to+" is on your avoid list."};
+      if(ExerciseSwap.hurtInfo(swapState(), to)) return {ok:false, error:"You marked "+to+" as hurting."};
+      return {ok:true, change:"Today ("+w.session+"): do "+to+" instead of "+from+". Its sets count for the "+from+" slot; Back to plan on Train undoes it."};
+    }
+    if(a.type==="show_exercise"){
+      const ex=coachExercise(a.name); if(!ex) return {ok:false, error:"\""+a.name+"\" isn't in the exercise guide yet."};
+      return {ok:true, change:"Open how to do "+ex.name+": cues, common mistakes and the built-in demo where there is one."};
+    }
+    return {ok:false, error:"Unknown action."};
+  },
+  async apply(a){
+    const c=coachActions.check(a); if(!c.ok) return {ok:false, message:c.error};
+    if(a.type==="set_calorie_target"){
+      const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), cutKcal:Math.round(+a.kcal)}; await put("prefs","main",p);
+      return {ok:+(S.docs.prefs.main?.profile?.cutKcal)===Math.round(+a.kcal), message:"Calorie target is now "+coachFmt(+a.kcal)+" kcal. Change it any time in Guide, Your numbers."};
+    }
+    if(a.type==="add_saved_meal"){
+      const m=coachMeal(a.name); const r=SavedMeals.applyToDay(getDay(TODAY),m,{uid});
+      if(!r.added.length) return {ok:false, message:"Everything in "+m.name+" is already on today."};
+      saveDay(r.day); put("meals",m.id,SavedMeals.markUsed(m),{quiet:true});
+      return {ok:true, message:"Added "+r.added.length+" item"+(r.added.length===1?"":"s")+" to Food. Tick them as you eat."};
+    }
+    if(a.type==="add_menu_item"){
+      const it=coachMenuItem(a.name), day=getDay(TODAY);
+      if(day.food.some(x=>coachNorm(x.name)===coachNorm(it.name) && !x.eaten)) return {ok:false, message:it.name+" is already planned for today."};
+      day.food=day.food.concat([{id:uid(), name:it.name, slot:it.slot||it.meal||"Meal", kcal:+it.kcal, p:+it.protein||0, c:+it.carbs||0, f:+it.fat||0, eaten:false}]); saveDay(day);
+      return {ok:true, message:"Added "+it.name+" to Food as planned. Tick it when you eat it."};
+    }
+    if(a.type==="swap_exercise"){
+      const from=coachPlanName(a.from); doSwap(from, String(a.to).trim(), "coach", TODAY);
+      return {ok:!!usedFor(S.docs.workouts[TODAY], from), message:"Today's "+from+" is now "+String(a.to).trim()+" on Train."};
+    }
+    if(a.type==="show_exercise"){
+      const ex=coachExercise(a.name);
+      try{
+        if(window.ExerciseAnim && window.ExerciseDemos && window.EXERCISE_DEMOS && window.WorkoutLogger){
+          coachAnim=coachAnim||ExerciseAnim.create(); const id=ExerciseDemos.create(window.EXERCISE_DEMOS,{library:WorkoutLogger.library}).id(ex.name);
+          if(id && coachAnim.has(id)){ coachAnim.info=()=>({title:ex.name, cues:ex.cues||[], steps:ex.setup||[], video:null}); coachAnim.open(id); return {ok:true, message:"Opened the demo for "+ex.name+". Cues: "+(ex.cues||[]).slice(0,3).join("; ")+"."}; }
+        }
+      }catch(e){}
+      return {ok:true, message:(ex.cues&&ex.cues.length?"Cues: "+ex.cues.slice(0,4).join("; ")+". ":"")+(ex.mistakes&&ex.mistakes.length?"Watch for: "+ex.mistakes.slice(0,2).join(" "):"")};
+    }
+    return {ok:false, message:"Unknown action."};
+  }
+};
 let coachCache=null; // one computation per tick: the panel's getters all ask within the same call
 function coachOpts(){ if(coachCache) return coachCache; const o={today:TODAY, targets:APPT, rules:{floor:1800}, kcalTarget}; coachCache=o; setTimeout(()=>{ coachCache=null; },0);
   try{ if(window.StrengthAnalytics) o.strength=StrengthAnalytics.analyze(S.docs, strengthOpts()); }catch(e){}
@@ -952,8 +1029,8 @@ function strongCard(){
 function usedFor(wk, planName){ const m=(wk&&wk.swapped)||{}; return Object.keys(m).find(u=>m[u]===planName) || null; }
 function swapState(){ return clone(S.docs.prefs.swaps || (window.ExerciseSwap ? ExerciseSwap.empty() : {})); }
 function workoutDoc(d){ const w=Object.assign({date:d,sets:{}},clone(S.docs.workouts[d])); if(!w.session){ const ses=sessionFor(d); if(ses){ w.session=ses.session; w.idx=ses.idx; } } return w; }
-function doSwap(planName, usedName, reason){
-  const d=view.date; let w=workoutDoc(d);
+function doSwap(planName, usedName, reason, date){
+  const d=date||view.date; let w=workoutDoc(d);
   const prev=usedFor(w, planName); if(prev){ w=ExerciseSwap.linkSwap(w, null, prev); }
   w = usedName ? ExerciseSwap.linkSwap(w, planName, usedName) : w;
   put("workouts", d, w);
@@ -1552,6 +1629,7 @@ try{
     effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee, tab:()=>view.tab,
     strength:()=>coachOpts().strength, recoveryText:()=>coachOpts().recoveryText, cardioText:()=>coachOpts().cardioText,
     planToday:coachPlanToday, exerciseNames:()=>Object.values(PROGRAM).flat().map(t=>t[0]), exercise:coachExercise,
+    actionHost:coachActions,
     onDismiss:id=>{ const m=clone(S.docs.prefs.main||{}); m.coachSeen={...(m.coachSeen||{}), [id]:TODAY}; put("prefs","main",m,{quiet:true}); },
     // Inside Claude: the page's sample capability (free). On the website: the app's own endpoint, which
     // checks the Firebase sign-in token and holds the API key (netlify/functions/coach.mjs).

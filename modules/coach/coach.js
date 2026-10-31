@@ -18,6 +18,9 @@
  *   Coach.liftHistory(docs, today)              -> per-lift last 5 sessions, best e1RM, PR flag
  *   Coach.insights(docs, opts)                  -> up to 3 local insights [{id, kind, title, text, evidence, ask}];
  *        opts.seen {id: date} hides ones shown in the last opts.repeatDays (7); opts.strength adds balance
+ *   Coach.ACTIONS / Coach.cleanActions(list)   -> the only actions Claude may propose; opts.actionHost
+ *        {check(a) -> {ok, change|error}, apply(a) -> Promise<{ok, message}>} shows the exact change and
+ *        applies it after a Confirm tap (show_exercise opens without changing data)
  *   Coach.insightsHtml(docs, opts)              -> "Patterns in your logs" card; opts.onDismiss(id) via bind
  *   Coach.exerciseIn(question, names)           -> the exercise name a question mentions, or null
  *   Coach.prompt(question, ctx, history)        -> the instruction sent to Claude
@@ -462,24 +465,83 @@ const Coach = (() => {
       "- Lifting advice: base loads on lifts.last5 and planToday; suggest at most one small step (2.5 kg, or one rep) when the last session hit its reps with effort 3 or less, hold when effort was 4-5 or readiness is low, and name the set. Never suggest exercises listed in exercisesThatHurt.",
       "- Food advice: pick only from plannedToday, savedMeals, menuToday or foods already in the logs, and respect dislikes; say what fits kcalLeft and proteinLeft.",
       "- Exercise technique: use exerciseAsked only. Say the app has a verified demo when demoVideo says so; never give a video link.",
+      "- You may propose at most 2 actions in \"actions\", only from this list and only when the user asks for a change or it clearly helps: set_calorie_target {kcal} (at most 150 kcal from the current target per step), add_saved_meal {name} (a name from savedMeals), add_menu_item {name} (a name from menuToday), swap_exercise {from, to} (from = an exercise in planToday, to = a similar exercise not in exercisesThatHurt), show_exercise {name}. Give each a short \"why\". The app shows the exact change and the user must confirm it, so never say a change is done; otherwise use [].",
       "- Plain, friendly language, under 120 words in answer. No markdown headings.",
       past ? "Earlier in this chat:\n" + past : "",
       "DATA:\n" + JSON.stringify(ctx),
       "Question: " + JSON.stringify(String(question || "").slice(0, 600)),
       "Reply with only JSON in this shape:",
-      '{"answer":"...","evidence":["Weight 7-day avg 90.8 kg vs 91.6 kg the week before"],"missing":["what isn\'t logged that would help"],"suggestion":null}',
+      '{"answer":"...","evidence":["Weight 7-day avg 90.8 kg vs 91.6 kg the week before"],"missing":["what isn\'t logged that would help"],"suggestion":null,"actions":[]}',
       'suggestion is null or {"title":"short action","why":"one sentence"}.',
     ].filter(Boolean).join("\n");
   }
 
   const clip = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+  // ---------- Safe actions: Claude proposes, the person confirms, the host applies ----------
+  // Only these types exist. Anything else in a reply is dropped. The host (opts.actionHost) checks each
+  // one against the real data, shows the exact change, and applies it only after a tap on Confirm.
+  const ACTIONS = {
+    set_calorie_target: { fields: { kcal: "num" }, label: "Change your calorie target" },
+    add_saved_meal: { fields: { name: "str" }, label: "Add a saved meal to today" },
+    add_menu_item: { fields: { name: "str" }, label: "Add a menu item to today" },
+    swap_exercise: { fields: { from: "str", to: "str" }, label: "Swap an exercise today" },
+    show_exercise: { fields: { name: "str" }, label: "Show how to do it", view: true },
+  };
+  function cleanActions(list) {
+    return (Array.isArray(list) ? list : []).slice(0, 4).map(a => {
+      if (!a || typeof a !== "object" || !Object.prototype.hasOwnProperty.call(ACTIONS, a.type)) return null;
+      const out = { type: a.type };
+      for (const [k, t] of Object.entries(ACTIONS[a.type].fields)) {
+        const v = t === "num" ? num(a[k]) : clip(a[k], 80);
+        if (v == null || v === "") return null;
+        out[k] = t === "num" ? Math.round(v) : v;
+      }
+      out.why = clip(a.why, 200);
+      return out;
+    }).filter(Boolean).slice(0, 2);
+  }
+  // Ask the host whether an action can be done right now and what exactly it would change.
+  function checkAction(a) {
+    if (!O || !O.actionHost || !O.actionHost.check) return { ok: false, error: "Changes from the chat aren't available here." };
+    try { const r = O.actionHost.check(a) || {}; return r.ok ? { ok: true, change: String(r.change || ""), view: !!(ACTIONS[a.type] && ACTIONS[a.type].view) } : { ok: false, error: String(r.error || "This can't be done right now.") }; }
+    catch (e) { return { ok: false, error: "This can't be done right now." }; }
+  }
+  function prepareActions(m) {
+    (m.actions || []).forEach(a => { const c = checkAction(a); a.status = c.ok ? "proposed" : "blocked"; a.change = c.change || ""; a.error = c.error || ""; a.view = !!c.view; });
+  }
+  async function runAction(a) {
+    if (!a || a.status !== "proposed") return;
+    const c = checkAction(a); // the data may have changed since the answer arrived
+    if (!c.ok) { a.status = "failed"; a.result = c.error; return; }
+    a.status = "applying"; renderPanel();
+    try {
+      const r = await Promise.resolve(O.actionHost.apply(a));
+      a.status = r && r.ok ? "done" : "failed";
+      a.result = (r && r.message) || (a.status === "done" ? "Done." : "That didn't work. Nothing was changed.");
+    } catch (e) { a.status = "failed"; a.result = "That didn't work. Nothing was changed."; }
+  }
+  function actionHtml(a, mi, ai) {
+    const spec = ACTIONS[a.type] || {}, key = mi + ":" + ai;
+    const why = a.why ? '<p class="co-act-why">' + esc(a.why) + "</p>" : "";
+    let body;
+    if (a.status === "blocked") body = '<p class="co-act-res co-warn">Can\'t do this: ' + esc(a.error) + "</p>";
+    else if (a.status === "proposed") body = '<p class="co-act-change">' + esc(a.change) + "</p>" + why + '<div class="co-act-btns">' +
+      (a.view ? '<button class="co-btn" style="margin:0" data-coach-act="' + key + '">Show</button>'
+        : '<button class="co-btn" style="margin:0" data-coach-act="' + key + '">Confirm</button><button class="co-btn co-ghost" style="margin:0" data-coach-skip="' + key + '">Not now</button>') + "</div>";
+    else if (a.status === "applying") body = '<p class="co-act-change">' + esc(a.change) + '</p><p class="co-act-res">Applying…</p>';
+    else if (a.status === "done") body = '<p class="co-act-change">' + esc(a.change) + '</p><p class="co-act-res co-good">✓ ' + esc(a.result || "Done.") + "</p>";
+    else if (a.status === "failed") body = '<p class="co-act-change">' + esc(a.change) + '</p><p class="co-act-res co-bad">✗ ' + esc(a.result || "Nothing was changed.") + "</p>";
+    else body = '<p class="co-act-change">' + esc(a.change) + '</p><p class="co-act-res co-muted">Not applied.</p>';
+    return '<div class="co-act"><div class="co-kind">' + (a.view ? "Exercise" : "Proposed change") + '</div><b>' + esc(spec.label || a.type) + "</b>" + body + "</div>";
+  }
+
   function parseAnswer(value) {
     let v = value;
     if (typeof v === "string") { try { v = JSON.parse(v); } catch (e) { v = { answer: v }; } }
     if (!v || typeof v !== "object" || !clip(v.answer, 1)) return { answer: "", evidence: [], missing: [], suggestion: null, error: "Claude's answer couldn't be read. Try again." };
     const list = x => (Array.isArray(x) ? x : []).map(s => clip(s, 200)).filter(Boolean).slice(0, 6);
     const sg = v.suggestion && typeof v.suggestion === "object" && clip(v.suggestion.title, 1) ? { title: clip(v.suggestion.title, 100), why: clip(v.suggestion.why, 300) } : null;
-    return { answer: String(v.answer).trim().slice(0, 1500), evidence: list(v.evidence), missing: list(v.missing), suggestion: sg };
+    return { answer: String(v.answer).trim().slice(0, 1500), evidence: list(v.evidence), missing: list(v.missing), suggestion: sg, actions: cleanActions(v.actions) };
   }
 
   const TOPICS = [
@@ -568,6 +630,12 @@ const Coach = (() => {
 .co-ins p{margin:4px 0 0;font-size:.9rem;color:var(--ink)}
 .co-ins details{margin-top:6px;font-size:.8rem;color:var(--muted)}
 .co-ins ul{margin:4px 0 0;padding-left:18px}
+.co-act{margin-top:10px;border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--surface)}
+.co-act b{display:block;margin-top:2px}
+.co-act-change{margin:6px 0 0;font-size:.88rem;color:var(--ink)}
+.co-act-why{margin:4px 0 0;font-size:.8rem;color:var(--muted)}
+.co-act-res{margin:6px 0 0;font-size:.85rem;font-weight:600}
+.co-act-btns{display:flex;gap:8px;margin-top:8px}
 .co-x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:.9rem;padding:0 2px}
 .co-chip{margin-top:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.85rem;cursor:pointer}
 .co-chips button{border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.85rem;cursor:pointer}
@@ -735,13 +803,14 @@ const Coach = (() => {
     return lines.join("\n");
   }
 
-  function answerHtml(m) {
+  function answerHtml(m, mi) {
     const nw = m.seen ? "" : " co-new";
     if (m.pending) return '<div class="co-a">Thinking…</div>';
     const ev = m.evidence && m.evidence.length ? "<details open><summary>Based on</summary><ul>" + m.evidence.map(e => "<li>" + esc(e) + "</li>").join("") + "</ul></details>" : "";
     const ms_ = m.missing && m.missing.length ? "<details><summary>Not logged yet</summary><ul>" + m.missing.map(e => "<li>" + esc(e) + "</li>").join("") + "</ul></details>" : "";
     const sg = m.suggestion ? '<p style="margin:8px 0 0"><b>Suggestion:</b> ' + esc(m.suggestion.title) + (m.suggestion.why ? " — " + esc(m.suggestion.why) : "") + "</p>" : "";
-    return '<div class="co-a' + nw + '">' + esc(m.answer) + sg + ev + ms_ + '<div class="co-src">' + (m.local ? "Worked out from your logs" : "Claude, from your logs only") + "</div></div>";
+    const acts = (m.actions || []).length && mi != null ? m.actions.map((a, ai) => actionHtml(a, mi, ai)).join("") : "";
+    return '<div class="co-a' + nw + '">' + esc(m.answer) + sg + acts + ev + ms_ + '<div class="co-src">' + (m.local ? "Worked out from your logs" : "Claude, from your logs only") + "</div></div>";
   }
 
   function errorText(code) {
@@ -805,7 +874,7 @@ const Coach = (() => {
     const chips = '<div class="co-chips">' + sugg.map(s => '<button data-coach-ask="' + esc(s.q) + '"' + (s.topic ? ' data-coach-topic="' + s.topic + '"' : "") + ">" + esc(s.q) + "</button>").join("") + "</div>";
     const note = transportNote();
     const live = S.busy && S.stream ? '<div class="co-q">' + esc(S.msgs[S.msgs.length - 1].q) + '</div><div class="co-a co-live">' + esc(S.stream) + '<span class="co-cursor"></span></div>' : "";
-    const msgs = S.msgs.filter(m => !(m.pending && live)).map(m => (m.q ? '<div class="co-q">' + esc(m.q) + "</div>" : "") + answerHtml(m)).join("") + live;
+    const msgs = S.msgs.map((m, i) => (m.pending && live) ? "" : (m.q ? '<div class="co-q">' + esc(m.q) + "</div>" : "") + answerHtml(m, i)).join("") + live;
     S.msgs.forEach(m => { m.seen = true; });
     const form = '<form class="co-ask" data-coach-form><input data-coach-input placeholder="Ask about your training, food or weight" value="' + esc(S.draft) + '" maxlength="600"' + (S.busy ? " disabled" : "") + ' autocomplete="off"><button class="co-btn" style="margin:0"' + (S.busy ? " disabled" : "") + ">Ask</button>" + (S.busy ? '<button type="button" class="co-btn co-ghost" style="margin:0" data-coach-stop>Stop</button>' : "") + "</form>";
     return '<button class="co-fab" data-coach-open aria-label="Ask Claude" title="Ask Claude"><span class="co-fab-i">✦</span><span class="co-fab-t">Ask Claude</span></button>' +
@@ -831,11 +900,11 @@ const Coach = (() => {
   function loadHistory() {
     if (S.loaded || !O || !O.chats) return;
     S.loaded = true;
-    try { const h = O.chats.load(); if (Array.isArray(h)) S.msgs = h.filter(m => m && m.q && m.answer).slice(-40).map(m => Object.assign({ seen: true }, m)); } catch (e) {}
+    try { const h = O.chats.load(); if (Array.isArray(h)) S.msgs = h.filter(m => m && m.q && m.answer).slice(-40).map(m => Object.assign({ seen: true }, m, { actions: (m.actions || []).map(a => Object.assign({}, a, a.status === "applying" ? { status: "failed", result: "Interrupted. Check the screen before trying again." } : a.status === "proposed" ? { status: "expired" } : {})) })); } catch (e) {}
   }
   function saveHistory() {
     if (!O || !O.chats) return;
-    try { O.chats.save(S.msgs.filter(m => m.q && m.answer).slice(-40).map(m => ({ q: m.q, answer: m.answer, evidence: m.evidence || [], missing: m.missing || [], suggestion: m.suggestion || null, local: !!m.local, at: m.at || Date.now() }))); } catch (e) {}
+    try { O.chats.save(S.msgs.filter(m => m.q && m.answer).slice(-40).map(m => ({ q: m.q, answer: m.answer, evidence: m.evidence || [], missing: m.missing || [], suggestion: m.suggestion || null, local: !!m.local, at: m.at || Date.now(), actions: (m.actions || []).map(a => Object.assign({}, a)) }))); } catch (e) {}
   }
   function openPanel(on) {
     loadHistory();
@@ -891,7 +960,7 @@ const Coach = (() => {
       if (sample) v = await sample.json(prompt(q, ctx, history), { signal: S.ctl && S.ctl.signal, modelTier: "default" });
       else v = await askEndpoint(q, ctx, history, S.ctl && S.ctl.signal, t => { S.stream = partialAnswer(t); renderPanel(); });
       const a = parseAnswer(v);
-      if (a.error) { S.msgs.pop(); S.error = a.error; } else { Object.assign(m, a, { pending: false }); saveHistory(); }
+      if (a.error) { S.msgs.pop(); S.error = a.error; } else { Object.assign(m, a, { pending: false }); prepareActions(m); saveHistory(); }
     } catch (e) {
       S.msgs.pop();
       const code = e && e.code;
@@ -915,8 +984,15 @@ const Coach = (() => {
   function bind(root, opts) {
     O = Object.assign(O || {}, opts);
     root.addEventListener("click", e => {
-      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask],[data-coach-dismiss]");
+      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask],[data-coach-dismiss],[data-coach-act],[data-coach-skip]");
       if (!t) return;
+      if (t.dataset.coachAct || t.dataset.coachSkip) {
+        const [mi, ai] = String(t.dataset.coachAct || t.dataset.coachSkip).split(":").map(Number), msg = S.msgs[mi], a = msg && msg.actions && msg.actions[ai];
+        if (!a || a.status !== "proposed") return;
+        if (t.dataset.coachSkip) { a.status = "skipped"; saveHistory(); renderPanel(); return; }
+        runAction(a).then(() => { saveHistory(); renderPanel(); if (O.render) O.render(); });
+        return;
+      }
       if (t.dataset.coachDismiss) { if (O.onDismiss) O.onDismiss(t.dataset.coachDismiss); const box = t.closest("[data-coach-insight]"); if (box) box.remove(); return; }
       if (t.hasAttribute("data-coach-open")) openPanel(true);
       else if (t.hasAttribute("data-coach-close")) openPanel(false);
@@ -941,6 +1017,6 @@ const Coach = (() => {
     root.addEventListener("keydown", e => { if (e.key === "Escape" && S.open) openPanel(false); });
   }
 
-  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, insights, insightsHtml, bind, errorText, TOPICS, _state: S };
+  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, insights, insightsHtml, ACTIONS, cleanActions, bind, errorText, TOPICS, _state: S };
 })();
 if (typeof module !== "undefined") module.exports = Coach;

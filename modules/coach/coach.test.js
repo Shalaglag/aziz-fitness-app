@@ -267,3 +267,44 @@ test("insights: PRs, falling strength, protein, fatigue, weekday overage, rest-v
   assert.equal(Coach.insights({}, { today: "2026-10-26" }).length, 0);
   assert.equal(Coach.insightsHtml({}, { today: "2026-10-26" }), "");
 });
+
+test("actions: only the fixed menu survives parsing, and nothing applies without a Confirm tap", async () => {
+  const a = Coach.parseAnswer(JSON.stringify({ answer: "Try this.", actions: [
+    { type: "set_calorie_target", kcal: "1850.4", why: "stalled 3 weeks" },
+    { type: "delete_everything" },
+    { type: "add_saved_meal" },
+    { type: "swap_exercise", from: "Leg Press", to: "Hack Squat", why: "knee" },
+  ] }));
+  assert.deepEqual(a.actions.map(x => x.type), ["set_calorie_target", "swap_exercise"]);
+  assert.equal(a.actions[0].kcal, 1850);
+  assert.deepEqual(Coach.cleanActions("nope"), []);
+
+  // Host stub records applies; the panel must show the exact change and wait for a tap.
+  const applied = [];
+  const host = { check: x => x.type === "swap_exercise" ? { ok: false, error: "Leg Press isn't in today's session." } : { ok: true, change: "Daily calorie target 2,000 → 1,850 kcal" },
+    apply: async x => { applied.push(x.type); return { ok: true, message: "Calorie target is now 1,850 kcal." }; } };
+  const listeners = {};
+  const root = { addEventListener: (k, fn) => { listeners[k] = fn; } };
+  Coach.bind(root, { getDocs: () => ({}), render: () => {}, actionHost: host, getSample: () => Promise.resolve({ json: async () => ({ answer: "Cut 150.", actions: [{ type: "set_calorie_target", kcal: 1850 }, { type: "swap_exercise", from: "Leg Press", to: "Hack Squat" }] }) }) });
+  Coach._state.msgs = []; Coach._state.busy = false;
+  listeners.submit({ preventDefault() {}, target: { matches: s => s === "[data-coach-form]", querySelector: () => ({ value: "Should I cut calories?" }) } });
+  await new Promise(r => setTimeout(r, 20));
+  const m = Coach._state.msgs[Coach._state.msgs.length - 1];
+  assert.equal(m.actions[0].status, "proposed");
+  assert.equal(m.actions[1].status, "blocked");
+  assert.equal(applied.length, 0, "nothing is applied before a tap");
+  const html = Coach.panelHtml();
+  assert.ok(html.includes("Daily calorie target 2,000 → 1,850 kcal") && html.includes("Confirm") && html.includes("Can't do this"));
+  const mi = Coach._state.msgs.length - 1;
+  const tap = attrs => listeners.click({ target: { closest: () => ({ dataset: attrs, hasAttribute: k => k.replace("data-coach-", "") in attrs }) } });
+  tap({ coachAct: mi + ":1" }); // blocked: ignored
+  tap({ coachAct: mi + ":0" });
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(applied, ["set_calorie_target"]);
+  assert.equal(m.actions[0].status, "done");
+  assert.ok(Coach.panelHtml().includes("✓ Calorie target is now 1,850 kcal."));
+  tap({ coachAct: mi + ":0" }); // a second tap does nothing
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(applied.length, 1);
+  Coach._state.msgs = [];
+});
