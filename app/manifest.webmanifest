@@ -1,0 +1,39 @@
+{
+  "name": "Aziz Cut Tracker",
+  "short_name": "Cut Tracker",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F2F4F6",
+  "theme_color": "#1f5fbf",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Log weight",
+      "short_name": "Log weight",
+      "url": "./index.html#log-weight"
+    },
+    {
+      "name": "Add water",
+      "short_name": "Add water",
+      "url": "./index.html#add-water"
+    },
+    {
+      "name": "Start workout",
+      "short_name": "Start workout",
+      "url": "./index.html#start-workout"
+    },
+    {
+      "name": "Log food",
+      "short_name": "Log food",
+      "url": "./index.html#log-food"
+    }
+  ]
+}

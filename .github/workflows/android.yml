@@ -1,0 +1,77 @@
+# Builds the Android app (Capacitor wrapper around app/) on every PR and push to main.
+# PR: the APK is kept as a workflow artifact. main: the APK and AAB are attached to the
+# "android-latest" release, so the phone can always download the newest build from one link.
+name: Android
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Capacitor
+        run: npm ci
+      - name: Check the web build is current
+        run: node build/build.js --check
+      - name: Copy app/ into the Android project
+        run: npx cap sync android
+      - name: Signing key (from the ANDROID_KEYSTORE_BASE64 secret, else a throwaway key)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p android/keystore
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/keystore/aziz-personal.jks
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set: this APK is signed with a one-off key and will not install over a previous build. See docs/ANDROID.md."
+            keytool -genkeypair -keystore android/keystore/aziz-personal.jks -alias aziz -storepass azizfitness -keypass azizfitness -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Aziz Fitness (throwaway)"
+          fi
+      - name: Build APK and AAB
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease bundleRelease \
+            -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
+          cp app/build/outputs/apk/release/app-release.apk ../aziz-fitness.apk
+          cp app/build/outputs/bundle/release/app-release.aab ../aziz-fitness.aab
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aziz-fitness-android
+          path: |
+            aziz-fitness.apk
+            aziz-fitness.aab
+      - name: Attach to the android-latest release
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: Aziz Fitness for Android (latest)
+          body: |
+            Newest build from main (build ${{ github.run_number }}, ${{ github.sha }}).
+            Install: open this page on the phone, tap **aziz-fitness.apk**, then Open. See docs/ANDROID.md.
+          prerelease: true
+          files: |
+            aziz-fitness.apk
+            aziz-fitness.aab
