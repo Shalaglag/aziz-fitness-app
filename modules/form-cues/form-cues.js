@@ -46,13 +46,12 @@
 
   function demoUrl(entry) {
     if (!entry) return '';
-    if (entry.demo) return entry.demo;
-    return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(entry.name.replace(/\(.*?\)/g, '').trim() + ' proper form');
+    return entry.demo || '';
   }
 
-  // opts.demoLinks false hides "Watch a demo" (the host shows ExerciseDemos links instead).
+  // "Watch a demo" shows only when opts.demoLinks is true and the entry has its own demo URL. There is no search fallback: the app shows built-in animations instead.
   function create(guide, opts) {
-    const showDemo = !(opts && opts.demoLinks === false);
+    const showDemo = !!(opts && opts.demoLinks === true);
     const exercises = (guide && guide.exercises) || [];
     const byId = {}, byKey = {};
     exercises.forEach(e => {
@@ -81,7 +80,7 @@
         (entry.primary || []).map(m => '<span class="fc-chip p">' + esc(m) + '</span>').join('') +
         (entry.secondary || []).map(m => '<span class="fc-chip">' + esc(m) + '</span>').join('') + '</p>';
     }
-    const demo = entry => !showDemo ? '' : '<a class="fc-demo" href="' + esc(demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Watch a demo ↗</a>';
+    const demo = entry => !showDemo || !demoUrl(entry) ? '' : '<a class="fc-demo" href="' + esc(demoUrl(entry)) + '" target="_blank" rel="noopener noreferrer">Watch a demo ↗</a>';
 
     // Collapsed panel for the live workout card. `key` keeps it open across re-renders.
     function inlineHtml(entry, key) {

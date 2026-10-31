@@ -10,11 +10,11 @@ Not covered: the 11 swap-only suggestions in ExerciseSwap (ids `swap-...`), whic
 ## In the app
 - **Gym mode:** a 210 px card under the exercise name. It auto-plays and loops. You can switch between 3D, Front and Side views or drag to turn it, and there's pause, ½× speed and full screen. The Demo button opens the full-screen view.
 - **Exercise sheet → About:** the same card at the top.
-- **Full screen:** large animation, the form cues and steps from the form guide, and the video link (checked video, or a search) from ExerciseDemos.
+- **Full screen:** large animation, the form cues and steps from the form guide, and nothing external: no video links and no search buttons.
 - Only visible cards animate, and the loop stops when nothing is on screen. Reduced-motion users start paused. Card state (view, speed, position in the rep) survives Gym mode re-renders.
 
 ## API
-`ExerciseAnim.create()` returns `{ has(id), cardHtml(id), attach(document), open(id), close(), ids(), info }`. Set `info = id => ({ title, cues, steps, video: { href, label } })` for the full-screen text; WorkoutLogger does this when mounted with `anim`.
+`ExerciseAnim.create()` returns `{ has(id), cardHtml(id), attach(document), open(id), close(), ids(), info }`. Set `info = id => ({ title, cues, steps })` for the full-screen text; WorkoutLogger does this when mounted with `anim`.
 
 Pure parts for tests: `ExerciseAnim.frame(id, t)` gives `{ sk, shapes }` for t in [0,1); `ExerciseAnim.defs`, `ik`, `skeleton`, `draw(ctx, w, h, id, {t, yaw, pitch}, colors)`.
 

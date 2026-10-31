@@ -26,7 +26,7 @@ The logger injects `formCues.css` once (`#fc-style`) and calls `formCues.attach(
 ## API
 - `FormCues.create(guide)` returns `{ find, inlineHtml, detailHtml, muscles, demoUrl, attach, css, principles, size }`.
 - `find(idOrName)` matches logger ids (`bench-press-barbell`), library names, Strong / shell names (`Incline DB Press`, `Side Delts`) and the guide's own ids. Returns `null` when there's no match.
-- Demo links: an exercise's `demo` field if the JSON has one, otherwise a YouTube search for "<name> proper form" (opens in a new tab).
-- Matching: a loose name match only counts when the guide entry was written for the same equipment, so "Seated Row (Machine)" and "Lateral Raise (Machine)" show no cues rather than the cable/dumbbell ones. `FormCues.create(guide, { demoLinks: false })` hides the demo link when the host uses `ExerciseDemos`.
+- Demo links: off by default. With `{ demoLinks: true }` an exercise's own `demo` field is shown; there is no search fallback. The app shows its built-in animations (ExerciseAnim) instead.
+- Matching: a loose name match only counts when the guide entry was written for the same equipment, so "Seated Row (Machine)" and "Lateral Raise (Machine)" show no cues rather than the cable/dumbbell ones.
 
 Styling uses only the shell tokens (`--line --r --sunk --accent --accent-ink --muted --ink --warn --surface`), classes prefixed `fc-`.

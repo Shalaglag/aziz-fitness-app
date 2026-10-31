@@ -1013,7 +1013,6 @@
         '<div class="ea-full-body">' + (d.note ? '<p class="ea-note">' + esc(d.note) + '</p>' : '') +
         (cues.length ? '<p class="ea-lbl">Cues</p><ul>' + cues.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
         (steps.length ? '<p class="ea-lbl">The rep</p><ol>' + steps.map(x => '<li>' + esc(x) + '</li>').join('') + '</ol>' : '') +
-        (info.video ? '<a class="ea-link" href="' + esc(info.video.href) + '" target="_blank" rel="noopener noreferrer">' + esc(info.video.label || 'Watch a video ↗') + '</a>' : '') +
         '<p class="ea-muted">Animated guide drawn for this app. The highlighted area is the main muscle worked.</p></div>';
       document.body.appendChild(el);
       scan(el);
@@ -1040,7 +1039,6 @@
     '.ea-full-body{max-width:640px;font-size:.92rem;color:var(--ink,#111)}.ea-full-body ul,.ea-full-body ol{margin:.2rem 0 .6rem;padding-left:1.2rem}',
     '.ea-lbl{margin:.5rem 0 .1rem;font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted,#6b7280)}',
     '.ea-note{margin:.3rem 0;padding:.4rem .55rem;border-left:3px solid var(--warn,#b7791f);background:var(--surface,#fff);font-size:.85rem}',
-    '.ea-link{display:inline-block;margin:.3rem 0;font-weight:600;color:var(--accent,#e8672f)}',
     '.ea-muted{color:var(--muted,#6b7280);font-size:.8rem}',
     '@media (prefers-reduced-motion: reduce){.ea-ctl button{transition:none}}'
   ].join('\n');
