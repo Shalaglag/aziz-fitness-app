@@ -42,3 +42,7 @@ WorkoutLogger.mount(document.getElementById('lbHost'), {
 });
 ```
 Data shape is unchanged apart from the optional `rir` on sets and the optional `step`/`stepUnit` on exercise overrides, so no migration is needed. Pure helpers are exposed for tests as `WorkoutLogger.gym` (`gymOrder`, `nextPending`, `resumePoint`, `restAfter`, `compareSets`, `weightStep`, `bumpVal`, `snapStep`, `stepWeight`, `warmSets`, `loadableUp`).
+
+## Host settings (v45)
+
+`WorkoutLogger.settings()` returns a copy of the logger settings; `WorkoutLogger.setSettings({gym, unit, restCompound, restIso, sound, vibrate, wake, rpe, rir})` merges, saves to `lb_meta/settings` and re-renders the home screen. The app's Settings screen uses these. Gym mode is off by default since v45: live workouts open in the Strong-style List view.
