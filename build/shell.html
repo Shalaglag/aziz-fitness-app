@@ -1,6 +1,8 @@
 <title>Aziz Cut Tracker</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <style>
@@ -402,6 +404,10 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 .toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;z-index:20;font-size:.9rem;display:flex;gap:12px;align-items:center;max-width:calc(100vw - 24px)}
 .toast .undo{background:none;border:0;color:var(--accent,#7cc4ff);font:inherit;font-weight:700;padding:0;cursor:pointer}
 @media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
+/* Sign-in sheet on the app's own website (modules/cloud-store) */
+.cs-overlay{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:16px;background:rgb(0 0 0/.45)}
+.cs-card{width:min(420px,100%);display:flex;flex-direction:column;gap:12px}
+.cs-card .field input{width:100%}
 </style>
 
 <header class="top">
@@ -568,7 +574,10 @@ const lbCols=["lb_workouts","lb_templates","lb_exercises","lb_measures","lb_meta
 const lbCache={};                       // the logger's collections aren't in S.docs; read for backups
 const loadLb=async()=>{ if(!S.db) return; for(const c of lbCols){ try{ const qs=await S.db.collection(c).get(); lbCache[c]=Object.fromEntries(qs.docs.map(d=>[d.id,d.data()])); }catch(e){} } };
 const dioSnapshot=()=>{ const o={}; COLS.forEach(c=>o[c]=clone(S.docs[c])); return Object.assign(o, clone(lbCache)); };
-async function dioDownload(filename,data){ const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(()=>null) : null; if(dl) return dl.save({filename,data}); toast("Downloads aren't available here."); return false; }
+async function dioDownload(filename,data){ const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(()=>null) : null; if(dl) return dl.save({filename,data});
+  // Own website: a plain browser download.
+  if(!window.claude && typeof data==="string"){ const type=/\.ics$/i.test(filename)?"text/calendar":/\.json$/i.test(filename)?"application/json":"text/plain"; const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([data],{type})); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),10000); return true; }
+  toast("Downloads aren't available here."); return false; }
 /* One-tap backup (Today nudge): same file as the Your data card, stamps prefs/main.lastBackup */
 async function backupNow(){
   if(!window.DataIO){ toast("Backup isn't available here."); return; }
@@ -618,6 +627,10 @@ async function initStore(){
   loadLocal(); S.mode="local"; render();
   let db = null;
   try{ db = window.claude && await window.claude.use("db"); }catch(e){}
+  // On its own website there is no Claude db: sign in to the cloud store instead (modules/cloud-store).
+  if(!db && !window.claude && window.CloudStore && (await CloudStore.loadConfig()) && CloudStore.configured()){
+    try{ db = await CloudStore.connect({mount:document.body}); }catch(e){ toast("Couldn't reach your account. Saving on this device for now."); }
+  }
   if(!db){ setSync(); return; }
   S.db = db; S.mode="sync"; COLS.forEach(c=>S.docs[c]={});
   COLS.forEach(c=>{
@@ -634,7 +647,12 @@ async function initStore(){
   setSync();
 }
 function setSync(){
-  document.getElementById("sync").textContent = S.mode==="sync" ? "Synced across your phone and computer" : "Saved in this browser only";
+  const who = window.CloudStore && CloudStore.currentEmail();
+  document.getElementById("sync").textContent = S.mode==="sync" ? "Synced across your phone and computer"+(who?" · "+who:"") : "Saved in this browser only";
+}
+// Offline mode on its own website: cache the app so it opens with no signal (app/sw.js).
+if(!window.claude && !(window.AndroidShell && AndroidShell.isNative()) && "serviceWorker" in navigator && location.protocol==="https:"){
+  window.addEventListener("load", ()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
 }
 function scheduleRender(){
   const a = document.activeElement;
@@ -737,7 +755,12 @@ function ccTraining(d){ if(dayType(d)==="friday") return null; const s=sessionFo
 function ccOpts(){ return {training:ccTraining}; }
 function ccTargets(){ return APPT || {kcal:TARGET.kcal, carbsLo:TARGET.cMin, carbsHi:TARGET.cMax}; }
 function ccTarget(d){ try{ return window.CalorieCycling && ccState().on ? CalorieCycling.target(ccTargets(), d, ccState(), ccOpts()) : null; }catch(e){ return null; } }
+// Reverse diet (back to maintenance after the goal): manual start, like diet breaks.
+function rdState(){ return {...(S.docs.prefs.main?.reverseDiet||{}), auto:false}; }
+function rdOpts(){ let tdee=null; try{ if(window.TrendTDEE){ const E=TrendTDEE.estimate(S.docs,{today:TODAY}); if(E&&E.ready) tdee={kcal:E.tdee, lo:E.tdeeLo, hi:E.tdeeHi}; } }catch(e){} return {today:TODAY, profile:dbProfile(), tdee, trend:trendSeries()}; }
+function reverseTarget(d){ try{ return window.ReverseDiet ? ReverseDiet.target(dbDocs(), rdState(), d, rdOpts()) : null; }catch(e){ return null; } }
 function kcalTarget(d){
+  const rt=reverseTarget(d); if(rt && rt.kcal && rt.mode!=="cut") return Math.round(rt.kcal);
   const t=dietBreakTarget(d); if(t && t.mode==="break") return Math.round(t.kcal);
   const cc=ccTarget(d); const base = cc && cc.kcal ? cc.kcal : TARGET.kcal;
   // Over-budget recovery cuts (days/{date}.budgetAdj) apply on top of the day's target, never more than 150 below it.
@@ -757,10 +780,10 @@ function verdict(items){
   const msgs=[];
   const KT=kcalTarget(view.date), KTs=KT.toLocaleString("en-US");
   if(t.kcal<KT-150) msgs.push(["warn",`${r0(KT-t.kcal)} kcal under ${KTs}`]); else if(t.kcal>KT+100) msgs.push(["bad",`${r0(t.kcal-KT)} kcal over ${KTs}`]); else msgs.push(["good","Calories on target"]);
-  if(KT!==TARGET.kcal){ const cc=ccTarget(view.date); msgs.push(["info", dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
+  if(KT!==TARGET.kcal){ const cc=ccTarget(view.date), rm=reverseTarget(view.date)?.mode; msgs.push(["info", rm==="reverse" ? `Reverse diet: target ${KTs} this week` : rm==="maintain" ? `Maintenance: target ${KTs}` : dietBreakTarget(view.date)?.mode==="break" ? `Diet break: target ${KTs} (maintenance)` : cc && cc.kind!=="flat" && KT===cc.kcal ? (cc.kind==="train" ? `Lift day: target ${KTs} (+${cc.delta} kcal, carbs)` : `Rest day: target ${KTs} (${cc.delta} kcal, carbs)`) : `Target today ${KTs} (spreading an earlier surplus)`]); }
   if(t.p<TARGET.pMin) msgs.push(["warn",`Protein ${r0(TARGET.pMin-t.p)} g short`]); else msgs.push(["good","Protein hit"]);
   if(t.f>TARGET.fMax) msgs.push(["warn","Fat on the high side"]);
-  return `<div class="row">${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
+  return `<div class="row">${mgDay({food:items, date:view.date})}${msgs.map(([c,m])=>`<span class="pill ${c}">${m}</span>`).join("")}</div>`;
 }
 
 /* ---------- TODAY ---------- */
@@ -769,6 +792,8 @@ function ddOpts(){ return {today:TODAY, selected:view.date, targets:ddTargets(),
 const CARDIO_DEFAULT = {kind:"treadmill", min:30, speed:4.0, incline:3};
 let cardioOpts = {};
 function cdDocs(){ const m=S.docs.prefs.main||{}; return {...S.docs, prefs:{...S.docs.prefs, main:{...m, cardio:{...CARDIO_DEFAULT, ...(m.cardio||{})}}}}; }
+function shortCardioMin(d){ const sh=(S.docs.workouts[d]||{}).short; return sh && sh.cardioMin!=null ? sh.cardioMin : null; }
+function cdDocsDay(d){ const docs=cdDocs(), m=shortCardioMin(d); return m ? {...docs, prefs:{...docs.prefs, main:{...docs.prefs.main, cardio:{...docs.prefs.main.cardio, min:m}}}} : docs; }
 /* Error guard: one broken card never freezes a tab. safe(label, fn) renders a small "couldn't load" box and lights the banner. */
 const brokenCards=[];
 function cardFail(label,e){ try{ console.error("[card] "+label, e); brokenCards.push(label); showErrBanner(); }catch(_){}
@@ -783,6 +808,7 @@ window.addEventListener("unhandledrejection", e=>{ const r=e && e.reason; showEr
 function cdSafe(fn){ return safeMod("Cardio", fn); }
 function latestKg(){ const ws=weightsSorted(); return ws.length ? ws[ws.length-1].kg : undefined; }
 function strengthOpts(){ return {today:TODAY, targets:APPT, cutStart:START.date, units:StrengthAnalytics.unitsFrom(PROGRAM), mainLifts:MAIN_LIFTS}; }
+function mfOpts(){ return {today:TODAY, musclesFor:window.StrengthAnalytics?StrengthAnalytics.musclesFor:undefined, setTargets:S.docs.prefs.main?.setTargets, analysis:()=>window.StrengthAnalytics?StrengthAnalytics.analyze(S.docs, strengthOpts()):null}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
 function tcOpts(){ // Compare trends: reuse the trend line and the lift e1RM series the other Progress cards already compute
@@ -893,7 +919,7 @@ function effortBits(){
   const picker = has ? safe("Effort", ()=>EffortDeload.pickerHtml(d, w.effort)) : "";
   return {nudge, picker};
 }
-function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocs(), cardioOpts)}</div>`); return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + cardio; }
+function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : shortCardioMin(view.date)===0 ? `<div class="card"><h3>Cardio</h3><p class="muted">Skipped today: the short session uses the time for lifting. <button class="btn ghost small" data-act="ssclear">Back to the full session</button></p></div>` : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocsDay(view.date), cardioOpts)}</div>`); const feel = window.MuscleFeedback ? safe("Muscle feedback", ()=>MuscleFeedback.cardHtml(S.docs.workouts[view.date], view.date, mfOpts())) : ""; return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + feel + cardio; }
 function vTrainBody(){ return view.trainMode==="full" ? `<div class="card">${trainSwitch()}<p class="muted" style="font-size:.88rem">Templates, live workout with rest timer, PRs, plate calculator and history. Finished workouts also land in Today, Progress and the weekly report.</p></div>` : `<div>${trainSwitch()}</div>` + vTrainSession() + otherLogged() + strongCard(); }
 function otherLogged(){
   const d=view.date, wk=S.docs.workouts[d]; if(!wk||!wk.sets) return "";
@@ -933,6 +959,24 @@ function mountSwapNotice(){
     onSwap:(exercise,opt)=>{ doSwap(typeof exercise==="string"?exercise:exercise[0]||exercise.name, opt.name, "hurt"); },
     onKeep:exercise=>{ put("prefs","swaps", ExerciseSwap.clearHurt(swapState(), typeof exercise==="string"?exercise:exercise[0]||exercise.name)); } }); }catch(e){}
 }
+/* Travel workout: dumbbell / band / bodyweight version of today's session (TravelWorkout module). */
+function travelCard(session, wk){
+  return safeMod("TravelWorkout", ()=>TravelWorkout.cardHtml({session, exercises:PROGRAM[session], kit:view.twKit||"dumbbell", active:TravelWorkout.active(wk), open:!!view.twOpen, workouts:S.docs.workouts}));
+}
+function travelApply(kit){
+  const d=view.date, w=workoutDoc(d), items=TravelWorkout.convert(PROGRAM[w.session]||[], {kit, workouts:S.docs.workouts});
+  put("workouts", d, TravelWorkout.apply(w, items, kit)); view.twOpen=false;
+  toast(`Travel version on. Sets log under the ${TravelWorkout.kitOf(kit).label.toLowerCase()} moves; history stays with the plan lift.`);
+}
+/* Short on time: 30/45/60 min version of today's session (ShortSession module). */
+function shortCard(session, wk){
+  return safeMod("ShortSession", ()=>ShortSession.cardHtml({session, exercises:PROGRAM[session], minutes:view.ssMin||45, active:ShortSession.active(wk), open:!!view.ssOpen, mainLifts:MAIN_LIFTS, cardioMin:cdDocs().prefs.main.cardio.min}));
+}
+function shortApply(min){
+  const d=view.date, w=workoutDoc(d), p=ShortSession.plan(PROGRAM[w.session]||[], {minutes:min, mainLifts:MAIN_LIFTS, cardioMin:cdDocs().prefs.main.cardio.min});
+  put("workouts", d, ShortSession.apply(w, p)); view.ssOpen=false;
+  toast(`${min} min version on: about ${Math.round(p.est.total)} min. Main lifts keep their sets.`);
+}
 function vTrainSession(){
   const d=view.date, ses=sessionFor(d), wk=S.docs.workouts[d]||{};
   const cur = ses ? ses.session : null;
@@ -948,10 +992,14 @@ function vTrainSession(){
     <div class="row"><span class="label">Rest timer</span><button class="chip" data-act="timer" data-s="90">1:30</button><button class="chip" data-act="timer" data-s="150">2:30</button><button class="chip" data-act="timer" data-s="180">3:00</button></div>
     <p class="muted" style="font-size:.88rem">Big compounds: rest 2.5–3 min. Work in 8–12 reps, 1–2 reps short of failure. Keep loads heavy during the cut.</p>
   </div>
+  ${travelCard(cur, wk)}
+  ${shortCard(cur, wk)}
   <div class="card">
     ${ex.map(([planName,bw,br,bs,unit,note])=>{
       const swappedTo = usedFor(wk, planName), name = swappedTo || planName;
       const logged = (wk.sets&&wk.sets[name]) || [];
+      const ss = window.ShortSession ? ShortSession.slot(wk, planName) : {sets:null,drop:false,pair:null};
+      if(ss.sets!=null) bs = ss.sets;
       const n = Math.max(bs, logged.length);
       const hist = liftHistory(name).filter(h=>h.date<d);
       const last = hist[hist.length-1];
@@ -961,8 +1009,8 @@ function vTrainSession(){
       let cmp="";
       const ref = last ? last.best : swappedTo ? null : {w:bw,r:br,v:e1rm(bw,br)};
       if(todayBest && ref){ cmp = todayBest.v>=ref.v-0.01 ? `<span class="pill good">At or above ${last?"last time":"baseline"}</span>` : `<span class="pill warn">Below ${last?"last time":"baseline"}</span>`; }
-      return `<div class="ex">
-        <div class="spread"><div><b>${esc(name)}</b> ${isMain?`<span class="pill info">Main lift</span>`:""}${swappedTo?` <span class="muted" style="font-size:.85rem">instead of ${esc(planName)}</span>`:""}</div><div class="row">${cmp}${window.ExerciseSwap?`<button class="btn ghost small" data-act="swap" data-n="${esc(planName)}">${swappedTo?"Change":"Swap"}</button>`:""}${swappedTo?`<button class="btn ghost small" data-act="unswap" data-n="${esc(planName)}">Back to plan</button>`:""}</div></div>
+      return `<div class="ex ${ss.drop&&!logged.length?"ss-skip":""}">
+        <div class="spread"><div><b>${esc(name)}</b> ${isMain?`<span class="pill info">Main lift</span>`:""}${ss.pair?` <span class="pill">Superset ${ss.pair}</span>`:""}${ss.drop?` <span class="pill warn">Skipped today</span>`:""}${swappedTo?` <span class="muted" style="font-size:.85rem">instead of ${esc(planName)}</span>`:""}</div><div class="row">${cmp}${window.ExerciseSwap?`<button class="btn ghost small" data-act="swap" data-n="${esc(planName)}">${swappedTo?"Change":"Swap"}</button>`:""}${swappedTo?`<button class="btn ghost small" data-act="unswap" data-n="${esc(planName)}">Back to plan</button>`:""}</div></div>
         <div class="muted" style="font-size:.88rem">Baseline <span class="num">${bw} ${unit} × ${br}, ×${bs}</span>${last?` · Last <span class="num">${last.best.w} × ${last.best.r}</span> (${fmt(last.date,{month:"short",day:"numeric"})})`:""}${note?` · ${esc(note)}`:""}</div>
         ${isMain&&dropping(name)?`<p class="note bad">Dropped 2 sessions in a row. Check sleep, pre-workout food and volume before touching calories.</p>`:""}
         <div class="sets">${Array.from({length:n},(_,i)=>{ const s=logged[i]||{}; return `<div class="set"><span class="i">${i+1}</span>
@@ -1015,7 +1063,9 @@ function vFood(){
       </div>
     </div>
   </section>
+  ${typeof MacroTarget !== "undefined" ? MacroTarget.html(d) : ""}
   ${safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day}))}
+  ${window.VoiceLog && typeof PhotoFood !== "undefined" ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : ""}
   ${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}
   <div id="bcHost"></div>
   ${window.MenuImport ? MenuImport.html(d) : pickerCard(d, training)}
@@ -1024,7 +1074,7 @@ function vFood(){
     ${day.food.length?`<div class="items">${day.food.map(i=>`
       <div class="item ${i.eaten?"":"planned"}">
         <input type="checkbox" data-act="eat" data-id="${i.id}" ${i.eaten?"checked":""} aria-label="Eaten">
-        <div class="nm"><b>${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
+        <div class="nm"><b>${mgBadge(i)} ${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
         <div class="mac">${r0(i.kcal)} kcal<br><span style="color:var(--protein)">${r1(+i.p||0)}P</span> <span style="color:var(--carbs)">${r1(+i.c||0)}C</span> <span style="color:var(--fat)">${r1(+i.f||0)}F</span></div>
         <button class="x" data-act="delfood" data-id="${i.id}" aria-label="Remove">×</button>
       </div>`).join("")}</div>
@@ -1036,7 +1086,7 @@ function vFood(){
     <div class="spread"><h3>Nutreeze snack menu</h3><span class="muted" style="font-size:.85rem">Pick any 2. Tap to add.</span></div>
     <div class="tablewrap"><table>
       <thead><tr><th>Snack</th><th>Type</th><th class="n">kcal</th><th class="n">P</th><th class="n">C</th><th class="n">F</th><th></th></tr></thead>
-      <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[1]}</td><td>${s[0]==="Banned"?"Never pick":s[0]}</td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody>
+      <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[0]==="Banned"?"":mgBadge({kcal:s[2],p:s[3],c:s[4],f:s[5]},"snack")+" "}${s[1]}</td><td>${s[0]==="Banned"?"Never pick":s[0]}</td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody>
     </table></div>
     <p class="muted" style="font-size:.88rem">With Meal 1 (pre-workout) prefer fruit or a light sweet. Nuts and Pro Mud Cake fit better with Meal 2, since fat slows digestion. If Meal 1 is 700+ kcal, move the sweet to the evening.</p>
   </div>
@@ -1057,7 +1107,7 @@ function pickerCard(d, training){
   const P = window.NutreezePicker; if(!P) return "";
   let draft=""; try{ draft=localStorage.getItem("aziz-cut-menu")||""; }catch(e){}
   const res = view.pick && view.pick.date===d ? view.pick : null;
-  const line = it => `<li>${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r1(it.p)} P</span></li>`;
+  const line = (it,kind) => `<li>${mgBadge(it,kind,d)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r1(it.p)} P</span></li>`;
   return `<div class="card">
     <div class="spread"><h3>Pick my meals</h3><span class="muted" style="font-size:.85rem">2 meals + 2 snacks + Adonis${training?" + Gatorade":""}</span></div>
     <p class="muted" style="font-size:.9rem">Paste the day's Nutreeze meals, one per line: <span class="num">name kcal protein carbs fat</span>. Never-pick meals are removed automatically.</p>
@@ -1067,7 +1117,7 @@ function pickerCard(d, training){
     ${res && res.skipped && res.skipped.length ? `<p class="muted" style="font-size:.85rem">Removed: ${res.skipped.map(esc).join(", ")}</p>` : ""}
     ${res && res.options ? res.options.map((o,i)=>`<div class="ex">
       <div class="spread"><b>${i===0?"Best option":"Option "+(i+1)}</b><span class="pill ${o.check.fits?"good":"warn"}">${esc(o.check.verdict)}</span></div>
-      <ul style="margin:0;padding-left:1.1em">${line(o.meal1)}${line(o.meal2)}${o.snacks.map(line).join("")}</ul>
+      <ul style="margin:0;padding-left:1.1em">${line(o.meal1,"meal")}${line(o.meal2,"meal")}${o.snacks.map(s=>line(s,"snack")).join("")}</ul>
       <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small" data-act="usepick" data-i="${i}">Use this plan</button></div>
       ${o.check.notes&&o.check.notes.length?`<p class="muted" style="font-size:.85rem">${o.check.notes.map(esc).join(" ")}</p>`:""}
     </div>`).join("") : ""}
@@ -1155,6 +1205,7 @@ function vProgress(){
   </div>
   ${trendCard}
   ${safeMod("StrengthAnalytics",()=>StrengthAnalytics.html(S.docs, strengthOpts()))}
+  ${safeMod("MuscleFeedback",()=>MuscleFeedback.planHtml(S.docs, mfOpts()))}
   ${safeMod("StrengthScore",()=>StrengthScore.html(S.docs, strengthOpts()))}
   ${safeMod("TrendCompare",()=>TrendCompare.html(S.docs, tcOpts()))}
   ${window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
@@ -1168,6 +1219,7 @@ function vProgress(){
   ${cdSafe(()=>Cardio.progressHTML(cdDocs(), {today:TODAY}))}
   ${rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts()))}
   ${safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}))}
+  ${safeMod("ReverseDiet",()=>ReverseDiet.html(dbDocs(), rdState(), rdOpts()))}
   ${report?`<div class="card"><details data-keep="wr" ${view.open.wr?"open":""}><summary>Weekly report (week by week: weight, food, lifts)</summary>${report}</details></div>`:""}
   ${foodDays.length?`<div class="card"><h3>Calories eaten</h3>
     ${foodDays.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th class="n">kcal</th><th class="n">Protein</th><th>Status</th></tr></thead><tbody>
@@ -1177,6 +1229,7 @@ function vProgress(){
 }
 
 /* ---------- GUIDE ---------- */
+function crCtx(){ const p=S.docs.prefs.main||{}; return {from:TODAY, review:STRICT.to, supps: window.SuppDrinks?SuppDrinks.plan(p):[], now:new Date()}; }
 function vGuide(){
   const q=view.q.toLowerCase();
   const libNames = Object.keys(LIB).filter(n=>!q || n.toLowerCase().includes(q) || LIB[n][0].toLowerCase().includes(q));
@@ -1235,6 +1288,7 @@ function vGuide(){
       <div><button class="btn small" type="submit">Save</button></div>
     </form>
   </div>
+  ${safeMod("CalendarReminders",()=>CalendarReminders.html(S.docs.prefs.main||{}, crCtx()))}
   <div class="card"><h3>App colour</h3>
     <p class="muted" style="font-size:.9rem">Pick a plate colour for buttons and highlights. Light or dark follows your phone or Claude app setting.</p>
     <div class="row">${[["red","25 kg red"],["blue","20 kg blue"],["yellow","15 kg yellow"],["green","10 kg green"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</div>
@@ -1245,6 +1299,8 @@ function vGuide(){
 }
 
 /* ===================== Events ===================== */
+// Android app (modules/android-shell): back button closes sheets, then returns to Today, then minimises.
+if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
 document.getElementById("tabs").addEventListener("click",e=>{ const b=e.target.closest("button[data-tab]"); if(!b) return; view.tab=b.dataset.tab; try{localStorage.setItem("aziz-cut-tab",view.tab)}catch(_){} render(); window.scrollTo(0,0); });
 document.getElementById("prevDay").onclick=()=>{ view.date=addDays(view.date,-1); render(); };
 document.getElementById("nextDay").onclick=()=>{ view.date=addDays(view.date,1); render(); };
@@ -1258,12 +1314,18 @@ main.addEventListener("click",e=>{
   if(window.Cardio && e.target.closest("[data-cardio]")){ try{ if(Cardio.handle(e.target, {docs:cdDocs(), date:view.date, toast, weightKg:latestKg(), put:(c,id,doc)=>{ cardioOpts={}; put(c,id,doc); }, rerender:o=>{ cardioOpts=o||{}; render(); }})) return; }catch(err){ toast("Cardio: "+err.message); return; } }
   const rfw=window.RecoveryFatigue && e.target.closest("[data-rf]") ? RecoveryFatigue.handle(e.target, S.docs, view.date) : null;
   if(rfw){ put(rfw.collection, rfw.id, rfw.doc, {quiet:true}); render(); return; }
+  const mfw=window.MuscleFeedback && e.target.closest("[data-mf]") ? MuscleFeedback.handle(e.target, S.docs, view.date) : null;
+  if(mfw){ put(mfw.collection, mfw.id, mfw.doc, {quiet:true}); render(); return; }
+  const cr=e.target.closest("[data-cr]");
+  if(cr && window.CalendarReminders){ const r=CalendarReminders.apply(cr.dataset.cr, CalendarReminders.readForm(document), S.docs.prefs.main||{}, crCtx()); if(r.prefs) put("prefs","main",r.prefs); if(r.download) dioDownload(r.download.filename, r.download.text); if(r.toast) toast(r.toast); return; }
   const sd=e.target.closest("[data-sd]");
   if(sd && window.SuppDrinks){ const a=sd.dataset.sd, data=Object.assign({}, sd.dataset, /save$/.test(a)?SuppDrinks.readForm(document, sd.dataset.key):{}); const r=SuppDrinks.apply(a, data, getDay(view.date), S.docs.prefs.main||{}, {uid}); if(r.prefs) put("prefs","main",r.prefs); if(r.day) saveDay(r.day); if(r.toast) toast(r.toast); if(r.open){ requestAnimationFrame(()=>{ const det=document.querySelector(".sd-card details"); if(det) det.open=true; }); } return; }
   const cca=e.target.closest("[data-cc-action]");
   if(cca && window.CalorieCycling){ const p=Object.assign({},clone(S.docs.prefs.main)); p.cycling=CalorieCycling.apply(ccState(), cca.dataset.ccAction, ccOpts()); put("prefs","main",p); return; }
   const dba=e.target.closest("[data-db-action]");
   if(dba){ const p=Object.assign({},clone(S.docs.prefs.main)); p.dietBreak={...DietBreak.apply(dbState(), dba.dataset.dbAction, TODAY, dbDocs(), {profile:dbProfile()}), auto:false}; put("prefs","main",p); return; }
+  const rda=e.target.closest("[data-rd-action]");
+  if(rda && window.ReverseDiet){ const p=Object.assign({},clone(S.docs.prefs.main)); p.reverseDiet={...ReverseDiet.apply(rdState(), rda.dataset.rdAction, TODAY, dbDocs(), rdOpts()), auto:false}; put("prefs","main",p); toast(rda.dataset.rdAction==="start"?"Reverse diet started. Calories step up each week.":"Saved"); return; }
   const rc=e.target.closest("[data-recover]");
   if(rc){ const rd=rc.dataset.recoverDate; BudgetRecovery.apply(BudgetRecovery.plan(rd,S.docs.days), rc.dataset.recover).forEach(({date,patch})=>{ const cur=getDay(date); put("days",date,{...cur,...patch,budgetAdj:{...(cur.budgetAdj||{}),...(patch.budgetAdj||{})}},{quiet:true}); }); render(); toast(rc.dataset.recover==="skip"?"Let it go. The weekly average is what counts.":"Plan saved"); return; }
   const eff=e.target.closest("[data-effort]");
@@ -1303,6 +1365,12 @@ main.addEventListener("click",e=>{
   else if(a==="clearday"){ if(el.dataset.confirm){ const day=getDay(d); day.food=[]; saveDay(day); } else { el.dataset.confirm="1"; el.textContent="Tap again to clear"; } }
   else if(a==="swap"){ openSwap(el.dataset.n); }
   else if(a==="unswap"){ doSwap(el.dataset.n, null); }
+  else if(a==="twkit"){ view.twKit=el.dataset.kit; view.twOpen=true; render(); }
+  else if(a==="twapply"){ travelApply(el.dataset.kit||view.twKit||"dumbbell"); }
+  else if(a==="ssmin"){ view.ssMin=+el.dataset.min; view.ssOpen=true; render(); }
+  else if(a==="ssapply"){ shortApply(+el.dataset.min||view.ssMin||45); }
+  else if(a==="ssclear"){ put("workouts", view.date, ShortSession.clear(workoutDoc(view.date))); toast("Back to the full session."); }
+  else if(a==="twclear"){ put("workouts", view.date, TravelWorkout.clear(workoutDoc(view.date))); toast("Back to the gym plan."); }
   else if(a==="pgadd"){ const day=getDay(d); const r=proteinGapRes(day); if(r&&r.best){ day.food=day.food.concat(ProteinGap.toFoodItems(r.best).map(it=>({...it,id:uid(),slot:"Extra",eaten:false}))); saveDay(day); toast("Added as planned. Tick it when you have it."); } }
   else if(a==="stepsadd"){ put("days", d, Steps.addSteps(getDay(d), +el.dataset.n)); }
   else if(a==="stepsset"){ const n=Steps.parseSteps(document.getElementById("stepsInput").value)[0]; if(n) put("days", d, Steps.setSteps(getDay(d), n.steps)); else toast("Type a step count, e.g. 8450"); }
@@ -1378,6 +1446,8 @@ function ramadanCard(d){
     return Ramadan.html(d,{dayType:pickerDayType(d), train:pr.ramadanTrain||"after-iftar", cfg, targets:APPT||undefined}); }catch(e){ return ""; }
 }
 function trendSeries(){ try{ return window.TrendTDEE ? TrendTDEE.series(S.docs.weights,{today:TODAY}) : undefined; }catch(e){ return undefined; } }
+function mgBadge(it, kind, date){ try{ return window.MealGrade ? MealGrade.badge(MealGrade.gradeItem(it,{kind, targets:dayTargets(date||view.date)||{kcal:kcalTarget(date||view.date), pMin:TARGET.pMin, pMax:TARGET.pMax, fMin:TARGET.fMin, fMax:TARGET.fMax, cMin:TARGET.cMin, cMax:TARGET.cMax}}),{small:true}) : ""; }catch(e){ return ""; } }
+function mgDay(day){ try{ if(!window.MealGrade || !day.food.length) return ""; const all=day.food.every(i=>i.eaten); const T=dayTargets(day.date||view.date)||{kcal:kcalTarget(day.date||view.date), pMin:TARGET.pMin, pMax:TARGET.pMax, fMin:TARGET.fMin, fMax:TARGET.fMax, cMin:TARGET.cMin, cMax:TARGET.cMax}; return MealGrade.dayBadge(MealGrade.gradeDay(day.food,{targets:T, basis: all?"eaten":"plan"})); }catch(e){ return ""; } }
 function proteinGapRes(day){ try{ return (window.ProteinGap && day.food.length) ? ProteinGap.suggest(day.food,{dislikes:S.docs.prefs.main?.dislikes||[], targets:{kcal:kcalTarget(day.date||view.date), proteinMin:TARGET.pMin, proteinMax:TARGET.pMax}}) : null; }catch(e){ return null; } }
 function proteinGapHtml(day){
   if(day.food.filter(i=>/Meal/.test(i.slot)).length<2) return "";
@@ -1448,6 +1518,7 @@ function syncLogger(){
     WorkoutLogger.mount(host, {
       storage, targets: APPT || undefined,
       formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE, { demoLinks: !(window.ExerciseDemos && window.EXERCISE_DEMOS) }) : undefined,
+      anim: window.ExerciseAnim ? ExerciseAnim.create() : undefined,
       demos: (window.ExerciseDemos && window.EXERCISE_DEMOS) ? ExerciseDemos.create(window.EXERCISE_DEMOS, { library: WorkoutLogger.library }) : undefined,
       weights: { list: async()=>weightsSorted().map(w=>({date:w.date,kg:w.kg})), put: async(date,kg)=>put("weights",date,{date,kg:Math.round(kg*10)/10},{quiet:true}) },
       onFinish(workout, rec){
@@ -1476,7 +1547,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","StrengthScore","CalorieCycling","TrendCompare"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
@@ -1485,11 +1556,18 @@ try{
     onApply: ch=>{ if(!ch || ch.key!=="profile.cutKcal" || !(+ch.to>0)) return;
       if(!coachPending || coachPending.to!==ch.to || Date.now()-coachPending.at>10000){ coachPending={to:ch.to, at:Date.now()}; toast(`Tap again to change your calorie target from ${Math.round(ch.from).toLocaleString("en-US")} to ${Math.round(ch.to).toLocaleString("en-US")} kcal.`); return; }
       coachPending=null; const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), cutKcal:+ch.to}; put("prefs","main",p); toast(`Calorie target is now ${Math.round(ch.to).toLocaleString("en-US")} kcal. Change it any time in Guide, Your numbers.`); } });
+  if(window.MacroTarget){ const mst=document.createElement("style"); mst.textContent=MacroTarget.css; document.head.appendChild(mst);
+    MacroTarget.bind(document, { date: () => view.date, render, onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items.map(it=>({id:uid(),eaten:false,...it}))); saveDay(day); toast("Added "+items[0].name+(items[0].eaten?"":". Tick it when you eat it.")); } }); }
   PhotoFood.bind(document, {
     getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
     getDay, date: () => view.date, render,
     onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items); saveDay(day); toast(items.length===1 ? "Added as an estimate" : "Added "+items.length+" items as estimates"); }
   });
+  if(window.VoiceLog){
+    const vst=document.createElement("style"); vst.textContent=VoiceLog.css; document.head.appendChild(vst);
+    // Spoken meals go through the photo/description card: fill its box and press Estimate.
+    VoiceLog.bindFood(document, { onText: text => { if(!VoiceLog.toPhotoFood(document, text)) toast("The photo and description card isn't available here, so speech can't be estimated."); } });
+  }
 }catch(e){}
 try{
   const st=document.createElement("style"); st.textContent=MenuImport.css; document.head.appendChild(st);
@@ -1533,4 +1611,14 @@ try{
   });
 }catch(e){}
 initStore();
+// Home-screen shortcuts (manifest "shortcuts"): #log-weight etc. open a tab and focus one control.
+function runShortcut(){
+  const sc = window.AppShortcuts && AppShortcuts.parse(location.hash);
+  if(!sc) return;
+  try{ history.replaceState(null, "", location.pathname + location.search); }catch(_){}
+  view.date = TODAY; view.tab = sc.tab; render(); window.scrollTo(0,0);
+  requestAnimationFrame(()=>{ const el = sc.focus && document.querySelector(sc.focus); if(el){ el.scrollIntoView({block:"center"}); el.focus(); } });
+}
+runShortcut();
+window.addEventListener("hashchange", runShortcut);
 </script>
