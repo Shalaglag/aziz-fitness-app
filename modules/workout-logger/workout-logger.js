@@ -1258,6 +1258,10 @@ Stair Climber|Cardio|Cardio|`;
       const pTxt = fmtSet(p, { unit: pUnit, exId: e.exId }, ex) + (num(p.rir) != null ? ' · RIR ' + p.rir : p.rpe ? ' · @' + p.rpe : '');
       out += '<div class="lb-gym-last"><span>' + (p._base ? 'Plan target' : 'Last time') + '</span><b>' + esc(pTxt) + '</b></div>';
     } else out += '<div class="lb-gym-last"><span>Last time</span><b class="lb-muted">First time logging this set</b></div>';
+    // Back after 7+ days off this lift: the host's BreakRamp suggests 90% / 95% of the pre-break weights.
+    if (S.opts.breakRamp && isWeighted(ex) && s.t !== 'w') {
+      try { out += S.opts.breakRamp.noteHtml(S.opts.breakRamp.plan(S.opts.breakRamp.fromLogger(workouts(), e.exId, { excludeId: E.doc.id }), { today: Date.now(), step: weightStep(ex, e.unit) }), e.unit); } catch (err) {}
+    }
     if (p && isWeighted(ex)) {
       const d = compareSets(vals, p, e.unit, pUnit), chips = [];
       if (d && d.dw != null) chips.push('<span class="lb-delta ' + (d.dw > 0 ? 'up' : d.dw < 0 ? 'down' : '') + '">' + signed(d.dw, 2) + ' ' + e.unit + '</span>');
