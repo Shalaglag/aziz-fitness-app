@@ -30,9 +30,9 @@ const DataIO = (() => {
     days: "Days (food, water, steps, sleep)", weights: "Weigh-ins", workouts: "Workouts", prefs: "Settings",
     meals: "Saved meals", barcodes: "Scanned foods", photos: "Progress photo records", menus: "Imported menus",
     lb_workouts: "Full-logger workouts", lb_templates: "Workout templates", lb_exercises: "Custom exercises",
-    lb_measures: "Body measurements", lb_meta: "Logger settings", cardio: "Cardio sessions", markers: "Health markers",
+    lb_measures: "Body measurements", lb_meta: "Logger settings", cardio: "Cardio sessions", markers: "Health markers", runs: "GPS runs (routes)",
   };
-  const DATE_KEYED = ["days", "weights", "workouts", "cardio"];
+  const DATE_KEYED = ["days", "weights", "workouts", "cardio", "runs"];
 
   const KINDS = {
     backup: "App backup",

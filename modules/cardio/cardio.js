@@ -15,7 +15,7 @@
  *   effort  1 easy (can talk easily) · 2 steady (can talk in short sentences) · 3 hard (can't talk)
  * API:
  *   Cardio.css                                         -> string, inject once (uses the app's tokens)
- *   Cardio.KINDS                                       -> [{id, label, machine}] treadmill, walk, bike, elliptical, rower, stairs
+ *   Cardio.KINDS                                       -> [{id, label, machine}] treadmill, walk, run, bike, elliptical, rower, stairs
  *   Cardio.planFrom(prefs)                             -> the usual session from prefs/main.cardio
  *   Cardio.clean(input, {weightKg, now})               -> {ok, session, errors} validated session
  *   Cardio.sessions(doc)                               -> sessions of a cardio/{date} doc ([] when missing)
@@ -38,6 +38,7 @@ const Cardio = (() => {
   const KINDS = [
     { id: "treadmill", label: "Treadmill", machine: true },
     { id: "walk", label: "Outdoor walk", machine: false },
+    { id: "run", label: "Outdoor run", machine: false },
     { id: "bike", label: "Bike", machine: true },
     { id: "elliptical", label: "Elliptical", machine: true },
     { id: "rower", label: "Rower", machine: true },
@@ -94,8 +95,8 @@ const Cardio = (() => {
   }
   const mets = (speed, incline) => { const v = vo2(speed, incline); return v == null ? null : v / 3.5; };
   function estKcal(s, weightKg) {
-    if (!(weightKg > 0) || !(s.kind === "treadmill" || s.kind === "walk")) return null;
-    const v = vo2(s.speed, s.kind === "walk" ? 0 : s.incline);
+    if (!(weightKg > 0) || !(s.kind === "treadmill" || s.kind === "walk" || s.kind === "run")) return null;
+    const v = vo2(s.speed, s.kind === "treadmill" ? s.incline : 0);
     return v == null ? null : Math.round(v * weightKg / 1000 * 5 * s.min);
   }
 
@@ -111,7 +112,7 @@ const Cardio = (() => {
       out[k] = k === "hrAvg" || k === "hrMax" || k === "kcal" ? Math.round(v) : r2(v);
     }
     if (out.min == null) errors.push("min");
-    if (kind !== "treadmill") out.incline = kind === "walk" ? null : out.incline;
+    if (kind !== "treadmill") out.incline = kind === "walk" || kind === "run" ? null : out.incline;
     if (out.hrAvg != null && out.hrMax != null && out.hrMax < out.hrAvg) errors.push("hrMax");
     out.kmCalc = false;
     if (out.km == null && out.speed != null && out.min != null) { out.km = r2(out.speed * out.min / 60); out.kmCalc = true; }
@@ -151,7 +152,7 @@ const Cardio = (() => {
   }
 
   // WorkoutLogger exercise ids for its Cardio category.
-  const LOGGER_KIND = [[/treadmill/, "treadmill"], [/bike|cycle/, "bike"], [/elliptical/, "elliptical"], [/row(ing)?-machine|rower/, "rower"], [/stair/, "stairs"], [/walk/, "walk"]];
+  const LOGGER_KIND = [[/treadmill/, "treadmill"], [/bike|cycle/, "bike"], [/elliptical/, "elliptical"], [/row(ing)?-machine|rower/, "rower"], [/stair/, "stairs"], [/\brun/, "run"], [/walk/, "walk"]];
   function fromLogger(w) {
     if (!w || !Array.isArray(w.exercises)) return [];
     const date = w.start ? localISO(new Date(w.start)) : null;
