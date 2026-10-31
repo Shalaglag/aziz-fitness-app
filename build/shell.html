@@ -792,6 +792,8 @@ function ddOpts(){ return {today:TODAY, selected:view.date, targets:ddTargets(),
 const CARDIO_DEFAULT = {kind:"treadmill", min:30, speed:4.0, incline:3};
 let cardioOpts = {};
 function cdDocs(){ const m=S.docs.prefs.main||{}; return {...S.docs, prefs:{...S.docs.prefs, main:{...m, cardio:{...CARDIO_DEFAULT, ...(m.cardio||{})}}}}; }
+function shortCardioMin(d){ const sh=(S.docs.workouts[d]||{}).short; return sh && sh.cardioMin!=null ? sh.cardioMin : null; }
+function cdDocsDay(d){ const docs=cdDocs(), m=shortCardioMin(d); return m ? {...docs, prefs:{...docs.prefs, main:{...docs.prefs.main, cardio:{...docs.prefs.main.cardio, min:m}}}} : docs; }
 /* Error guard: one broken card never freezes a tab. safe(label, fn) renders a small "couldn't load" box and lights the banner. */
 const brokenCards=[];
 function cardFail(label,e){ try{ console.error("[card] "+label, e); brokenCards.push(label); showErrBanner(); }catch(_){}
@@ -917,7 +919,7 @@ function effortBits(){
   const picker = has ? safe("Effort", ()=>EffortDeload.pickerHtml(d, w.effort)) : "";
   return {nudge, picker};
 }
-function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocs(), cardioOpts)}</div>`); const feel = window.MuscleFeedback ? safe("Muscle feedback", ()=>MuscleFeedback.cardHtml(S.docs.workouts[view.date], view.date, mfOpts())) : ""; return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + feel + cardio; }
+function vTrain(){ const eb=effortBits(), ses=sessionFor(view.date); const cardio = (ses && ses.session==="Rest") ? "" : shortCardioMin(view.date)===0 ? `<div class="card"><h3>Cardio</h3><p class="muted">Skipped today: the short session uses the time for lifting. <button class="btn ghost small" data-act="ssclear">Back to the full session</button></p></div>` : cdSafe(()=>`<div id="cdoHost">${Cardio.cardHTML(view.date, cdDocsDay(view.date), cardioOpts)}</div>`); const feel = window.MuscleFeedback ? safe("Muscle feedback", ()=>MuscleFeedback.cardHtml(S.docs.workouts[view.date], view.date, mfOpts())) : ""; return rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts()))) + eb.nudge + safe("Workout", vTrainBody) + eb.picker + feel + cardio; }
 function vTrainBody(){ return view.trainMode==="full" ? `<div class="card">${trainSwitch()}<p class="muted" style="font-size:.88rem">Templates, live workout with rest timer, PRs, plate calculator and history. Finished workouts also land in Today, Progress and the weekly report.</p></div>` : `<div>${trainSwitch()}</div>` + vTrainSession() + otherLogged() + strongCard(); }
 function otherLogged(){
   const d=view.date, wk=S.docs.workouts[d]; if(!wk||!wk.sets) return "";
@@ -966,6 +968,15 @@ function travelApply(kit){
   put("workouts", d, TravelWorkout.apply(w, items, kit)); view.twOpen=false;
   toast(`Travel version on. Sets log under the ${TravelWorkout.kitOf(kit).label.toLowerCase()} moves; history stays with the plan lift.`);
 }
+/* Short on time: 30/45/60 min version of today's session (ShortSession module). */
+function shortCard(session, wk){
+  return safeMod("ShortSession", ()=>ShortSession.cardHtml({session, exercises:PROGRAM[session], minutes:view.ssMin||45, active:ShortSession.active(wk), open:!!view.ssOpen, mainLifts:MAIN_LIFTS, cardioMin:cdDocs().prefs.main.cardio.min}));
+}
+function shortApply(min){
+  const d=view.date, w=workoutDoc(d), p=ShortSession.plan(PROGRAM[w.session]||[], {minutes:min, mainLifts:MAIN_LIFTS, cardioMin:cdDocs().prefs.main.cardio.min});
+  put("workouts", d, ShortSession.apply(w, p)); view.ssOpen=false;
+  toast(`${min} min version on: about ${Math.round(p.est.total)} min. Main lifts keep their sets.`);
+}
 function vTrainSession(){
   const d=view.date, ses=sessionFor(d), wk=S.docs.workouts[d]||{};
   const cur = ses ? ses.session : null;
@@ -982,10 +993,13 @@ function vTrainSession(){
     <p class="muted" style="font-size:.88rem">Big compounds: rest 2.5–3 min. Work in 8–12 reps, 1–2 reps short of failure. Keep loads heavy during the cut.</p>
   </div>
   ${travelCard(cur, wk)}
+  ${shortCard(cur, wk)}
   <div class="card">
     ${ex.map(([planName,bw,br,bs,unit,note])=>{
       const swappedTo = usedFor(wk, planName), name = swappedTo || planName;
       const logged = (wk.sets&&wk.sets[name]) || [];
+      const ss = window.ShortSession ? ShortSession.slot(wk, planName) : {sets:null,drop:false,pair:null};
+      if(ss.sets!=null) bs = ss.sets;
       const n = Math.max(bs, logged.length);
       const hist = liftHistory(name).filter(h=>h.date<d);
       const last = hist[hist.length-1];
@@ -995,8 +1009,8 @@ function vTrainSession(){
       let cmp="";
       const ref = last ? last.best : swappedTo ? null : {w:bw,r:br,v:e1rm(bw,br)};
       if(todayBest && ref){ cmp = todayBest.v>=ref.v-0.01 ? `<span class="pill good">At or above ${last?"last time":"baseline"}</span>` : `<span class="pill warn">Below ${last?"last time":"baseline"}</span>`; }
-      return `<div class="ex">
-        <div class="spread"><div><b>${esc(name)}</b> ${isMain?`<span class="pill info">Main lift</span>`:""}${swappedTo?` <span class="muted" style="font-size:.85rem">instead of ${esc(planName)}</span>`:""}</div><div class="row">${cmp}${window.ExerciseSwap?`<button class="btn ghost small" data-act="swap" data-n="${esc(planName)}">${swappedTo?"Change":"Swap"}</button>`:""}${swappedTo?`<button class="btn ghost small" data-act="unswap" data-n="${esc(planName)}">Back to plan</button>`:""}</div></div>
+      return `<div class="ex ${ss.drop&&!logged.length?"ss-skip":""}">
+        <div class="spread"><div><b>${esc(name)}</b> ${isMain?`<span class="pill info">Main lift</span>`:""}${ss.pair?` <span class="pill">Superset ${ss.pair}</span>`:""}${ss.drop?` <span class="pill warn">Skipped today</span>`:""}${swappedTo?` <span class="muted" style="font-size:.85rem">instead of ${esc(planName)}</span>`:""}</div><div class="row">${cmp}${window.ExerciseSwap?`<button class="btn ghost small" data-act="swap" data-n="${esc(planName)}">${swappedTo?"Change":"Swap"}</button>`:""}${swappedTo?`<button class="btn ghost small" data-act="unswap" data-n="${esc(planName)}">Back to plan</button>`:""}</div></div>
         <div class="muted" style="font-size:.88rem">Baseline <span class="num">${bw} ${unit} × ${br}, ×${bs}</span>${last?` · Last <span class="num">${last.best.w} × ${last.best.r}</span> (${fmt(last.date,{month:"short",day:"numeric"})})`:""}${note?` · ${esc(note)}`:""}</div>
         ${isMain&&dropping(name)?`<p class="note bad">Dropped 2 sessions in a row. Check sleep, pre-workout food and volume before touching calories.</p>`:""}
         <div class="sets">${Array.from({length:n},(_,i)=>{ const s=logged[i]||{}; return `<div class="set"><span class="i">${i+1}</span>
@@ -1352,6 +1366,9 @@ main.addEventListener("click",e=>{
   else if(a==="unswap"){ doSwap(el.dataset.n, null); }
   else if(a==="twkit"){ view.twKit=el.dataset.kit; view.twOpen=true; render(); }
   else if(a==="twapply"){ travelApply(el.dataset.kit||view.twKit||"dumbbell"); }
+  else if(a==="ssmin"){ view.ssMin=+el.dataset.min; view.ssOpen=true; render(); }
+  else if(a==="ssapply"){ shortApply(+el.dataset.min||view.ssMin||45); }
+  else if(a==="ssclear"){ put("workouts", view.date, ShortSession.clear(workoutDoc(view.date))); toast("Back to the full session."); }
   else if(a==="twclear"){ put("workouts", view.date, TravelWorkout.clear(workoutDoc(view.date))); toast("Back to the gym plan."); }
   else if(a==="pgadd"){ const day=getDay(d); const r=proteinGapRes(day); if(r&&r.best){ day.food=day.food.concat(ProteinGap.toFoodItems(r.best).map(it=>({...it,id:uid(),slot:"Extra",eaten:false}))); saveDay(day); toast("Added as planned. Tick it when you have it."); } }
   else if(a==="stepsadd"){ put("days", d, Steps.addSteps(getDay(d), +el.dataset.n)); }
@@ -1529,7 +1546,7 @@ function startTimer(sec){
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","StrengthAnalytics","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:1800}), kcalTarget,
