@@ -12,6 +12,7 @@
     { "file": "modules/pr-celebrate/pr-celebrate.js", "expose": ["PRCelebrate"] },
     { "file": "modules/workout-logger/workout-logger.js" },
     { "file": "modules/saved-meals/saved-meals.js" },
+    { "file": "modules/auto-foods/auto-foods.js" },
     { "file": "modules/effort-deload/effort-deload.js", "expose": ["EffortDeload"] },
     { "file": "modules/budget-recovery/budget-recovery.js", "expose": ["BudgetRecovery"] },
     { "file": "modules/daily-score/daily-score.js", "expose": ["DailyScore"] },

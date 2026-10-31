@@ -48,11 +48,13 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       const r = await page.evaluate(() => {
         const items = S.docs.days[TODAY].food;
-        return { target: kcalTarget(TODAY), eaten: sum(items.filter(i => i.eaten)), all: sum(items) };
+        // Auto foods (Adonis, Gatorade) add planned rows on first open; they must stay un-eaten and out of the seeded totals.
+        return { target: kcalTarget(TODAY), eaten: sum(items.filter(i => i.eaten)), all: sum(items.filter(i => !i.auto)), autoEaten: items.filter(i => i.auto && i.eaten).length };
       });
       assert.strictEqual(r.target, 2000, "default cut target is 2,000 kcal");
       assert.deepStrictEqual([r.eaten.kcal, r.eaten.p, r.eaten.c, r.eaten.f], [870, 75, 85, 22]);
       assert.strictEqual(r.all.kcal, 1570);
+      assert.strictEqual(r.autoEaten, 0, "auto-food rows are planned, never counted as eaten");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });

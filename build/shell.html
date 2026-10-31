@@ -541,7 +541,7 @@ const LIB = {
 
 /* ===================== Store (synced db when available, else this browser) ===================== */
 const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio","markers","runs"];
-const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},markers:{},runs:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading"};
+const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},markers:{},runs:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading", synced:new Set()};
 const LB_READ = ["lb_workouts","lb_exercises"];
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
@@ -635,7 +635,7 @@ async function initStore(){
   S.db = db; S.mode="sync"; COLS.forEach(c=>S.docs[c]={});
   COLS.forEach(c=>{
     db.collection(c).onSnapshot(qs=>{
-      const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=outbox.overlay(c,o); scheduleRender();
+      const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=outbox.overlay(c,o); S.synced.add(c); scheduleRender();
     }, err=>{ toast("Sync problem: "+err.message); });
   });
   outbox.load(); COLS.forEach(c=>outbox.overlay(c,S.docs[c])); outbox.retryAll();
@@ -732,6 +732,7 @@ let lastTab=null;
 function render(){
   renderPending=false;
   applyTargets();
+  try{ autoFoodsTick(); }catch(e){ console.error("[auto foods]", e); }
   applyAccent(currentAccent());
   document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-current", b.dataset.tab===view.tab?"page":"false"));
   document.getElementById("dateLabel").textContent = fmt(view.date) + (view.date===TODAY?" · today":"");
@@ -1079,6 +1080,7 @@ function vFood(){
   ${typeof MacroTarget !== "undefined" ? MacroTarget.html(d) : ""}
   ${safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day}))}
   ${window.VoiceLog && typeof PhotoFood !== "undefined" ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : ""}
+  ${safeMod("AutoFoods",()=>AutoFoods.html((S.docs.prefs.main||{}).autoFoods,{day,training,type,hasDrinks:!!window.SuppDrinks}))}
   ${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}
   <div id="bcHost"></div>
   <div id="lsHost"></div>
@@ -1089,6 +1091,7 @@ function vFood(){
       <div class="item ${i.eaten?"":"planned"}">
         <input type="checkbox" data-act="eat" data-id="${i.id}" ${i.eaten?"checked":""} aria-label="Eaten">
         <div class="nm"><b>${mgBadge(i)} ${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
+        <div class="nm"><b>${esc(i.name)}</b><small>${esc(i.slot)}${i.est?" · estimate":""}${i.auto?" · auto":""}${i.eaten?" · eaten":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">on your never-pick list</span>`:""}</small></div>
         <div class="mac">${r0(i.kcal)} kcal<br><span style="color:var(--protein)">${r1(+i.p||0)}P</span> <span style="color:var(--carbs)">${r1(+i.c||0)}C</span> <span style="color:var(--fat)">${r1(+i.f||0)}F</span></div>
         <button class="x" data-act="delfood" data-id="${i.id}" aria-label="Remove">×</button>
       </div>`).join("")}</div>
@@ -1323,6 +1326,20 @@ document.getElementById("nextDay").onclick=()=>{ view.date=addDays(view.date,1);
 document.getElementById("goToday").onclick=()=>{ view.date=TODAY; render(); };
 
 function saveDay(day,opts){ put("days",day.date,day,opts); }
+/* Auto foods: rules in prefs/main.autoFoods are added to the viewed day as planned rows the first time it is opened */
+function afCtx(d){ const type=dayType(d), ses=sessionFor(d); return {date:d, today:TODAY, type, training:type!=="friday" && !(ses && ses.session==="Rest")}; }
+function afPlanDrink(day,key){ return window.SuppDrinks ? SuppDrinks.planDrink(day,key,S.docs.prefs.main||{},{uid}) : null; }
+function autoFoodsTick(){
+  if(!window.AutoFoods) return;
+  if(S.mode==="loading" || (S.mode==="sync" && !(S.synced.has("days") && S.synced.has("prefs")))) return;
+  let prefs=S.docs.prefs.main||{};
+  const seeded=AutoFoods.seed(prefs); if(seeded){ prefs=seeded; put("prefs","main",prefs,{quiet:true}); }
+  const d=view.date; if(d<TODAY) return;
+  const r=AutoFoods.plan(getDay(d), prefs, afCtx(d), {uid, planDrink:afPlanDrink});
+  if(!r.changed) return;
+  put("days",d,r.day,{quiet:true});
+  if(r.added.length) toast("Planned for "+(d===TODAY?"today":fmt(d))+": "+r.added.map(n=>n.split(" (")[0]).join(", ")+". Tick when eaten, or remove to skip.");
+}
 function addFood(item){ const day=getDay(view.date); day.food.push({id:uid(),eaten:false,...item}); saveDay(day); }
 
 main.addEventListener("change",e=>{ if(window.HealthMarkers && e.target && e.target.dataset && e.target.dataset.hmSel){ try{ HealthMarkers.onPresetChange(e.target); }catch(err){} } });
@@ -1360,6 +1377,8 @@ main.addEventListener("click",e=>{
     else { view.wrWeek=+wr.dataset.wrWeek; render(); }
     return;
   }
+  const af=e.target.closest("[data-af]");
+  if(af && window.AutoFoods){ const r=AutoFoods.apply(af.dataset.af, af.dataset, S.docs.prefs.main||{}, getDay(view.date)); if(r.day) put("days",view.date,r.day,{quiet:true}); if(r.prefs) put("prefs","main",r.prefs); if(r.toast) toast(r.toast); return; }
   const el=e.target.closest("[data-act]"); if(!el) return;
   const a=el.dataset.act, d=view.date;
   if(a==="caldate"){ view.date=el.dataset.d; view.calYm=null; render(); window.scrollTo(0,0); return; }
@@ -1379,7 +1398,7 @@ main.addEventListener("click",e=>{
   else if(a==="snack"){ const s=SNACKS[+el.dataset.i]; addFood({name:s[1],slot:"Snack",kcal:s[2],p:s[3],c:s[4],f:s[5]}); }
   else if(a==="meal-add"){ const m=S.docs.meals[el.dataset.id]; if(!m) return; const r=SavedMeals.applyToDay(getDay(d),m,{uid}); put("meals",m.id,SavedMeals.markUsed(m),{quiet:true}); if(r.added.length){ saveDay(r.day); toast("Added "+m.name+(r.skipped.length?" ("+r.skipped.length+" already on the day)":"")+". Tick items as you eat them."); } else toast("Everything in "+m.name+" is already on this day"); }
   else if(a==="meal-del"){ if(el.dataset.confirm){ const mid=el.dataset.id, old=S.docs.meals[mid]; remove("meals",mid); if(old) undoToast("Deleted "+(old.name||"meal"), ()=>put("meals",mid,old)); } else { el.dataset.confirm="1"; el.textContent="Delete?"; el.classList.add("confirm"); } }
-  else if(a==="delfood"){ const day=getDay(d), idx=day.food.findIndex(i=>i.id===el.dataset.id), item=day.food[idx]; day.food=day.food.filter(i=>i.id!==el.dataset.id); saveDay(day); if(item) undoToast("Removed "+(item.name||"item"), ()=>{ const cur=getDay(d); if(cur.food.some(i=>i.id===item.id)) return; cur.food=cur.food.slice(); cur.food.splice(Math.min(idx,cur.food.length),0,item); saveDay(cur); }); }
+  else if(a==="delfood"){ let day=getDay(d); const idx=day.food.findIndex(i=>i.id===el.dataset.id), item=day.food[idx]; day.food=day.food.filter(i=>i.id!==el.dataset.id); if(window.AutoFoods) day=AutoFoods.onRemove(day,item); saveDay(day); if(item) undoToast("Removed "+(item.name||"item")+(item.auto?" (skipped today)":""), ()=>{ let cur=getDay(d); if(cur.food.some(i=>i.id===item.id)) return; cur.food=cur.food.slice(); cur.food.splice(Math.min(idx,cur.food.length),0,item); if(window.AutoFoods) cur=AutoFoods.onRestore(cur,item); saveDay(cur); }); }
   else if(a==="copyday"){ const day=getDay(d), nd=addDays(d,1), next=getDay(nd); next.food=next.food.concat(day.food.map(i=>({...i,id:uid(),eaten:false}))); put("days",nd,next); view.date=nd; toast("Copied to "+fmt(nd)); }
   else if(a==="clearday"){ if(el.dataset.confirm){ const day=getDay(d); day.food=[]; saveDay(day); } else { el.dataset.confirm="1"; el.textContent="Tap again to clear"; } }
   else if(a==="swap"){ openSwap(el.dataset.n); }
@@ -1433,6 +1452,7 @@ main.addEventListener("submit",e=>{
     if(isNever(name)) toast("Heads up: that's on your never-pick list");
     document.activeElement.blur(); addFood(item);
   }
+  else if(f==="af-save"){ if(!window.AutoFoods) return; const r=AutoFoods.apply("save", AutoFoods.readForm(document), S.docs.prefs.main||{}, getDay(d)); document.activeElement.blur(); if(r.prefs) put("prefs","main",r.prefs); if(r.toast) toast(r.toast); }
   else if(f==="meal-save"){ const nm=document.getElementById("mealName").value; const m=SavedMeals.fromItems(getDay(d).food,{name:nm,existing:S.docs.meals}); if(!m) return; document.activeElement.blur(); put("meals",m.id,m); toast("Saved "+m.name+". Add it to any day with one tap."); }
   else if(f==="profile"){ const p=Object.assign({},clone(S.docs.prefs.main)); const pr={}; ["start","startKg","goalKg","cutKcal","maintenance","protein","fat"].forEach(k=>{ const v=document.getElementById("pf_"+k).value.trim(); if(v) pr[k]= k==="start"?v:+v; }); let v=null; try{ v=window.AppTargets?AppTargets.validate(pr):null; }catch(e){}
     if(v && v.errors && v.errors.length){ toast(v.errors.map(x=>x.msg).join(". ")); return; }
