@@ -114,8 +114,8 @@
   }
   const obox = (c, ax, col) => ({ k: 'box', c, ax, col });
 
-  function bodyShapes(sk, hi) {
-    const H = new Set(hi || []), c = t => H.has(t) ? 'hi' : 'body', out = [];
+  function bodyShapes(sk, hi, sec) {
+    const H = new Set(hi || []), S2 = new Set(sec || []), c = t => H.has(t) ? 'hi' : S2.has(t) ? 'sec' : 'body', out = [];
     const { P, up, neckB, head } = sk, waist = add(P, mul(up, 0.2));
     out.push(sph(P, 0.115, c('pelvis')));
     out.push(cap(P, waist, 0.115, 0.115, c('abs')));
@@ -169,7 +169,7 @@
   const SEAT = { pelvis: [0, 0.58, 0], up: [0, 1, -0.05], feet: { L: [0.16, 0.08, 0.45] }, knees: { L: [0, 0.5, 1] } };
   const seated = o => Object.assign({}, SEAT, o);
   const DEFS = {
-    'bench-press-barbell': { name: 'Bench Press (Barbell)', eq: 'Barbell', hi: ['torso'], cam: { yaw: 0.95, pitch: 0.3 },
+    'bench-press-barbell': { name: 'Bench Press (Barbell)', eq: 'Barbell', hi: ['torso'], sec: ['delts', 'arms'], cam: { yaw: 0.95, pitch: 0.3 },
       keys: rep({ pelvis: [0, 0.58, 0.1], up: [0, 0.08, -1], fwd: [0, 1, 0], hands: { L: [0.28, 1.14, -0.36] }, elbows: { L: [1, -0.8, 0.2] }, feet: { L: [0.3, 0.08, 0.55] }, knees: { L: [0.3, 1, 0] }, footDir: { L: [0.2, 0, 1] } },
         { pelvis: [0, 0.58, 0.1], up: [0, 0.08, -1], fwd: [0, 1, 0], hands: { L: [0.28, 0.8, -0.2] }, elbows: { L: [1, -0.8, 0.2] }, feet: { L: [0.3, 0.08, 0.55] }, knees: { L: [0.3, 1, 0] }, footDir: { L: [0.2, 0, 1] } }, { c: 0.45 }),
       props: sk => E.bench(-0.9, 0.45).concat(E.barbell(sk.grip.L, sk.grip.R)) },
@@ -233,7 +233,7 @@
       keys: rep({ pelvis: [0, 0.98, 0], up: [0, 1, 0.12], hands: { L: [0.08, 1.18, 0.3] }, elbows: { L: [0, -0.3, -1] } }, { pelvis: [0, 0.98, 0], up: [0, 1, 0.12], hands: { L: [0.2, 0.95, 0.15] }, elbows: { L: [0, -0.3, -1] } }),
       props: sk => E.pulley([0, 2.1, 0.45]).concat(E.rope([0, 2.1, 0.45], sk.grip.L, sk.grip.R)) },
 
-    'lat-pulldown-wide-grip-cable': { name: 'Lat Pulldown - Wide Grip (Cable)', eq: 'Cable', hi: ['torso'], cam: { yaw: 2.5, pitch: 0.15 },
+    'lat-pulldown-wide-grip-cable': { name: 'Lat Pulldown - Wide Grip (Cable)', eq: 'Cable', hi: ['torso'], sec: ['arms', 'forearms'], cam: { yaw: 2.5, pitch: 0.15 },
       keys: rep(seated({ up: [0, 1, -0.12], hands: { L: [0.42, 1.56, 0] }, elbows: { L: [1, -0.3, -0.3] } }), seated({ up: [0, 1, -0.12], hands: { L: [0.38, 1.17, 0.12] }, elbows: { L: [0.8, -1, -0.5] } }), { c: 0.38 }),
       props: sk => E.seat(0.5, 0).concat([box([0, 0.76, 0.38], [0.42, 0.08, 0.1], 'pad')], E.upright(0, -0.35, 2.4), E.bar(sk.grip.L, sk.grip.R, 0.14), [line([0, 2.3, 0.03], mid(sk.grip.L, sk.grip.R)), sph([0, 2.3, 0.03], 0.045, 'metal')]) },
 
@@ -786,7 +786,7 @@
     const def = DEFS[id];
     if (!def) return null;
     const sk = skeleton(sample(def, t));
-    return { sk, shapes: bodyShapes(sk, def.hi).concat(def.props ? def.props(sk) : []) };
+    return { sk, shapes: bodyShapes(sk, def.hi, def.sec).concat(def.props ? def.props(sk) : []) };
   }
 
   // ---------- drawing ----------
@@ -849,7 +849,7 @@
       }
     });
     items.sort((a, b) => b.z - a.z);
-    const rgbOf = col => col === 'hi' ? colors.hi : (colors[col] || colors.body);
+    const rgbOf = col => col === 'hi' ? colors.hi : (colors[col] || colors.body);  // colors.sec is optional (secondary muscles)
     items.forEach(it => {
       const rgb = rgbOf(it.col);
       if (it.k === 'face') {
