@@ -9,6 +9,7 @@
     { "file": "modules/voice-log/voice-log.js", "expose": ["VoiceLog"] },
     { "file": "modules/workout-share/workout-share.js", "expose": ["WorkoutShare"] },
     { "file": "modules/break-ramp/break-ramp.js", "expose": ["BreakRamp"] },
+    { "file": "modules/pr-celebrate/pr-celebrate.js", "expose": ["PRCelebrate"] },
     { "file": "modules/workout-logger/workout-logger.js" },
     { "file": "modules/saved-meals/saved-meals.js" },
     { "file": "modules/effort-deload/effort-deload.js", "expose": ["EffortDeload"] },
