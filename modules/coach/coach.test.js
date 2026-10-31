@@ -186,6 +186,125 @@ test("empty data does not throw", () => {
   const R = Coach.review({}, { today: "2026-11-09" });
   assert.equal(R.verdict, "empty");
   assert.ok(Coach.reviewHtml({}, { today: "2026-11-09" }).includes("14-day review"));
-  assert.ok(Coach.chatHtml().includes("Ask your coach"));
+  assert.ok(Coach.chatHtml().includes("Ask Claude"));
   assert.ok(Coach.context({}, { today: "2026-11-09" }));
+});
+
+test("suggestions differ per screen and partialAnswer reads a streaming reply", () => {
+  assert.ok(Coach.suggestions("train").some(s => /train today/i.test(s.q)));
+  assert.ok(Coach.suggestions("food").some(s => s.topic === "protein"));
+  assert.equal(Coach.suggestions("nope").length, Coach.suggestions("today").length);
+  assert.equal(Coach.partialAnswer('{"answer":"Yes, add 2.5 kg.\\nYour bench'), "Yes, add 2.5 kg.\nYour bench");
+  assert.equal(Coach.partialAnswer('{"answer":"Done \\"now\\"","evidence":[]}'), 'Done "now"');
+  assert.equal(Coach.partialAnswer('{"evid'), "");
+});
+
+test("panelHtml renders the button, the panel and the offline/no-Claude notes", () => {
+  const h = Coach.panelHtml();
+  assert.ok(h.includes("co-fab") && h.includes("Ask Claude") && h.includes("data-coach-form"));
+  assert.ok(!h.includes("co-open"));
+  Coach._state.noClaude = true;
+  assert.ok(/suggested questions still work|quick questions/.test(Coach.panelHtml()));
+  Coach._state.noClaude = false;
+});
+
+test("context carries lift history, planned food, saved meals, readiness, steps and the exercise asked about", () => {
+  const docs = { weights: {}, days: {}, workouts: {}, meals: {}, prefs: { main: { profile: { start: "2026-10-01", cutKcal: 2000, protein: 180 }, stepGoal: 9000 }, swaps: { hurt: { "leg-press": { name: "Leg Press", note: "knee" } } } } };
+  ["2026-10-20", "2026-10-22", "2026-10-24"].forEach((d, i) => { docs.workouts[d] = { date: d, session: "Push A", effort: 3, sets: { "Bench Press (Barbell)": [{ w: 80 + i * 2.5, r: 8 }], "Lateral Raise (Cable)": [{ w: 7.5, r: 12 }] } }; });
+  docs.days["2026-10-26"] = { date: "2026-10-26", steps: 8200, readiness: { quality: 4, soreness: 3, energy: 4, joints: { knee: 1 } }, food: [{ name: "Chicken rice", slot: "Lunch", kcal: 600, p: 50, c: 60, f: 12, eaten: true }, { name: "Protein shake", slot: "Snack", kcal: 200, p: 40, eaten: false }] };
+  docs.meals.a = { id: "a", name: "Usual Nutreeze day", items: [{ name: "x", kcal: 500, p: 45 }, { name: "y", kcal: 700, p: 60 }], uses: 3 };
+  const ctx = Coach.context(docs, { today: "2026-10-26", question: "Should I increase my bench press weight?", exercise: n => ({ name: n, cues: ["Bend the bar"], mistakes: ["Flared elbows"], primary: ["Chest"], demo: { url: "x" } }), planToday: { session: "Push A", exercises: [{ name: "Bench Press (Barbell)", w: 90, reps: 8, sets: 2, unit: "kg" }] } });
+  const bench = ctx.lifts.find(l => l.name === "Bench Press (Barbell)");
+  assert.equal(bench.last5.length, 3);
+  assert.equal(bench.latestIsPR, true);
+  assert.ok(bench.vsPrevious.startsWith("+"));
+  assert.deepEqual(ctx.plannedToday, [{ name: "Protein shake", slot: "Snack", kcal: 200, p: 40 }]);
+  assert.equal(ctx.eatenToday[0].name, "Chicken rice");
+  assert.equal(ctx.todaySoFar.eatenCarbs, 60);
+  assert.equal(ctx.savedMeals[0].kcal, 1200);
+  assert.deepEqual(ctx.steps7, [["2026-10-26", 8200]]);
+  assert.equal(ctx.stepGoal, 9000);
+  assert.deepEqual(ctx.readiness7[0].joints, ["knee"]);
+  assert.deepEqual(ctx.exercisesThatHurt, ["Leg Press (knee)"]);
+  assert.equal(ctx.exerciseAsked.name, "Bench Press (Barbell)");
+  assert.ok(/verified demo/.test(ctx.exerciseAsked.demoVideo));
+  assert.equal(ctx.planToday.session, "Push A");
+  assert.ok(Coach.prompt("q", ctx, []).includes("exercisesThatHurt"));
+});
+
+test("exerciseIn matches plan names loosely and ignores unrelated questions", () => {
+  const names = ["Bench Press (Barbell)", "Incline DB Press", "Lat Pulldown, Wide", "Hack Squat", "Leg Extension"];
+  assert.equal(Coach.exerciseIn("how do I do the hack squat", names), "Hack Squat");
+  assert.equal(Coach.exerciseIn("Explain the lat pulldown", names), "Lat Pulldown, Wide");
+  assert.equal(Coach.exerciseIn("Should I bench heavier?", names), "Bench Press (Barbell)");
+  assert.equal(Coach.exerciseIn("What should I eat today?", names), null);
+});
+
+test("insights: PRs, falling strength, protein, fatigue, weekday overage, rest-vs-train protein; seen ids hide", () => {
+  const docs = { weights: {}, days: {}, workouts: {}, prefs: { main: { profile: { start: "2026-09-01", cutKcal: 2000, protein: 180 } } } };
+  const d = n => { const t = new Date(Date.UTC(2026, 9, 26)); t.setUTCDate(t.getUTCDate() - n); return t.toISOString().slice(0, 10); };
+  // Lifts: Squat improving to a PR, two lifts falling three sessions in a row, effort high.
+  [6, 4, 2].forEach((n, i) => { docs.workouts[d(n)] = { date: d(n), session: "Lower A", effort: 4, sets: { "Hack Squat": [{ w: 100 + i * 5, r: 8 }], "Leg Extension": [{ w: 120 - i * 10, r: 8 }], "Lying Leg Curl": [{ w: 60 - i * 5, r: 8 }] } }; });
+  docs.workouts[d(8)] = { date: d(8), session: "Push A", effort: 5, sets: { "Bench Press (Barbell)": [{ w: 80, r: 8 }] } };
+  // Food: 28 days logged; Fridays (d(n) where weekday 5) over by 400; rest days low protein.
+  for (let n = 1; n <= 28; n++) { const dt = d(n), wd = new Date(dt + "T00:00:00Z").getUTCDay(), train = !!docs.workouts[dt]; docs.days[dt] = { date: dt, food: [{ name: "Day", slot: "Lunch", kcal: wd === 5 ? 2400 : 1950, p: train ? 190 : 140, eaten: true }] }; }
+  const ins = Coach.insights(docs, { today: "2026-10-26", limit: 10 });
+  const ids = ins.map(i => i.id);
+  assert.ok(ids.some(i => i.startsWith("pr-")), "pr");
+  assert.ok(ids.includes("strength-down"), "strength-down");
+  assert.ok(ids.some(i => i.startsWith("protein-week-")), "protein");
+  assert.ok(ids.some(i => i.startsWith("fatigue-")), "fatigue");
+  assert.ok(ids.includes("weekday-over-5"), "friday");
+  assert.ok(ids.includes("protein-rest-vs-train"), "rest vs train");
+  ins.forEach(i => assert.ok(i.title && i.text && ["good", "warn", "info"].includes(i.kind)));
+  const few = Coach.insights(docs, { today: "2026-10-26" });
+  assert.equal(few.length, 3);
+  assert.equal(few[0].kind, "warn");
+  const seen = Object.fromEntries(ids.map(i => [i, "2026-10-24"]));
+  assert.equal(Coach.insights(docs, { today: "2026-10-26", seen }).length, 0);
+  assert.ok(Coach.insights(docs, { today: "2026-10-26", seen: { "strength-down": "2026-10-10" }, limit: 10 }).some(i => i.id === "strength-down"));
+  assert.ok(Coach.insightsHtml(docs, { today: "2026-10-26" }).includes("Patterns in your logs"));
+  assert.equal(Coach.insights({}, { today: "2026-10-26" }).length, 0);
+  assert.equal(Coach.insightsHtml({}, { today: "2026-10-26" }), "");
+});
+
+test("actions: only the fixed menu survives parsing, and nothing applies without a Confirm tap", async () => {
+  const a = Coach.parseAnswer(JSON.stringify({ answer: "Try this.", actions: [
+    { type: "set_calorie_target", kcal: "1850.4", why: "stalled 3 weeks" },
+    { type: "delete_everything" },
+    { type: "add_saved_meal" },
+    { type: "swap_exercise", from: "Leg Press", to: "Hack Squat", why: "knee" },
+  ] }));
+  assert.deepEqual(a.actions.map(x => x.type), ["set_calorie_target", "swap_exercise"]);
+  assert.equal(a.actions[0].kcal, 1850);
+  assert.deepEqual(Coach.cleanActions("nope"), []);
+
+  // Host stub records applies; the panel must show the exact change and wait for a tap.
+  const applied = [];
+  const host = { check: x => x.type === "swap_exercise" ? { ok: false, error: "Leg Press isn't in today's session." } : { ok: true, change: "Daily calorie target 2,000 → 1,850 kcal" },
+    apply: async x => { applied.push(x.type); return { ok: true, message: "Calorie target is now 1,850 kcal." }; } };
+  const listeners = {};
+  const root = { addEventListener: (k, fn) => { listeners[k] = fn; } };
+  Coach.bind(root, { getDocs: () => ({}), render: () => {}, actionHost: host, getSample: () => Promise.resolve({ json: async () => ({ answer: "Cut 150.", actions: [{ type: "set_calorie_target", kcal: 1850 }, { type: "swap_exercise", from: "Leg Press", to: "Hack Squat" }] }) }) });
+  Coach._state.msgs = []; Coach._state.busy = false;
+  listeners.submit({ preventDefault() {}, target: { matches: s => s === "[data-coach-form]", querySelector: () => ({ value: "Should I cut calories?" }) } });
+  await new Promise(r => setTimeout(r, 20));
+  const m = Coach._state.msgs[Coach._state.msgs.length - 1];
+  assert.equal(m.actions[0].status, "proposed");
+  assert.equal(m.actions[1].status, "blocked");
+  assert.equal(applied.length, 0, "nothing is applied before a tap");
+  const html = Coach.panelHtml();
+  assert.ok(html.includes("Daily calorie target 2,000 → 1,850 kcal") && html.includes("Confirm") && html.includes("Can't do this"));
+  const mi = Coach._state.msgs.length - 1;
+  const tap = attrs => listeners.click({ target: { closest: () => ({ dataset: attrs, hasAttribute: k => k.replace("data-coach-", "") in attrs }) } });
+  tap({ coachAct: mi + ":1" }); // blocked: ignored
+  tap({ coachAct: mi + ":0" });
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(applied, ["set_calorie_target"]);
+  assert.equal(m.actions[0].status, "done");
+  assert.ok(Coach.panelHtml().includes("✓ Calorie target is now 1,850 kcal."));
+  tap({ coachAct: mi + ":0" }); // a second tap does nothing
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(applied.length, 1);
+  Coach._state.msgs = [];
 });
