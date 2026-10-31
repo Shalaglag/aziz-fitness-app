@@ -4,6 +4,8 @@ This folder holds the whole fitness app project: the main app, the feature modul
 
 ## How to open it
 
+**On the phone (the real app):** install the Android app from the `android-latest` release, steps in [docs/ANDROID.md](docs/ANDROID.md).
+
 **Easiest:** double-click `Open the app.html` in this folder (or `app/index.html`). It opens in your browser, no install needed.
 
 - Needs internet only for the fonts. Everything else works offline.

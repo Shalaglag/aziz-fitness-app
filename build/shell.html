@@ -651,7 +651,7 @@ function setSync(){
   document.getElementById("sync").textContent = S.mode==="sync" ? "Synced across your phone and computer"+(who?" · "+who:"") : "Saved in this browser only";
 }
 // Offline mode on its own website: cache the app so it opens with no signal (app/sw.js).
-if(!window.claude && "serviceWorker" in navigator && location.protocol==="https:"){
+if(!window.claude && !(window.AndroidShell && AndroidShell.isNative()) && "serviceWorker" in navigator && location.protocol==="https:"){
   window.addEventListener("load", ()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
 }
 function scheduleRender(){
@@ -1284,6 +1284,8 @@ function vGuide(){
 }
 
 /* ===================== Events ===================== */
+// Android app (modules/android-shell): back button closes sheets, then returns to Today, then minimises.
+if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
 document.getElementById("tabs").addEventListener("click",e=>{ const b=e.target.closest("button[data-tab]"); if(!b) return; view.tab=b.dataset.tab; try{localStorage.setItem("aziz-cut-tab",view.tab)}catch(_){} render(); window.scrollTo(0,0); });
 document.getElementById("prevDay").onclick=()=>{ view.date=addDays(view.date,-1); render(); };
 document.getElementById("nextDay").onclick=()=>{ view.date=addDays(view.date,1); render(); };
