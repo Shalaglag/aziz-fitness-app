@@ -9,8 +9,12 @@
  * weights: optional { list() -> Promise<[{date:'YYYY-MM-DD', kg}]>, put(date, kg) -> Promise }
  *   so body weight logs go to the shell's own weights collection.
  * formCues: optional FormCues.create(guide) instance (form cues + demo links).
+ * anim: optional ExerciseAnim.create() instance. Exercises it has get a built-in 3D animated demo in Gym
+ *   mode and the exercise sheet, and the Demo button opens it full screen.
  * demos: optional ExerciseDemos.create(data, {library}) instance. When given, every exercise gets a
  *   Demo button (a checked video, else a YouTube search) and the sheet lists its demo videos.
+ * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
+ *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
  * Live workouts open in Gym mode (one set at a time, big steppers, RIR, rest countdown with "up next");
  *   "List view" in the header switches to the full table. Sets may carry rir (0-4, 4 = 4+).
@@ -774,7 +778,8 @@ Stair Climber|Cardio|Cardio|`;
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
   // Demo button: ExerciseDemos (opts.demos) when given, else the form cues link for exercises in the guide.
   function demoBtn(id, entry) {
-    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues;
+    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues, an = S.opts && S.opts.anim;
+    if (an && an.has(id)) return '<button type="button" class="lb-btn small ghost" data-ea-open="' + esc(id) + '">Demo</button>';
     const l = dm ? dm.link(id, getEx(id).name) : (fc && entry ? { href: fc.demoUrl(entry), label: 'Demo ↗' } : null);
     return l ? '<a class="lb-btn small ghost" href="' + esc(l.href) + '" target="_blank" rel="noopener noreferrer">' + esc(l.label) + '</a>' : '';
   }
@@ -791,7 +796,7 @@ Stair Climber|Cardio|Cardio|`;
   function exDetail(id) {
     const ex = getEx(id), ss = sessions(id), R = records(id), weighted = isWeighted(ex);
     if (exTab === 'about') {
-      return '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div></div>' +
+      return (S.opts.anim ? S.opts.anim.cardHtml(id) : '') + '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div></div>' +
         (ex.avoided ? '<p class="lb-warnbox">Your plan avoids this lift (no deadlifts, RDLs, hip thrusts, back extensions, glute-ham raises, reverse hypers or cable pull-throughs). Pick a machine-based option instead.</p>' : '') +
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
@@ -1124,8 +1129,38 @@ Stair Climber|Cardio|Cardio|`;
   }
   on('minimize', () => { closeEditor(); });
   function headHtml() {
-    if (E.mode === 'live') return '<button class="lb-link" data-a="minimize" aria-label="Minimize workout">Hide</button><span class="lb-headmid"><span class="lb-mono lb-elapsed" data-clock="' + E.doc.start + '">' + clock(Date.now() - E.doc.start) + '</span><button class="lb-link small" data-a="gymToggle">' + (E.view === 'gym' ? 'List view' : 'Gym mode') + '</button></span><button class="lb-btn primary small" data-a="finish">Finish</button>';
+    if (E.mode === 'live') return '<button class="lb-link" data-a="minimize" aria-label="Minimize workout">Hide</button><span class="lb-headmid"><span class="lb-mono lb-elapsed" data-clock="' + E.doc.start + '">' + clock(Date.now() - E.doc.start) + '</span><button class="lb-link small" data-a="gymToggle">' + (E.view === 'gym' ? 'List view' : 'Gym mode') + '</button></span><span class="lb-headend">' + (global.VoiceLog ? '<button class="lb-mic" data-a="voice" aria-label="Log by voice" title="Log by voice">' + MIC_ICON + '</button>' : '') + '<button class="lb-btn primary small" data-a="finish">Finish</button></span>';
     return '<button class="lb-link" data-a="cancelEdit">Cancel</button><b>' + (E.mode === 'template' ? 'Edit template' : 'Edit workout') + '</b><button class="lb-btn primary small" data-a="saveEdit">Save</button>';
+  }
+  // ---------- Voice logging (VoiceLog module, optional) ----------
+  const MIC_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4zm6-4a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.06A8 8 0 0 1 4 11a1 1 0 1 1 2 0 6 6 0 0 0 12 0z"/></svg>';
+  on('voice', () => {
+    if (!global.VoiceLog || !E) return;
+    const cur = E.view === 'gym' && fixCur() ? E.doc.exercises[E.cur[0]] : null;
+    global.VoiceLog.open({ exercises: allExercises(), unit: S.settings.unit, current: cur ? cur.exId : undefined, prefer: E.doc.exercises.map(e => e.exId), onApply: applyVoice });
+  });
+  // entries: [{exId, unit, sets:[{t,w,r,km,min,sec,done}]}] from VoiceLog. Fills the exercise's pending sets first, then appends.
+  function applyVoice(entries) {
+    if (!E) return 0;
+    let n = 0; const names = [];
+    (entries || []).forEach(en => {
+      let ei = E.doc.exercises.findIndex(x => x.exId === en.exId), e = E.doc.exercises[ei];
+      if (!e) { e = { exId: en.exId, unit: en.unit || defUnit(en.exId), notes: '', sets: [] }; E.doc.exercises.push(e); ei = E.doc.exercises.length - 1; }
+      const ex = getEx(en.exId); names.push(ex.name);
+      en.sets.forEach(src => {
+        const vals = Object.assign({}, src);
+        if (vals.w && en.unit && en.unit !== e.unit) vals.w = fmtN(en.unit === 'lb' ? +vals.w * LB : +vals.w / LB, 1).replace(/,/g, '');
+        let j = e.sets.findIndex(x => !x.done && x.t !== 'w');
+        if (j < 0) { e.sets.push({ t: 'n', w: '', r: '', km: '', min: '', sec: '', done: false }); j = e.sets.length - 1; }
+        const s = e.sets[j];
+        ['w', 'r', 'km', 'min', 'sec'].forEach(k => { if (vals[k] !== '' && vals[k] != null) s[k] = String(vals[k]); });
+        s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id); n++;
+      });
+    });
+    if (!n) return 0;
+    touch(); renderEditor(); renderRest();
+    toast('Logged ' + n + ' set' + (n > 1 ? 's' : '') + ': ' + [...new Set(names)].join(', '));
+    return n;
   }
   function prevFor(e) {
     if (E.mode === 'template') { const s = sessions(e.exId)[0]; return { sets: s ? s.e.sets : [], src: 'last', unit: s ? s.e.unit : e.unit }; }
@@ -1246,6 +1281,7 @@ Stair Climber|Cardio|Cardio|`;
       '<div class="lb-gym-top"><span>Exercise ' + (ei + 1) + ' of ' + d.exercises.length + '</span>' +
       (e.ss ? '<span class="lb-gym-ss ss' + (ssIds.indexOf(e.ss) % 4) + '">Superset ' + String.fromCharCode(65 + ssIds.indexOf(e.ss)) + ' · ' + (partners.findIndex(o => o.k === ei) + 1) + '/' + partners.length + '</span>' : '') + '</div>' +
       '<div class="lb-gym-headrow"><button class="lb-gym-name" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + ei + '" aria-label="Exercise options">•••</button></div>' +
+      (S.opts.anim ? S.opts.anim.cardHtml(e.exId) : '') +
       (e.ss ? '<p class="lb-muted small">Alternate with ' + esc(partners.filter(o => o.k !== ei).map(o => getEx(o.x.exId).name).join(', ')) + ', rest after the round.</p>' : '') +
       '<div class="lb-gym-tools">' + demoBtn(e.exId, entry) +
       '<button class="lb-btn small ghost" data-a="exOpen" data-id="' + e.exId + '">How to</button><button class="lb-btn small ghost" data-a="restEdit" data-ei="' + ei + '">Rest ' + restLabel(restOf(e)) + '</button>' +
@@ -1521,8 +1557,8 @@ Stair Climber|Cardio|Cardio|`;
   }
 
   // ---------- Rest timer ----------
-  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); }
-  function stopRest() { rest = null; persistRest(); renderRest(); }
+  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec } })); } catch (e) { } }
+  function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
   on('restManual', t => { primeAudio(); startRest(+t.dataset.s); toast('Rest timer ' + mmss(+t.dataset.s)); renderRest(); });
   on('restAdj', t => { if (!rest) return; rest.end += +t.dataset.d * 1000; rest.total = Math.max(rest.total + +t.dataset.d, 1); persistRest(); renderRest(); });
@@ -1742,6 +1778,8 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-rest-row{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:6px;max-width:720px;margin-left:auto;margin-right:auto}
 .lb-rest-time{font-size:1.7rem;font-weight:700;min-width:5.5rem;text-align:center}
 .lb-headmid{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.15}
+.lb-headend{display:flex;align-items:center;gap:8px}
+.lb-mic{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:1px solid var(--lb-line);background:var(--lb-sunk);color:var(--lb-accent);cursor:pointer;padding:0}
 .lb-live.gym .lb-live-body{padding-bottom:200px}
 .lb-gym{display:flex;flex-direction:column;gap:12px}
 .lb-gym-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.74rem;letter-spacing:.12em;text-transform:uppercase;color:var(--lb-muted);font-weight:700}
@@ -1811,6 +1849,14 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     opts = opts || {};
     S.opts = opts; S.storage = opts.storage || localStorageAdapter('lb:');
     if (!document.getElementById('lb-style')) { const st = document.createElement('style'); st.id = 'lb-style'; st.textContent = CSS; document.head.appendChild(st); }
+    if (opts.anim) {
+      opts.anim.info = id => {
+        const g = opts.formCues ? opts.formCues.find(id) || opts.formCues.find(getEx(id).name) : null;
+        const l = opts.demos ? opts.demos.link(id, getEx(id).name) : null;
+        return { title: getEx(id).name, cues: g ? g.cues : [], steps: g ? g.steps : [], video: l ? { href: l.href, label: l.verified ? 'Watch a video ↗' : 'Search videos ↗' } : null };
+      };
+      opts.anim.attach(document);
+    }
     if (opts.demos && !document.getElementById('ed-style')) { const st = document.createElement('style'); st.id = 'ed-style'; st.textContent = opts.demos.css; document.head.appendChild(st); }
     if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
     root = el; root.classList.add('lb');
@@ -1827,7 +1873,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   }
   // Called by a host when its storage changed underneath (another device): reload and redraw.
   async function refresh() { await loadAll(); if (!E && !sheets.length) renderMain(); }
-  const api = { mount, refresh, buildProgram, toShellRecord, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
