@@ -80,6 +80,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+<<<<<<< HEAD
     await t.test("one calorie target everywhere: change it in Your numbers and no card still says 2,000", async () => {
       const seed2200 = today => { const d = seed(today); d.prefs = { main: { profile: { cutKcal: 2200 } } }; return d; };
       const { page, errors } = await openApp(browser, PHONES[0], seed2200);
@@ -98,6 +99,8 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+=======
+>>>>>>> origin/main
     await t.test("7-day average needs 7 weigh-ins and averages them", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       const r = await page.evaluate(() => ({ a7: avg7(TODAY), yesterday: avg7(addDays(TODAY, -1)) }));
