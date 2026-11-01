@@ -263,9 +263,10 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.click('[data-act="lbsndclear"]');
       await page.waitForFunction(() => !GymSounds.customInfo() && WorkoutLogger.settings().restSound === "restDone", null, { timeout: 5000 });
       await page.evaluate(() => WorkoutLogger.setSettings({ restSound: "boxing" }));
-      await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ restStyle: "plates", sound: true }); WorkoutLogger.previewRest(5); });
+      await page.evaluate(() => { played.length = 0; window.buzz = []; navigator.vibrate = ms => { if (typeof ms === "number") buzz.push(ms); return true; }; WorkoutLogger.setSettings({ restStyle: "plates", sound: true, vibrate: false }); WorkoutLogger.previewRest(5); });
       await page.waitForFunction(() => played.length > 0, null, { timeout: 8000 });
       assert.deepStrictEqual(await page.evaluate(() => played), ["boxing"], "rest over plays the picked sound");
+      assert.deepStrictEqual(await page.evaluate(() => buzz), [120, 120, 220], "buzz at 3, 2 and 1 before the sound");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });

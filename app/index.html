@@ -3772,7 +3772,7 @@ Power Clean (Barbell)|Other|Barbell|`;
 
   const DEFAULT_SETTINGS = {
     unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: false,
-    restStyle: 'bar', restSound: 'restDone',
+    restStyle: 'bar', restSound: 'restDone', countBuzz: true,
     bar: 20, barLb: 45, platesKg: [25, 20, 15, 10, 5, 2.5, 1.25], platesLb: [45, 35, 25, 10, 5, 2.5],
     rotOverride: null, seeded: false
   };
@@ -4576,7 +4576,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     return '<label class="lb-field inline">Default unit<select class="lb-input" data-ch="setUnit"><option' + (st.unit === 'kg' ? ' selected' : '') + '>kg</option><option' + (st.unit === 'lb' ? ' selected' : '') + '>lb</option></select></label>' +
       '<label class="lb-field inline">Rest after big compounds (s)<input class="lb-input num" inputmode="numeric" value="' + st.restCompound + '" data-ch="setNum" data-k="restCompound"></label><label class="lb-field inline">Rest after other lifts (s)<input class="lb-input num" inputmode="numeric" value="' + st.restIso + '" data-ch="setNum" data-k="restIso"></label>' +
       restLookHtml() +
-      tog('sound', 'Play a sound when rest ends') + tog('vibrate', 'Vibrate when rest ends') + tog('wake', 'Keep the screen on during a workout') + tog('rpe', 'Show an RPE column') + tog('rir', 'Show an RIR column (reps in reserve)') + tog('gym', 'Open workouts in Gym mode (big buttons, one set at a time)');
+      tog('sound', 'Play a sound when rest ends') + tog('vibrate', 'Vibrate when rest ends') + tog('countBuzz', 'Buzz at 3, 2 and 1 seconds left') + tog('wake', 'Keep the screen on during a workout') + tog('rpe', 'Show an RPE column') + tog('rir', 'Show an RIR column (reps in reserve)') + tog('gym', 'Open workouts in Gym mode (big buttons, one set at a time)');
   }
   function restLookHtml() {
     const st = S.settings, chips = (k, list) => '<div class="lb-row tight lb-chips">' + list.map(([id, l]) => '<button class="lb-btn small' + (st[k] === id ? ' primary' : ' ghost') + '" data-a="setPick" data-k="' + k + '" data-v="' + id + '" aria-pressed="' + (st[k] === id) + '">' + esc(l) + '</button>').join('') + '</div>';
@@ -5224,6 +5224,8 @@ Power Clean (Barbell)|Other|Barbell|`;
         const left = Math.ceil((rest.end - Date.now()) / 1000);
         if (left <= 0) { if (!rest.alerted) { rest.alerted = true; beep(); if (S.settings.vibrate && navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch (e) { } toast('Rest is over'); } stopRest(); }
         else {
+          // 3-2-1: one short buzz as each of the last three seconds starts, then the end sound.
+          if (left <= 3 && S.settings.countBuzz !== false && rest.buzz !== left) { rest.buzz = left; if (navigator.vibrate) try { navigator.vibrate(left === 1 ? 220 : 120); } catch (e) { } }
           const h = restHost();
           if (h && !h.hidden && h.firstChild) paintRest(h); else renderRest();
         }
@@ -24730,7 +24732,7 @@ function vSettings(){
       return row("Sound when rest ends","Tap one to hear it. A locked phone rings the same sound.",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.REST_SOUNDS.filter(s=>!s.pack).map(s=>chip(s.id,s.label)).join("")}</span>`)
         +row("Anime-style pack","Original power-up and battle effects",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.REST_SOUNDS.filter(s=>s.pack==="anime").map(s=>chip(s.id,s.label)).join("")}</span>`)
         +row("Your own sound", mine?`${esc(mine.name)} · ${mine.seconds} s. Kept on this phone only. A locked phone rings the bell instead.`:"Any MP3, M4A or WAV on your phone, up to 3 MB. Kept on this phone only.",`<span class="row" style="gap:6px;justify-content:flex-end">${mine?chip("custom","Use my sound")+`<button type="button" class="btn ghost small" data-act="lbsndclear">Remove</button>`:""}<label class="btn ghost small" style="cursor:pointer">${mine?"Replace":"Add your own sound"}<input type="file" id="restSoundFile" accept="audio/*" hidden></label></span>`); })():""}
-    ${lb?row("Play a sound when rest ends","",sw("lbtog",lb.sound,"Play a sound when rest ends",'data-s="sound"'))+row("Vibrate when rest ends","",sw("lbtog",lb.vibrate,"Vibrate when rest ends",'data-s="vibrate"'))+row("Keep the screen on","During a workout",sw("lbtog",lb.wake,"Keep the screen on during a workout",'data-s="wake"')):""}
+    ${lb?row("Play a sound when rest ends","",sw("lbtog",lb.sound,"Play a sound when rest ends",'data-s="sound"'))+row("Vibrate when rest ends","",sw("lbtog",lb.vibrate,"Vibrate when rest ends",'data-s="vibrate"'))+row("Buzz at 3, 2, 1","One short buzz for each of the last three seconds",sw("lbtog",lb.countBuzz!==false,"Buzz at 3, 2 and 1 seconds left",'data-s="countBuzz"'))+row("Keep the screen on","During a workout",sw("lbtog",lb.wake,"Keep the screen on during a workout",'data-s="wake"')):""}
   </div></div>
   <div class="card"><h3>Units</h3><div class="set-list">
     ${lb?row("Default unit","New exercises in the full logger",seg("lbset",[["kg","kg"],["lb","lb"]],lb.unit,'data-s="unit"')):""}
@@ -25081,10 +25083,11 @@ function syncLogger(){
 }
 
 /* rest timer: a bar above the tabs with −15 / +15 / Skip, like Strong */
-let tInt=null, tEnd=0, tTotal=0;
+let tInt=null, tEnd=0, tTotal=0, tBuzz=0;
 function tickTimer(){
   const el=document.getElementById("timer"); const left=Math.max(0,Math.round((tEnd-Date.now())/1000));
   el.innerHTML=`<span class="tbar" style="width:${tTotal?Math.min(100,Math.max(0,100-left/tTotal*100)):100}%"></span><span class="label" style="color:inherit">${left?"Rest":"Go"}</span><span class="num">${Math.floor(left/60)}:${pad(left%60)}</span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" data-t="-15" aria-label="15 seconds less">−15</button><button type="button" data-t="15" aria-label="15 seconds more">+15</button><button type="button" data-t="stop" id="tStop">${left?"Skip":"Done"}</button></span>`;
+  if(left>0&&left<=3&&lbPref("countBuzz")&&tBuzz!==left){ tBuzz=left; try{navigator.vibrate&&navigator.vibrate(left===1?220:120)}catch(_){} }
   if(!left){ clearInterval(tInt); tInt=null; restCue("rest-stop"); if(lbPref("sound")) window.GymSounds&&(GymSounds.play(lbRestSound())||GymSounds.play("restDone")); if(lbPref("vibrate")) try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(_){} }
 }
 // Quick log uses the logger's "Beep / Vibrate when rest ends" settings, and the same lb:rest events so
@@ -25092,7 +25095,7 @@ function tickTimer(){
 function lbPref(k){ try{ return !(window.WorkoutLogger && WorkoutLogger.settings && WorkoutLogger.settings()[k]===false); }catch(_){ return true; } }
 function lbRestSound(){ const s=lbSettings(); return (s&&s.restSound)||"restDone"; }
 function restCue(kind){ try{ window.dispatchEvent(new CustomEvent("lb:"+kind, {detail:{end:tEnd, total:tTotal, sound:lbRestSound()}})); }catch(_){} }
-function startTimer(sec){ const el=document.getElementById("timer"); tEnd=Date.now()+sec*1000; tTotal=sec; clearInterval(tInt); el.hidden=false; if(window.GymSounds) GymSounds.prime(); restCue("rest"); tickTimer(); tInt=setInterval(tickTimer,500); }
+function startTimer(sec){ const el=document.getElementById("timer"); tEnd=Date.now()+sec*1000; tTotal=sec; tBuzz=0; clearInterval(tInt); el.hidden=false; if(window.GymSounds) GymSounds.prime(); restCue("rest"); tickTimer(); tInt=setInterval(tickTimer,500); }
 document.getElementById("timer").addEventListener("click",e=>{
   const b=e.target.closest("button[data-t]"); if(!b) return;
   if(b.dataset.t==="stop"){ clearInterval(tInt); tInt=null; restCue("rest-stop"); document.getElementById("timer").hidden=true; return; }
