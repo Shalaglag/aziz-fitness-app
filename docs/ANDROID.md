@@ -10,7 +10,7 @@ the app's WebView. The web/Claude versions still work from the same file.
    if asked; the repo is private).
 2. Tap **aziz-fitness.apk**. Chrome downloads it; tap **Open** in the download bar (or open it from Files → Downloads).
 3. Android asks to allow installs from Chrome once: **Settings → Allow from this source**, then back, then **Install**.
-4. Open **Aziz Fitness** from the home screen. Allow notifications when asked (the rest timer uses them).
+4. Open **Mizan** from the home screen. Allow notifications when asked (the rest timer uses them).
 
 ## Update it
 
@@ -67,7 +67,7 @@ Changing the key means the next APK cannot install over the old one (export data
 - Hardware back button: closes an open sheet, else returns to Today, else minimises the app (a running workout
   is kept).
 - Status bar colour follows the app theme (light/dark/system).
-- Rest timer: a local notification fires when the rest ends while the app is in the background. It rings the same ding as the app (channel "Rest timer", `res/raw/rest_done.wav`); its sound and volume can be changed in Android Settings, Apps, Aziz Fitness, Notifications.
+- Rest timer: a local notification fires when the rest ends while the app is in the background. It rings the same ding as the app (channel "Rest timer", `res/raw/rest_done.wav`); its sound and volume can be changed in Android Settings, Apps, Mizan, Notifications.
 - Permissions declared: internet, vibrate, wake lock (keep screen on during a workout), notifications, exact
   alarms, camera (food and progress photos through the normal file picker), location (GPS run tracker; asked
   the first time a run starts).
