@@ -1,9 +1,100 @@
 rules_version = '2';
 // Each signed-in person can read and write only their own data, under users/{their uid}.
+// Friends (modules/friends) adds a few shared collections below; every one of them is readable
+// only by the people it concerns, and only the owner writes their own numbers.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function pairOf(a, b) { return a < b ? a + '_' + b : b + '_' + a; }
+    function areFriends(a, b) { return exists(/databases/$(database)/documents/friends/$(pairOf(a, b))); }
+    // sets `a` and `b` differ at most by the signed-in person
+    function otherOf(users) { return users[0] == me() ? users[1] : users[0]; }
+    function onlyMeDiffers(a, b) {
+      return a.toSet().difference(b.toSet()).hasOnly([me()]) && b.toSet().difference(a.toSet()).hasOnly([me()]);
+    }
+
     match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if signedIn() && me() == uid;
+    }
+
+    // Display name, avatar and invite code. Anyone signed in may look one up by uid (name + avatar
+    // only, which is what a friend request or challenge shows); nobody can list them all.
+    match /profiles/{uid} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow write: if signedIn() && me() == uid
+        && request.resource.data.keys().hasOnly(['name', 'avatar', 'code', 'updatedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 24;
+    }
+
+    // Invite code -> who it belongs to. Looked up one code at a time, never listed.
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update: if signedIn() && request.resource.data.uid == me()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'avatar']);
+      allow delete: if signedIn() && resource.data.uid == me();
+    }
+
+    // Friend request {from, to, ...}: the sender creates it, either side can drop it (decline/cancel).
+    match /requests/{id} {
+      allow read: if signedIn() && (resource.data.from == me() || resource.data.to == me());
+      allow create: if signedIn() && request.resource.data.from == me() && request.resource.data.to != me()
+        && id == me() + '_' + request.resource.data.to
+        && request.resource.data.keys().hasOnly(['from', 'to', 'fromName', 'fromAvatar', 'toName', 'toAvatar', 'at']);
+      allow update: if false;
+      allow delete: if signedIn() && (resource.data.from == me() || resource.data.to == me());
+    }
+
+    // Friendship {users:[a,b] sorted, names, since}. Only the person who RECEIVED a request can
+    // create it (the request must exist), and either side can end it.
+    match /friends/{pair} {
+      allow read: if signedIn() && me() in resource.data.users;
+      allow create: if signedIn()
+        && request.resource.data.users.size() == 2 && me() in request.resource.data.users
+        && pair == pairOf(request.resource.data.users[0], request.resource.data.users[1])
+        && request.resource.data.users[0] != request.resource.data.users[1]
+        && exists(/databases/$(database)/documents/requests/$(otherOf(request.resource.data.users) + '_' + me()))
+        && request.resource.data.keys().hasOnly(['users', 'names', 'since']);
+      allow update: if false;
+      allow delete: if signedIn() && me() in resource.data.users;
+    }
+    // What a person chose to share: written only by them, readable only by accepted friends.
+    match /shares/{uid} {
+      allow read: if signedIn() && (me() == uid || areFriends(me(), uid));
+      allow write: if signedIn() && me() == uid;
+    }
+
+    // Private challenges. Readable by the invited; the creator manages it; an invited person may only
+    // add or remove themselves (join, decline, leave) and set their own display name.
+    match /challenges/{id} {
+      allow read: if signedIn() && (me() in resource.data.invited || me() in resource.data.members);
+      allow create: if signedIn() && request.resource.data.creator == me()
+        && me() in request.resource.data.invited && request.resource.data.members == [me()]
+        && request.resource.data.invited.size() <= 20
+        && request.resource.data.keys().hasOnly(['id', 'name', 'type', 'target', 'start', 'end', 'creator', 'invited', 'members', 'names', 'createdAt'])
+        && request.resource.data.type in ['steps_total', 'steps_goal_days', 'workouts', 'group_steps', 'active_days']
+        && request.resource.data.name is string && request.resource.data.name.size() <= 40;
+      allow update: if signedIn() && me() in resource.data.invited && (
+        (resource.data.creator == me() && request.resource.data.creator == me())
+        || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'invited', 'names'])
+          && onlyMeDiffers(resource.data.members, request.resource.data.members)
+          && onlyMeDiffers(resource.data.invited, request.resource.data.invited)
+          && (!('names' in request.resource.data) || !('names' in resource.data)
+              || request.resource.data.names.diff(resource.data.names).affectedKeys().hasOnly([me()]))
+        ));
+      allow delete: if signedIn() && resource.data.creator == me();
+
+      // A member's own numbers for this challenge's window; visible to everyone in the challenge.
+      match /entries/{uid} {
+        allow read: if signedIn() && (me() in get(/databases/$(database)/documents/challenges/$(id)).data.invited
+                                      || me() in get(/databases/$(database)/documents/challenges/$(id)).data.members);
+        allow write: if signedIn() && me() == uid
+          && me() in get(/databases/$(database)/documents/challenges/$(id)).data.members;
+        allow delete: if signedIn() && (me() == uid || me() == get(/databases/$(database)/documents/challenges/$(id)).data.creator);
+      }
     }
   }
 }

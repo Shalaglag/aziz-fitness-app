@@ -9,7 +9,7 @@ let chromium;
 try { ({ chromium } = require("playwright")); } catch (e) { /* skipped below when not installed */ }
 const APP = "file://" + path.join(__dirname, "../app/index.html");
 const PHONES = [{ name: "Android 360×800", width: 360, height: 800 }, { name: "iPhone 390×844", width: 390, height: 844 }];
-const TABS = ["today", "train", "food", "progress", "guide"];
+const TABS = ["today", "train", "food", "progress", "friends", "guide"];
 
 const addDays = (d, n) => new Date(Date.parse(d + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 
