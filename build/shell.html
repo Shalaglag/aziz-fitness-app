@@ -885,6 +885,20 @@ try{
     }
   }
 }catch(e){ console.warn("HealthConnectSync", e); }
+/* WaterH via Fitbit: read the Google Health API water log (GoogleHealthWater); a no-op without the Capacitor plugin */
+let ghSync=null;
+try{
+  if(window.GoogleHealthWater){
+    const ghPlugin=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.GoogleHealth)||null;
+    ghSync=GoogleHealthWater.create({plugin:ghPlugin, getDay, put, storage:window.localStorage, onChange:()=>{ renderPending=true; }});
+    if(ghPlugin){
+      const ghAuto=()=>{ ghSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)){ render(); toast(`Fitbit: ${r.imported} new water log${r.imported===1?"":"s"}`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
+      document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") ghAuto(); });
+      window.addEventListener("online",ghAuto);
+      setTimeout(ghAuto, 2500);
+    }
+  }
+}catch(e){ console.warn("GoogleHealthWater", e); }
 try{ const m=localStorage.getItem("aziz-cut-tmode"); if(m) view.trainMode=m; }catch(e){}
 try{ const t=localStorage.getItem("aziz-cut-tab"); if(t) view.tab=t; }catch(e){}
 if(["today","train","food","progress","guide","settings"].includes(location.hash.slice(1))) view.tab=location.hash.slice(1);
@@ -1156,6 +1170,8 @@ function vToday(){
       <div class="spread"><h3>Water</h3><span class="muted"><span class="num">${(dayFluid(day)/1000).toFixed(2)} L</span> · target ${waterTarget}</span></div>
       ${day.waterh?`<p class="muted" style="font-size:.85rem">WaterH ${(day.waterh.ml/1000).toFixed(2)} L · synced ${new Date(day.waterh.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${day.water?` · manual ${(day.water/1000).toFixed(2)} L`:""}</p>`:""}
       <div class="row"><button class="chip" data-act="water" data-ml="250">+250 ml</button><button class="chip" data-act="water" data-ml="500">+500 ml</button><button class="chip" data-act="water" data-ml="1000">+1 L</button><button class="chip" data-act="water" data-ml="-250">−250</button></div>
+      ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.html(day):"")}
+      ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.guideHTML():"")}
       ${safeMod("HealthConnectSync",()=>hcSync.html(day))}
       ${safeMod("HealthConnectSync",()=>hcSync.guideHTML())}
       <details><summary>Sync WaterH bottle by hand</summary>
@@ -1797,6 +1813,9 @@ main.addEventListener("click",e=>{
   else if(a==="hcsync"){ if(!hcSync) return; el.disabled=true; hcSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : r.imported||r.removed ? `Water: ${r.imported} new record${r.imported===1?"":"s"}${r.removed?`, ${r.removed} removed`:""}` : `Health Connect: ${r.seen||0} record${r.seen===1?"":"s"} seen, nothing new`); }); }
   else if(a==="hcperm"){ if(!hcSync) return; hcSync.requestAccess().then(ok=>{ render(); if(ok) hcSync.syncNow({reason:"manual"}).then(()=>render()); else toast("Hydration access not granted"); }); }
   else if(a==="hcsettings"){ if(hcSync) hcSync.openSettings(); }
+  else if(a==="ghconnect"){ if(!ghSync) return; el.disabled=true; ghSync.connect().then(r=>{ render(); toast(r.error ? `Fitbit: ${r.error}` : `Fitbit connected · ${r.imported||0} water log${r.imported===1?"":"s"} imported`); }); }
+  else if(a==="ghsync"){ if(!ghSync) return; el.disabled=true; ghSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Fitbit: ${r.error}` : `Fitbit: read ${r.seen||0} log${r.seen===1?"":"s"}, ${r.imported||0} new${r.removed?`, ${r.removed} removed`:""}`); }); }
+  else if(a==="ghdisconnect"){ if(ghSync){ ghSync.disconnect(); render(); toast("Fitbit disconnected. Logged water stays."); } }
   else if(a==="hcreread"){ if(!hcSync) return; el.disabled=true; hcSync.reread().then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : `Health Connect: read ${r.seen||0} record${r.seen===1?"":"s"}, ${r.imported||0} new`); }); }
   else if(a==="tmode"){ view.trainMode=el.dataset.m; try{localStorage.setItem("aziz-cut-tmode",view.trainMode)}catch(_){} render(); }
   else if(a==="pick"){ runPicker(); }
