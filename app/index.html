@@ -183,6 +183,24 @@
 #main button, nav.drawer button, .fsheet button, .co-fab, .fold > summary { transition: transform var(--dur-tap) var(--ease-out), background-color var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out); }
 #main button:active, nav.drawer button:active, .fsheet button:active, .co-fab:active { transform: scale(.96); }
 @media (prefers-reduced-motion: reduce) { #main button:active, nav.drawer button:active, .fsheet button:active { transform: none; } }
+/* ---- Water fluid (Nov 2026, WaterH-style): liquid rises to % of goal, two waves drift on top ---- */
+:root { --water: #2F8FE8; --water-ink: #0B4F9C; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --water: #4FA8F0; --water-ink: #CFE8FF; } }
+:root[data-theme="dark"] { --water: #4FA8F0; --water-ink: #CFE8FF; }
+.wfill { position: relative; height: 156px; margin: 10px 0 12px; border-radius: 16px; overflow: hidden; isolation: isolate;
+  background: color-mix(in srgb, var(--water) 9%, var(--surface)); }
+.wfill-liq { position: absolute; left: 0; right: 0; bottom: 0; height: var(--lvl); z-index: -1;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--water) 34%, transparent), color-mix(in srgb, var(--water) 52%, transparent));
+  animation: wfill-rise 1.1s var(--ease-out) backwards; }
+@keyframes wfill-rise { from { height: var(--from, 0%); } }
+.wfill-liq svg { position: absolute; left: 0; bottom: calc(100% - 1px); width: 200%; height: 18px; display: block; }
+.wfill-liq .wv1 { fill: color-mix(in srgb, var(--water) 34%, transparent); animation: wfill-wave 5s linear infinite; }
+.wfill-liq .wv2 { fill: color-mix(in srgb, var(--water) 20%, transparent); height: 26px; animation: wfill-wave 8s linear infinite reverse; }
+@keyframes wfill-wave { to { transform: translateX(-50%); } }
+.wfill-txt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--water-ink); text-align: center; }
+.wfill-n { font-family: var(--display); font-weight: 700; font-size: 3.4rem; line-height: 1; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+.wfill-n small { font-size: 1.1rem; margin-left: 4px; font-weight: 600; }
+.wfill-sub { font-size: .9rem; font-weight: 600; }
 
 /* ---- Change feedback (flash()): bars glow, numbers tick, the water card ripples ---- */
 @keyframes fit-glow { 0% { filter: brightness(1); } 35% { filter: brightness(1.45); box-shadow: 0 0 12px 3px color-mix(in srgb, var(--accent) 55%, transparent); } 100% { filter: brightness(1); box-shadow: 0 0 0 0 transparent; } }
@@ -1542,6 +1560,22 @@ window.StrongCSV = (() => {
     "shrug machine": "Traps Machine",
     "bicep curl cable": "Cable Standing Biceps",
     "biceps curl cable": "Cable Standing Biceps",
+    // Names from Aziz's real export (Nov 2024 - Oct 2026).
+    "lat pulldown wide grip cable": "Lat Pulldown, Wide",
+    "lat pulldown wide grip": "Lat Pulldown, Wide",
+    "traps machine front back": "Traps Machine",
+    "traps machine": "Traps Machine",
+    "triceps rope cable": "Triceps Rope",
+    "triceps rope": "Triceps Rope",
+    "gundam": "Gundam (Chest Machine)",
+    "gundam chest machine": "Gundam (Chest Machine)",
+    "standing side delts": "Standing Side Delts (Machine)",
+    "side delts shoulders": "Side Delts",
+    "side delts": "Side Delts",
+    "flat bench barbell": "Bench Press (Barbell)",
+    "iso lateral low row plate": "Iso-Lateral Low Row",
+    "bicep seated curl": "Seated Bicep Curl",
+    "seated bicep curl": "Seated Bicep Curl",
   };
 
   function matchName(strongName, names) {
@@ -1550,12 +1584,15 @@ window.StrongCSV = (() => {
     if (exact) return exact;
     const a = ALIASES[n];
     if (a && names.includes(a)) return a;
-    // Token overlap fallback, only when it's clearly one exercise.
+    // Token overlap fallback, only when it's clearly one exercise: every token of the
+    // shorter name must appear in the longer one, so "Bench Press (Dumbbell)" never
+    // lands on "Bench Press (Barbell)" and "seated chest cable" never on "Seated Row (Cable)".
     const toks = new Set(n.split(" ").filter(t => t.length > 1));
     let best = null, bestScore = 0, second = 0;
     for (const x of names) {
       const xt = norm(x).split(" ").filter(t => t.length > 1);
       const hit = xt.filter(t => toks.has(t)).length;
+      if (hit < Math.min(xt.length, toks.size)) continue;
       const score = hit / Math.max(xt.length, toks.size);
       if (score > bestScore) { second = bestScore; bestScore = score; best = x; } else if (score > second) second = score;
     }
@@ -1594,6 +1631,10 @@ window.StrongCSV = (() => {
       const pool = session ? program[session].map(e => e[0]) : [];
       const doc = docs[wo.date] || Object.assign({ date: wo.date, sets: {} }, JSON.parse(JSON.stringify(existing[wo.date] || {})));
       doc.sets = doc.sets || {};
+      if (!docs[wo.date] && doc.strong && Array.isArray(doc.strong.names)) {
+        // Earlier Strong import of this day: drop its exercises (even ones saved under an old name) before re-adding.
+        doc.strong.names.forEach(k => { delete doc.sets[k]; });
+      }
       if (session && (!doc.session || doc.source === "strong" || !docs[wo.date])) {
         doc.session = session; doc.idx = rotation.indexOf(session);
       }
@@ -1609,13 +1650,13 @@ window.StrongCSV = (() => {
         report.sets += sets.length;
       }
       doc.source = "strong";
-      doc.strong = { title: wo.title, durationMin: wo.durationMin, importedAt: new Date().toISOString() };
+      doc.strong = { title: wo.title, durationMin: wo.durationMin, importedAt: new Date().toISOString(), names: [] };
       if (!docs[wo.date]) report.days++;
       docs[wo.date] = doc;
       report.workouts++;
       if (session) report.sessions[session] = (report.sessions[session] || 0) + 1;
     }
-    for (const d of Object.values(docs)) delete d.strongNames;
+    for (const d of Object.values(docs)) { d.strong.names = [...new Set(d.strongNames || [])]; delete d.strongNames; }
     return { docs, report };
   }
 
@@ -7165,21 +7206,27 @@ const fmtN = n => Math.round(n).toLocaleString("en-US");
 //   data-act="stepsimport"              -> parseSteps(#stepsText) + applySteps per row
 //   #stepsFile (change)                 -> same, from the file's text
 //   data-act="stepsgoal"                -> prefs/main.stepGoal from #stepsGoalInput
-function stepsCardHTML(day, { goal = DEFAULT_GOAL, week = null } = {}) {
+//   syncHTML: an optional block (the Health Connect status, HealthConnectSteps.html) shown under the bar.
+//   When the day's source is "health-connect" the +chips and Set box are hidden: the next sync would
+//   overwrite them anyway.
+function stepsCardHTML(day, { goal = DEFAULT_GOAL, week = null, syncHTML = "" } = {}) {
   const p = stepProgress(day, goal);
   const s = day && day.steps && typeof day.steps === "object" ? day.steps : null;
+  const hc = !!(s && s.source === "health-connect");
   const status = p.hit ? `Goal hit, ${fmtN(p.count - goal)} over` : `${fmtN(p.left)} to go`;
-  const synced = s && s.at ? ` · ${s.source === "manual" || s.source === "line" ? "updated" : "imported"} ${new Date(s.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "";
+  const synced = s && s.at ? ` · ${s.source === "manual" || s.source === "line" ? "updated" : hc ? "synced" : "imported"} ${new Date(s.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "";
+  const origin = hc ? "From your phone via Health Connect" : s && (s.source === "manual" || s.source === "line") ? "Entered by hand" : "Imported from a step app";
   const weekLine = week && week.logged ? `<p class="muted" style="font-size:.85rem">7-day average <span class="num">${fmtN(week.avg)}</span> · goal hit ${week.hitDays} of ${week.logged} logged days</p>` : "";
   const field = "border:1px solid var(--line);background:var(--sunk);border-radius:8px;padding:6px 8px;font-family:var(--mono);font-size:.85rem;color:var(--ink)";
   return `<div class="card steps-card">
   <div class="spread"><h3>Steps</h3><span class="muted">Goal ${fmtN(goal)}</span></div>
   <div class="row"><span class="bigk num">${fmtN(p.count)}</span><span class="muted">${status}</span></div>
   <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.pct}" aria-label="Steps toward goal"><span style="width:${p.pct}%;--value:${p.pct}${p.hit ? ";background:var(--good)" : ""}"></span></div>
-  ${s ? `<p class="muted" style="font-size:.85rem">${s.source === "manual" || s.source === "line" ? "Entered by hand" : "Imported from a step app"}${synced}</p>` : ""}
+  ${s ? `<p class="muted" style="font-size:.85rem">${origin}${synced}</p>` : ""}
   ${weekLine}
-  <div class="row"><button class="chip" data-act="stepsadd" data-n="1000">+1,000</button><button class="chip" data-act="stepsadd" data-n="2500">+2,500</button><button class="chip" data-act="stepsadd" data-n="-1000">−1,000</button></div>
-  <div class="row"><input id="stepsInput" type="number" inputmode="numeric" min="0" max="${MAX_DAY}" placeholder="Today's count" aria-label="Today's step count" style="width:9rem;${field}"><button class="btn small" data-act="stepsset">Set</button></div>
+  ${syncHTML || ""}
+  ${hc ? "" : `<div class="row"><button class="chip" data-act="stepsadd" data-n="1000">+1,000</button><button class="chip" data-act="stepsadd" data-n="2500">+2,500</button><button class="chip" data-act="stepsadd" data-n="-1000">−1,000</button></div>
+  <div class="row"><input id="stepsInput" type="number" inputmode="numeric" min="0" max="${MAX_DAY}" placeholder="Today's count" aria-label="Today's step count" style="width:9rem;${field}"><button class="btn small" data-act="stepsset">Set</button></div>`}
   <details><summary>Import from a step app</summary>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
       <p class="muted" style="font-size:.85rem">Pick an export file from any app below, or paste lines like <span class="num">STEPS 2026-10-25 8432</span>. The format is detected. Importing a day again replaces its count, and phone + watch are never added twice.</p>
@@ -7197,6 +7244,222 @@ function stepsCardHTML(day, { goal = DEFAULT_GOAL, week = null } = {}) {
 
 return {DEFAULT_GOAL,STEP_SOURCES,localISODate,toCount,parseSteps,stepCount,setSteps,applySteps,addSteps,stepGoal,stepProgress,weekSteps,stepsCardHTML};
 })();
+</script>
+<script>
+/* Health Connect → Steps card: today's step count on Android, no export files.
+ *
+ * Flow: Samsung Health / Galaxy Watch / Google Fit → Android Health Connect (StepsRecord) → this module.
+ * Nothing here talks to the network. The native side is the shared Capacitor plugin
+ * (modules/health-connect/android/HealthConnectPlugin.kt, `window.Capacitor.Plugins.HealthConnect`);
+ * on the web, or without the plugin, every call is a no-op and the Steps card keeps its manual
+ * entry and file import.
+ *
+ * Plugin methods this module uses (all return promises):
+ *   isAvailable()                     → {status: "available"|"not_installed"|"not_supported"}
+ *   hasStepsAccess()                  → {granted: bool}
+ *   requestStepsAccess()              → {granted: bool}
+ *   readDailySteps({startMs, endMs})  → {days: [{date: "YYYY-MM-DD", steps, origins: [package]}], zone}
+ *   openSettings()
+ *
+ * Double counting: the plugin asks Health Connect for its own daily aggregate (COUNT_TOTAL), which
+ * already merges overlapping records from several apps (phone + watch, Samsung Health + Google Fit)
+ * by the app-priority list in Health Connect. The app stores that one figure per day; syncing again
+ * replaces the day, so nothing is ever added twice.
+ *
+ * Day doc field (same shape the Steps module writes, so every consumer of `steps` keeps working):
+ *   steps: { count, at, source: "health-connect", origins: [package] }
+ * A day typed by hand ("manual") or imported from a file is replaced only when Health Connect has
+ * a count for it; a day Health Connect knows nothing about is left as it was.
+ *
+ * Device-local state in localStorage under "aziz-hc-steps": { lastSyncAt, lastError, lastResult }.
+ */
+window.HealthConnectSteps = (() => {
+  const KEY = "aziz-hc-steps";
+  const SOURCE = "health-connect";
+  const DEFAULT_LOOKBACK_DAYS = 7;      // each sync re-reads the last week (aggregates are cheap)
+  const AUTO_MIN_GAP_MS = 60 * 1000;    // autoSync (open / resume) at most once a minute
+  const MAX_DAY = 200000;
+
+  const z = n => String(n).padStart(2, "0");
+  const localDate = d => `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+
+  function readState(storage) {
+    try { const j = storage && storage.getItem(KEY); return j ? JSON.parse(j) : {}; } catch (e) { return {}; }
+  }
+  function writeState(storage, st) { try { storage && storage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+
+  function errorText(e) {
+    const m = String((e && e.message) || e || "");
+    if (/permission|denied|SecurityException/i.test(m)) return "Health Connect access was denied. Tap Allow access, or open Health Connect → App permissions.";
+    if (/not.?installed|unavailable|SDK_UNAVAILABLE/i.test(m)) return "Health Connect is not installed on this phone.";
+    return m || "Sync failed.";
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return "never";
+    const d = new Date(iso), n = new Date();
+    const t = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return d.toDateString() === n.toDateString() ? t : `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${t}`;
+  }
+
+  const APP_NAMES = { "com.sec.android.app.shealth": "Samsung Health", "com.samsung.android.wear.shealth": "Galaxy Watch", "com.google.android.apps.fitness": "Google Fit", "com.fitbit.FitbitMobile": "Fitbit", "com.google.android.apps.healthdata": "Health Connect", "com.garmin.android.apps.connectmobile": "Garmin Connect", "com.xiaomi.wearable": "Mi Fitness" };
+  function appName(pkg) { return APP_NAMES[pkg] || String(pkg).split(".").slice(-1)[0]; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  const fmtN = n => Math.round(n).toLocaleString("en-US");
+
+  // Pure: the day doc after one Health Connect figure. Returns the same object when nothing changes.
+  function applyDaily(day, row, now = new Date()) {
+    const count = Math.max(0, Math.min(MAX_DAY, Math.round(+row.steps || 0)));
+    const cur = day && day.steps;
+    const curCount = typeof cur === "number" ? cur : (cur && cur.count) || 0;
+    const curSource = cur && typeof cur === "object" ? cur.source : (typeof cur === "number" ? "manual" : null);
+    if (count === 0 && curSource !== SOURCE) return day;        // nothing from Health Connect: keep hand entry
+    if (curSource === SOURCE && curCount === count) return day;  // unchanged
+    const origins = Array.isArray(row.origins) ? row.origins.slice(0, 8) : [];
+    return Object.assign({}, day, { steps: { count, at: now.toISOString(), source: SOURCE, origins } });
+  }
+
+  function isSynced(day) { return !!(day && day.steps && typeof day.steps === "object" && day.steps.source === SOURCE); }
+
+  // ---- the live sync object ---------------------------------------------------------------
+  function create({ plugin, getDay, put, storage, now = () => new Date(), lookbackDays = DEFAULT_LOOKBACK_DAYS, onChange } = {}) {
+    let st = readState(storage);
+    let hc = { status: null, granted: null };
+    let busy = null, lastAuto = 0;
+
+    const save = () => writeState(storage, st);
+    const emit = () => { try { onChange && onChange(status()); } catch (e) {} };
+
+    function available() { return !!plugin; }
+
+    function status() {
+      let state;
+      if (!plugin) state = "no-plugin";
+      else if (hc.status === "not_installed") state = "not-installed";
+      else if (hc.status === "not_supported") state = "not-supported";
+      else if (hc.granted === false) state = "needs-permission";
+      else if (hc.granted === true) state = st.lastError ? "error" : "ready";
+      else state = "unknown";
+      return { state, busy: !!busy, lastSyncAt: st.lastSyncAt || null, lastError: st.lastError || null, lastResult: st.lastResult || null };
+    }
+
+    async function probe() {
+      if (!plugin) return status();
+      try {
+        const a = await plugin.isAvailable();
+        hc.status = (a && a.status) || "not_supported";
+        if (hc.status === "available") { const p = await plugin.hasStepsAccess(); hc.granted = !!(p && p.granted); }
+      } catch (e) { hc.status = "not_supported"; st.lastError = errorText(e); }
+      return status();
+    }
+
+    async function requestAccess() {
+      if (!plugin) return false;
+      await probe();
+      if (hc.status !== "available") return false;
+      try { const p = await plugin.requestStepsAccess(); hc.granted = !!(p && p.granted); }
+      catch (e) { hc.granted = false; st.lastError = errorText(e); save(); }
+      emit();
+      return hc.granted === true;
+    }
+
+    async function openSettings() { if (plugin) { try { await plugin.openSettings(); } catch (e) {} } }
+
+    async function run(reason) {
+      const t = now();
+      const today = localDate(t);
+      await probe();
+      if (hc.status !== "available") return { mode: "skipped", error: hc.status === "not_installed" ? "not-installed" : "not-supported" };
+      if (hc.granted !== true && reason === "manual") await requestAccess();
+      if (hc.granted !== true) return { mode: "skipped", error: "needs-permission" };
+      const start = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (lookbackDays - 1));
+      let res;
+      try {
+        res = await plugin.readDailySteps({ startMs: start.getTime(), endMs: t.getTime() });
+      } catch (e) {
+        st.lastError = errorText(e); st.lastSyncAt = t.toISOString(); save();
+        if (/permission|denied/i.test(String(e && e.message))) hc.granted = false;
+        return { mode: "read", error: st.lastError };
+      }
+      const rows = (res && res.days) || [];
+      let changed = 0, seen = 0, todayCount = null; const origins = new Set();
+      for (const row of rows) {
+        if (!row || !/^\d{4}-\d{2}-\d{2}$/.test(String(row.date)) || row.date > today) continue;
+        seen++;
+        (row.origins || []).forEach(o => origins.add(o));
+        const before = getDay(row.date);
+        const after = applyDaily(before, row, t);
+        if (row.date === today) todayCount = Math.round(+row.steps || 0);
+        if (after !== before) { changed++; put("days", row.date, after, { quiet: true }); }
+      }
+      st.lastError = null; st.lastSyncAt = t.toISOString();
+      st.lastResult = { seen, changed, today: todayCount, origins: [...origins], reason };
+      save();
+      return { mode: "read", seen, changed, today: todayCount, origins: [...origins] };
+    }
+
+    async function syncNow({ reason = "manual" } = {}) {
+      if (!plugin) return { mode: "skipped", error: "no-plugin" };
+      if (busy) return busy;
+      busy = run(reason).finally(() => { busy = null; emit(); });
+      emit();
+      return busy;
+    }
+
+    // On open / resume: cheap, throttled, never prompts for permission.
+    async function autoSync() {
+      if (!plugin) return { mode: "skipped", error: "no-plugin" };
+      const t = now().getTime();
+      if (t - lastAuto < AUTO_MIN_GAP_MS) return { mode: "skipped", error: "throttled" };
+      lastAuto = t;
+      return syncNow({ reason: "auto" });
+    }
+
+    function reset() { st = {}; save(); emit(); }
+
+    // ---- Steps card block ----------------------------------------------------------------
+    function html(day) {
+      const s = status();
+      if (s.state === "no-plugin") return "";
+      const line = (dot, text) => `<p class="muted hc-line" style="font-size:.85rem;margin:4px 0"><span class="hc-dot hc-${dot}"></span>${text}</p>`;
+      const lr = s.lastResult;
+      const from = lr && lr.origins && lr.origins.length ? ` from ${lr.origins.map(appName).map(esc).join(", ")}` : "";
+      let head;
+      if (s.state === "not-installed") head = line("warn", "Health Connect is not installed. Install it from Google Play, then tap Sync now.");
+      else if (s.state === "not-supported") head = line("warn", "Health Connect is not supported on this phone (needs Android 9 or newer).");
+      else if (s.state === "needs-permission") head = line("warn", "Health Connect: steps access not allowed yet. Tap Allow access to sync your phone's step count automatically.");
+      else if (s.state === "error") head = line("bad", `Health Connect: ${esc(s.lastError)}`);
+      else if (s.state === "ready") head = line("ok", isSynced(day) ? `Steps synced from Health Connect${from}` : `Health Connect connected${lr && lr.today === 0 ? " · no steps recorded for today yet" : ""}`);
+      else head = line("off", "Checking Health Connect…");
+      const sync = `<p class="muted" style="font-size:.85rem;margin:4px 0">Last sync ${fmtTime(s.lastSyncAt)}${s.busy ? " · syncing…" : lr && s.state === "ready" ? ` · ${lr.seen} day${lr.seen === 1 ? "" : "s"} read, ${lr.changed} updated` : ""}. Refreshes each time you open the app.</p>`;
+      const btns = `<div class="row">
+        ${s.state === "needs-permission" || s.state === "unknown" ? `<button class="btn small" data-act="hcstepsperm">Allow access</button>` : ""}
+        <button class="btn ${s.state === "needs-permission" ? "ghost " : ""}small" data-act="hcstepssync" ${s.busy ? "disabled" : ""}>Sync now</button>
+        ${s.state === "not-installed" ? "" : `<button class="btn ghost small" data-act="hcstepssettings">Health Connect settings</button>`}
+      </div>`;
+      return `<div class="hc-block hc-steps" style="margin:6px 0 2px">${head}${sync}${btns}</div>`;
+    }
+
+    function guideHTML() {
+      return `<details><summary>Steps from the phone (Health Connect)</summary>
+        <ol class="muted" style="font-size:.85rem;padding-left:18px;margin:6px 0;display:flex;flex-direction:column;gap:4px">
+          <li><b>Let Samsung Health share steps.</b> On the phone open Samsung Health → ☰ or profile → Settings → <b>Health Connect</b> → App permissions → Health Connect, and turn on <i>Steps</i> (write). Samsung Health then copies the phone's and the watch's steps into Health Connect; it already merges phone + watch into one count.</li>
+          <li>In this app, Today → Steps → <b>Allow access</b>, and allow <i>Steps</i> (read only). Nothing else is requested.</li>
+          <li>Tap <b>Sync now</b> once. After that the card refreshes by itself every time you open or come back to the app (at most once a minute). The last ${DEFAULT_LOOKBACK_DAYS} days are re-read each time, so yesterday's late steps are fixed too.</li>
+          <li>The count is Health Connect's own daily total, which already removes overlaps between apps and devices. If two step apps both write (say Samsung Health and Google Fit), set the order under Health Connect → Data and access → Steps → <b>App priority</b>; one source is enough.</li>
+          <li><b>Background:</b> Android only lets this app read Health Connect while it is on screen. Samsung Health also batches its steps into Health Connect with a delay, so a count can lag the Samsung Health widget by a few minutes. There is no background refresh; opening the app is the refresh.</li>
+          <li>A day Health Connect knows is replaced on each sync, so the +1,000 chips and Set box are for days without a phone count (travel, a dead battery). Imports from files still work for back-fill.</li>
+        </ol>
+      </details>`;
+    }
+
+    return { available, status, probe, requestAccess, openSettings, syncNow, autoSync, reset, html, guideHTML, state: () => Object.assign({}, st) };
+  }
+
+  return { KEY, SOURCE, DEFAULT_LOOKBACK_DAYS, AUTO_MIN_GAP_MS, applyDaily, isSynced, create, errorText, appName };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = HealthConnectSteps;
 </script>
 <script>
 /* Ramadan mode for the Aziz Cut Tracker.
@@ -9441,7 +9704,8 @@ window.FORM_GUIDE={
 window.EXERCISE_CLIPS={
   "schema": 1,
   "base": "clips/",
-  "note": "status: preview = offered as a Video option but 3D stays the default; approved = Video is the default view; anything else is ignored. Only Aziz changes a clip to approved. A missing or broken file falls back to the 3D demo.",
+  "defaultMode": "clip",
+  "note": "defaultMode 'clip': the video is the starting view for every listed clip (Aziz chose the MP4 demos on Nov 1); Rotate switches to 3D. status: preview = reviewed by Claude, not yet signed off by Aziz; approved = signed off by Aziz (set reviewedBy and reviewedAt); anything else is ignored. A missing or broken file falls back to the 3D demo.",
   "clips": {
     "bench-press-barbell": {
       "file": "bench-press-barbell.mp4",
@@ -9542,6 +9806,736 @@ window.EXERCISE_CLIPS={
       "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
       "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
       "notes": "Triceps barely show from this camera."
+    },
+    "cable-crossover": {
+      "file": "cable-crossover.mp4",
+      "bytes": 232306,
+      "sha256": "1da81329a35b5d53be348200d99fe27a8e1066faf66baedbb3c1eb993bac41ea",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "chest"
+      ],
+      "secondary": [
+        "front delts"
+      ],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Plain upright pillars stand in for the cable station."
+    },
+    "front-raise-dumbbell": {
+      "file": "front-raise-dumbbell.mp4",
+      "bytes": 228611,
+      "sha256": "3b09dc27e6dbd382f1a7cb64db52f05f887ad5018fc18ee7cb6dfba7c7ef2834",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "front delts"
+      ],
+      "secondary": [],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "gundam-chest-press-machine": {
+      "file": "gundam-chest-press-machine.mp4",
+      "bytes": 311373,
+      "sha256": "400b02d7e2da0c7593a861637c9d5f5e22fc785b92339b4be1a9faac0641890f",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "chest"
+      ],
+      "secondary": [
+        "front delts",
+        "triceps"
+      ],
+      "camera": "front three-quarter view from the side the arms move toward",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: lever arms are plain bars. Your machine may differ."
+    },
+    "incline-bench-press-dumbbell": {
+      "file": "incline-bench-press-dumbbell.mp4",
+      "bytes": 288998,
+      "sha256": "302a54061272d73a0b7b97756e50d512b6a4ad61534712da872905f36381d88f",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "upper chest (whole pec)"
+      ],
+      "secondary": [
+        "front delts"
+      ],
+      "camera": "high three-quarter side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "lat-pulldown-wide-grip-cable": {
+      "file": "lat-pulldown-wide-grip-cable.mp4",
+      "bytes": 179858,
+      "sha256": "95013dae6fa30839337163ca33e10337a407f027085c62927d02a34d768f3bdc",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "lats"
+      ],
+      "secondary": [
+        "biceps",
+        "rear delts"
+      ],
+      "camera": "from behind",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Seen from behind so the lats show."
+    },
+    "lateral-raise-cable": {
+      "file": "lateral-raise-cable.mp4",
+      "bytes": 173132,
+      "sha256": "8b9082acbbbf8bb6c62606b0bf6ac853175eb0716ee5e363e79434168a685e3c",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "side delts (working arm)"
+      ],
+      "secondary": [],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "lateral-raise-dumbbell": {
+      "file": "lateral-raise-dumbbell.mp4",
+      "bytes": 247855,
+      "sha256": "dad700e6553e96137b5c305d2d4b8b86b4fcaea101c6f1bdc1d770980c87df30",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "side delts"
+      ],
+      "secondary": [],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "reverse-fly-machine": {
+      "file": "reverse-fly-machine.mp4",
+      "bytes": 338102,
+      "sha256": "ffb37bfefe03843373768058377910be25e35e0e78fc17e4c1a23edfab2dcc31",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "rear delts"
+      ],
+      "secondary": [
+        "traps"
+      ],
+      "camera": "from behind",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Lever arms are plain bars; upper back shows as traps."
+    },
+    "seated-overhead-press-dumbbell": {
+      "file": "seated-overhead-press-dumbbell.mp4",
+      "bytes": 283960,
+      "sha256": "0cc2c00184f53775862ed77fcaef4d768dd095c24bebbf0c04b3571c54aa5810",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "front delts",
+        "side delts"
+      ],
+      "secondary": [
+        "triceps"
+      ],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "seated-row-cable": {
+      "file": "seated-row-cable.mp4",
+      "bytes": 301281,
+      "sha256": "787269ffef8f73cd623b945ff6f4ddf1fa82be8e744217a613df62db3c158e6f",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "traps",
+        "lats"
+      ],
+      "secondary": [
+        "biceps",
+        "rear delts"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Rhomboids are not modelled, so the mid back shows as traps."
+    },
+    "standing-lateral-raise-machine": {
+      "file": "standing-lateral-raise-machine.mp4",
+      "bytes": 247842,
+      "sha256": "f352fe02af163ece0744edce657c642b20ba00a295ba6b9f2a54488a6dfe8478",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "side delts"
+      ],
+      "secondary": [],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: simple pads and levers."
+    },
+    "triceps-extension-cable": {
+      "file": "triceps-extension-cable.mp4",
+      "bytes": 175414,
+      "sha256": "27659d80241572431bb0b208a8a41b90a777dda4b4e6b4c30d4492a51c20e352",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "triceps"
+      ],
+      "secondary": [],
+      "camera": "side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Rope is a single line; the pulley sits at head height."
+    },
+    "triceps-pushdown-straight-bar": {
+      "file": "triceps-pushdown-straight-bar.mp4",
+      "bytes": 140513,
+      "sha256": "927f599bd8227aa68de6fa513a776c0c35ac416fcdd261d4f9d7a44ee0fbe526",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "triceps"
+      ],
+      "secondary": [
+        "forearms"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "triceps-rope-pushdown-cable": {
+      "file": "triceps-rope-pushdown-cable.mp4",
+      "bytes": 144879,
+      "sha256": "c315faa3288ebe9a4c1dbfe753b9ecac9adfa517097ef934c8a329abf1da3540",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "triceps"
+      ],
+      "secondary": [
+        "forearms"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Thin rope lines make the split at the bottom hard to see."
+    },
+    "calf-press-leg-press": {
+      "file": "calf-press-leg-press.mp4",
+      "bytes": 146568,
+      "sha256": "a0dda5ab42049eed80aaa8279fe6624b5b6c5fb2af188f981b88a55fa40fd6c1",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "calves"
+      ],
+      "secondary": [],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Small range of motion by nature; watch the heels."
+    },
+    "hack-squat-machine": {
+      "file": "hack-squat-machine.mp4",
+      "bytes": 288499,
+      "sha256": "4fb6e97442d69560073afc23521b018932f2dfe9e76d2f0149822c2db2504f40",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "calves"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: sled and pads are simple shapes."
+    },
+    "hip-abductor-machine": {
+      "file": "hip-abductor-machine.mp4",
+      "bytes": 183196,
+      "sha256": "bd614c2a85def5ec6e159660b4c245343bf0ca1cb4d0b5f9f8827ea9bebcec7c",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "glute medius",
+        "glutes"
+      ],
+      "secondary": [],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "The glutes are mostly hidden by the seat in this view. Approximate machine."
+    },
+    "hip-adductor-machine": {
+      "file": "hip-adductor-machine.mp4",
+      "bytes": 266129,
+      "sha256": "4f10de94c3aa99fd7cf614a1ade28413a5c559f1d3ad1e257b328f042762c50b",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "adductors"
+      ],
+      "secondary": [],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "The inner-thigh muscles sit between the pads, so only a small red patch shows. Approximate machine."
+    },
+    "iso-lateral-low-row-plate-loaded": {
+      "file": "iso-lateral-low-row-plate-loaded.mp4",
+      "bytes": 283984,
+      "sha256": "8560e32880b5dfdbad07cde15d48ebff6bd3f9220715386740fdaf50741662f5",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "mid back",
+        "lats"
+      ],
+      "secondary": [
+        "biceps",
+        "rear delts"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: levers are plain bars."
+    },
+    "lat-pulldown-single-arm-cable": {
+      "file": "lat-pulldown-single-arm-cable.mp4",
+      "bytes": 152875,
+      "sha256": "526bbff38ea86950efe5851eb448c68ad1614acb1669b4378b3c7f2c045d7deb",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "lats"
+      ],
+      "secondary": [
+        "biceps",
+        "rear delts"
+      ],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "leg-extension-machine": {
+      "file": "leg-extension-machine.mp4",
+      "bytes": 349164,
+      "sha256": "95bb0254feaa973318ed969778a45940779152ccc1b5dd28b556d3a1709e287c",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "quads"
+      ],
+      "secondary": [],
+      "camera": "side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "lying-leg-curl-machine": {
+      "file": "lying-leg-curl-machine.mp4",
+      "bytes": 248071,
+      "sha256": "cd1ea48ef705ff523eb382a1833386ee02b1338d6f00ff80418a322aef65b9d4",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "hamstrings"
+      ],
+      "secondary": [
+        "calves"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "pullover-machine": {
+      "file": "pullover-machine.mp4",
+      "bytes": 221548,
+      "sha256": "29d6741cd1d70de204112db82734437f3a523d3f9c0db39333877deeb5644ba8",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "lats"
+      ],
+      "secondary": [
+        "triceps",
+        "chest"
+      ],
+      "camera": "side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: lever arms are plain bars."
+    },
+    "seated-abs-machine": {
+      "file": "seated-abs-machine.mp4",
+      "bytes": 285441,
+      "sha256": "ef78e4e70041e6ecdb6f99bf99ca8f8a26e3114c7786092f830dbfba67a31170",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "abs"
+      ],
+      "secondary": [],
+      "camera": "front view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "The chest pad covers the abs for most of the rep; the red patch shows at the start. Approximate machine."
+    },
+    "seated-bicep-curl-machine": {
+      "file": "seated-bicep-curl-machine.mp4",
+      "bytes": 289566,
+      "sha256": "6f8b41c704c961e3af56fc3b7b7d02b8d3727be7770e6300399201210feb3611",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "biceps"
+      ],
+      "secondary": [
+        "forearm flexors"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "shrug-machine": {
+      "file": "shrug-machine.mp4",
+      "bytes": 145912,
+      "sha256": "4980063d152519a2e305d7ca8a28d539749efee29cbb44dad6ac0f01f8be4e3c",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "upper traps"
+      ],
+      "secondary": [
+        "forearms"
+      ],
+      "camera": "rear view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Plain bar and pillars stand in for the machine."
+    },
+    "squat-smith-machine": {
+      "file": "squat-smith-machine.mp4",
+      "bytes": 339621,
+      "sha256": "3a5894a01e15047f866b3902ad05f42f0b30e7f76261edea2ea697552cf10e34",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "calves",
+        "lower back"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "standing-bicep-curl-cable": {
+      "file": "standing-bicep-curl-cable.mp4",
+      "bytes": 195710,
+      "sha256": "5547a02db056851162487ed8de8cd0ff2db3baa61c3c6f88c8570b1aecf00469",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "biceps"
+      ],
+      "secondary": [
+        "forearm flexors"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "standing-calf-raise-machine": {
+      "file": "standing-calf-raise-machine.mp4",
+      "bytes": 227172,
+      "sha256": "f7566000791c2a44b3f575b4f49cad2529c990d4a103d36933dc9c28634af945",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "calves"
+      ],
+      "secondary": [],
+      "camera": "rear view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Plain pillars stand in for the machine."
+    },
+    "t-bar-row": {
+      "file": "t-bar-row.mp4",
+      "bytes": 212154,
+      "sha256": "c8b7f2c9c2886d7c355bfcfd46286f7adf6c2097a9cbcdfed0a37dad4d7336eb",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "mid back",
+        "lats"
+      ],
+      "secondary": [
+        "biceps",
+        "rear delts",
+        "lower back"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate landmine/T-bar handle."
+    },
+    "treadmill-incline-walk": {
+      "file": "treadmill-incline-walk.mp4",
+      "bytes": 586890,
+      "sha256": "305df65d08d0c55a9835744081a07078f77a0e408961cf02d60cea69529290cf",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 7,
+      "reps": 6,
+      "primary": [
+        "quads",
+        "glutes",
+        "calves"
+      ],
+      "secondary": [
+        "hamstrings"
+      ],
+      "camera": "side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Clip is 7.0 s (six strides) so the stride loops cleanly."
     }
   }
 };
@@ -11538,6 +12532,7 @@ window.EXERCISE_CLIPS={
     const api = { info: opts.info || null };
     // Blender video clips (clips.json): 'preview' is offered as a Video option, 'approved' is the default view.
     // A clip that is missing from the list, not preview/approved, or fails to load falls back to the 3D demo.
+    // clips.json `defaultMode: "clip"` makes the video the starting view for every listed clip (Aziz chose MP4 demos, Nov 1); 3D stays one tap away (Rotate).
     const clipData = () => opts.clips || root.EXERCISE_CLIPS || {};
     function clipFor(id) {
       const c = (clipData().clips || {})[id];
@@ -11545,7 +12540,7 @@ window.EXERCISE_CLIPS={
     }
     function state(id) {
       const d = DEFS[id], c = clipFor(id);
-      return states[id] || (states[id] = { t: 0, view: '3d', yaw: VIEWS['3d'](d), pitch: (d.cam && d.cam.pitch) || 0.15, playing: !reduce(), speed: 1, mode: c && c.status === 'approved' ? 'clip' : '3d', clipFailed: false, vt: 0 });
+      return states[id] || (states[id] = { t: 0, view: '3d', yaw: VIEWS['3d'](d), pitch: (d.cam && d.cam.pitch) || 0.15, playing: !reduce(), speed: 1, mode: c && (c.status === 'approved' || clipData().defaultMode === 'clip') ? 'clip' : '3d', clipFailed: false, vt: 0 });
     }
     const modeOf = id => { const st = state(id); return clipFor(id) && !st.clipFailed ? st.mode : '3d'; };
     const has = id => !!DEFS[id];
@@ -24223,6 +25218,21 @@ try{
     }
   }
 }catch(e){ console.warn("HealthConnectSync", e); }
+/* Daily steps through Android Health Connect (HealthConnectSteps, same plugin); a no-op without it */
+let hcSteps=null;
+try{
+  if(window.HealthConnectSteps){
+    const plugin=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.HealthConnect)||null;
+    hcSteps=HealthConnectSteps.create({plugin, getDay, put, storage:window.localStorage, onChange:()=>{ renderPending=true; }});
+    if(plugin){
+      const hcsAuto=()=>{ hcSteps.autoSync().then(r=>{ if(r && r.changed){ render(); if(r.today!=null) toast(`Steps today: ${r.today.toLocaleString("en-US")} from Health Connect`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
+      document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") hcsAuto(); });
+      window.addEventListener("focus",hcsAuto);
+      window.addEventListener("pageshow",hcsAuto);
+      setTimeout(hcsAuto, 2000);
+    }
+  }
+}catch(e){ console.warn("HealthConnectSteps", e); }
 /* WaterH via Fitbit: read the Google Health API water log (GoogleHealthWater); a no-op without the Capacitor plugin */
 let ghSync=null;
 try{
@@ -24246,6 +25256,7 @@ main.before(document.getElementById("lbHost")); // the full logger sits above th
 function currentAccent(){ return S.docs.prefs.main?.accent || "coral"; }
 function applyAccent(a){ if(["coral","red","white","green","yellow","blue"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
 let lastTab=null;
+let lastWaterLvl=0; // Water fluid rises from the last level drawn
 function render(){
   renderPending=false;
   applyTargets();
@@ -24511,7 +25522,8 @@ function vToday(){
       ${dayType(d)==="saturday"?`<p class="note">Saturday weigh-ins often run high after Friday's salty shrimp. Don't react to it.</p>`:""}
     </div>
     <div class="card" id="waterCard">
-      <div class="spread"><h3>Water</h3><span class="muted"><span class="num">${(dayFluid(day)/1000).toFixed(2)} L</span> · target ${waterTarget}</span></div>
+      <div class="spread"><h3>Water</h3><span class="muted">target ${waterTarget}</span></div>
+      ${waterFluid(dayFluid(day), training?3500:3000)}
       ${day.waterh?`<p class="muted" style="font-size:.85rem">WaterH ${(day.waterh.ml/1000).toFixed(2)} L · synced ${new Date(day.waterh.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${day.water?` · manual ${(day.water/1000).toFixed(2)} L`:""}</p>`:""}
       <div class="row"><button class="chip" data-act="water" data-ml="250">+250 ml</button><button class="chip" data-act="water" data-ml="500">+500 ml</button><button class="chip" data-act="water" data-ml="1000">+1 L</button><button class="chip" data-act="water" data-ml="-250">−250</button></div>
       ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.html(day):"")}
@@ -24530,10 +25542,21 @@ function vToday(){
   <div class="card"><div class="spread"><h3>Check-in</h3><span class="muted" style="font-size:.85rem">${training?"Treadmill, sleep":"Sleep"}</span></div>${checklist}
   ${fold("feel","How do you feel","Soreness, energy", rfSafe(()=>RecoveryFatigue.checkinHtml(S.docs, {date:d, ...rfOpts()})))}</div>
   ${fold("drinks","Drinks and supplements","", safeMod("SuppDrinks",()=>SuppDrinks.html(day, S.docs.prefs.main||{}, {date:d, today:TODAY, training})))}
-  ${fold("steps","Steps", day.steps?`${(+day.steps).toLocaleString("en-US")}`:"", safeMod("Steps",()=>{ const g=Steps.stepGoal(S.docs.prefs.main||{}); return Steps.stepsCardHTML(day,{goal:g, week:Steps.weekSteps(getDay,d,g)}); }))}
+  ${fold("steps","Steps", safeMod("Steps",()=>Steps.stepCount(day)?Steps.stepCount(day).toLocaleString("en-US"):""), safeMod("Steps",()=>{ const g=Steps.stepGoal(S.docs.prefs.main||{}); return Steps.stepsCardHTML(day,{goal:g, week:Steps.weekSteps(getDay,d,g), syncHTML: hcSteps?safeMod("HealthConnectSteps",()=>hcSteps.html(day)):""}); }))}
   ${fold("score","Daily score","", safeMod("DailyScore",()=>DailyScore.html(S.docs, d, {today:TODAY, sessionFor:x=>sessionFor(x)?.session, targets:dayTargets})))}
   ${fold("sched","Schedule", DAYTYPE_LABEL[type], `<ul class="tl" style="padding-top:8px">${SCHEDULE[type].map(([t,x])=>`<li><span class="t">${t}</span><span>${x}</span></li>`).join("")}</ul>`)}
   ${fold("cal","Calendar","", ddCalendar(d))}`;
+}
+/* Water fluid panel: big number over a liquid that rises to the share of the goal (capped so the waves stay visible). */
+function waterFluid(ml, goal){
+  ml=Math.max(0, Math.round(+ml||0));
+  const pct=goal?ml/goal:0, lvl=Math.round(Math.min(1,pct)*88)+4, from=lastWaterLvl; lastWaterLvl=lvl;
+  const wave='<path d="M0 8 Q50 0 100 8 T200 8 T300 8 T400 8 V16 H0Z"/>';
+  const sub = pct>=1 ? `Goal hit · ${Math.round(pct*100)}% of ${goal.toLocaleString("en-US")} ml` : `${Math.round(pct*100)}% of ${goal.toLocaleString("en-US")} ml goal`;
+  return `<div class="wfill" role="img" aria-label="${ml} ml of water, ${sub}">
+    <div class="wfill-liq" style="--lvl:${lvl}%;--from:${from}%"><svg class="wv2" viewBox="0 0 400 16" preserveAspectRatio="none" aria-hidden="true">${wave}</svg><svg class="wv1" viewBox="0 0 400 16" preserveAspectRatio="none" aria-hidden="true">${wave}</svg></div>
+    <div class="wfill-txt"><div class="wfill-n">${ml.toLocaleString("en-US")}<small>ml</small></div><div class="wfill-sub">${sub}</div></div>
+  </div>`;
 }
 /* ---------- TRAIN ---------- */
 function trainSwitch(){
@@ -25044,7 +26067,7 @@ function vSettings(){
     <p class="muted" style="font-size:.9rem">${who?`Signed in as <b>${esc(who)}</b>. Everything syncs to your account; this phone keeps a copy for offline use.`:`Not signed in. Everything is saved on this phone${window.CloudStore?". Sign in from the banner at the top to sync across devices":""}.`}</p>
     <p class="muted" style="font-size:.85rem">Status: <span id="syncCopy">${esc(document.getElementById("sync").textContent)}</span>. Changing any setting never deletes your history.</p>
   </div>
-  ${fold("hcset","Health Connect","Water from the phone", safeMod("HealthConnectSync",()=>hcSync.guideHTML()))}
+  ${fold("hcset","Health Connect","Steps and water from the phone", safeMod("HealthConnectSteps",()=>hcSteps.guideHTML())+safeMod("HealthConnectSync",()=>hcSync.guideHTML()))}
   ${cat("Data and backup")}
   ${strongCard()}
   <p class="muted" style="font-size:.85rem;margin:0 4px">Backups, restore and other imports are just below.</p>`;
@@ -25201,6 +26224,9 @@ main.addEventListener("click",e=>{
   else if(a==="hcsync"){ if(!hcSync) return; el.disabled=true; hcSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : r.imported||r.removed ? `Water: ${r.imported} new record${r.imported===1?"":"s"}${r.removed?`, ${r.removed} removed`:""}` : `Health Connect: ${r.seen||0} record${r.seen===1?"":"s"} seen, nothing new`); }); }
   else if(a==="hcperm"){ if(!hcSync) return; hcSync.requestAccess().then(ok=>{ render(); if(ok) hcSync.syncNow({reason:"manual"}).then(()=>render()); else toast("Hydration access not granted"); }); }
   else if(a==="hcsettings"){ if(hcSync) hcSync.openSettings(); }
+  else if(a==="hcstepssync"){ if(!hcSteps) return; el.disabled=true; hcSteps.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : r.today!=null ? `Steps today: ${r.today.toLocaleString("en-US")}${r.changed?"":" (no change)"}` : `Health Connect: no step data for today yet`); }); }
+  else if(a==="hcstepsperm"){ if(!hcSteps) return; hcSteps.requestAccess().then(ok=>{ render(); if(ok) hcSteps.syncNow({reason:"manual"}).then(()=>render()); else toast("Steps access not granted"); }); }
+  else if(a==="hcstepssettings"){ if(hcSteps) hcSteps.openSettings(); }
   else if(a==="ghconnect"){ if(!ghSync) return; el.disabled=true; ghSync.connect().then(r=>{ render(); toast(r.error ? `Fitbit: ${r.error}` : `Fitbit connected · ${r.imported||0} water log${r.imported===1?"":"s"} imported`); }); }
   else if(a==="ghsync"){ if(!ghSync) return; el.disabled=true; ghSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Fitbit: ${r.error}` : `Fitbit: read ${r.seen||0} log${r.seen===1?"":"s"}, ${r.imported||0} new${r.removed?`, ${r.removed} removed`:""}`); }); }
   else if(a==="ghdisconnect"){ if(ghSync){ ghSync.disconnect(); render(); toast("Fitbit disconnected. Logged water stays."); } }

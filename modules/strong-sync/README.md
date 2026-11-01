@@ -4,8 +4,9 @@ Strong has no public API, and its Apple Health / Health Connect link only shares
 
 ## Aziz's steps (about 20 seconds after a workout)
 1. Strong > Profile (or Settings) > **Export Strong Data** > CSV. On iPhone choose **Save to Files**; on Android save to Downloads.
-2. In the app, Train tab > **Import from Strong** > pick `strong.csv`.
-3. Re-importing the whole history every time is fine: each day's Strong exercises are replaced, not doubled, and sets you typed in the app for other exercises are kept.
+2. In the app, ☰ (or More) > **Settings** > **Data and backup** > **Import from Strong** > Choose CSV file > pick the export (the `DOC-…WA….csv` WhatsApp copy works too).
+3. Re-importing the whole history every time is fine: each day's Strong exercises are replaced, not doubled (the doc remembers them in `strong.names`), and sets you typed in the app for other exercises are kept.
+4. Verified on the real export of Nov 1, 2026: 424 workouts, 10,601 sets. Exercises not in the current program (old Chest Fly, High row machine, Leg Press…) are kept under their Strong names. The body-measurement zip Strong exports alongside only holds empty templates unless measurements were logged in Strong.
 
 ## For the app thread
 - `strong-csv.js` exposes `StrongCSV.toWorkouts(csvText, {program: PROGRAM, rotation: ROTATION, existing: S.docs.workouts, unit: "kg"})` -> `{docs:{date: workoutDoc}, report}`. Write each doc with `put("workouts", date, doc)`.

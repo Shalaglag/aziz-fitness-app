@@ -114,7 +114,7 @@ test('every clip is keyed by a canonical exercise id and its file matches the re
     assert.strictEqual(crypto.createHash('sha256').update(buf).digest('hex'), c.sha256, id + ' sha256');
     assert.ok(['preview', 'approved', 'rejected', 'pending'].includes(c.status), id + ' status');
     ['revision', 'source', 'licence'].forEach(k => assert.ok(c[k], id + ' has ' + k));
-    assert.ok(c.primary.length && c.secondary.length, id + ' lists primary and secondary muscles');
+    assert.ok(c.primary.length && Array.isArray(c.secondary), id + ' lists its primary muscles (secondary may be empty)');
     assert.ok(c.status !== 'approved' || (c.reviewedBy && c.reviewedAt), id + ' approved needs reviewedBy and reviewedAt');
   });
   const total = ids.reduce((s, id) => s + CLIPS.clips[id].bytes, 0);
@@ -133,3 +133,10 @@ test('a preview clip is offered but 3D stays the default; an approved clip is th
   assert.ok(!an.cardHtml('lat-pulldown-wide-grip-cable').includes('<video'), 'no clip, 3D card only');
 });
 
+test('defaultMode clip makes a preview clip the starting view', () => {
+  const clips = { base: 'clips/', defaultMode: 'clip', clips: { 'bench-press-barbell': { file: 'b.mp4', status: 'preview' }, 'squat-barbell': { file: 's.mp4', status: 'pending' } } };
+  const an = A.create({ clips });
+  assert.ok(an.cardHtml('bench-press-barbell').includes('data-mode="clip"'));
+  assert.ok(an.cardHtml('squat-barbell').includes('data-mode="3d"'), 'ignored statuses stay 3D');
+  assert.strictEqual(CLIPS.defaultMode, 'clip');
+});

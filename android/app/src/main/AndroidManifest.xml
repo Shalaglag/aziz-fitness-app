@@ -63,6 +63,7 @@
 
     <!-- Health Connect: read WaterH / other apps' water intake. Read only, nothing else. -->
     <uses-permission android:name="android.permission.health.READ_HYDRATION" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
     </queries>

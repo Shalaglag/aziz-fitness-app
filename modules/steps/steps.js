@@ -285,21 +285,27 @@ const fmtN = n => Math.round(n).toLocaleString("en-US");
 //   data-act="stepsimport"              -> parseSteps(#stepsText) + applySteps per row
 //   #stepsFile (change)                 -> same, from the file's text
 //   data-act="stepsgoal"                -> prefs/main.stepGoal from #stepsGoalInput
-export function stepsCardHTML(day, { goal = DEFAULT_GOAL, week = null } = {}) {
+//   syncHTML: an optional block (the Health Connect status, HealthConnectSteps.html) shown under the bar.
+//   When the day's source is "health-connect" the +chips and Set box are hidden: the next sync would
+//   overwrite them anyway.
+export function stepsCardHTML(day, { goal = DEFAULT_GOAL, week = null, syncHTML = "" } = {}) {
   const p = stepProgress(day, goal);
   const s = day && day.steps && typeof day.steps === "object" ? day.steps : null;
+  const hc = !!(s && s.source === "health-connect");
   const status = p.hit ? `Goal hit, ${fmtN(p.count - goal)} over` : `${fmtN(p.left)} to go`;
-  const synced = s && s.at ? ` · ${s.source === "manual" || s.source === "line" ? "updated" : "imported"} ${new Date(s.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "";
+  const synced = s && s.at ? ` · ${s.source === "manual" || s.source === "line" ? "updated" : hc ? "synced" : "imported"} ${new Date(s.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "";
+  const origin = hc ? "From your phone via Health Connect" : s && (s.source === "manual" || s.source === "line") ? "Entered by hand" : "Imported from a step app";
   const weekLine = week && week.logged ? `<p class="muted" style="font-size:.85rem">7-day average <span class="num">${fmtN(week.avg)}</span> · goal hit ${week.hitDays} of ${week.logged} logged days</p>` : "";
   const field = "border:1px solid var(--line);background:var(--sunk);border-radius:8px;padding:6px 8px;font-family:var(--mono);font-size:.85rem;color:var(--ink)";
   return `<div class="card steps-card">
   <div class="spread"><h3>Steps</h3><span class="muted">Goal ${fmtN(goal)}</span></div>
   <div class="row"><span class="bigk num">${fmtN(p.count)}</span><span class="muted">${status}</span></div>
   <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.pct}" aria-label="Steps toward goal"><span style="width:${p.pct}%;--value:${p.pct}${p.hit ? ";background:var(--good)" : ""}"></span></div>
-  ${s ? `<p class="muted" style="font-size:.85rem">${s.source === "manual" || s.source === "line" ? "Entered by hand" : "Imported from a step app"}${synced}</p>` : ""}
+  ${s ? `<p class="muted" style="font-size:.85rem">${origin}${synced}</p>` : ""}
   ${weekLine}
-  <div class="row"><button class="chip" data-act="stepsadd" data-n="1000">+1,000</button><button class="chip" data-act="stepsadd" data-n="2500">+2,500</button><button class="chip" data-act="stepsadd" data-n="-1000">−1,000</button></div>
-  <div class="row"><input id="stepsInput" type="number" inputmode="numeric" min="0" max="${MAX_DAY}" placeholder="Today's count" aria-label="Today's step count" style="width:9rem;${field}"><button class="btn small" data-act="stepsset">Set</button></div>
+  ${syncHTML || ""}
+  ${hc ? "" : `<div class="row"><button class="chip" data-act="stepsadd" data-n="1000">+1,000</button><button class="chip" data-act="stepsadd" data-n="2500">+2,500</button><button class="chip" data-act="stepsadd" data-n="-1000">−1,000</button></div>
+  <div class="row"><input id="stepsInput" type="number" inputmode="numeric" min="0" max="${MAX_DAY}" placeholder="Today's count" aria-label="Today's step count" style="width:9rem;${field}"><button class="btn small" data-act="stepsset">Set</button></div>`}
   <details><summary>Import from a step app</summary>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
       <p class="muted" style="font-size:.85rem">Pick an export file from any app below, or paste lines like <span class="num">STEPS 2026-10-25 8432</span>. The format is detected. Importing a day again replaces its count, and phone + watch are never added twice.</p>

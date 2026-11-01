@@ -81,8 +81,9 @@ Changing the key means the next APK cannot install over the old one (export data
 
 - Voice logging: Android's WebView has no SpeechRecognition; the boxes still accept the keyboard's mic. A
   speech plugin can add true in-app recognition later.
-- Health Connect (WaterH hydration) is being built as a Kotlin plugin in `modules/health-connect/android/`;
-  register it in `MainActivity` when it lands.
-- Home-screen widgets, biometric lock and background sync are not started.
+- Health Connect reads hydration (Water card) and daily steps (Steps card) through `modules/health-connect/android/`
+  (`READ_HYDRATION`, `READ_STEPS`); both refresh when the app is opened or resumed. Background reads would need
+  `READ_HEALTH_DATA_IN_BACKGROUND` plus a WorkManager job and are not started.
+- Home-screen widgets and biometric lock are not started.
 - Claude AI coach needs its backend (see `netlify/functions/coach.mjs`); the app shows the offline/unavailable state
   until that is live.

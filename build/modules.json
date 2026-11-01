@@ -22,6 +22,7 @@
     { "file": "modules/daily-score/daily-score.js", "expose": ["DailyScore"] },
     { "file": "modules/goal-date/goal-date.js", "expose": ["GoalDate"] },
     { "file": "modules/steps/steps.js", "esm": "Steps" },
+    { "file": "modules/steps/health-connect-steps.js", "expose": ["HealthConnectSteps"] },
     { "file": "modules/ramadan/ramadan.js", "expose": ["Ramadan"] },
     { "file": "modules/trend-tdee/trend-tdee.js", "expose": ["TrendTDEE"] },
     { "file": "modules/form-cues/exercise-form-guide.json", "json": "FORM_GUIDE" },

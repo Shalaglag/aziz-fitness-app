@@ -1,0 +1,384 @@
+{
+ "note": "Batch 1 = the 29 program exercises not yet rendered. Motion for each is in motion/<id>.json (same format as the four pilots). Primary = red #d9392c, secondary = amber #f0a030, everything else grey. Muscle names are plain words; map them to the closest muscles modelled in Blender and tell us which names have no match.",
+ "exercises": [
+  {
+   "id": "incline-bench-press-dumbbell",
+   "equipment": "Adjustable bench at about 30 degrees, two hex dumbbells",
+   "primary": [
+    "upper chest"
+   ],
+   "secondary": [
+    "front delts",
+    "triceps"
+   ],
+   "camera": "high three-quarter side view",
+   "technique": "Back on the incline pad, feet planted; dumbbells lower to chest level with elbows about 45 degrees from the torso and press up over the upper chest; hands hold the dumbbell handles."
+  },
+  {
+   "id": "gundam-chest-press-machine",
+   "equipment": "Seated chest press machine: padded back, two handles at chest height on lever arms",
+   "primary": [
+    "chest"
+   ],
+   "secondary": [
+    "front delts",
+    "triceps"
+   ],
+   "camera": "front three-quarter view from the side the arms move toward",
+   "technique": "Back against the pad, handles at mid-chest, forearms roughly horizontal; arms press forward to near lockout and return slowly; hands on handles, feet flat."
+  },
+  {
+   "id": "cable-crossover",
+   "equipment": "Two high pulleys with D-handles, standing in the middle",
+   "primary": [
+    "chest"
+   ],
+   "secondary": [
+    "front delts"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Slight forward lean, soft elbows; handles sweep from wide and high to together in front of the lower chest; hands stay on the handles, cables run to the pulleys."
+  },
+  {
+   "id": "seated-overhead-press-dumbbell",
+   "equipment": "Upright bench with back pad, two hex dumbbells",
+   "primary": [
+    "front delts",
+    "side delts"
+   ],
+   "secondary": [
+    "triceps",
+    "upper chest"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Seated with back on pad, feet flat; dumbbells start at shoulder height, press overhead to near lockout, lower to ear level; wrists stacked over elbows."
+  },
+  {
+   "id": "lateral-raise-cable",
+   "equipment": "Low pulley with a single D-handle, standing sideways to the stack",
+   "primary": [
+    "side delts"
+   ],
+   "secondary": [
+    "upper traps"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Handle in the far-side hand across the body, arm lifts out to shoulder height with a slight elbow bend, then lowers; no body swing; cable runs from low pulley to the hand."
+  },
+  {
+   "id": "lateral-raise-dumbbell",
+   "equipment": "Two hex dumbbells, standing",
+   "primary": [
+    "side delts"
+   ],
+   "secondary": [
+    "upper traps"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Standing tall, arms lift out to the sides to shoulder height with soft elbows, then lower under control; no swinging."
+  },
+  {
+   "id": "standing-lateral-raise-machine",
+   "equipment": "Standing lateral raise machine: lever arms with pads on the upper arms",
+   "primary": [
+    "side delts"
+   ],
+   "secondary": [],
+   "camera": "front three-quarter view",
+   "technique": "Standing against the support, upper arms against the pads, arms lift out to shoulder height and lower; the lever arms move with the arms."
+  },
+  {
+   "id": "front-raise-dumbbell",
+   "equipment": "Two hex dumbbells, standing",
+   "primary": [
+    "front delts"
+   ],
+   "secondary": [
+    "upper chest"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Standing tall, arms lift straight in front to shoulder height with a slight elbow bend, then lower; no leaning back."
+  },
+  {
+   "id": "reverse-fly-machine",
+   "equipment": "Pec deck machine used backwards: seated facing the pad, handles at shoulder height",
+   "primary": [
+    "rear delts"
+   ],
+   "secondary": [
+    "upper back"
+   ],
+   "camera": "rear three-quarter view",
+   "technique": "Chest on the pad, arms start in front and sweep out and back to shoulder line with soft elbows, then return; hands on the handles."
+  },
+  {
+   "id": "triceps-extension-cable",
+   "equipment": "High pulley with a rope, standing facing away, overhead extension",
+   "primary": [
+    "triceps"
+   ],
+   "secondary": [],
+   "camera": "side view",
+   "technique": "Rope behind the head, elbows pointing up and close to the head; forearms extend forward and up to full lockout, then return behind the head; upper arms stay still."
+  },
+  {
+   "id": "triceps-pushdown-straight-bar",
+   "equipment": "High pulley with a straight bar attachment, standing",
+   "primary": [
+    "triceps"
+   ],
+   "secondary": [
+    "forearms"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Elbows pinned to the sides; the bar goes from chest height down to full lockout at the thighs and returns to chest height; hands on the bar."
+  },
+  {
+   "id": "triceps-rope-pushdown-cable",
+   "equipment": "High pulley with a rope attachment, standing",
+   "primary": [
+    "triceps"
+   ],
+   "secondary": [
+    "forearms"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Elbows pinned to the sides; the rope is pulled down to full extension with the ends splitting apart at the bottom, then returns to chest height."
+  },
+  {
+   "id": "lat-pulldown-wide-grip-cable",
+   "equipment": "Lat pulldown station: seat, thigh pad, high pulley with a wide bar",
+   "primary": [
+    "lats"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts",
+    "forearms"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Seated with thighs under the pad, wide overhand grip; the bar pulls to the upper chest with the chest up and elbows driving down, then rises slowly to full stretch."
+  },
+  {
+   "id": "lat-pulldown-single-arm-cable",
+   "equipment": "High pulley with a single D-handle, seated or kneeling",
+   "primary": [
+    "lats"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "One arm pulls the handle down toward the shoulder with the elbow driving to the hip, then returns to a full stretch."
+  },
+  {
+   "id": "seated-row-cable",
+   "equipment": "Seated cable row station: seat, foot plate, low pulley with a V-handle",
+   "primary": [
+    "mid back",
+    "lats"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Feet on the plate, knees soft, torso upright; handle is pulled to the lower ribs with shoulder blades squeezing, then returns to full stretch without rounding the back."
+  },
+  {
+   "id": "pullover-machine",
+   "equipment": "Seated pullover machine: seat, lever arm with elbow pads or handles overhead",
+   "primary": [
+    "lats"
+   ],
+   "secondary": [
+    "triceps",
+    "chest"
+   ],
+   "camera": "side view",
+   "technique": "Seated back against the pad, arms start overhead and the lever sweeps down toward the hips, then returns overhead."
+  },
+  {
+   "id": "t-bar-row",
+   "equipment": "Plate-loaded T-bar row: bar anchored at one end with a V-handle near the plates",
+   "primary": [
+    "mid back",
+    "lats"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts",
+    "lower back"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Hinged forward with a flat back, knees soft; the handle is pulled to the lower chest and lowered to full stretch; feet planted either side of the bar."
+  },
+  {
+   "id": "iso-lateral-low-row-plate-loaded",
+   "equipment": "Plate-loaded iso-lateral low row: chest pad, two independent lever arms with handles",
+   "primary": [
+    "mid back",
+    "lats"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Chest against the pad, handles pulled back to the ribs with elbows back, then returned to a full stretch; hands on the handles."
+  },
+  {
+   "id": "shrug-machine",
+   "equipment": "Shrug machine: two handles at the sides or a bar at hip height, standing",
+   "primary": [
+    "upper traps"
+   ],
+   "secondary": [
+    "forearms"
+   ],
+   "camera": "rear three-quarter view",
+   "technique": "Standing tall, shoulders rise straight up toward the ears and lower; arms stay straight; hands hold the handles."
+  },
+  {
+   "id": "seated-bicep-curl-machine",
+   "equipment": "Preacher-style seated curl machine: arm pad and handles",
+   "primary": [
+    "biceps"
+   ],
+   "secondary": [
+    "forearm flexors"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Upper arms on the pad, curl the handles up toward the shoulders and lower to nearly straight; hands on the handles."
+  },
+  {
+   "id": "standing-bicep-curl-cable",
+   "equipment": "Low pulley with a straight or EZ bar, standing",
+   "primary": [
+    "biceps"
+   ],
+   "secondary": [
+    "forearm flexors"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Elbows at the sides, bar curls from the thighs up to shoulder height and lowers under control; cable runs to the low pulley."
+  },
+  {
+   "id": "hack-squat-machine",
+   "equipment": "Hack squat machine: angled sled, back pad, shoulder pads, foot platform",
+   "primary": [
+    "quads",
+    "glutes"
+   ],
+   "secondary": [
+    "hamstrings",
+    "calves"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Back on the pad, feet on the platform about shoulder width; knees bend to about 90 degrees or lower and press back up; heels stay down."
+  },
+  {
+   "id": "squat-smith-machine",
+   "equipment": "Smith machine: barbell on vertical rails, standing",
+   "primary": [
+    "quads",
+    "glutes"
+   ],
+   "secondary": [
+    "hamstrings",
+    "calves",
+    "lower back"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Bar on the upper back, feet slightly in front of the bar; squat to thighs parallel and stand; the bar moves only straight up and down."
+  },
+  {
+   "id": "leg-extension-machine",
+   "equipment": "Leg extension machine: seat, back pad, shin pad on a lever",
+   "primary": [
+    "quads"
+   ],
+   "secondary": [],
+   "camera": "side view",
+   "technique": "Seated with back on the pad, shin pad above the ankles; legs extend to near straight and lower under control; hips stay down."
+  },
+  {
+   "id": "lying-leg-curl-machine",
+   "equipment": "Lying leg curl machine: face-down pad, ankle pad on a lever",
+   "primary": [
+    "hamstrings"
+   ],
+   "secondary": [
+    "calves"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Lying face down, ankle pad above the heels; heels curl toward the glutes and return to nearly straight; hips stay on the pad."
+  },
+  {
+   "id": "hip-adductor-machine",
+   "equipment": "Hip adductor machine: seat, back pad, leg pads on the inner thighs",
+   "primary": [
+    "adductors"
+   ],
+   "secondary": [],
+   "camera": "front three-quarter view",
+   "technique": "Seated, legs start wide against the pads and squeeze together, then open slowly; back on the pad."
+  },
+  {
+   "id": "hip-abductor-machine",
+   "equipment": "Hip abductor machine: seat, back pad, leg pads on the outer thighs",
+   "primary": [
+    "glute medius",
+    "glutes"
+   ],
+   "secondary": [],
+   "camera": "front three-quarter view",
+   "technique": "Seated, legs start together against the pads and push outward, then return slowly; back on the pad."
+  },
+  {
+   "id": "standing-calf-raise-machine",
+   "equipment": "Standing calf raise machine: shoulder pads, foot platform",
+   "primary": [
+    "calves"
+   ],
+   "secondary": [],
+   "camera": "side three-quarter view",
+   "technique": "Shoulders under the pads, balls of the feet on the platform; heels drop to a full stretch then rise high on the toes."
+  },
+  {
+   "id": "calf-press-leg-press",
+   "equipment": "Leg press machine: seat, sled, foot platform, calf press with toes on the lower edge",
+   "primary": [
+    "calves"
+   ],
+   "secondary": [],
+   "camera": "side three-quarter view",
+   "technique": "Seated, legs nearly straight, balls of the feet on the lower edge of the platform; the platform moves by ankle flexion only, with a full stretch and a high toe push."
+  },
+  {
+   "id": "seated-abs-machine",
+   "equipment": "Seated ab crunch machine: seat, chest pad or handles, foot rollers",
+   "primary": [
+    "abs"
+   ],
+   "secondary": [],
+   "camera": "side three-quarter view",
+   "technique": "Seated, handles or pad at the chest; the torso curls forward and down by the abs, then returns slowly; hips stay on the seat."
+  },
+  {
+   "id": "treadmill-incline-walk",
+   "equipment": "Treadmill at a visible incline with side rails, belt moving",
+   "primary": [
+    "quads",
+    "glutes",
+    "calves"
+   ],
+   "secondary": [
+    "hamstrings"
+   ],
+   "camera": "side view",
+   "technique": "Walking tall on the belt with a visible incline, opposite arm and leg swing, hands light on or near the rails; a six-step loop with no foot sliding relative to the belt."
+  }
+ ]
+}

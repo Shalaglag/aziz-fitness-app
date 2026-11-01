@@ -1,6 +1,13 @@
 # Daily steps
 
-Steps per day for the Today tab: type the count by hand, or import an export from Health Connect or from the step app itself (Samsung Health, Fitbit, Garmin, Google Fit, Apple Health). Aziz is on Android, so Health Connect is the main hub. A goal card shows the count, a progress bar, what's left, and the 7-day average.
+Steps per day for the Today tab. On the Android app the count comes from Health Connect by itself (`health-connect-steps.js`, below); the manual box and the export-file import (Health Connect exporter, Samsung Health, Fitbit, Garmin, Google Fit, Apple Health) stay for back-fill and for the web copy. A goal card shows the count, a progress bar, what's left, and the 7-day average.
+
+## Automatic sync on Android (`health-connect-steps.js`)
+- Plain script, `window.HealthConnectSteps`, `node --test modules/steps/health-connect-steps.test.js` (12 tests with a simulated Health Connect).
+- Uses the shared Capacitor plugin in `modules/health-connect/android/HealthConnectPlugin.kt`: `hasStepsAccess`, `requestStepsAccess` (permission `android.permission.health.READ_STEPS`, read only) and `readDailySteps({startMs,endMs})`, which returns Health Connect's own per-day `COUNT_TOTAL` aggregate plus the writing apps. Health Connect de-duplicates overlapping records across apps and devices by its app-priority list, so phone + watch, or Samsung Health + Google Fit, are never summed.
+- `create({plugin, getDay, put, storage, onChange})` → `autoSync()` (open / resume, throttled to once a minute, never prompts), `syncNow()` (button, prompts), `requestAccess()`, `openSettings()`, `html(day)` (status + buttons, passed to `stepsCardHTML` as `syncHTML`), `guideHTML()` (Settings).
+- Each sync re-reads the last 7 days and writes `days/{date}.steps = {count, at, source:"health-connect", origins}` only for days whose figure changed (quiet puts). A day typed by hand is kept when Health Connect has no count for it. A synced day hides the +chips and Set box.
+- Foreground only: Android lets an app read Health Connect only while it is on screen unless it holds `READ_HEALTH_DATA_IN_BACKGROUND` and runs a WorkManager job; opening the app is the refresh. Samsung Health batches steps into Health Connect with a few minutes' delay.
 
 ## Files
 - `steps.js`: plain ES module, no imports, no network. Inline it the same way as `waterh-import.js` (strip `export`, wrap in an IIFE, expose `window.Steps`).
