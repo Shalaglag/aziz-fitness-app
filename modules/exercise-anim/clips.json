@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "base": "clips/",
-  "defaultMode": "clip",
-  "note": "defaultMode 'clip': the video is the starting view for every listed clip (Aziz chose the MP4 demos on Nov 1); Rotate switches to 3D. status: preview = reviewed by Claude, not yet signed off by Aziz; approved = signed off by Aziz (set reviewedBy and reviewedAt); anything else is ignored. A missing or broken file falls back to the 3D demo.",
+  "defaultMode": "3d",
+  "note": "defaultMode '3d': every card starts on the 3D demo; preview clips stay one tap away behind Video (Aziz set aside the generated clips on Nov 1). Set defaultMode 'clip' to make listed clips the starting view again. status: preview = reviewed by Claude, not yet signed off by Aziz; approved = signed off by Aziz (set reviewedBy and reviewedAt); anything else is ignored. A missing or broken file falls back to the 3D demo.",
   "clips": {
     "bench-press-barbell": {
       "file": "bench-press-barbell.mp4",

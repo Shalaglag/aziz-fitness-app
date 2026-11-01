@@ -138,7 +138,15 @@ test('defaultMode clip makes a preview clip the starting view', () => {
   const an = A.create({ clips });
   assert.ok(an.cardHtml('bench-press-barbell').includes('data-mode="clip"'));
   assert.ok(an.cardHtml('squat-barbell').includes('data-mode="3d"'), 'ignored statuses stay 3D');
-  assert.strictEqual(CLIPS.defaultMode, 'clip');
+});
+
+test('shipped clips.json starts every card on 3D, clips stay behind Video', () => {
+  assert.strictEqual(CLIPS.defaultMode, '3d');
+  const an = A.create({ clips: CLIPS });
+  Object.keys(CLIPS.clips).filter(id => CLIPS.clips[id].status === 'preview').forEach(id => {
+    const h = an.cardHtml(id);
+    assert.ok(h.includes('data-mode="3d"') && h.includes('<video') && h.includes('data-ea-mode="clip"'), id + ' starts on 3D with a Video switch');
+  });
 });
 
 test('list pictures: clip still, else 3D still, else null', () => {
