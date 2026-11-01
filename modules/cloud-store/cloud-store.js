@@ -114,19 +114,23 @@ const CloudStore = (() => {
     });
   }
 
-  let state = { auth: null, user: null };
+  let state = { auth: null, user: null, fs: null };
   async function connect(opts) {
     if (!configured()) return null;
     const o = opts || {};
     const fb = await loadSdk();
     if (!fb.apps.length) fb.initializeApp(window.FITNESS_CLOUD_CONFIG);
     const fs = fb.firestore();
-    try { await fs.enablePersistence({ synchronizeTabs: true }); } catch (e) { /* private window or another tab owns it: still syncs, just no offline cache */ }
     const auth = fb.auth();
+    // Test seam: FITNESS_CLOUD_CONFIG.emulator = {host, firestorePort, authPort} points both at the local
+    // Firebase emulators (tests/friends-e2e.test.js). Never set in app/cloud-config.js.
+    const em = window.FITNESS_CLOUD_CONFIG.emulator;
+    if (em && em.host) { try { fs.useEmulator(em.host, em.firestorePort || 8080); auth.useEmulator("http://" + em.host + ":" + (em.authPort || 9099), { disableWarnings: true }); } catch (e) { /* already set */ } }
+    try { await fs.enablePersistence({ synchronizeTabs: true }); } catch (e) { /* private window or another tab owns it: still syncs, just no offline cache */ }
     const user = await new Promise(res => { const off = auth.onAuthStateChanged(u => { off(); res(u); }); });
     const who = user || await signInForm(o.mount || document.body, auth);
     if (!who) return null;
-    state = { auth, user: who };
+    state = { auth, user: who, fs };
     return scoped(fs, who.uid);
   }
   function currentEmail() { return state.user ? state.user.email : null; }
@@ -134,8 +138,11 @@ const CloudStore = (() => {
   // checks it server-side before calling Claude.
   function idToken() { return state.user && state.user.getIdToken ? state.user.getIdToken().catch(() => null) : Promise.resolve(null); }
   async function signOut() { if (state.auth) await state.auth.signOut(); state.user = null; }
+  // The unscoped Firestore handle and uid, for the shared Friends collections (modules/friends), whose
+  // access is enforced by firestore.rules. Null before sign-in.
+  function raw() { return state.user && state.fs ? { fs: state.fs, uid: state.user.uid, email: state.user.email } : null; }
 
-  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, idToken, authMessage, scoped, loadSdk, SDK, LOCAL_SDK };
+  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, idToken, raw, authMessage, scoped, loadSdk, SDK, LOCAL_SDK };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = CloudStore;

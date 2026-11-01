@@ -618,6 +618,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
     <button data-tab="train"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M20 10v4M7 8v8M17 8v8M7 12h10"></path></svg></span>Train</button>
     <button data-tab="food"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v8a3 3 0 0 0 6 0V3M9 3v18M17 3c-2 2-2 6-2 8h4V3z"></path></svg></span>Food</button>
     <button data-tab="progress"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16M6 15l4-5 4 3 4-6"></path></svg></span>Progress</button>
+    <button data-tab="friends"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19c.6-3.2 2.7-5 5.5-5s4.9 1.8 5.5 5"></path><circle cx="17" cy="9.5" r="2.5"></circle><path d="M15.5 14.5c2.6.1 4.4 1.6 5 4.5"></path></svg></span>Friends</button>
     <button data-tab="guide"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 0-3 3z"></path><path d="M17 7h2v13"></path></svg></span>Guide</button>
     <div class="drawer-sep"></div>
     <button data-tab="settings" id="openSettings"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg></span>Settings</button>
@@ -862,6 +863,7 @@ async function initStore(){
   document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>toast(outbox.size()?"Still can't reach the server. Your changes are kept on this device.":"All changes saved")); });
   LB_READ.forEach(c=>{ try{ db.collection(c).onSnapshot(qs=>{ const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=o; if(view.tab!=="train") scheduleRender(); }, ()=>{}); }catch(e){} });
   setSync();
+  try{ mountFriends(); }catch(e){ console.warn("Friends", e); }
 }
 function setSync(){
   const who = window.CloudStore && CloudStore.currentEmail();
@@ -984,7 +986,7 @@ try{
 }catch(e){ console.warn("GoogleHealthWater", e); }
 try{ const m=localStorage.getItem("aziz-cut-tmode"); if(m) view.trainMode=m; }catch(e){}
 try{ const t=localStorage.getItem("aziz-cut-tab"); if(t) view.tab=t; }catch(e){}
-if(["today","train","food","progress","guide","settings"].includes(location.hash.slice(1))) view.tab=location.hash.slice(1);
+if(["today","train","food","progress","friends","guide","settings"].includes(location.hash.slice(1))) view.tab=location.hash.slice(1);
 const main = document.getElementById("main");
 main.before(document.getElementById("lbHost")); // the full logger sits above the Train extras
 
@@ -1002,12 +1004,13 @@ function render(){
   document.getElementById("dateLabel").textContent = fmt(view.date) + (view.date===TODAY?" · today":"");
   document.getElementById("goToday").hidden = view.date===TODAY;
   const y = window.scrollY;
-  const tabFn = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,guide:vGuide,settings:vSettings})[view.tab] || vToday;
+  const tabFn = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,friends:vFriends,guide:vGuide,settings:vSettings})[view.tab] || vToday;
   main.innerHTML = safe(view.tab+" tab", tabFn);
   [["Workout logger",syncLogger],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
   if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); lastTab=view.tab; }
   applyFlash();
   window.scrollTo(0,y);
+  if(frInst) frInst.schedulePublish();
 }
 // Micro-animations after a change: flash("food") makes the macro bars glow and the remaining number tick,
 // flash("water") ripples the water card. Set before render(); applied once and cleared.
@@ -1733,6 +1736,27 @@ const GUIDE_SECTIONS = () => [
       <li>Conventional deadlifts and RDLs</li><li>Hip thrusts</li><li>Back extensions, glute-ham raises, reverse hypers</li><li>Cable pull-throughs</li></ul>
       <p class="muted">Machine-based leg work is preferred.</p>`}
 ];
+/* Friends (modules/friends): own account each; profiles, invite codes, requests, shared summaries, leaderboard, challenges.
+ * Mounted once the cloud store is signed in; everything it reads is limited by firestore.rules. */
+let frInst=null;
+function frSharing(){ return clone(S.docs.prefs.friends); }
+function frCtx(){ const sh=frSharing(); const hcs=hcSteps?safeMod("HealthConnectSteps",()=>hcSteps.status()):null;
+  return {today:TODAY, now:Date.now(), docs:S.docs, getDay, stepGoal:window.Steps?Steps.stepGoal(S.docs.prefs.main||{}):10000, waterGoal:d=>{ const s=sessionFor(d); return s && s.session!=="Rest" && dayType(d)!=="friday" ? 3500 : 3000; }, totalWater, kcalTarget, proteinMin:TARGET.pMin, weekGoal:sh.weekGoal||4, stepsConnected:!!(hcs && hcs.state==="ready")}; }
+function mountFriends(){
+  if(frInst || !window.Friends || !window.CloudStore || !CloudStore.raw) return;
+  const r=CloudStore.raw(); if(!r) return;
+  try{ const st=document.createElement("style"); st.textContent=Friends.css; document.head.appendChild(st); }catch(e){}
+  frInst = Friends.mount({ fs:r.fs, uid:r.uid, email:r.email, today:()=>TODAY, ctx:frCtx, getSharing:frSharing, setSharing:o=>put("prefs","friends",o,{quiet:true}),
+    render:()=>{ if(view.tab==="friends") scheduleRender(); }, toast, confirm:m=>window.confirm(m), goSteps:()=>{ view.tab="today"; view.open["f:steps"]=true; render(); const el=document.querySelector('[data-keep="f:steps"]'); if(el) el.scrollIntoView({block:"start"}); },
+    apkUrl: window.AppUpdate && AppUpdate.RELEASE_URL ? AppUpdate.RELEASE_URL : "https://github.com/Shalaglag/mizan-releases/releases/tag/android-latest",
+    share:text=>{ if(navigator.share) return navigator.share({text}).catch(()=>{}); return (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>toast("Invite copied. Paste it into WhatsApp or a message."),()=>toast(text)); } });
+}
+function vFriends(){
+  const cloudReady = !window.claude && !!(window.CloudStore && CloudStore.configured && CloudStore.configured());
+  if(!frInst) mountFriends();
+  const body = frInst ? safe("Friends", ()=>frInst.html({today:TODAY, now:Date.now(), email:CloudStore.currentEmail()})) : window.Friends ? Friends.signedOutHTML(cloudReady && S.mode!=="loading") : "";
+  return tabHead("Friends") + body;
+}
 function vGuide(){
   const q=view.q.trim().toLowerCase();
   const libNames = Object.keys(LIB).filter(n=>!q || n.toLowerCase().includes(q) || LIB[n][0].toLowerCase().includes(q));
@@ -1805,6 +1829,7 @@ function vSettings(){
     <p class="muted" style="font-size:.85rem">Status: <span id="syncCopy">${esc(document.getElementById("sync").textContent)}</span>. Changing any setting never deletes your history.</p>
   </div>
   ${fold("hcset","Health Connect","Steps and water from the phone", safeMod("HealthConnectSteps",()=>hcSteps.guideHTML())+safeMod("HealthConnectSync",()=>hcSync.guideHTML()))}
+  <div class="card"><h3>Friends and sharing</h3><p class="muted" style="font-size:.9rem">Invite family and friends, compare steps and pick exactly what they may see. Everything is private until you switch it on.</p><div class="row"><button class="btn small" data-act="gotab" data-tab="friends">Open Friends</button></div></div>
   ${cat("Data and backup")}
   ${strongCard()}
   <p class="muted" style="font-size:.85rem;margin:0 4px">Backups, restore and other imports are just below.</p>`;
@@ -1817,6 +1842,7 @@ if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", goHom
 function openDrawer(on){ const d=document.getElementById("drawer"); d.hidden=!on; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
 document.getElementById("menuBtn").onclick=()=>openDrawer(true);
 document.getElementById("drawerClose").onclick=()=>openDrawer(false);
+main.addEventListener("change",e=>{ const el=e.target.closest("[data-fr-change]"); if(el && frInst){ try{ frInst.change(el); }catch(err){} } });
 document.getElementById("drawer").addEventListener("click",e=>{ if(e.target.hasAttribute("data-close-drawer")) openDrawer(false); });
 document.getElementById("bottomNav").addEventListener("click",e=>{ const m=e.target.closest("button[data-more]"); if(m){ openDrawer(true); return; } const b=e.target.closest("button[data-tab]"); if(!b) return; view.tab=b.dataset.tab; try{localStorage.setItem("aziz-cut-tab",view.tab)}catch(_){} render(); window.scrollTo(0,0); });
 document.getElementById("tabs").addEventListener("click",e=>{ const b=e.target.closest("button[data-tab]"); if(!b) return; openDrawer(false); view.tab=b.dataset.tab; try{localStorage.setItem("aziz-cut-tab",view.tab)}catch(_){} render(); window.scrollTo(0,0); });
@@ -1844,6 +1870,7 @@ function addFood(item){ const day=getDay(view.date); day.food.push({id:uid(),eat
 main.addEventListener("change",e=>{ if(window.HealthMarkers && e.target && e.target.dataset && e.target.dataset.hmSel){ try{ HealthMarkers.onPresetChange(e.target); }catch(err){} } });
 main.addEventListener("toggle",e=>{ const k=e.target && e.target.dataset && e.target.dataset.keep; if(k) view.open[k]=e.target.open; }, true);
 main.addEventListener("click",e=>{
+  const frEl=e.target.closest("[data-fr]"); if(frEl && frInst){ try{ if(frInst.handle(frEl, e.target)) return; }catch(err){ toast("Friends: "+(err.message||err)); return; } }
   if(window.HealthMarkers && e.target.closest("[data-hm]")){ try{ if(HealthMarkers.handle(e.target, {docs:S.docs, date:view.date, toast, uid, put:(c,id,doc)=>{ hmOpts={}; put(c,id,doc); }, remove:(c,id)=>{ hmOpts={}; remove(c,id); }, rerender:o=>{ hmOpts=o||{}; render(); }})) return; }catch(err){ toast("Markers: "+err.message); return; } }
   if(window.RunTracker && e.target.closest("[data-run]")){ try{ if(RunTracker.handle(e.target, rtCtx())) return; }catch(err){ toast("Run: "+err.message); return; } }
   if(window.Cardio && e.target.closest("[data-cardio]")){ try{ if(Cardio.handle(e.target, {docs:cdDocs(), date:view.date, toast, weightKg:latestKg(), put:(c,id,doc)=>{ cardioOpts={}; put(c,id,doc); }, rerender:o=>{ cardioOpts=o||{}; render(); }})) return; }catch(err){ toast("Cardio: "+err.message); return; } }
