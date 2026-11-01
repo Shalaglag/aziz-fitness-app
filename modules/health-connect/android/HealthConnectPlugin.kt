@@ -9,6 +9,8 @@ import androidx.health.connect.client.changes.DeletionChange
 import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HydrationRecord
+import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.ChangesTokenRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -22,10 +24,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.Period
+import java.time.ZoneId
 
 /**
- * Health Connect bridge for the Water card (modules/health-connect/health-connect.js).
- * Read-only: one permission (READ_HYDRATION), no writes, no network.
+ * Health Connect bridge for the Water card (modules/health-connect/health-connect.js) and the
+ * Steps card (modules/steps/health-connect-steps.js).
+ * Read-only: two permissions (READ_HYDRATION, READ_STEPS), no writes, no network.
  *
  * Registered in android/app/src/main/java/com/azizfitness/app/MainActivity.java (before super.onCreate).
  * The copy that is compiled lives next to MainActivity; this file is its source of truth and
@@ -38,16 +43,19 @@ class HealthConnectPlugin : Plugin() {
 
     private val scope = CoroutineScope(Dispatchers.IO)
     private val permissions = setOf(HealthPermission.getReadPermission(HydrationRecord::class))
+    private val stepsPermissions = setOf(HealthPermission.getReadPermission(StepsRecord::class))
     private var permissionLauncher: ActivityResultLauncher<Set<String>>? = null
     private var pendingPermissionCall: PluginCall? = null
+    private var pendingPermissions: Set<String> = permissions
 
     override fun load() {
         // The permission sheet is an activity result; register it once the activity exists.
         val contract = PermissionController.createRequestPermissionResultContract()
         permissionLauncher = bridge.activity.registerForActivityResult(contract) { granted ->
             val call = pendingPermissionCall
+            val wanted = pendingPermissions
             pendingPermissionCall = null
-            call?.resolve(JSObject().put("granted", granted.containsAll(permissions)))
+            call?.resolve(JSObject().put("granted", granted.containsAll(wanted)))
         }
     }
 
@@ -67,29 +75,79 @@ class HealthConnectPlugin : Plugin() {
 
     // Not named checkPermissions/requestPermissions: Capacitor's Plugin base class already has those.
     @PluginMethod
-    fun hasHydrationAccess(call: PluginCall) {
+    fun hasHydrationAccess(call: PluginCall) = hasAccess(call, permissions, "hasHydrationAccess")
+
+    @PluginMethod
+    fun requestHydrationAccess(call: PluginCall) = requestAccess(call, permissions, "requestHydrationAccess")
+
+    @PluginMethod
+    fun hasStepsAccess(call: PluginCall) = hasAccess(call, stepsPermissions, "hasStepsAccess")
+
+    @PluginMethod
+    fun requestStepsAccess(call: PluginCall) = requestAccess(call, stepsPermissions, "requestStepsAccess")
+
+    private fun hasAccess(call: PluginCall, wanted: Set<String>, name: String) {
         val c = client() ?: return call.resolve(JSObject().put("granted", false))
         scope.launch {
             try {
                 val granted = c.permissionController.getGrantedPermissions()
-                call.resolve(JSObject().put("granted", granted.containsAll(permissions)))
-            } catch (e: Exception) { call.reject(e.message ?: "hasHydrationAccess failed") }
+                call.resolve(JSObject().put("granted", granted.containsAll(wanted)))
+            } catch (e: Exception) { call.reject(e.message ?: "$name failed") }
         }
     }
 
-    @PluginMethod
-    fun requestHydrationAccess(call: PluginCall) {
+    private fun requestAccess(call: PluginCall, wanted: Set<String>, name: String) {
         val c = client() ?: return call.resolve(JSObject().put("granted", false))
         scope.launch {
             try {
-                if (c.permissionController.getGrantedPermissions().containsAll(permissions)) {
+                if (c.permissionController.getGrantedPermissions().containsAll(wanted)) {
                     call.resolve(JSObject().put("granted", true)); return@launch
                 }
                 val launcher = permissionLauncher
                 if (launcher == null) { call.reject("permission launcher not ready"); return@launch }
+                if (pendingPermissionCall != null) { call.reject("a permission request is already open"); return@launch }
                 pendingPermissionCall = call
-                bridge.activity.runOnUiThread { launcher.launch(permissions) }
-            } catch (e: Exception) { call.reject(e.message ?: "requestHydrationAccess failed") }
+                pendingPermissions = wanted
+                bridge.activity.runOnUiThread { launcher.launch(wanted) }
+            } catch (e: Exception) { call.reject(e.message ?: "$name failed") }
+        }
+    }
+
+    /**
+     * readDailySteps({startMs, endMs}) → {days:[{date:"YYYY-MM-DD", steps, origins:[package]}], zone}.
+     * One figure per local calendar day from Health Connect's own aggregate (COUNT_TOTAL). Health Connect
+     * de-duplicates overlapping records from several apps (phone + watch, Samsung Health + Google Fit) by
+     * its app-priority list, so this is the same number the Health Connect app shows and nothing is added twice.
+     */
+    @PluginMethod
+    fun readDailySteps(call: PluginCall) {
+        val c = client() ?: return call.reject("Health Connect unavailable")
+        val zone = ZoneId.systemDefault()
+        val endMs = call.getLong("endMs") ?: System.currentTimeMillis()
+        val startMs = call.getLong("startMs") ?: (endMs - 7L * 86_400_000L)
+        val start = Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate().atStartOfDay()
+        val end = Instant.ofEpochMilli(endMs).atZone(zone).toLocalDate().plusDays(1).atStartOfDay()
+        scope.launch {
+            try {
+                val buckets = c.aggregateGroupByPeriod(
+                    AggregateGroupByPeriodRequest(
+                        metrics = setOf(StepsRecord.COUNT_TOTAL),
+                        timeRangeFilter = TimeRangeFilter.between(start, end),
+                        timeRangeSlicer = Period.ofDays(1)
+                    )
+                )
+                val out = JSArray()
+                buckets.forEach { b ->
+                    val origins = JSArray()
+                    b.result.dataOrigins.forEach { origins.put(it.packageName) }
+                    out.put(JSObject()
+                        .put("date", b.startTime.toLocalDate().toString())
+                        .put("steps", b.result[StepsRecord.COUNT_TOTAL] ?: 0L)
+                        .put("origins", origins))
+                }
+                call.resolve(JSObject().put("days", out).put("zone", zone.id))
+            } catch (e: SecurityException) { call.reject("permission denied: ${e.message}")
+            } catch (e: Exception) { call.reject(e.message ?: "readDailySteps failed") }
         }
     }
 
