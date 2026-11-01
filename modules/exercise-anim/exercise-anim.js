@@ -1989,7 +1989,7 @@
     const api = { info: opts.info || null };
     // Blender video clips (clips.json): 'preview' is offered as a Video option, 'approved' is the default view.
     // A clip that is missing from the list, not preview/approved, or fails to load falls back to the 3D demo.
-    // clips.json `defaultMode: "clip"` makes the video the starting view for every listed clip (Aziz chose MP4 demos, Nov 1); 3D stays one tap away (Rotate).
+    // clips.json `defaultMode: "clip"` makes the video the starting view for every listed clip; `"3d"` (current, Nov 1) starts on the 3D demo and keeps clips behind Video.
     const clipData = () => opts.clips || root.EXERCISE_CLIPS || {};
     function clipFor(id) {
       const c = (clipData().clips || {})[id];
