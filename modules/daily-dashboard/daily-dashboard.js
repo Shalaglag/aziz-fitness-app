@@ -28,7 +28,7 @@
  *   exerciseCount   fn(session) -> number of planned exercises
  *   selected        ISO date highlighted on the calendar (default: date / today)
  * Tile and calendar taps carry data-act for the host's click handler:
- *   gotrain, gofood, water (data-ml), dd-focus (data-target = element id), caldate (data-d), calmonth (data-ym)
+ *   gotrain, gofood, water (data-ml), dd-focus (data-target = element id: wkg, waterCard, sleepH), caldate (data-d), calmonth (data-ym)
  */
 const DailyDashboard = (() => {
   const DAY = 864e5;
@@ -189,8 +189,9 @@ const DailyDashboard = (() => {
 
   function tile(cls, label, value, sub, act, extra = "") {
     const attrs = act ? Object.entries(act).map(([k, v]) => ` data-${k}="${esc(v)}"`).join("") : "";
-    const tag = act ? "button" : "div";
-    return `<${tag} class="dd-tile ${cls}"${act ? ' type="button"' : ""}${attrs}><span class="label">${label}</span><span class="dd-v${/\d/.test(String(value))?" num":""}">${value}</span><span class="dd-sub">${sub}</span>${extra}</${tag}>`;
+    // A tile holding its own buttons (Water's +250/+500 chips) can't be a <button>: it stays a div that still carries data-act.
+    const tag = act && !/<button/.test(extra) ? "button" : "div";
+    return `<${tag} class="dd-tile ${cls}${act && tag === "div" ? " tap" : ""}"${tag === "button" ? ' type="button"' : ""}${attrs}><span class="label">${label}</span><span class="dd-v${/\d/.test(String(value))?" num":""}">${value}</span><span class="dd-sub">${sub}</span>${extra}</${tag}>`;
   }
 
   function glanceHtml(docs, date, opts = {}) {
@@ -230,7 +231,7 @@ const DailyDashboard = (() => {
     else tiles.push(tile("dd-weight warn", "Weigh-in", "Not logged", wi.prev ? `Last ${wi.prev.kg.toFixed(1)} kg, ${diff(wi.prev.date, g.date)} day${diff(wi.prev.date, g.date) === 1 ? "" : "s"} ago` : "Log a morning weight", { act: "dd-focus", target: "wkg" }));
 
     // Water
-    tiles.push(tile("dd-water " + (wa.hit ? "good" : ""), "Water", (wa.ml / 1000).toFixed(2) + " L", wa.goal == null ? "today" : `of ${(wa.goal / 1000).toFixed(1)} L` + (wa.hit ? " · goal hit" : ` · ${((wa.goal - wa.ml) / 1000).toFixed(2)} L to go`), null,
+    tiles.push(tile("dd-water " + (wa.hit ? "good" : ""), "Water", (wa.ml / 1000).toFixed(2) + " L", wa.goal == null ? "today" : `of ${(wa.goal / 1000).toFixed(1)} L` + (wa.hit ? " · goal hit" : ` · ${((wa.goal - wa.ml) / 1000).toFixed(2)} L to go`), { act: "dd-focus", target: "waterCard" },
       (wa.goal == null ? "" : `<span class="dd-bar w" aria-hidden="true"><i style="width:${Math.round(wa.pct * 100)}%"></i></span>`) + `<span class="dd-row"><button type="button" class="chip" data-act="water" data-ml="250">+250 ml</button><button type="button" class="chip" data-act="water" data-ml="500">+500 ml</button></span>`));
 
     // Recovery
@@ -315,7 +316,7 @@ const DailyDashboard = (() => {
     ".dd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}",
     "@media (min-width:640px){.dd-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}",
     ".dd-tile{display:flex;flex-direction:column;gap:4px;text-align:left;font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}",
-    "button.dd-tile{cursor:pointer}",
+    "button.dd-tile,.dd-tile.tap{cursor:pointer}",
     "button.dd-tile:hover{border-color:var(--ink)}",
     ".dd-tile.good{border-left-color:var(--good)} .dd-tile.warn{border-left-color:var(--warn)} .dd-tile.bad{border-left-color:var(--bad)}",
     ".dd-tile.bad .dd-v{color:var(--bad)}",

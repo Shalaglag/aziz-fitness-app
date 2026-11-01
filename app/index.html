@@ -553,6 +553,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .jump .chip{white-space:nowrap;flex:none}
 .gsearch{width:100%;min-height:44px;font-size:1rem;padding:8px 12px}
 [id^="g-"]{scroll-margin-top:120px}
+#waterCard{scroll-margin-top:96px}
 .subnav{display:flex;gap:4px;background:var(--sunk);border-radius:12px;padding:4px}
 .subnav button{flex:1;border:0;background:none;padding:8px 4px;border-radius:9px;font-weight:600;color:var(--muted);cursor:pointer;font-size:.92rem;min-height:38px}
 .subnav button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-1)}
@@ -17274,7 +17275,7 @@ if (typeof module !== "undefined") module.exports = ReverseDiet;
  *   exerciseCount   fn(session) -> number of planned exercises
  *   selected        ISO date highlighted on the calendar (default: date / today)
  * Tile and calendar taps carry data-act for the host's click handler:
- *   gotrain, gofood, water (data-ml), dd-focus (data-target = element id), caldate (data-d), calmonth (data-ym)
+ *   gotrain, gofood, water (data-ml), dd-focus (data-target = element id: wkg, waterCard, sleepH), caldate (data-d), calmonth (data-ym)
  */
 const DailyDashboard = (() => {
   const DAY = 864e5;
@@ -17435,8 +17436,9 @@ const DailyDashboard = (() => {
 
   function tile(cls, label, value, sub, act, extra = "") {
     const attrs = act ? Object.entries(act).map(([k, v]) => ` data-${k}="${esc(v)}"`).join("") : "";
-    const tag = act ? "button" : "div";
-    return `<${tag} class="dd-tile ${cls}"${act ? ' type="button"' : ""}${attrs}><span class="label">${label}</span><span class="dd-v${/\d/.test(String(value))?" num":""}">${value}</span><span class="dd-sub">${sub}</span>${extra}</${tag}>`;
+    // A tile holding its own buttons (Water's +250/+500 chips) can't be a <button>: it stays a div that still carries data-act.
+    const tag = act && !/<button/.test(extra) ? "button" : "div";
+    return `<${tag} class="dd-tile ${cls}${act && tag === "div" ? " tap" : ""}"${tag === "button" ? ' type="button"' : ""}${attrs}><span class="label">${label}</span><span class="dd-v${/\d/.test(String(value))?" num":""}">${value}</span><span class="dd-sub">${sub}</span>${extra}</${tag}>`;
   }
 
   function glanceHtml(docs, date, opts = {}) {
@@ -17476,7 +17478,7 @@ const DailyDashboard = (() => {
     else tiles.push(tile("dd-weight warn", "Weigh-in", "Not logged", wi.prev ? `Last ${wi.prev.kg.toFixed(1)} kg, ${diff(wi.prev.date, g.date)} day${diff(wi.prev.date, g.date) === 1 ? "" : "s"} ago` : "Log a morning weight", { act: "dd-focus", target: "wkg" }));
 
     // Water
-    tiles.push(tile("dd-water " + (wa.hit ? "good" : ""), "Water", (wa.ml / 1000).toFixed(2) + " L", wa.goal == null ? "today" : `of ${(wa.goal / 1000).toFixed(1)} L` + (wa.hit ? " · goal hit" : ` · ${((wa.goal - wa.ml) / 1000).toFixed(2)} L to go`), null,
+    tiles.push(tile("dd-water " + (wa.hit ? "good" : ""), "Water", (wa.ml / 1000).toFixed(2) + " L", wa.goal == null ? "today" : `of ${(wa.goal / 1000).toFixed(1)} L` + (wa.hit ? " · goal hit" : ` · ${((wa.goal - wa.ml) / 1000).toFixed(2)} L to go`), { act: "dd-focus", target: "waterCard" },
       (wa.goal == null ? "" : `<span class="dd-bar w" aria-hidden="true"><i style="width:${Math.round(wa.pct * 100)}%"></i></span>`) + `<span class="dd-row"><button type="button" class="chip" data-act="water" data-ml="250">+250 ml</button><button type="button" class="chip" data-act="water" data-ml="500">+500 ml</button></span>`));
 
     // Recovery
@@ -17561,7 +17563,7 @@ const DailyDashboard = (() => {
     ".dd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}",
     "@media (min-width:640px){.dd-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}",
     ".dd-tile{display:flex;flex-direction:column;gap:4px;text-align:left;font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}",
-    "button.dd-tile{cursor:pointer}",
+    "button.dd-tile,.dd-tile.tap{cursor:pointer}",
     "button.dd-tile:hover{border-color:var(--ink)}",
     ".dd-tile.good{border-left-color:var(--good)} .dd-tile.warn{border-left-color:var(--warn)} .dd-tile.bad{border-left-color:var(--bad)}",
     ".dd-tile.bad .dd-v{color:var(--bad)}",
@@ -24852,7 +24854,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
 window.AppShortcuts = (() => {
   const ACTIONS = {
     "log-weight":    { tab: "today", focus: "#wkg", label: "Log weight" },
-    "add-water":     { tab: "today", focus: '[data-act="water"][data-ml="250"]', label: "Add water" },
+    "add-water":     { tab: "today", focus: '#waterCard [data-act="water"][data-ml="250"]', label: "Add water" },
     "start-workout": { tab: "train", focus: null, label: "Start workout" },
     "log-food":      { tab: "food", focus: "#fname", label: "Log food" }
   };
@@ -26603,7 +26605,7 @@ main.addEventListener("click",e=>{
   const a=el.dataset.act, d=view.date;
   if(a==="caldate"){ view.date=el.dataset.d; view.calYm=null; render(); window.scrollTo(0,0); return; }
   if(a==="calmonth"){ view.calYm=el.dataset.ym; render(); return; }
-  if(a==="dd-focus"){ const t=document.getElementById(el.dataset.target); if(t){ t.scrollIntoView({behavior:"smooth",block:"center"}); t.focus({preventScroll:true}); } return; }
+  if(a==="dd-focus"){ const t=document.getElementById(el.dataset.target); if(t){ const f=t.closest("details"); if(f) f.open=true; t.scrollIntoView({behavior:"smooth",block:t.matches("input,button")?"center":"start"}); t.focus({preventScroll:true}); if(t.classList.contains("card")){ t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash"); } } return; }
   if(a==="backup"){ el.disabled=true; backupNow(); return; }
   // "Use without an account" was picked at first start: sign in now (each account holds only its own data), then reload so the phone's entries go up once.
   if(a==="cloudsignin"){ el.disabled=true; CloudStore.connect({mount:document.body}).then(db=>{ if(db) location.reload(); else el.disabled=false; }).catch(()=>{ toast("Couldn't reach the server. Try again when online."); el.disabled=false; }); return; }

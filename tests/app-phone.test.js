@@ -347,6 +347,26 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("Today tiles take you to their section: Water tile scrolls to the Water card, its chips still add water", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      const visible = sel => page.evaluate(s => { const r = document.querySelector(s).getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight - 100; }, sel);
+      assert.ok(!(await visible("#waterCard")), "Water card starts below the fold");
+      await page.click(".dd-water .label");
+      await page.waitForTimeout(900);
+      assert.ok(await visible("#waterCard"), "tapping the Water tile scrolls to the Water card");
+      const before = await page.evaluate(() => getDay(TODAY).water);
+      await page.click('.dd-water [data-act="water"][data-ml="250"]');
+      assert.strictEqual(await page.evaluate(() => getDay(TODAY).water), before + 250, "the tile's +250 chip still adds water");
+      for (const [tile, target] of [[".dd-weight", "#wkg"], [".dd-recovery", "#sleepH"]]) {
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.click(tile);
+        await page.waitForTimeout(900);
+        assert.ok(await visible(target), `${tile} scrolls to ${target}`);
+      }
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("navigation setting: bottom bar and both, flashes after a change, demos start collapsed, list view once", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "settings");

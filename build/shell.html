@@ -553,6 +553,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .jump .chip{white-space:nowrap;flex:none}
 .gsearch{width:100%;min-height:44px;font-size:1rem;padding:8px 12px}
 [id^="g-"]{scroll-margin-top:120px}
+#waterCard{scroll-margin-top:96px}
 .subnav{display:flex;gap:4px;background:var(--sunk);border-radius:12px;padding:4px}
 .subnav button{flex:1;border:0;background:none;padding:8px 4px;border-radius:9px;font-weight:600;color:var(--muted);cursor:pointer;font-size:.92rem;min-height:38px}
 .subnav button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-1)}
@@ -1894,7 +1895,7 @@ main.addEventListener("click",e=>{
   const a=el.dataset.act, d=view.date;
   if(a==="caldate"){ view.date=el.dataset.d; view.calYm=null; render(); window.scrollTo(0,0); return; }
   if(a==="calmonth"){ view.calYm=el.dataset.ym; render(); return; }
-  if(a==="dd-focus"){ const t=document.getElementById(el.dataset.target); if(t){ t.scrollIntoView({behavior:"smooth",block:"center"}); t.focus({preventScroll:true}); } return; }
+  if(a==="dd-focus"){ const t=document.getElementById(el.dataset.target); if(t){ const f=t.closest("details"); if(f) f.open=true; t.scrollIntoView({behavior:"smooth",block:t.matches("input,button")?"center":"start"}); t.focus({preventScroll:true}); if(t.classList.contains("card")){ t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash"); } } return; }
   if(a==="backup"){ el.disabled=true; backupNow(); return; }
   // "Use without an account" was picked at first start: sign in now (each account holds only its own data), then reload so the phone's entries go up once.
   if(a==="cloudsignin"){ el.disabled=true; CloudStore.connect({mount:document.body}).then(db=>{ if(db) location.reload(); else el.disabled=false; }).catch(()=>{ toast("Couldn't reach the server. Try again when online."); el.disabled=false; }); return; }
