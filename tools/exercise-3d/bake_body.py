@@ -1,7 +1,7 @@
 """Turn the body-model v2 glb (body-model/out200/body_<build>.glb, 200k tris, CC0 MakeHuman) into the app body:
 - one skinned primitive (eyes merged in), muscle ids baked per vertex from regions.png into _MUSCLE
   (r = vocabulary index + 1, 0 = none; g = membership 0..255; b = 255 for eyes; a = 255 for the body's left side),
-- normals as normalized int8, UV/TANGENT dropped (the app colours by vertex, no textures).
+- normals and tangents as normalized int8, UV as normalized uint16 (KHR_mesh_quantization), for the look-A normal map.
 Usage: python3 bake_body.py in.glb body_meta.json regions.png out.glb out_meta.json"""
 import json, struct, sys, numpy as np
 from PIL import Image
@@ -16,7 +16,7 @@ def acc(i):
 prims = js['meshes'][0]['primitives']
 body, eyes = prims[0], (prims[1] if len(prims) > 1 else None)
 P = acc(body['attributes']['POSITION']); N = acc(body['attributes']['NORMAL']); J = acc(body['attributes']['JOINTS_0']); W = acc(body['attributes']['WEIGHTS_0'])
-UV = acc(body['attributes']['TEXCOORD_0']); I = acc(body['indices']).ravel().astype(np.uint32)
+UV = acc(body['attributes']['TEXCOORD_0']); TG = acc(body['attributes']['TANGENT']); I = acc(body['indices']).ravel().astype(np.uint32)
 # muscle ids from the region map (nearest texel), membership = share of nearby texels with the same id
 img = np.array(Image.open(regp).convert('RGB'))[:, :, 0].astype(np.int32); S = img.shape[0]
 rid = lambda u, v: img[np.clip((v * S).astype(int), 0, S - 1), np.clip((u * S).astype(int), 0, S - 1)] // 3
@@ -29,6 +29,8 @@ M = np.stack([vidx, np.round(memb * 255), np.zeros(len(u)), np.where(left, 255, 
 if eyes is not None:
     Pe = acc(eyes['attributes']['POSITION']); Ne = acc(eyes['attributes']['NORMAL']); Je = acc(eyes['attributes']['JOINTS_0']); We = acc(eyes['attributes']['WEIGHTS_0']); Ie = acc(eyes['indices']).ravel().astype(np.uint32)
     Me = np.zeros((len(Pe), 4), np.uint8); Me[:, 2] = 255; Me[:, 3] = np.where(Pe[:, 0] >= 0, 255, 0)
+    UVe = np.zeros((len(Pe), 2)); TGe = np.tile([1.0, 0, 0, 1], (len(Pe), 1))
+    UV = np.concatenate([UV, UVe]); TG = np.concatenate([TG, TGe])
     I = np.concatenate([I, Ie + len(P)]); P = np.concatenate([P, Pe]); N = np.concatenate([N, Ne]); J = np.concatenate([J, Je]); W = np.concatenate([W, We]); M = np.concatenate([M, Me])
 Nq = np.round(np.clip(N / np.maximum(1e-9, np.linalg.norm(N, axis=1, keepdims=True)), -1, 1) * 127).astype(np.int8)
 Nq = np.concatenate([Nq, np.zeros((len(Nq), 1), np.int8)], 1)   # pad to 4 bytes per vertex
@@ -49,6 +51,8 @@ attrs = {'POSITION': add(P.astype(np.float32), 5126, 'VEC3', 34962, minmax=True)
 # int8 normals need VEC3 with byteStride 4: write as a strided view
 off = sum(len(p) for p in parts); parts.append(Nq.tobytes()); views.append({'buffer': 0, 'byteOffset': off, 'byteLength': Nq.nbytes, 'byteStride': 4, 'target': 34962})
 accs.append({'bufferView': len(views) - 1, 'componentType': 5120, 'normalized': True, 'count': len(Nq), 'type': 'VEC3'}); attrs['NORMAL'] = len(accs) - 1
+attrs['TEXCOORD_0'] = add(np.round(np.clip(UV, 0, 1) * 65535).astype(np.uint16), 5123, 'VEC2', 34962, normalized=True)
+attrs['TANGENT'] = add(np.round(np.clip(TG, -1, 1) * 127).astype(np.int8), 5120, 'VEC4', 34962, normalized=True)
 ind = add(I, 5125, 'SCALAR', 34963)
 ibmA = add(ibm.astype(np.float32), 5126, 'MAT4')
 js['meshes'][0]['primitives'] = [{'attributes': attrs, 'indices': ind}]

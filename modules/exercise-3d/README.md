@@ -1,10 +1,11 @@
 # exercise-3d: the shared real-time 3D body (phase 1)
 
-One skinned body (MakeHuman CC0, 200k triangles, 68 bones with three per finger) drives every listed exercise from the motions already in `modules/exercise-anim` (`ExerciseAnim.sample` + `skeleton(p, BODY)`). Equipment comes from each motion's `props`. Muscles are coloured per vertex: primary red `#d9392c`, secondary amber `#f0a030`.
+One skinned body (MakeHuman CC0, Extreme build, 200k triangles, 68 bones with three per finger; look A "Studio", both locked by Aziz on Nov 1) drives every listed exercise from the motions already in `modules/exercise-anim` (`ExerciseAnim.sample` + `skeleton(p, BODY)`). Equipment comes from each motion's `props`. Muscles are coloured per vertex: primary red `#d9392c`, secondary amber `#f0a030`.
 
 ## In the app
 - The Rotate view of an exercise card shows this body when the exercise is listed in `exercises.json`, otherwise the line mannequin. The Video view (clips) is unchanged.
-- Loaded on first use: `vendor/three-r160/` (three.js r160, MIT) and `3d/body.glb` + `3d/body_meta.json` from `app/`. One WebGL renderer draws all cards, with soft shadows (PCFSoft, 1024 map).
+- Loaded on first use: `vendor/three-r160/` (three.js r160, MIT) and `3d/body.glb` + `3d/body_meta.json` + `3d/normal_A.png` from `app/`. One WebGL renderer draws all cards, with soft shadows (PCFSoft, 1024 map).
+- Look A (Studio): MeshStandardMaterial #c9ccd0, roughness 0.62 (0.48 on highlighted muscles), normal map `normal_A.png` (muscle grooves, scale 1, flipY false), RoomEnvironment light at envMapIntensity 0.35. Settings come from the model thread's `body-model/page` STYLES.A.
 - It draws only while the card is on screen and playing (the card loop's IntersectionObserver), capped at 60 fps. There are no lower-detail versions: the app targets the S24 Ultra and newer (Aziz, Nov 1). Measured on the S24 Ultra: 120 fps steady with 200k, ~35%/h battery nonstop at 120 fps.
 - While loading, or if WebGL fails, the card keeps drawing the line mannequin.
 
@@ -22,10 +23,10 @@ One skinned body (MakeHuman CC0, 200k triangles, 68 bones with three per finger)
 - Pads (bench, seat) are found in the props: the pelvis is moved so the back or seat sits about 4 mm into the pad. Feet IK to the floor.
 
 ## Body files
-`tools/exercise-3d/bake_body.py in.glb body_meta.json regions.png out.glb out_meta.json muscle-vocabulary.csv` turns `body-model/out200/body_<build>.glb` (shared project files) into `app/3d/body.glb`: eyes merged into one primitive, `regions.png` baked into a `_MUSCLE` vertex attribute (r = vocabulary index + 1, g = membership, b = eye, a = left side), int8 normals, no UV/tangents (5.3 MB). `paint_muscles.py` is the older rule-based painter for the 72k body.
+`tools/exercise-3d/bake_body.py in.glb body_meta.json regions.png out.glb out_meta.json muscle-vocabulary.csv` turns `body-model/out200/body_extreme.glb` (shared project files) into `app/3d/body.glb`: eyes merged into one primitive, `regions.png` baked into a `_MUSCLE` vertex attribute (r = vocabulary index + 1, g = membership, b = eye, a = left side), int8 normals and tangents, uint16 UVs (6.2 MB). Copy `out200/normal_A.png` to `app/3d/` with it (normal maps belong to their mesh). `paint_muscles.py` is the older rule-based painter for the 72k body.
 
 ## Quality checks
-Run the project's demo checker (`demo-qa`, see its README) against the preview page. Known limits as of Nov 1: deep squat hip crease squashes ~23 mm (linear-blend skinning), the Bayesian curl cable brushes the forearm ~5 mm.
+Run the project's demo checker (`demo-qa`, see its README) against the preview page. Known limits as of Nov 1 (Extreme body): deep squat hip crease squashes ~30 mm (linear-blend skinning), squat wrists 12 deg past the deviation limit, bench sacrum floats 17 mm above the pad (the bigger back touches first), the Bayesian curl cable brushes the forearm ~5 mm, fingers press up to 2 mm into handles.
 
 ## Tests
 `node --test modules/exercise-3d/exercise-3d.test.mjs`: data (every entry preview, known muscles, motion exists), body meta (200k, skeleton), and the engine posing every exercise in node with three.js, fingers wrapping a 16 mm handle.

@@ -66,7 +66,9 @@
     const RED = new THREE.Color(opts.primary || '#d9392c'), AMBER = new THREE.Color(opts.secondary || '#f0a030');
     const geo = skinned.geometry;
     if (!geo.attributes._muscle) geo.setAttribute('_muscle', new THREE.BufferAttribute(new Uint8Array(geo.attributes.position.count * 4), 4, true));
-    const bodyMat = new THREE.MeshStandardMaterial({ color: opts.bodyColor || '#c9ccd0', roughness: 0.62, metalness: 0 });
+    // look A "Studio" (Aziz's pick, Nov 1): matte light grey, shallow muscle grooves from normal_A.png, soft room light
+    const bodyMat = new THREE.MeshStandardMaterial({ color: opts.bodyColor || '#c9ccd0', roughness: 0.62, metalness: 0, envMapIntensity: 0.35 });
+    if (opts.normalMap && geo.attributes.uv && geo.attributes.tangent) { bodyMat.normalMap = opts.normalMap; bodyMat.normalScale = new THREE.Vector2(1, 1); }
     bodyMat.onBeforeCompile = sh => {
       sh.uniforms.uTint = uTint;
       sh.vertexShader = sh.vertexShader
@@ -75,7 +77,7 @@
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying vec4 vMus; varying float vEye;')
         .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(diffuseColor.rgb, vMus.rgb, smoothstep(0.02, 0.9, vMus.a));\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.55, 0.57, 0.6), vEye);')
-        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(roughnessFactor, 0.45, smoothstep(0.02, 0.9, vMus.a));');
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(roughnessFactor, 0.48, smoothstep(0.02, 0.9, vMus.a));');
     };
     bodyMat.customProgramCacheKey = () => 'ex3d-body';
     skinned.material = bodyMat;
@@ -457,12 +459,15 @@
       const { GLTFLoader } = await import(base + 'vendor/three-r160/GLTFLoader.js');
       const [buf, meta] = await Promise.all([fetch(base + '3d/body.glb').then(r => { if (!r.ok) throw new Error('body ' + r.status); return r.arrayBuffer(); }), fetch(base + '3d/body_meta.json').then(r => r.json())]);
       const gltf = await new GLTFLoader().parseAsync(buf, base + '3d/');
-      eng = core(THREE, gltf, meta, {});
+      const normalMap = await new THREE.TextureLoader().loadAsync(base + '3d/normal_A.png').catch(() => null);
+      if (normalMap) { normalMap.flipY = false; normalMap.colorSpace = THREE.NoColorSpace; normalMap.anisotropy = 4; }
+      eng = core(THREE, gltf, meta, { normalMap });
       const canvas = document.createElement('canvas');
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
       renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
       renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.setClearColor(0x000000, 0);
       const scene = new THREE.Scene(); scene.add(eng.scene);
+      try { const { RoomEnvironment } = await import(base + 'vendor/three-r160/RoomEnvironment.js'); const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(renderer), 0.04).texture; pm.dispose(); } catch (e) { }
       scene.add(new THREE.HemisphereLight('#ffffff', '#9aa1a8', 1.15));
       const key = new THREE.DirectionalLight('#ffffff', 2.3); key.position.set(1.6, 3.6, 2.2); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
       Object.assign(key.shadow.camera, { left: -1.8, right: 1.8, top: 1.8, bottom: -1.8, near: 0.5, far: 9 }); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; scene.add(key); scene.add(key.target);
