@@ -718,7 +718,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   }
 
   // ---------- Root, events, sheets ----------
-  let root, overlay, tab = 'workout', histMode = 'list', calMonth = null, exFilter = { q: '', part: '', cat: '' };
+  let root, overlay, tab = 'workout', histMode = 'list', calMonth = null, exFilter = { q: '', part: '', cat: '', sort: 'name' };
   const actions = {};
   function on(name, fn) { actions[name] = fn; }
   function delegate(el) {
@@ -730,6 +730,8 @@ Power Clean (Barbell)|Other|Barbell|`;
     });
     el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.in && actions[t.dataset.in]) actions[t.dataset.in](t, ev); });
     el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.ch && actions[t.dataset.ch]) actions[t.dataset.ch](t, ev); });
+    // A list picture that fails to load (clip not shipped yet) turns back into the letter circle.
+    el.addEventListener('error', ev => { const t = ev.target; if (t && t.classList && t.classList.contains('lb-thumb-img')) t.remove(); }, true);
   }
   const sheets = [];
   function openSheet(o) {
@@ -950,26 +952,37 @@ Power Clean (Barbell)|Other|Barbell|`;
     return allExercises().filter(e => (!q || e.name.toLowerCase().includes(q) || e.part.toLowerCase().includes(q)) && (!exFilter.part || e.part === exFilter.part) && (!exFilter.cat || e.cat === exFilter.cat));
   }
   function exFilters(prefix) {
-    return '<div class="lb-filter"><input id="' + prefix + 'q" class="lb-input" type="search" placeholder="Search exercises" value="' + esc(exFilter.q) + '" data-in="exSearch" aria-label="Search exercises"><select class="lb-input" data-ch="exCat" aria-label="Equipment"><option value="">All equipment</option>' + CATS.map(c => '<option' + (c === exFilter.cat ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></div><div class="lb-chips">' + ['', ...PARTS].map(p => '<button data-a="exPart" data-k="' + p + '" class="' + (p === exFilter.part ? 'on' : '') + '">' + (p || 'All') + '</button>').join('') + '</div>';
+    return '<div class="lb-filter"><input id="' + prefix + 'q" class="lb-input" type="search" placeholder="Search exercises" value="' + esc(exFilter.q) + '" data-in="exSearch" aria-label="Search exercises"><select class="lb-input" data-ch="exCat" aria-label="Equipment"><option value="">All equipment</option>' + CATS.map(c => '<option' + (c === exFilter.cat ? ' selected' : '') + '>' + c + '</option>').join('') + '</select><select class="lb-input" data-ch="exSort" aria-label="Sort"><option value="name"' + (exFilter.sort !== 'count' ? ' selected' : '') + '>A–Z</option><option value="count"' + (exFilter.sort === 'count' ? ' selected' : '') + '>Most done</option></select></div><div class="lb-chips">' + ['', ...PARTS].map(p => '<button data-a="exPart" data-k="' + p + '" class="' + (p === exFilter.part ? 'on' : '') + '">' + (p || 'All') + '</button>').join('') + '</div>';
   }
   function viewExercises() {
     const list = filteredExercises();
     return '<div class="lb-section-head"><h3>Exercises</h3><button class="lb-btn small" data-a="newEx">New exercise</button></div>' + exFilters('lb-ex') + '<div id="lb-exlist">' + exListHtml(list, 'exOpen') + '</div>';
   }
+  // Strong-style rows: list picture (a still of the exercise's video clip, or a letter circle), name,
+  // body part, and how many workouts it was done in (imported Strong history counts too).
+  function exThumb(e) {
+    const an = S.opts && S.opts.anim, src = an && an.thumb ? an.thumb(e.id) : null;
+    return '<span class="lb-thumb" aria-hidden="true"><i>' + esc((e.name.match(/[A-Za-z0-9]/) || ['?'])[0].toUpperCase()) + '</i>' + (src ? '<img class="lb-thumb-img" src="' + esc(src) + '" alt="" loading="lazy" decoding="async" width="48" height="48">' : '') + '</span>';
+  }
+  const timesBand = n => n >= 50 ? '50+ times' : n >= 20 ? '20–49 times' : n >= 10 ? '10–19 times' : n >= 1 ? '1–9 times' : 'Not done yet';
   function exListHtml(list, act, picked) {
     if (!list.length) return '<div class="lb-empty">No exercise matches. Create it with New exercise.</div>';
-    let html = '', letter = '';
-    list.forEach(e => {
-      const L = e.name[0].toUpperCase();
-      if (L !== letter) { letter = L; html += '<div class="lb-letter">' + L + '</div>'; }
-      const n = sessions(e.id).length;
-      html += '<button class="lb-exrow' + (picked && picked.includes(e.id) ? ' picked' : '') + '" data-a="' + act + '" data-id="' + e.id + '"><span><b>' + esc(e.name) + '</b><small>' + esc(e.part) + ' · ' + esc(e.cat) + (e.custom ? ' · custom' : '') + '</small></span><span class="lb-exmeta">' + (e.avoided ? '<span class="lb-tag warn">Avoided in plan</span>' : '') + (MAIN_LIFTS.includes(e.id) ? '<span class="lb-tag">Main lift</span>' : '') + (n ? '<span class="lb-muted small">' + n + '×</span>' : '') + '</span></button>';
+    const byCount = exFilter.sort === 'count';
+    const rows = list.map(e => ({ e, n: sessions(e.id).length }));
+    if (byCount) rows.sort((a, b) => b.n - a.n || a.e.name.localeCompare(b.e.name));
+    let html = '', head = '';
+    rows.forEach(({ e, n }) => {
+      const H = byCount ? timesBand(n) : e.name[0].toUpperCase();
+      if (H !== head) { head = H; html += '<div class="lb-letter">' + esc(H) + '</div>'; }
+      const sub = esc(e.part) + (/\(/.test(e.name) || e.cat === e.part ? '' : ' · ' + esc(e.cat)) + (e.custom ? ' · custom' : '') + (MAIN_LIFTS.includes(e.id) ? ' · <span class="lb-tag">Main lift</span>' : '') + (e.avoided ? ' · <span class="lb-tag warn">Avoided in plan</span>' : '');
+      html += '<button class="lb-exrow' + (picked && picked.includes(e.id) ? ' picked' : '') + '" data-a="' + act + '" data-id="' + e.id + '">' + exThumb(e) + '<span class="lb-exname"><b>' + esc(e.name) + '</b><small>' + sub + '</small></span><span class="lb-excount"' + (n ? ' aria-label="Done ' + n + ' times"' : '') + '>' + (n || '') + '</span></button>';
     });
     return html;
   }
   let exSearchT;
   on('exSearch', t => { exFilter.q = t.value; clearTimeout(exSearchT); exSearchT = setTimeout(refreshExList, 120); });
   on('exCat', t => { exFilter.cat = t.value; refreshExList(); });
+  on('exSort', t => { exFilter.sort = t.value === 'count' ? 'count' : 'name'; refreshExList(); });
   on('exPart', t => { exFilter.part = t.dataset.k; refreshExList(); const box = t.parentElement; box.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === t)); });
   function refreshExList() {
     const sh = topSheet();
@@ -2040,10 +2053,15 @@ textarea.lb-input{resize:vertical;min-height:42px;line-height:1.4}
 .lb-chips button{padding:5px 11px;border-radius:999px;border:1px solid var(--lb-line);font-size:.82rem;font-weight:600;white-space:nowrap;color:var(--lb-muted)}
 .lb-chips button.on{background:var(--lb-ink);color:var(--lb-surface);border-color:var(--lb-ink)}
 .lb-letter{font-family:var(--lb-display);font-weight:700;color:var(--lb-muted);padding:10px 4px 2px;font-size:.9rem}
-.lb-exrow{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 8px;border-bottom:1px solid var(--lb-line);border-radius:8px}
-.lb-exrow b{display:block;font-weight:600} .lb-exrow small{color:var(--lb-muted);font-size:.78rem}
-.lb-exrow > span:first-child{min-width:0}
-.lb-exmeta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.lb-exrow{display:flex;align-items:center;gap:12px;width:100%;padding:8px 6px;border-bottom:1px solid var(--lb-line);border-radius:8px;text-align:left}
+.lb-exrow b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .lb-exrow small{display:block;color:var(--lb-muted);font-size:.8rem;margin-top:1px}
+.lb-exname{flex:1;min-width:0}
+.lb-thumb{position:relative;flex:none;width:48px;height:48px;border-radius:50%;background:var(--lb-sunk);display:grid;place-items:center;overflow:hidden}
+.lb-thumb i{font-style:normal;font-weight:600;font-size:1.25rem;color:var(--lb-muted)}
+.lb-thumb-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:10px;background:#eceef2}
+.lb-thumb:has(.lb-thumb-img){border-radius:10px}
+.lb-excount{flex:none;min-width:2ch;text-align:right;font-size:1.05rem;color:var(--lb-muted);font-variant-numeric:tabular-nums}
+.lb-exrow .lb-tag{font-size:.68rem;vertical-align:1px}
 .lb-exrow.picked{background:color-mix(in srgb,var(--lb-accent) 14%,transparent)}
 .lb-exrow.picked b::before{content:"✓ ";color:var(--lb-accent)}
 .lb-field{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:600;color:var(--lb-muted);margin-top:10px}

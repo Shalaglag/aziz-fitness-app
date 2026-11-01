@@ -2158,7 +2158,10 @@
     }
     function close() { if (typeof document === 'undefined') return; document.querySelectorAll('.ea-full').forEach(n => n.remove()); }
 
-    return Object.assign(api, { has, cardHtml, attach, open, close, ids: () => Object.keys(DEFS), css });
+    // List picture (Nov 1): a small still of the clip (tools/clip-thumbs/make-thumbs.js -> <base>thumbs/<id>.webp),
+    // else a still of the 3D demo (make-3d-thumbs.js -> <base>thumbs3d/<id>.webp), else null and the logger shows a letter circle.
+    const thumb = id => { const b = clipData().base || 'clips/'; return clipFor(id) ? b + 'thumbs/' + id + '.webp' : DEFS[id] ? b + 'thumbs3d/' + id + '.webp' : null; };
+    return Object.assign(api, { has, cardHtml, attach, open, close, thumb, ids: () => Object.keys(DEFS), css });
   }
 
   const css = [
@@ -2189,7 +2192,7 @@
     '@media (prefers-reduced-motion: reduce){.ea-ctl button{transition:none}}'
   ].join('\n');
 
-  const api = { create, has: id => !!DEFS[id], ids: () => Object.keys(DEFS), frame, sample, skeleton, ik, defs: DEFS, B, draw, css };
+  const api = { create, has: id => !!DEFS[id], ids: () => Object.keys(DEFS), frame, sample, skeleton, ik, defs: DEFS, B, draw, css, palette: PALETTE, views: VIEWS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ExerciseAnim = api;
 })(typeof window !== 'undefined' ? window : globalThis);
