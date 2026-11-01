@@ -1,0 +1,18 @@
+{
+ "lat-pulldown-reverse-grip": {"camera":"rear three-quarter view","notes":"Seen from behind; plain bar and upright stand in for the cable station."},
+ "high-row-machine": {"camera":"rear three-quarter view","notes":"Approximate machine: lever arms are plain bars. Mid back is shown as the traps."},
+ "chest-press-plate-loaded": {"notes":"Approximate machine: lever arms are plain bars, one plate per side."},
+ "shoulder-press-machine": {"notes":"Approximate machine: lever arms are plain bars."},
+ "seated-overhead-press-smith-machine": {"notes":"The tall Smith rails make the lifter small in frame."},
+ "incline-bench-press-smith-machine": {"notes":"Upper chest is shown as the whole pec."},
+ "leg-press-machine": {"notes":"Approximate machine: block base and flat platform, no safety stops."},
+ "seated-row-machine": {"camera":"rear three-quarter view","notes":"Approximate machine: lever arms are plain bars. Mid back is shown as the traps."},
+ "seated-leg-curl-machine": {"notes":"The hamstrings show mostly along the underside next to the seat."},
+ "face-pull-cable": {"camera":"rear three-quarter view","primary":["rear delts"],"secondary":["traps"],"notes":"Plain upright stands in for the cable station."},
+ "shoulder-press-plate-loaded": {"notes":"Approximate machine: one lever with a single plate."},
+ "overhead-press-smith-machine": {"primary":["front delts","side delts"],"secondary":["triceps"]},
+ "bench-press-dumbbell": {},
+ "bicep-curl-ez-bar": {"notes":"The EZ bar is drawn as a straight bar with plates, without the angled grips."},
+ "hanging-leg-raise": {"notes":"The abs are a small red area from the side; hip flexors are shown on the thigh. The pelvis curl is small."},
+ "back-extension": {"notes":"Approximate machine: a hip pad and a floor rail."}
+}

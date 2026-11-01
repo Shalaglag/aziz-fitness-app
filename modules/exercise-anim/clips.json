@@ -833,6 +833,403 @@
       "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
       "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
       "notes": "Clip is 7.0 s (six strides) so the stride loops cleanly."
+    },
+    "back-extension": {
+      "file": "back-extension.mp4",
+      "bytes": 251244,
+      "sha256": "5e81752c8c8763f1806b06e8ce2c5d2b556a5b494520a856bfb76d7be439fc89",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "lower back",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings"
+      ],
+      "camera": "side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: a hip pad and a floor rail."
+    },
+    "bench-press-dumbbell": {
+      "file": "bench-press-dumbbell.mp4",
+      "bytes": 249958,
+      "sha256": "cfe3a52cf144318a5286203025d5ab2aa9d1b0038d7f1f91969cbd53019fe8c6",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "chest"
+      ],
+      "secondary": [
+        "front delts",
+        "triceps"
+      ],
+      "camera": "high three-quarter side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "bicep-curl-ez-bar": {
+      "file": "bicep-curl-ez-bar.mp4",
+      "bytes": 252700,
+      "sha256": "0fa6642664df9d63cc0e0a1e73e0c202744e57c85912dbea96432f01ea833acd",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "biceps"
+      ],
+      "secondary": [
+        "forearm flexors"
+      ],
+      "camera": "three-quarter front view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "The EZ bar is drawn as a straight bar with plates, without the angled grips."
+    },
+    "chest-press-plate-loaded": {
+      "file": "chest-press-plate-loaded.mp4",
+      "bytes": 294411,
+      "sha256": "b58ed69be9fc5cfb9e53bcd72058896dd2e9c10b284d1a8b7c31b547983c14d1",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "chest"
+      ],
+      "secondary": [
+        "front delts",
+        "triceps"
+      ],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: lever arms are plain bars, one plate per side."
+    },
+    "face-pull-cable": {
+      "file": "face-pull-cable.mp4",
+      "bytes": 189279,
+      "sha256": "3e36beae36768765584291dbee2881f9eee024a594c61cbe7b4b9322c1b2f028",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "rear delts"
+      ],
+      "secondary": [
+        "traps"
+      ],
+      "camera": "rear three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Plain upright stands in for the cable station."
+    },
+    "hanging-leg-raise": {
+      "file": "hanging-leg-raise.mp4",
+      "bytes": 237834,
+      "sha256": "743ed1751411e5785fc6a21440786a1f98b3b8e328c5bc9e804ac6e358a99f5e",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "abs"
+      ],
+      "secondary": [
+        "hip flexors"
+      ],
+      "camera": "side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "The abs are a small red area from the side; hip flexors are shown on the thigh. The pelvis curl is small."
+    },
+    "high-row-machine": {
+      "file": "high-row-machine.mp4",
+      "bytes": 235193,
+      "sha256": "8ca5235b9fa3541087bb10c78e7319570ad09746bb8085c518792a609edfeddd",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "lats",
+        "mid back"
+      ],
+      "secondary": [
+        "biceps",
+        "rear delts"
+      ],
+      "camera": "rear three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: lever arms are plain bars. Mid back is shown as the traps."
+    },
+    "incline-bench-press-smith-machine": {
+      "file": "incline-bench-press-smith-machine.mp4",
+      "bytes": 294236,
+      "sha256": "5b932c68c4b14d53ddef92dfad0e58e9f274896d6c694dab9fdb4d90d361f18a",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "upper chest"
+      ],
+      "secondary": [
+        "front delts",
+        "triceps"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Upper chest is shown as the whole pec."
+    },
+    "lat-pulldown-reverse-grip": {
+      "file": "lat-pulldown-reverse-grip.mp4",
+      "bytes": 207625,
+      "sha256": "efbb262e206f5b56347de6ee85c499bc289f6fd0e82efb3f94702b5eb8d67b23",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "lats"
+      ],
+      "secondary": [
+        "biceps",
+        "rear delts"
+      ],
+      "camera": "rear three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Seen from behind; plain bar and upright stand in for the cable station."
+    },
+    "leg-press-machine": {
+      "file": "leg-press-machine.mp4",
+      "bytes": 341038,
+      "sha256": "f871c9c95807380e8b6c1c695ea0a9762037ea9b67f1da0ddb963e19adcaedd1",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "calves"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: block base and flat platform, no safety stops."
+    },
+    "overhead-press-smith-machine": {
+      "file": "overhead-press-smith-machine.mp4",
+      "bytes": 239712,
+      "sha256": "a39f47b52c25d2e3a0735465a8dfeede97cc29681d9eb21a767c494bef294bd6",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "front delts",
+        "side delts"
+      ],
+      "secondary": [
+        "triceps"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "seated-leg-curl-machine": {
+      "file": "seated-leg-curl-machine.mp4",
+      "bytes": 303656,
+      "sha256": "21028d03dbd1b4ea72bcabeb6f392c795eef0b33d49669a88a39ce2de87fb73b",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "hamstrings"
+      ],
+      "secondary": [
+        "calves"
+      ],
+      "camera": "side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "The hamstrings show mostly along the underside next to the seat."
+    },
+    "seated-overhead-press-smith-machine": {
+      "file": "seated-overhead-press-smith-machine.mp4",
+      "bytes": 264151,
+      "sha256": "e5d717499f602790b13e8eb7cc3d8974157bdee7eb30fcdb5698858602d13314",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "front delts",
+        "side delts"
+      ],
+      "secondary": [
+        "triceps"
+      ],
+      "camera": "side three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "The tall Smith rails make the lifter small in frame."
+    },
+    "seated-row-machine": {
+      "file": "seated-row-machine.mp4",
+      "bytes": 269237,
+      "sha256": "257c18100dbf771cdc1f540b5a61a889f7d27b939285f54991263a3baf77712e",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "mid back",
+        "lats"
+      ],
+      "secondary": [
+        "biceps",
+        "rear delts"
+      ],
+      "camera": "rear three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: lever arms are plain bars. Mid back is shown as the traps."
+    },
+    "shoulder-press-machine": {
+      "file": "shoulder-press-machine.mp4",
+      "bytes": 290305,
+      "sha256": "8d5d272bc4844d9ef593c95791273a1e371e715682ff0d5a5dd1aa5fea4a6164",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "front delts",
+        "side delts"
+      ],
+      "secondary": [
+        "triceps"
+      ],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: lever arms are plain bars."
+    },
+    "shoulder-press-plate-loaded": {
+      "file": "shoulder-press-plate-loaded.mp4",
+      "bytes": 288227,
+      "sha256": "226296d81182a87e7be71bacafe53db444947d8785ec068a2cd14240f37f356a",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "front delts",
+        "side delts"
+      ],
+      "secondary": [
+        "triceps"
+      ],
+      "camera": "front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Approximate machine: one lever with a single plate."
     }
   }
 }

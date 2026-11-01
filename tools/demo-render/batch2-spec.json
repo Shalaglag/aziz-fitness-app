@@ -1,0 +1,230 @@
+{
+ "note": "Batch 2 = exercises Aziz logs in Strong that are not in batch 1. Same format and rules as batch 1 (primary red #d9392c, secondary amber #f0a030).",
+ "exercises": [
+  {
+   "id": "lat-pulldown-reverse-grip",
+   "equipment": "Lat pulldown station with a straight bar, seat and thigh pad, underhand (palms facing you) shoulder-width grip",
+   "primary": [
+    "lats"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts"
+   ],
+   "camera": "from behind and slightly to the side",
+   "technique": "Seated with thighs under the pad; underhand grip about shoulder width; the bar pulls to the upper chest with elbows driving down and back, then rises slowly to full stretch.",
+   "source": "Strong: Lat Pulldown - Underhand (Cable), 102 workouts"
+  },
+  {
+   "id": "high-row-machine",
+   "equipment": "High row machine: chest pad, high handles that pull down and back",
+   "primary": [
+    "lats",
+    "mid back"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Chest against the pad; handles start high in front and pull down and back toward the ribs with the elbows driving back; return to a full stretch.",
+   "source": "Strong: High row machine, 94 workouts"
+  },
+  {
+   "id": "shoulder-press-machine",
+   "equipment": "Seated shoulder press machine: seat, back pad, two handles at shoulder height that press up",
+   "primary": [
+    "front delts",
+    "side delts"
+   ],
+   "secondary": [
+    "triceps"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Back on the pad; handles start at shoulder height and press up to near lockout, then lower to shoulder height; hands on the handles.",
+   "source": "Strong: seated overhead (machine), 83 workouts"
+  },
+  {
+   "id": "seated-overhead-press-smith-machine",
+   "equipment": "Smith machine with an upright bench behind the bar, barbell on vertical rails",
+   "primary": [
+    "front delts",
+    "side delts"
+   ],
+   "secondary": [
+    "triceps"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Seated upright on the bench; the bar starts at chin height in front of the face and presses overhead along the rails, then lowers to chin height.",
+   "source": "Strong: seated shoulder smith (back), 65 workouts"
+  },
+  {
+   "id": "incline-bench-press-smith-machine",
+   "equipment": "Smith machine with an incline bench (about 30 degrees), barbell on vertical rails",
+   "primary": [
+    "upper chest"
+   ],
+   "secondary": [
+    "front delts",
+    "triceps"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Back on the incline bench, feet planted; the bar lowers to the upper chest and presses up along the rails; hands grip the bar slightly wider than shoulders.",
+   "source": "Strong: Incline Bench Press (Smith Machine), 39 workouts"
+  },
+  {
+   "id": "leg-press-machine",
+   "equipment": "45-degree leg press: seat with back pad, sled with foot platform, safety stops",
+   "primary": [
+    "quads",
+    "glutes"
+   ],
+   "secondary": [
+    "hamstrings",
+    "calves"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Back flat on the pad; feet shoulder width on the platform; knees bend to about 90 degrees (no hips lifting) and press back to near lockout without locking the knees.",
+   "source": "Strong: Leg Press, 29 workouts"
+  },
+  {
+   "id": "seated-row-machine",
+   "equipment": "Seated row machine: chest pad, seat, two handles at chest height with a wide grip option",
+   "primary": [
+    "mid back",
+    "lats"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Chest against the pad; handles pulled back to the ribs with the elbows out wide, shoulder blades squeezed, then returned to a full stretch.",
+   "source": "Strong: Seated Row Wide (Machine), 25 workouts"
+  },
+  {
+   "id": "seated-leg-curl-machine",
+   "equipment": "Seated leg curl machine: seat, back pad, thigh pad, ankle pad on a lever",
+   "primary": [
+    "hamstrings"
+   ],
+   "secondary": [
+    "calves"
+   ],
+   "camera": "side view",
+   "technique": "Seated with the thigh pad locked down; heels curl down and back under the seat, then return slowly to nearly straight.",
+   "source": "Strong: Seated Leg Curl (Machine), 4 workouts"
+  },
+  {
+   "id": "face-pull-cable",
+   "equipment": "Cable at head height with a rope attachment, standing",
+   "primary": [
+    "rear delts"
+   ],
+   "secondary": [
+    "upper back",
+    "traps"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Rope pulled to the face with the elbows high and wide, hands ending beside the ears, then returned to full extension.",
+   "source": "Strong: Face Pull (Cable), 4 workouts"
+  },
+  {
+   "id": "shoulder-press-plate-loaded",
+   "equipment": "Plate-loaded shoulder press machine: seat, back pad, lever arms with handles and weight plates",
+   "primary": [
+    "front delts",
+    "side delts"
+   ],
+   "secondary": [
+    "triceps"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Back on the pad; handles press up and slightly together to near lockout then lower to shoulder height; the lever arms move with the hands.",
+   "source": "Strong: Shoulder Press (Plate Loaded), 4 workouts"
+  },
+  {
+   "id": "overhead-press-smith-machine",
+   "equipment": "Smith machine, barbell on vertical rails, standing",
+   "primary": [
+    "front delts",
+    "side delts"
+   ],
+   "secondary": [
+    "triceps",
+    "upper chest"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Standing with the bar at the upper chest; press straight up along the rails to lockout overhead, then lower to the upper chest.",
+   "source": "Strong: Overhead Press (Smith Machine), 3 workouts"
+  },
+  {
+   "id": "hanging-leg-raise",
+   "equipment": "Pull-up bar or captain chair; hanging with straight arms",
+   "primary": [
+    "abs"
+   ],
+   "secondary": [
+    "hip flexors"
+   ],
+   "camera": "side view",
+   "technique": "Hanging with straight arms; the legs raise together with control to hip height or higher by curling the pelvis, then lower slowly without swinging.",
+   "source": "Strong: Hanging Leg Raise, 1 workout"
+  },
+  {
+   "id": "back-extension",
+   "equipment": "45-degree back extension bench (roman chair)",
+   "primary": [
+    "lower back",
+    "glutes"
+   ],
+   "secondary": [
+    "hamstrings"
+   ],
+   "camera": "side view",
+   "technique": "Hips on the pad, feet anchored; the torso lowers with a straight back to about 90 degrees at the hips and raises to a straight line with the legs, not past it.",
+   "source": "Strong: Back Extension, 1 workout"
+  },
+  {
+   "id": "bicep-curl-ez-bar",
+   "equipment": "EZ curl bar, standing",
+   "primary": [
+    "biceps"
+   ],
+   "secondary": [
+    "forearm flexors"
+   ],
+   "camera": "three-quarter front view",
+   "technique": "Elbows at the sides, bar curls from the thighs up to shoulder height and lowers under control; hands on the angled grips.",
+   "source": "Strong: EZ bar Curl, 1 workout"
+  },
+  {
+   "id": "bench-press-dumbbell",
+   "equipment": "Flat bench, two hex dumbbells",
+   "primary": [
+    "chest"
+   ],
+   "secondary": [
+    "front delts",
+    "triceps"
+   ],
+   "camera": "high three-quarter side view",
+   "technique": "Back on the bench, feet planted; dumbbells lower to chest level with the elbows about 45 degrees from the torso and press up over the chest.",
+   "source": "Strong: Bench Press (Dumbbell), 6 workouts"
+  },
+  {
+   "id": "chest-press-plate-loaded",
+   "equipment": "Plate-loaded iso-lateral chest press: seat, back pad, lever arms with handles and weight plates",
+   "primary": [
+    "chest"
+   ],
+   "secondary": [
+    "front delts",
+    "triceps"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Back on the pad, handles at mid-chest; press forward to near lockout and return to a full stretch; each arm moves its own lever.",
+   "source": "Strong: Iso-Lateral Chest Press (Machine), 92 workouts (assumed plate-loaded)"
+  }
+ ]
+}
