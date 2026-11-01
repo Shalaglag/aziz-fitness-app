@@ -31,7 +31,7 @@ test("error messages say what to do", () => {
   assert.match(A.errorText("http", 401), /expired/);
   assert.match(A.errorText("http", 404), /Contents: Read-only/);
   assert.match(A.errorText("signature"), /isn't signed with your app's key/);
-  assert.match(A.errorText("install-not-allowed"), /allow Aziz Fitness to install/);
+  assert.match(A.errorText("install-not-allowed"), /allow Mizan to install/);
   assert.match(A.errorText("offline"), /No internet/);
 });
 

@@ -47,7 +47,7 @@
     if (status === 403 || status === 404) return "The key can't see the app's repository. Make sure it's for aziz-fitness-app with Contents: Read-only.";
     if (code === "signature") return "That file isn't signed with your app's key, so it was not installed.";
     if (code === "not-newer") return "That build is not newer than the one you have.";
-    if (code === "install-not-allowed") return "Android needs your OK first: allow Aziz Fitness to install updates, then tap Update again.";
+    if (code === "install-not-allowed") return "Android needs your OK first: allow Mizan to install updates, then tap Update again.";
     if (code === "offline") return "No internet connection. Try again on Wi-Fi or data.";
     return "Couldn't check for updates right now. Try again in a minute.";
   }
