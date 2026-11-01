@@ -10,5 +10,5 @@ window.FITNESS_CLOUD_CONFIG = {
   // "Continue with Google" in the Android app: the Web client ID shown under Firebase console → Authentication →
   // Sign-in method → Google → Web SDK configuration (…apps.googleusercontent.com). Empty = the Google button
   // says it isn't switched on yet; email sign-in keeps working. Not a secret (docs/GOOGLE-SIGN-IN.md).
-  googleClientId: ""
+  googleClientId: "323272267870-3msmnmomuj6l9k89kkegq4vu2qv7ev70.apps.googleusercontent.com"
 };
