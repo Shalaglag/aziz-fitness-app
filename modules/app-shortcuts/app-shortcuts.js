@@ -8,7 +8,7 @@
 const AppShortcuts = (() => {
   const ACTIONS = {
     "log-weight":    { tab: "today", focus: "#wkg", label: "Log weight" },
-    "add-water":     { tab: "today", focus: '[data-act="water"][data-ml="250"]', label: "Add water" },
+    "add-water":     { tab: "today", focus: '#waterCard [data-act="water"][data-ml="250"]', label: "Add water" },
     "start-workout": { tab: "train", focus: null, label: "Start workout" },
     "log-food":      { tab: "food", focus: "#fname", label: "Log food" }
   };
