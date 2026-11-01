@@ -118,4 +118,16 @@ t('plate rounding finds the next loadable per-side weight', () => {
   assert.strictEqual(loadableUp(0.6, 'kg'), 1.25);
 });
 
+t('−15 keeps the rest length so the ring drops with the number; +15 only grows it past full', () => {
+  const { adjustRest } = globalThis.WorkoutLogger.gym;
+  const now = 1e6, r = { end: now + 60000, total: 90, buzz: 3, alerted: false };
+  const less = adjustRest(r, -15, now);
+  assert.strictEqual(less.end, now + 45000); assert.strictEqual(less.total, 90);
+  assert.strictEqual((less.end - now) / (less.total * 1000), 0.5, 'ring at half, not 45/75');
+  assert.strictEqual(less.buzz, undefined, '3-2-1 buzz re-arms');
+  const more = adjustRest(r, 15, now); assert.strictEqual(more.total, 90); assert.strictEqual(more.end, now + 75000);
+  const over = adjustRest({ end: now + 85000, total: 90 }, 15, now); assert.strictEqual(over.total, 100, 'past full: length grows');
+  const gone = adjustRest({ end: now + 10000, total: 90 }, -15, now); assert.strictEqual(gone.end, now, 'never below now');
+});
+
 console.log('\n' + n + ' tests passed');

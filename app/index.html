@@ -5321,7 +5321,20 @@ Power Clean (Barbell)|Other|Barbell|`;
   function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
   on('restManual', t => { primeAudio(); startRest(+t.dataset.s); toast('Rest timer ' + mmss(+t.dataset.s)); renderRest(); });
-  on('restAdj', t => { if (!rest) return; rest.end += +t.dataset.d * 1000; rest.total = Math.max(rest.total + +t.dataset.d, 1); persistRest(); renderRest(); });
+  // −15/+15 moves the end time but keeps the full length the ring/bar is measured against, so the visual jumps
+  // with the number (−15 on a 1:30 rest drops it by a sixth). It only grows when +15 pushes time left past it.
+  function adjustRest(r, d, now) {
+    const end = Math.max(now, r.end + d * 1000), left = (end - now) / 1000;
+    return Object.assign({}, r, { end, total: Math.max(r.total, Math.ceil(left), 1), buzz: undefined, alerted: false });
+  }
+  on('restAdj', t => {
+    if (!rest) return;
+    rest = adjustRest(rest, +t.dataset.d, Date.now()); persistRest();
+    if (rest.end <= Date.now()) return stopRest();
+    renderRest();
+    // Re-arm the locked-phone end sound for the new end time (same notification id, so it replaces the old one).
+    try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: rest.total, sound: S.settings.restSound || 'restDone' } })); } catch (e) { }
+  });
   on('restSkip', () => stopRest());
   on('restMini', () => { if (!rest) return; rest.mini = true; persistRest(); renderRest(); });
   on('restFull', () => { if (!rest) return; rest.mini = false; persistRest(); renderRest(); });
@@ -5714,7 +5727,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
   const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
-    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp } };
+    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
