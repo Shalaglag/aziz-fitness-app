@@ -1560,6 +1560,22 @@ window.StrongCSV = (() => {
     "shrug machine": "Traps Machine",
     "bicep curl cable": "Cable Standing Biceps",
     "biceps curl cable": "Cable Standing Biceps",
+    // Names from Aziz's real export (Nov 2024 - Oct 2026).
+    "lat pulldown wide grip cable": "Lat Pulldown, Wide",
+    "lat pulldown wide grip": "Lat Pulldown, Wide",
+    "traps machine front back": "Traps Machine",
+    "traps machine": "Traps Machine",
+    "triceps rope cable": "Triceps Rope",
+    "triceps rope": "Triceps Rope",
+    "gundam": "Gundam (Chest Machine)",
+    "gundam chest machine": "Gundam (Chest Machine)",
+    "standing side delts": "Standing Side Delts (Machine)",
+    "side delts shoulders": "Side Delts",
+    "side delts": "Side Delts",
+    "flat bench barbell": "Bench Press (Barbell)",
+    "iso lateral low row plate": "Iso-Lateral Low Row",
+    "bicep seated curl": "Seated Bicep Curl",
+    "seated bicep curl": "Seated Bicep Curl",
   };
 
   function matchName(strongName, names) {
@@ -1568,12 +1584,15 @@ window.StrongCSV = (() => {
     if (exact) return exact;
     const a = ALIASES[n];
     if (a && names.includes(a)) return a;
-    // Token overlap fallback, only when it's clearly one exercise.
+    // Token overlap fallback, only when it's clearly one exercise: every token of the
+    // shorter name must appear in the longer one, so "Bench Press (Dumbbell)" never
+    // lands on "Bench Press (Barbell)" and "seated chest cable" never on "Seated Row (Cable)".
     const toks = new Set(n.split(" ").filter(t => t.length > 1));
     let best = null, bestScore = 0, second = 0;
     for (const x of names) {
       const xt = norm(x).split(" ").filter(t => t.length > 1);
       const hit = xt.filter(t => toks.has(t)).length;
+      if (hit < Math.min(xt.length, toks.size)) continue;
       const score = hit / Math.max(xt.length, toks.size);
       if (score > bestScore) { second = bestScore; bestScore = score; best = x; } else if (score > second) second = score;
     }
@@ -1612,6 +1631,10 @@ window.StrongCSV = (() => {
       const pool = session ? program[session].map(e => e[0]) : [];
       const doc = docs[wo.date] || Object.assign({ date: wo.date, sets: {} }, JSON.parse(JSON.stringify(existing[wo.date] || {})));
       doc.sets = doc.sets || {};
+      if (!docs[wo.date] && doc.strong && Array.isArray(doc.strong.names)) {
+        // Earlier Strong import of this day: drop its exercises (even ones saved under an old name) before re-adding.
+        doc.strong.names.forEach(k => { delete doc.sets[k]; });
+      }
       if (session && (!doc.session || doc.source === "strong" || !docs[wo.date])) {
         doc.session = session; doc.idx = rotation.indexOf(session);
       }
@@ -1627,13 +1650,13 @@ window.StrongCSV = (() => {
         report.sets += sets.length;
       }
       doc.source = "strong";
-      doc.strong = { title: wo.title, durationMin: wo.durationMin, importedAt: new Date().toISOString() };
+      doc.strong = { title: wo.title, durationMin: wo.durationMin, importedAt: new Date().toISOString(), names: [] };
       if (!docs[wo.date]) report.days++;
       docs[wo.date] = doc;
       report.workouts++;
       if (session) report.sessions[session] = (report.sessions[session] || 0) + 1;
     }
-    for (const d of Object.values(docs)) delete d.strongNames;
+    for (const d of Object.values(docs)) { d.strong.names = [...new Set(d.strongNames || [])]; delete d.strongNames; }
     return { docs, report };
   }
 
