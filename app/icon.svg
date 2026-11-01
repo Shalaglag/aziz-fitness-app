@@ -1,1 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="#1f5fbf"/><circle cx="256" cy="256" r="150" fill="none" stroke="#fff" stroke-width="40"/><circle cx="256" cy="256" r="46" fill="#fff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">
+<clipPath id="r"><rect x="18" y="18" width="72" height="72" rx="14"/></clipPath>
+<g clip-path="url(#r)">
+<rect x="0" y="0" width="108" height="108" fill="#1E1A17"/>
+<path d="M32,55 L23,62 M32,55 L41,62 M76,55 L67,62 M76,55 L85,62" fill="none" stroke="#E8652B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="miter" />
+<path d="M26,42 h56 a2,2 0 0 1 0,4 h-56 a2,2 0 0 1 0,-4 z" fill="#E8652B"  />
+<path d="M24.5,38 h1.5 a1.5,1.5 0 0 1 1.5,1.5 v9 a1.5,1.5 0 0 1 -1.5,1.5 h-1.5 a1.5,1.5 0 0 1 -1.5,-1.5 v-9 a1.5,1.5 0 0 1 1.5,-1.5 z" fill="#E8652B"  />
+<path d="M31,33 h2.5 a2,2 0 0 1 2,2 v18 a2,2 0 0 1 -2,2 h-2.5 a2,2 0 0 1 -2,-2 v-18 a2,2 0 0 1 2,-2 z" fill="#E8652B"  />
+<path d="M74.5,33 h2.5 a2,2 0 0 1 2,2 v18 a2,2 0 0 1 -2,2 h-2.5 a2,2 0 0 1 -2,-2 v-18 a2,2 0 0 1 2,-2 z" fill="#E8652B"  />
+<path d="M82,38 h1.5 a1.5,1.5 0 0 1 1.5,1.5 v9 a1.5,1.5 0 0 1 -1.5,1.5 h-1.5 a1.5,1.5 0 0 1 -1.5,-1.5 v-9 a1.5,1.5 0 0 1 1.5,-1.5 z" fill="#E8652B"  />
+<path d="M54,38.5 a5.5,5.5 0 1 0 0.01,0 z" fill="#E8652B"  />
+<path d="M50.5,47 L57.5,47 L60,72 L48,72 Z" fill="#E8652B"  />
+<path d="M42.5,72 h23 a2.5,2.5 0 0 1 0,5 h-23 a2.5,2.5 0 0 1 0,-5 z" fill="#E8652B"  />
+<path d="M22,62 a10,10 0 0 0 20,0 z" fill="#0F8B8D"  />
+<path d="M66,62 a10,10 0 0 0 20,0 z" fill="#0F8B8D"  />
+</g>
+</svg>

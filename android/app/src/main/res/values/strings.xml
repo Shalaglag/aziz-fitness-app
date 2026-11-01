@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Aziz Fitness</string>
-    <string name="title_activity_main">Aziz Fitness</string>
+    <string name="app_name">Mizan</string>
+    <string name="title_activity_main">Mizan</string>
     <string name="package_name">com.azizfitness.app</string>
     <string name="custom_url_scheme">com.azizfitness.app</string>
 </resources>

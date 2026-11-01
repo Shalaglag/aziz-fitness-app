@@ -1,8 +1,8 @@
 /* ==========================================================================
    Fitness app theme  ·  "Plate" system
    Neutrals: cool chalk (light) and gunmetal (dark).
-   Accents: named after Olympic bumper plates (25 kg red, 20 kg blue,
-   15 kg yellow, 10 kg green). Pick one with <html data-accent="blue">.
+   Accents: named after Aziz's bumper plates (2.5 kg red, 5 kg white,
+   10 kg green, 15 kg yellow, 20 kg blue). Pick one with <html data-accent="blue">.
    Mode: <html data-theme="light|dark">, or no attribute to follow the system.
    Fonts (Google Fonts):
    https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap
@@ -74,6 +74,8 @@
 [data-accent="blue"]   { --accent-light: #1F5FD1; --accent-dark: #6B9BF5; --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222; }
 [data-accent="yellow"] { --accent-light: #A87300; --accent-dark: #F2C230; --on-accent-light: #FFFFFF; --on-accent-dark: #221A02; }
 [data-accent="green"]  { --accent-light: #1B8048; --accent-dark: #43C47E; --on-accent-light: #FFFFFF; --on-accent-dark: #06200F; }
+/* 5 kg white plate: graphite on light backgrounds so it stays visible, white on dark */
+[data-accent="white"]  { --accent-light: #2B3139; --accent-dark: #F2F4F6; --on-accent-light: #FFFFFF; --on-accent-dark: #0D1013; }
 
 /* ---- Dark (system setting, unless light was chosen) ---- */
 @media (prefers-color-scheme: dark) {

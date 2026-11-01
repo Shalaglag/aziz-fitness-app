@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>Aziz Cut Tracker</title>
+<title>Mizan</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="manifest" href="manifest.webmanifest">
@@ -13,8 +13,8 @@
 /* ==========================================================================
    Fitness app theme  ·  "Plate" system
    Neutrals: warm chalk (light) and warm charcoal (dark) — the "Warm Light" look (Nov 2026).
-   Accents: coral (default) plus the bumper-plate set (25 kg red, 20 kg blue,
-   15 kg yellow, 10 kg green). Pick one with <html data-accent="blue">.
+   Accents: coral (default) plus Aziz's bumper plates (2.5 kg red, 5 kg white,
+   10 kg green, 15 kg yellow, 20 kg blue). Pick one with <html data-accent="blue">.
    Mode: <html data-theme="light|dark">, or no attribute to follow the system.
    Fonts (Google Fonts):
    https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap
@@ -86,6 +86,8 @@
 [data-accent="red"]    { --accent-light: #D0302A; --accent-dark: #F2665D; --on-accent-light: #FFFFFF; --on-accent-dark: #220B0A; }
 [data-accent="blue"]   { --accent-light: #1F5FD1; --accent-dark: #6B9BF5; --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222; }
 [data-accent="yellow"] { --accent-light: #A87300; --accent-dark: #F2C230; --on-accent-light: #FFFFFF; --on-accent-dark: #221A02; }
+/* 5 kg white plate: graphite on light backgrounds so it stays visible, white on dark */
+[data-accent="white"]  { --accent-light: #2B3139; --accent-dark: #F2F4F6; --on-accent-light: #FFFFFF; --on-accent-dark: #0D1013; }
 [data-accent="green"]  { --accent-light: #1B8048; --accent-dark: #43C47E; --on-accent-light: #FFFFFF; --on-accent-dark: #06200F; }
 
 /* ---- Dark (system setting, unless light was chosen) ---- */
@@ -541,7 +543,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
       <div class="row" style="flex-wrap:nowrap;gap:10px">
         <button class="iconbtn menubtn" id="menuBtn" aria-label="Menu" aria-haspopup="dialog">☰</button>
         <div>
-        <div class="brand">Aziz <span>Cut</span> Tracker</div>
+        <div class="brand">Mi<span>zan</span></div>
         <div class="sync"><span id="sync">Loading your data…</span><button class="unsaved" id="unsaved" hidden></button></div>
         </div>
       </div>
@@ -557,7 +559,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 <div class="drawer-wrap" id="drawer" hidden role="dialog" aria-modal="true" aria-label="Menu">
   <div class="scrim" data-close-drawer></div>
   <nav class="drawer" id="tabs" aria-label="Sections">
-    <div class="drawer-head"><div class="brand">Aziz <span>Cut</span> Tracker</div><button class="iconbtn" id="drawerClose" aria-label="Close">✕</button></div>
+    <div class="drawer-head"><div class="brand">Mi<span>zan</span></div><button class="iconbtn" id="drawerClose" aria-label="Close">✕</button></div>
     <button data-tab="today"><span class="ico">☀</span>Today</button>
     <button data-tab="train"><span class="ico">🏋</span>Train</button>
     <button data-tab="food"><span class="ico">🍽</span>Food</button>
@@ -888,6 +890,20 @@ try{
     }
   }
 }catch(e){ console.warn("HealthConnectSync", e); }
+/* WaterH via Fitbit: read the Google Health API water log (GoogleHealthWater); a no-op without the Capacitor plugin */
+let ghSync=null;
+try{
+  if(window.GoogleHealthWater){
+    const ghPlugin=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.GoogleHealth)||null;
+    ghSync=GoogleHealthWater.create({plugin:ghPlugin, getDay, put, storage:window.localStorage, onChange:()=>{ renderPending=true; }});
+    if(ghPlugin){
+      const ghAuto=()=>{ ghSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)){ render(); toast(`Fitbit: ${r.imported} new water log${r.imported===1?"":"s"}`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
+      document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") ghAuto(); });
+      window.addEventListener("online",ghAuto);
+      setTimeout(ghAuto, 2500);
+    }
+  }
+}catch(e){ console.warn("GoogleHealthWater", e); }
 try{ const m=localStorage.getItem("aziz-cut-tmode"); if(m) view.trainMode=m; }catch(e){}
 try{ const t=localStorage.getItem("aziz-cut-tab"); if(t) view.tab=t; }catch(e){}
 if(["today","train","food","progress","guide","settings"].includes(location.hash.slice(1))) view.tab=location.hash.slice(1);
@@ -895,7 +911,7 @@ const main = document.getElementById("main");
 main.before(document.getElementById("lbHost")); // the full logger sits above the Train extras
 
 function currentAccent(){ return S.docs.prefs.main?.accent || "coral"; }
-function applyAccent(a){ if(["coral","red","blue","yellow","green"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
+function applyAccent(a){ if(["coral","red","white","green","yellow","blue"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
 let lastTab=null;
 function render(){
   renderPending=false;
@@ -1132,6 +1148,7 @@ function vToday(){
       </div>`;
   return `
   ${ddGlance(d)}
+  ${window.AppUpdate?AppUpdate.bannerHTML():""}
   ${backupNudge()}
   <div class="card hero">
     <div class="spread"><span class="label">${DAYTYPE_LABEL[type]}</span>${strictDay>=1&&strictDay<=14?`<span class="pill info">Strict tracking · day ${strictDay} of 14</span>`:""}</div>
@@ -1153,6 +1170,8 @@ function vToday(){
       <div class="spread"><h3>Water</h3><span class="muted"><span class="num">${(dayFluid(day)/1000).toFixed(2)} L</span> · target ${waterTarget}</span></div>
       ${day.waterh?`<p class="muted" style="font-size:.85rem">WaterH ${(day.waterh.ml/1000).toFixed(2)} L · synced ${new Date(day.waterh.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${day.water?` · manual ${(day.water/1000).toFixed(2)} L`:""}</p>`:""}
       <div class="row"><button class="chip" data-act="water" data-ml="250">+250 ml</button><button class="chip" data-act="water" data-ml="500">+500 ml</button><button class="chip" data-act="water" data-ml="1000">+1 L</button><button class="chip" data-act="water" data-ml="-250">−250</button></div>
+      ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.html(day):"")}
+      ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.guideHTML():"")}
       ${safeMod("HealthConnectSync",()=>hcSync.html(day))}
       ${fold("wsync","Sync the WaterH bottle by hand","Fallback", `
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
@@ -1647,7 +1666,7 @@ function vSettings(){
   ${cat("Appearance")}
   <div class="card"><div class="set-list">
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
-    ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","Red"],["blue","Blue"],["yellow","Yellow"],["green","Green"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
+    ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","2.5 kg red"],["white","5 kg white"],["green","10 kg green"],["yellow","15 kg yellow"],["blue","20 kg blue"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
   </div></div>
   ${cat("Workouts and units")}
   <div class="card"><h3>Workout</h3><div class="set-list">
@@ -1656,7 +1675,12 @@ function vSettings(){
     ${lb?row("Rest after big lifts","Bench, rows, hack squat",seg("lbset",restOpts,lb.restCompound,'data-s="restCompound"')):row("Rest timer","Starts when you tick a set",seg("rest",restOpts,restSec()))}
     ${lb?row("Rest after other lifts","",seg("lbset",restOpts,lb.restIso,'data-s="restIso"')):""}
     ${row("Start the timer after each set","",sw("restauto",m.restAuto!==false,"Start the rest timer after each set"))}
-    ${lb?row("Beep when rest ends","",sw("lbtog",lb.sound,"Beep when rest ends",'data-s="sound"'))+row("Vibrate when rest ends","",sw("lbtog",lb.vibrate,"Vibrate when rest ends",'data-s="vibrate"'))+row("Keep the screen on","During a workout",sw("lbtog",lb.wake,"Keep the screen on during a workout",'data-s="wake"')):""}
+    ${lb&&WorkoutLogger.restStyles?row("Rest timer look",'Full circle and Screen fill take the whole screen, like Strong',`<span class="row" style="gap:6px;justify-content:flex-end">${WorkoutLogger.restStyles.map(([k,l])=>`<button type="button" class="chip" data-act="lbpick" data-s="restStyle" data-k="${k}" aria-pressed="${(lb.restStyle||"bar")===k}">${l}</button>`).join("")}<button type="button" class="btn ghost small" data-act="lbtry">Try it (10 s)</button></span>`):""}
+    ${lb&&window.GymSounds&&GymSounds.REST_SOUNDS?(()=>{ const cur=lb.restSound||"restDone", chip=(id,label)=>`<button type="button" class="chip" data-act="lbpick" data-s="restSound" data-k="${id}" aria-pressed="${cur===id}">${esc(label)}</button>`, mine=GymSounds.customInfo&&GymSounds.customInfo();
+      return row("Sound when rest ends","Tap one to hear it. A locked phone rings the same sound.",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.REST_SOUNDS.filter(s=>!s.pack).map(s=>chip(s.id,s.label)).join("")}</span>`)
+        +row("Anime-style pack","Original power-up and battle effects",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.REST_SOUNDS.filter(s=>s.pack==="anime").map(s=>chip(s.id,s.label)).join("")}</span>`)
+        +row("Your own sound", mine?`${esc(mine.name)} · ${mine.seconds} s. Kept on this phone only. A locked phone rings the bell instead.`:"Any MP3, M4A or WAV on your phone, up to 3 MB. Kept on this phone only.",`<span class="row" style="gap:6px;justify-content:flex-end">${mine?chip("custom","Use my sound")+`<button type="button" class="btn ghost small" data-act="lbsndclear">Remove</button>`:""}<label class="btn ghost small" style="cursor:pointer">${mine?"Replace":"Add your own sound"}<input type="file" id="restSoundFile" accept="audio/*" hidden></label></span>`); })():""}
+    ${lb?row("Play a sound when rest ends","",sw("lbtog",lb.sound,"Play a sound when rest ends",'data-s="sound"'))+row("Vibrate when rest ends","",sw("lbtog",lb.vibrate,"Vibrate when rest ends",'data-s="vibrate"'))+row("Buzz at 3, 2, 1","One short buzz for each of the last three seconds",sw("lbtog",lb.countBuzz!==false,"Buzz at 3, 2 and 1 seconds left",'data-s="countBuzz"'))+row("Keep the screen on","During a workout",sw("lbtog",lb.wake,"Keep the screen on during a workout",'data-s="wake"')):""}
   </div></div>
   <div class="card"><h3>Units</h3><div class="set-list">
     ${lb?row("Default unit","New exercises in the full logger",seg("lbset",[["kg","kg"],["lb","lb"]],lb.unit,'data-s="unit"')):""}
@@ -1670,6 +1694,7 @@ function vSettings(){
   ${cat("Reminders")}
   ${fold("rem","Phone calendar reminders","Workouts, meals, weigh-in", safeMod("CalendarReminders",()=>CalendarReminders.html(S.docs.prefs.main||{}, crCtx())))}
   ${cat("Connections")}
+  ${window.AppUpdate?safe("app updates",()=>AppUpdate.cardHTML()):""}
   <div class="card"><h3>Account and sync</h3>
     <p class="muted" style="font-size:.9rem">${who?`Signed in as <b>${esc(who)}</b>. Everything syncs to your account; this phone keeps a copy for offline use.`:`Not signed in. Everything is saved on this phone${window.CloudStore?". Sign in from the banner at the top to sync across devices":""}.`}</p>
     <p class="muted" style="font-size:.85rem">Status: <span id="syncCopy">${esc(document.getElementById("sync").textContent)}</span>. Changing any setting never deletes your history.</p>
@@ -1681,6 +1706,8 @@ function vSettings(){
 }
 /* ===================== Events ===================== */
 // Android app (modules/android-shell): back button closes sheets, then returns to Today, then minimises.
+// In-app updates (modules/app-update): Settings card + Today banner; checks the private release with a key kept on the phone.
+if(window.AppUpdate){ try{ const st=document.createElement("style"); st.textContent=AppUpdate.css; document.head.appendChild(st); AppUpdate.bind({ render, toast }); }catch(e){} }
 if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
 function openDrawer(on){ const d=document.getElementById("drawer"); d.hidden=!on; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
 document.getElementById("menuBtn").onclick=()=>openDrawer(true);
@@ -1788,6 +1815,9 @@ main.addEventListener("click",e=>{
   if(a==="rest"){ const p=clone(S.docs.prefs.main); p.restSec=+el.dataset.k; put("prefs","main",p); return; }
   if(a==="restauto"){ const p=clone(S.docs.prefs.main); p.restAuto=!(p.restAuto!==false); put("prefs","main",p); return; }
   if(a==="lbset"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings(k==="gym" ? {gym:v==="gym"} : k==="unit" ? {unit:v} : {[k]:+v}); if(k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=+v; put("prefs","main",p); } else render(); return; }
+  if(a==="lbpick"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings({[k]:v}); if(k==="restSound"&&window.GymSounds){ GymSounds.prime(); GymSounds.play(v); } render(); return; }
+  if(a==="lbsndclear"){ if(!window.GymSounds) return; GymSounds.clearCustom().then(()=>{ if(lbSettings()&&lbSettings().restSound==="custom") WorkoutLogger.setSettings({restSound:"restDone"}); toast("Your sound was removed"); render(); }); return; }
+  if(a==="lbtry"){ if(window.WorkoutLogger&&WorkoutLogger.previewRest){ if(window.GymSounds) GymSounds.prime(); WorkoutLogger.previewRest(10); } return; }
   if(a==="lbtog"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, cur=lbSettings()||{}; WorkoutLogger.setSettings({[k]:!cur[k]}); render(); return; }
   if(a==="gotrain"){ view.tab="train"; render(); window.scrollTo(0,0); }
   else if(a==="gofood"){ view.tab="food"; render(); window.scrollTo(0,0); }
@@ -1825,6 +1855,9 @@ main.addEventListener("click",e=>{
   else if(a==="hcsync"){ if(!hcSync) return; el.disabled=true; hcSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : r.imported||r.removed ? `Water: ${r.imported} new record${r.imported===1?"":"s"}${r.removed?`, ${r.removed} removed`:""}` : `Health Connect: ${r.seen||0} record${r.seen===1?"":"s"} seen, nothing new`); }); }
   else if(a==="hcperm"){ if(!hcSync) return; hcSync.requestAccess().then(ok=>{ render(); if(ok) hcSync.syncNow({reason:"manual"}).then(()=>render()); else toast("Hydration access not granted"); }); }
   else if(a==="hcsettings"){ if(hcSync) hcSync.openSettings(); }
+  else if(a==="ghconnect"){ if(!ghSync) return; el.disabled=true; ghSync.connect().then(r=>{ render(); toast(r.error ? `Fitbit: ${r.error}` : `Fitbit connected · ${r.imported||0} water log${r.imported===1?"":"s"} imported`); }); }
+  else if(a==="ghsync"){ if(!ghSync) return; el.disabled=true; ghSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Fitbit: ${r.error}` : `Fitbit: read ${r.seen||0} log${r.seen===1?"":"s"}, ${r.imported||0} new${r.removed?`, ${r.removed} removed`:""}`); }); }
+  else if(a==="ghdisconnect"){ if(ghSync){ ghSync.disconnect(); render(); toast("Fitbit disconnected. Logged water stays."); } }
   else if(a==="hcreread"){ if(!hcSync) return; el.disabled=true; hcSync.reread().then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : `Health Connect: read ${r.seen||0} record${r.seen===1?"":"s"}, ${r.imported||0} new`); }); }
   else if(a==="tmode"){ view.trainMode=el.dataset.m; try{localStorage.setItem("aziz-cut-tmode",view.trainMode)}catch(_){} render(); }
   else if(a==="pick"){ runPicker(); }
@@ -1840,7 +1873,8 @@ main.addEventListener("change",e=>{
   if(el.id==="strongFile" && el.files && el.files[0]){ importStrong(el.files[0]); return; }
   if(el.id==="stepsFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyStepsText(String(fr.result)); fr.readAsText(el.files[0]); return; }
   if(el.id==="sleepH"){ const day=getDay(d); const v=parseFloat(el.value); if(isFinite(v)&&v>=0&&v<=16) day.sleep=v; else delete day.sleep; saveDay(day,{quiet:true}); renderPending=true; return; }
-  if(el.id==="waterhFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyWaterHText(String(fr.result)); fr.readAsText(el.files[0]); return; }
+  if(el.id==="restSoundFile" && el.files && el.files[0]){ if(!window.GymSounds||!GymSounds.setCustom) return; GymSounds.prime(); GymSounds.setCustom(el.files[0]).then(info=>{ if(window.WorkoutLogger&&WorkoutLogger.setSettings) WorkoutLogger.setSettings({restSound:"custom"}); GymSounds.play("custom"); toast("Rest will end with "+info.name); render(); }, err=>toast(err.message||"That sound could not be added")); el.value=""; return; }
+    if(el.id==="waterhFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyWaterHText(String(fr.result)); fr.readAsText(el.files[0]); return; }
   if(el.dataset.act==="eat"){ const day=getDay(d); const it=day.food.find(i=>i.id===el.dataset.id); if(it) it.eaten=el.checked; saveDay(day); if(el.checked && window.FitMotion){ const c=main.querySelector(`[data-act="eat"][data-id="${el.dataset.id}"]`); if(c) FitMotion.pop(c); } }
   else if(el.dataset.act==="supp"){ const day=getDay(d); day.supps[el.dataset.k]=el.checked; saveDay(day); }
   else if(el.dataset.act==="tread"){ const day=getDay(d); day.treadmill=el.checked; saveDay(day,{quiet:view.tab==="train"}); }
@@ -2006,17 +2040,19 @@ function syncLogger(){
 }
 
 /* rest timer: a bar above the tabs with −15 / +15 / Skip, like Strong */
-let tInt=null, tEnd=0, tTotal=0;
+let tInt=null, tEnd=0, tTotal=0, tBuzz=0;
 function tickTimer(){
   const el=document.getElementById("timer"); const left=Math.max(0,Math.round((tEnd-Date.now())/1000));
   el.innerHTML=`<span class="tbar" style="width:${tTotal?Math.min(100,Math.max(0,100-left/tTotal*100)):100}%"></span><span class="label" style="color:inherit">${left?"Rest":"Go"}</span><span class="num">${Math.floor(left/60)}:${pad(left%60)}</span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" data-t="-15" aria-label="15 seconds less">−15</button><button type="button" data-t="15" aria-label="15 seconds more">+15</button><button type="button" data-t="stop" id="tStop">${left?"Skip":"Done"}</button></span>`;
-  if(!left){ clearInterval(tInt); tInt=null; restCue("rest-stop"); if(lbPref("sound")) window.GymSounds&&GymSounds.play("restDone"); if(lbPref("vibrate")) try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(_){} }
+  if(left>0&&left<=3&&lbPref("countBuzz")&&tBuzz!==left){ tBuzz=left; try{navigator.vibrate&&navigator.vibrate(left===1?220:120)}catch(_){} }
+  if(!left){ clearInterval(tInt); tInt=null; restCue("rest-stop"); if(lbPref("sound")) window.GymSounds&&(GymSounds.play(lbRestSound())||GymSounds.play("restDone")); if(lbPref("vibrate")) try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(_){} }
 }
 // Quick log uses the logger's "Beep / Vibrate when rest ends" settings, and the same lb:rest events so
 // the Android shell schedules the locked-screen "Rest is over" notification for it too.
 function lbPref(k){ try{ return !(window.WorkoutLogger && WorkoutLogger.settings && WorkoutLogger.settings()[k]===false); }catch(_){ return true; } }
-function restCue(kind){ try{ window.dispatchEvent(new CustomEvent("lb:"+kind, {detail:{end:tEnd, total:tTotal}})); }catch(_){} }
-function startTimer(sec){ const el=document.getElementById("timer"); tEnd=Date.now()+sec*1000; tTotal=sec; clearInterval(tInt); el.hidden=false; if(window.GymSounds) GymSounds.prime(); restCue("rest"); tickTimer(); tInt=setInterval(tickTimer,500); }
+function lbRestSound(){ const s=lbSettings(); return (s&&s.restSound)||"restDone"; }
+function restCue(kind){ try{ window.dispatchEvent(new CustomEvent("lb:"+kind, {detail:{end:tEnd, total:tTotal, sound:lbRestSound()}})); }catch(_){} }
+function startTimer(sec){ const el=document.getElementById("timer"); tEnd=Date.now()+sec*1000; tTotal=sec; tBuzz=0; clearInterval(tInt); el.hidden=false; if(window.GymSounds) GymSounds.prime(); restCue("rest"); tickTimer(); tInt=setInterval(tickTimer,500); }
 document.getElementById("timer").addEventListener("click",e=>{
   const b=e.target.closest("button[data-t]"); if(!b) return;
   if(b.dataset.t==="stop"){ clearInterval(tInt); tInt=null; restCue("rest-stop"); document.getElementById("timer").hidden=true; return; }

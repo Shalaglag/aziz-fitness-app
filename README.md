@@ -1,4 +1,4 @@
-# Aziz Cut Tracker: local copy
+# Mizan (Aziz Cut Tracker): local copy
 
 This folder holds the whole fitness app project: the main app, the feature modules built for it, the standalone tools, and the plan documents. This GitHub repo (Shalaglag/aziz-fitness-app, created Oct 25, 2026) is the home for the code. Every feature thread builds into it, and the online versions and the copy on your PC are updated from it.
 
