@@ -10,6 +10,7 @@
     { "file": "modules/workout-share/workout-share.js", "expose": ["WorkoutShare"] },
     { "file": "modules/break-ramp/break-ramp.js", "expose": ["BreakRamp"] },
     { "file": "modules/pr-celebrate/pr-celebrate.js", "expose": ["PRCelebrate"] },
+    { "file": "modules/gym-sounds/gym-sounds.js" },
     { "file": "modules/workout-logger/workout-logger.js" },
     { "file": "modules/saved-meals/saved-meals.js" },
     { "file": "modules/auto-foods/auto-foods.js" },

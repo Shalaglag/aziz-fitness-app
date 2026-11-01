@@ -756,14 +756,17 @@ Power Clean (Barbell)|Other|Barbell|`;
 
   // ---------- Audio / wake lock ----------
   let audio = null, wakeLock = null;
+  // GymSounds (modules/gym-sounds) gives the Strong-style cues; the three plain tones stay as a fallback.
+  const GS = () => (typeof window !== 'undefined' && window.GymSounds) || null;
   function beep() {
     if (!S.settings.sound) return;
+    if (GS() && GS().play('restDone')) return;
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
       [0, 0.22, 0.44].forEach((d, i) => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = i === 2 ? 1320 : 880; g.gain.setValueAtTime(0.0001, audio.currentTime + d); g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + d + 0.18); o.connect(g).connect(audio.destination); o.start(audio.currentTime + d); o.stop(audio.currentTime + d + 0.2); });
     } catch (e) { }
   }
-  function primeAudio() { try { if (S.settings.sound && !audio) audio = new (window.AudioContext || window.webkitAudioContext)(); if (audio && audio.state === 'suspended') audio.resume(); } catch (e) { } }
+  function primeAudio() { if (S.settings.sound && GS()) { GS().prime(); return; } try { if (S.settings.sound && !audio) audio = new (window.AudioContext || window.webkitAudioContext)(); if (audio && audio.state === 'suspended') audio.resume(); } catch (e) { } }
   async function keepAwake(onState) {
     try {
       if (onState && S.settings.wake && navigator.wakeLock && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
@@ -1791,6 +1794,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     }
     put('workouts', w);
     S.active = null; saveActive(true); stopRest(); keepAwake(false); closeEditor();
+    if (S.settings.sound && GS()) GS().play('finish');
     if (S.settings.rotOverride) { S.settings.rotOverride = null; saveSettings(); }
     const shell = toShellRecord(w);
     if (S.opts.onFinish) { try { S.opts.onFinish(clone(w), shell); } catch (e) { } }

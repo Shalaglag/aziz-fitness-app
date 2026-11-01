@@ -34,3 +34,27 @@ test("back press goes to Today before minimising", () => {
   assert.equal(A.backPress(fakeDoc([])), "exit");
   delete global.window;
 });
+
+test("rest notification uses the rest channel with the GymSounds ding", async () => {
+  delete require.cache[require.resolve("./android-shell.js")];
+  const listeners = {}, channels = [], scheduled = [];
+  const LocalNotifications = {
+    checkPermissions: async () => ({ display: "granted" }),
+    createChannel: async c => { channels.push(c); },
+    schedule: async o => { scheduled.push(...o.notifications); },
+    cancel: async () => {}
+  };
+  global.window = { Capacitor: { isNativePlatform: () => true, Plugins: { LocalNotifications } }, addEventListener: (k, fn) => { listeners[k] = fn; } };
+  global.document = { documentElement: { classList: { add() {} } }, body: {} };
+  const A = require("./android-shell.js");
+  assert.equal(A.init({}), true);
+  listeners["lb:rest"]({ detail: { end: 1e12, total: 90 } });
+  listeners["lb:rest"]({ detail: { end: 1e12 + 5000, total: 95 } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(channels.length, 1, "channel created once");
+  assert.equal(channels[0].sound, "rest_done.wav");
+  assert.equal(scheduled.length, 2);
+  assert.equal(scheduled[0].channelId, A.REST_CHANNEL.id);
+  assert.equal(scheduled[0].id, 7001);
+  delete global.document; global.window = {};
+});

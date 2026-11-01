@@ -179,6 +179,35 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("sounds: rest over dings when the timer reaches 0 (quick log and full logger) and Finish plays the finish chime", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "train");
+      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      await page.evaluate(() => { window.played = []; GymSounds.play = n => { played.push(n); return true; }; window.cues = []; ["lb:rest", "lb:rest-stop"].forEach(k => addEventListener(k, () => cues.push(k))); });
+      // Quick log timer bar
+      await page.evaluate(() => startTimer(1));
+      await page.waitForFunction(() => played.includes("restDone"), null, { timeout: 4000 });
+      assert.deepStrictEqual(await page.evaluate(() => cues), ["lb:rest", "lb:rest-stop"], "quick log tells the Android shell to schedule and cancel the rest notification");
+      // Full logger: start a template, tick one set, Finish (through any confirm sheets)
+      const finishOne = async () => {
+        // Tap the newest visible match (sheets stack on top of the logger)
+        const tap = a => page.evaluate(a => { const b = [...document.querySelectorAll(`[data-a="${a}"]`)].filter(e => e.offsetParent).pop(); if (b) b.click(); return !!b; }, a);
+        await tap("tplPreview"); await page.waitForTimeout(100);
+        await tap("startTpl"); await page.waitForSelector('[data-a="check"]');
+        await tap("check"); await page.waitForTimeout(100);
+        await tap("finish"); await page.waitForTimeout(150);
+        for (const a of ["finishConfirm", "finishSave"]) { await tap(a); await page.waitForTimeout(150); }
+      };
+      await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ sound: true }); });
+      await finishOne();
+      assert.ok(await page.evaluate(() => played.includes("finish")), "Finish plays the finish chime");
+      await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ sound: false }); });
+      await finishOne();
+      assert.deepStrictEqual(await page.evaluate(() => played), [], "Beep setting off: no finish sound");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("guide: search filters sections and jump chips exist; progress has four sections", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "guide");
