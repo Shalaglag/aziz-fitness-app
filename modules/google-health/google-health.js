@@ -77,7 +77,9 @@ const GoogleHealthWater = (() => {
     if (status === 403) return "Google refused access to water data. Tap Connect and allow nutrition data.";
     if (status === 429) return "Google is rate-limiting; it will retry later.";
     if (status === 0) return "No internet. It will sync when you're back online.";
-    return `Google Health error ${status}.`;
+    let msg = ""; try { const e = JSON.parse(b).error || {}; msg = e.message || e.status || ""; } catch (e) { msg = b; }
+    msg = String(msg).replace(/\s+/g, " ").trim().slice(0, 140);
+    return `Google Health error ${status}${msg ? ": " + msg : "."}`;
   }
 
   function readState(storage) { try { const j = storage && storage.getItem(KEY); return j ? JSON.parse(j) : {}; } catch (e) { return {}; } }
@@ -130,18 +132,27 @@ const GoogleHealthWater = (() => {
     async function pull(days, interactive) {
       const t = now();
       const first = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (days - 1));
-      const from = new Date(first.getTime() - 14 * 3600 * 1000).toISOString(); // zone slack
       const firstDay = ymd(first);
-      let recs = [], pageToken = "", pages = 0;
-      do {
-        const query = { filter: `hydration_log.interval.start_time >= "${from}"`, pageSize: "1000" };
+      // hydration-log is a session type: Google only filters it on civil (local) start time.
+      // If Google still rejects the filter (400), read unfiltered; points come newest first,
+      // so paging stops once a whole page is older than the window.
+      let recs = [], pageToken = "", pages = 0, filtered = !st.noFilter;
+      for (;;) {
+        const query = { pageSize: "1000" };
+        if (filtered) query.filter = `hydration_log.interval.civil_start_time >= "${firstDay}"`;
         if (pageToken) query.pageToken = pageToken;
         const res = await get(query, interactive);
+        if (res.status === 400 && filtered && !/ACCOUNT_NOT_LINKED/.test(String(res.body || ""))) {
+          filtered = false; st.noFilter = true; save(); recs = []; pageToken = ""; pages = 0; continue;
+        }
         if (res.status !== 200) return { error: errorText(res.status, res.body), status: res.status };
         let json; try { json = JSON.parse(res.body || "{}"); } catch (e) { return { error: "Google Health sent an unreadable reply." }; }
-        recs = recs.concat(parseDataPoints(json));
+        const got = parseDataPoints(json);
+        recs = recs.concat(got);
         pageToken = json.nextPageToken || "";
-      } while (pageToken && ++pages < 20);
+        if (!filtered && got.length && got.every(r => r.date < firstDay)) break;
+        if (!pageToken || ++pages >= 20) break;
+      }
       recs = recs.filter(r => r.date >= firstDay);
       const byDay = {};
       for (const r of recs) (byDay[r.date] = byDay[r.date] || []).push(r);

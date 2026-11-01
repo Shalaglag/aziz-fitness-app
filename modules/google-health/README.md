@@ -7,7 +7,9 @@ Fitbit Web API's successor (the legacy Fitbit Web API is switched off on Nov 2, 
 
 ```
 GET https://health.googleapis.com/v4/users/me/dataTypes/hydration-log/dataPoints
-    ?filter=hydration_log.interval.start_time >= "<RFC3339>"&pageSize=1000
+    ?filter=hydration_log.interval.civil_start_time >= "YYYY-MM-DD"&pageSize=1000
+    (hydration-log is a session type: Google filters it only on civil start time. If Google still answers 400,
+    the module reads unfiltered, newest first, stops at the window edge and remembers that.)
 Authorization: Bearer <token for https://www.googleapis.com/auth/googlehealth.nutrition.readonly>
 ```
 

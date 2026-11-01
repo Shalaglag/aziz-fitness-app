@@ -19,8 +19,10 @@ function fakeGoogle({ grant = true } = {}) {
     G.calls.push({ path, query, token });
     if (G.throwNet) throw new Error("network");
     if (G.status !== 200) return { status: G.status, body: G.errBody || "" };
-    const from = query.filter.match(/>= "([^"]+)"/)[1];
-    const pts = G.points.filter(p => p.hydrationLog.interval.startTime >= from);
+    if (query.filter && G.rejectFilter) return { status: 400, body: '{"error":{"code":400,"message":"Invalid filter","status":"INVALID_ARGUMENT"}}' };
+    const from = query.filter ? query.filter.match(/>= "([^"]+)"/)[1] : "";
+    const pts = G.points.filter(p => p.hydrationLog.interval.civilStartTime >= from)
+      .sort((a, b) => b.hydrationLog.interval.startTime.localeCompare(a.hydrationLog.interval.startTime));
     const start = query.pageToken ? +query.pageToken : 0, size = G.pageSize;
     const page = pts.slice(start, start + size);
     return { status: 200, body: JSON.stringify({ dataPoints: page, nextPageToken: start + size < pts.length ? String(start + size) : "" }) };
@@ -57,7 +59,7 @@ test("connect + first sync imports Fitbit water into today's bottle total", asyn
   assert.equal(A.sync.status().state, "ready");
   assert.match(A.sync.html(day), /Fitbit \/ Google Health connected · 2 water logs today \(0\.45 L\)/);
   assert.equal(G.calls[0].path, "v4/users/me/dataTypes/hydration-log/dataPoints");
-  assert.match(G.calls[0].query.filter, /^hydration_log\.interval\.start_time >= "/);
+  assert.match(G.calls[0].query.filter, /^hydration_log\.interval\.civil_start_time >= "\d{4}-\d\d-\d\d"$/);
 });
 
 test("re-syncing never doubles; edits and deletions in Fitbit are followed", async () => {
@@ -167,4 +169,19 @@ test("the compiled Android plugin matches the module copy and is registered", ()
   for (const m of ["authorize", "get"]) assert.match(src, new RegExp(`@PluginMethod\\s+fun ${m}\\(`));
   assert.ok(src.includes(GH.SCOPE));
   assert.match(src, /https:\/\/health\.googleapis\.com\//);
+});
+
+test("a rejected filter (400) falls back to an unfiltered newest-first read and shows Google's message", async () => {
+  const G = fakeGoogle(); G.rejectFilter = true; G.pageSize = 2;
+  G.points = [dp("a", 150, 1, 8), dp("b", 250, 1, 9), dp("c", 300, 31 - 31 + 25, 10)];
+  G.points[2].hydrationLog.interval = { startTime: new Date(2026, 9, 1, 10).toISOString(), endTime: new Date(2026, 9, 1, 10).toISOString(), civilStartTime: "2026-10-01T10:00:00" };
+  const A = app(G);
+  await A.sync.connect();
+  assert.equal(A.getDay("2026-11-01").waterh.ml, 400);
+  assert.equal(A.getDay("2026-10-01").waterh, undefined, "outside the window");
+  assert.equal(A.sync.status().lastError || null, null);
+  G.calls = [];
+  await A.sync.syncNow();
+  assert.ok(G.calls.every(c => !c.query.filter), "remembers to skip the filter");
+  assert.match(GH.errorText(500, '{"error":{"code":500,"message":"Backend broke","status":"INTERNAL"}}'), /error 500: Backend broke/);
 });
