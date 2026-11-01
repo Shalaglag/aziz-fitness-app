@@ -73,7 +73,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
-          name: Aziz Fitness for Android (latest)
+          name: Mizan for Android (latest)
           body: |
             Newest build from main (build ${{ github.run_number }}, ${{ github.sha }}).
             Install: open this page on the phone, tap **aziz-fitness.apk**, then Open. See docs/ANDROID.md.

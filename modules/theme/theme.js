@@ -3,14 +3,14 @@
    API:
      FitTheme.mode            -> "system" | "light" | "dark"
      FitTheme.setMode(mode)
-     FitTheme.accent          -> "red" | "blue" | "yellow" | "green"
+     FitTheme.accent          -> "red" | "white" | "green" | "yellow" | "blue"
      FitTheme.setAccent(name)
      FitTheme.isDark()        -> true when dark is showing right now
      FitTheme.onChange(fn)    -> fn({ mode, accent, dark })
 */
 (function () {
   var KEY = "fit-theme";
-  var ACCENTS = ["red", "blue", "yellow", "green"];
+  var ACCENTS = ["red", "white", "green", "yellow", "blue"]; // 2.5, 5, 10, 15, 20 kg
   var root = document.documentElement;
   var media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
   var listeners = [];

@@ -53,6 +53,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- In-app updates (modules/app-update): hand the downloaded APK to Android's installer; the user confirms. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- GPS run tracker (modules/run-tracker): the WebView asks for location when a run starts. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

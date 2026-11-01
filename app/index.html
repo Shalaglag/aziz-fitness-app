@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>Aziz Cut Tracker</title>
+<title>Mizan</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="manifest" href="manifest.webmanifest">
@@ -13,8 +13,8 @@
 /* ==========================================================================
    Fitness app theme  ·  "Plate" system
    Neutrals: warm chalk (light) and warm charcoal (dark) — the "Warm Light" look (Nov 2026).
-   Accents: coral (default) plus the bumper-plate set (25 kg red, 20 kg blue,
-   15 kg yellow, 10 kg green). Pick one with <html data-accent="blue">.
+   Accents: coral (default) plus Aziz's bumper plates (2.5 kg red, 5 kg white,
+   10 kg green, 15 kg yellow, 20 kg blue). Pick one with <html data-accent="blue">.
    Mode: <html data-theme="light|dark">, or no attribute to follow the system.
    Fonts (Google Fonts):
    https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap
@@ -86,6 +86,8 @@
 [data-accent="red"]    { --accent-light: #D0302A; --accent-dark: #F2665D; --on-accent-light: #FFFFFF; --on-accent-dark: #220B0A; }
 [data-accent="blue"]   { --accent-light: #1F5FD1; --accent-dark: #6B9BF5; --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222; }
 [data-accent="yellow"] { --accent-light: #A87300; --accent-dark: #F2C230; --on-accent-light: #FFFFFF; --on-accent-dark: #221A02; }
+/* 5 kg white plate: graphite on light backgrounds so it stays visible, white on dark */
+[data-accent="white"]  { --accent-light: #2B3139; --accent-dark: #F2F4F6; --on-accent-light: #FFFFFF; --on-accent-dark: #0D1013; }
 [data-accent="green"]  { --accent-light: #1B8048; --accent-dark: #43C47E; --on-accent-light: #FFFFFF; --on-accent-dark: #06200F; }
 
 /* ---- Dark (system setting, unless light was chosen) ---- */
@@ -538,7 +540,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
       <div class="row" style="flex-wrap:nowrap;gap:10px">
         <button class="iconbtn menubtn" id="menuBtn" aria-label="Menu" aria-haspopup="dialog">☰</button>
         <div>
-        <div class="brand">Aziz <span>Cut</span> Tracker</div>
+        <div class="brand">Mi<span>zan</span></div>
         <div class="sync"><span id="sync">Loading your data…</span><button class="unsaved" id="unsaved" hidden></button></div>
         </div>
       </div>
@@ -554,7 +556,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 <div class="drawer-wrap" id="drawer" hidden role="dialog" aria-modal="true" aria-label="Menu">
   <div class="scrim" data-close-drawer></div>
   <nav class="drawer" id="tabs" aria-label="Sections">
-    <div class="drawer-head"><div class="brand">Aziz <span>Cut</span> Tracker</div><button class="iconbtn" id="drawerClose" aria-label="Close">✕</button></div>
+    <div class="drawer-head"><div class="brand">Mi<span>zan</span></div><button class="iconbtn" id="drawerClose" aria-label="Close">✕</button></div>
     <button data-tab="today"><span class="ico">☀</span>Today</button>
     <button data-tab="train"><span class="ico">🏋</span>Train</button>
     <button data-tab="food"><span class="ico">🍽</span>Food</button>
@@ -616,8 +618,8 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 
   function pop(el) { replay(el, "anim-pop"); }
 
-  // Olympic plate colors: 25 kg red, 20 kg blue, 15 kg yellow, 10 kg green.
-  var PLATES = ["#D0302A", "#1F5FD1", "#F2C230", "#1B8048"];
+  // Plate colors: 2.5 kg red, 5 kg white, 10 kg green, 15 kg yellow, 20 kg blue.
+  var PLATES = ["#D0302A", "#E9ECEF", "#1B8048", "#F2C230", "#1F5FD1"];
 
   function celebrate(el) {
     replay(el, "anim-pr");
@@ -627,14 +629,14 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
     var h = host.getBoundingClientRect();
     var cx = r.left - h.left + r.width / 2 + host.scrollLeft;
     var cy = r.top - h.top + r.height / 2 + host.scrollTop;
-    for (var i = 0; i < 18; i++) {
+    for (var i = 0; i < 20; i++) {
       var piece = document.createElement("span");
       piece.className = "fit-burst-piece";
-      var angle = (Math.PI * 2 * i) / 18 + Math.random() * .3;
+      var angle = (Math.PI * 2 * i) / 20 + Math.random() * .3;
       var dist = 40 + Math.random() * 50;
       piece.style.left = cx + "px";
       piece.style.top = cy + "px";
-      piece.style.background = PLATES[i % 4];
+      piece.style.background = PLATES[i % PLATES.length];
       piece.style.setProperty("--dx", Math.cos(angle) * dist + "px");
       piece.style.setProperty("--dy", Math.sin(angle) * dist - 20 + "px");
       piece.style.setProperty("--rot", (Math.random() * 360 - 180) + "deg");
@@ -1799,24 +1801,26 @@ window.HealthConnectSync = (() => {
     return Object.keys(records).some(k => k !== id && records[k].s === r.s && records[k].e === r.e && records[k].ml === r.ml && records[k].o !== r.o);
   }
 
-  function rebuild(day, records, now) {
+  // `source` lets another automatic feed (Google Health, modules/google-health) reuse the same
+  // per-record dedupe on the same `waterh` field. Defaults to Health Connect.
+  function rebuild(day, records, now, source = SOURCE) {
     const out = Object.assign({}, day);
     const ids = Object.keys(records);
     if (!ids.length) { delete out.waterh; return out; }
     const ml = ids.reduce((a, k) => a + records[k].ml, 0);
-    out.waterh = { ml, at: now.toISOString(), source: SOURCE, records };
+    out.waterh = { ml, at: now.toISOString(), source, records };
     return out;
   }
 
-  function currentRecords(day) {
+  function currentRecords(day, source = SOURCE) {
     const w = day && day.waterh;
-    return w && w.source === SOURCE && w.records ? Object.assign({}, w.records) : {};
+    return w && w.source === source && w.records ? Object.assign({}, w.records) : {};
   }
 
   // Upsert Health Connect records into a day (returns a new day, or the same object if nothing changed).
-  function applyRecords(day, recs, { now = new Date(), ownPackage } = {}) {
-    const records = currentRecords(day);
-    let changed = !(day && day.waterh && day.waterh.source === SOURCE); // first HC sync replaces a pasted figure
+  function applyRecords(day, recs, { now = new Date(), ownPackage, source = SOURCE } = {}) {
+    const records = currentRecords(day, source);
+    let changed = !(day && day.waterh && day.waterh.source === source); // first sync replaces a pasted figure
     for (const rec of recs || []) {
       const r = cleanRecord(rec, ownPackage);
       if (!r) { if (rec && rec.id && records[rec.id]) { delete records[rec.id]; changed = true; } continue; }
@@ -1826,14 +1830,14 @@ window.HealthConnectSync = (() => {
       records[rec.id] = r; changed = true;
     }
     if (!changed) return day;
-    return rebuild(day, records, now);
+    return rebuild(day, records, now, source);
   }
 
-  function removeRecords(day, ids, { now = new Date() } = {}) {
-    const records = currentRecords(day);
+  function removeRecords(day, ids, { now = new Date(), source = SOURCE } = {}) {
+    const records = currentRecords(day, source);
     let changed = false;
     for (const id of ids || []) if (records[id]) { delete records[id]; changed = true; }
-    return changed ? rebuild(day, records, now) : day;
+    return changed ? rebuild(day, records, now, source) : day;
   }
 
   function bottleMl(day) { return (day && day.waterh && day.waterh.ml) || 0; }
@@ -2076,9 +2080,259 @@ window.HealthConnectSync = (() => {
 
   const CSS = `.hc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--muted,#888)}.hc-ok{background:#2e9e5b}.hc-warn{background:#d9a21b}.hc-bad{background:#d14b3c}.hc-off{background:#9aa0a6}`;
 
-  return { KEY, SOURCE, DEFAULT_LOOKBACK_DAYS, EXPIRED_LOOKBACK_DAYS, localDate, applyRecords, removeRecords, bottleMl, create, errorText, CSS };
+  return { KEY, SOURCE, DEFAULT_LOOKBACK_DAYS, EXPIRED_LOOKBACK_DAYS, localDate, applyRecords, removeRecords, currentRecords, bottleMl, create, errorText, CSS };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = HealthConnectSync;
+</script>
+<script>
+/* Google Health (Fitbit) → Water card.
+ *
+ * Why: WaterH writes each sip to Fitbit, but Fitbit / Google Health does not share water with Android
+ * Health Connect on Aziz's phone (checked Nov 1, 2026). So the app reads the water log straight from the
+ * Google Health API (the Fitbit Web API's successor): GET
+ *   https://health.googleapis.com/v4/users/me/dataTypes/hydration-log/dataPoints
+ * with the read-only scope googlehealth.nutrition.readonly. No server, no secret: the Android plugin
+ * (android/GoogleHealthPlugin.kt) gets a short-lived access token from Google Play services'
+ * AuthorizationClient and makes the GET; this module does all the logic and is tested in Node.
+ *
+ * Plugin interface (window.Capacitor.Plugins.GoogleHealth):
+ *   authorize({interactive}) → {granted, token?}     interactive:false never shows UI
+ *   get({path, query, token}) → {status, body}        only https://health.googleapis.com/
+ *
+ * Day doc: the same `waterh` field as Health Connect, source "google-health", records keyed "gh:<id>",
+ * so every consumer of waterh.ml keeps working; manual taps (`water`) and Drinks are never touched.
+ * Device-local state: localStorage "aziz-gh-sync" {connected, lastSyncAt, lastError, lastResult, synced}.
+ */
+window.GoogleHealthWater = (() => {
+  const KEY = "aziz-gh-sync";
+  const SOURCE = "google-health";
+  const SCOPE = "https://www.googleapis.com/auth/googlehealth.nutrition.readonly";
+  const PATH = "v4/users/me/dataTypes/hydration-log/dataPoints";
+  const FIRST_DAYS = 14, NEXT_DAYS = 3;          // first sync back-fills two weeks; later ones re-check 3 days
+  const AUTO_GAP_MS = 10 * 60 * 1000;            // open / resume sync at most every 10 minutes
+  const TOKEN_MS = 50 * 60 * 1000;               // Google access tokens last ~60 min
+
+  const HC = typeof HealthConnectSync !== "undefined" ? HealthConnectSync
+    : (typeof require === "function" ? require("../health-connect/health-connect.js") : null);
+
+  const z = n => String(n).padStart(2, "0");
+  const ymd = d => `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+
+  // "10800s", "-3600s", "+03:00" → seconds
+  function offsetSec(v) {
+    if (v == null || v === "") return null;
+    if (typeof v === "number") return v;
+    let m = String(v).match(/^(-?\d+(?:\.\d+)?)s$/);
+    if (m) return Math.round(+m[1]);
+    m = String(v).match(/^([+-])(\d{2}):?(\d{2})$/);
+    if (m) return (m[1] === "-" ? -1 : 1) * (+m[2] * 3600 + +m[3] * 60);
+    return null;
+  }
+
+  // civilStartTime may come as "2026-11-01T00:00:00" or {date:{year,month,day}, time:{...}}
+  function civilDate(v) {
+    if (!v) return null;
+    if (typeof v === "string") { const m = v.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : null; }
+    const d = v.date || v;
+    return d && d.year && d.month && d.day ? `${d.year}-${z(d.month)}-${z(d.day)}` : null;
+  }
+
+  // Google Health dataPoints JSON → records in Health Connect's shape (+ `date`, the local day)
+  function parseDataPoints(json) {
+    const out = [];
+    for (const dp of (json && json.dataPoints) || []) {
+      const h = dp && dp.hydrationLog; if (!h) continue;
+      const id = String(dp.name || "").split("/").pop(); if (!id) continue;
+      const ml = Number(h.amountConsumed && h.amountConsumed.milliliters);
+      const iv = h.interval || {};
+      const startMs = Date.parse(iv.startTime || ""), endMs = Date.parse(iv.endTime || "") || startMs;
+      const off = offsetSec(iv.startUtcOffset);
+      const date = civilDate(iv.civilStartTime) || (isFinite(startMs) && HC ? HC.localDate(startMs, off) : null);
+      if (!isFinite(ml) || !date) continue;
+      const src = dp.dataSource || {};
+      const origin = (src.application && (src.application.packageName || src.application.name)) || src.platform || "google-health";
+      out.push({ id: "gh:" + id, ml, startMs: isFinite(startMs) ? startMs : 0, endMs: isFinite(endMs) ? endMs : 0, startOffsetSec: off, origin, date });
+    }
+    return out;
+  }
+
+  function errorText(status, body) {
+    const b = String(body || "");
+    if (/ACCOUNT_NOT_LINKED/.test(b)) return "Your Google account isn't linked to Google Health yet. Open the Fitbit / Google Health app and sign in with the same Google account, then tap Sync now.";
+    if (/SERVICE_DISABLED|has not been used in project|is disabled/i.test(b)) return "The Google Health API isn't switched on in your Google Cloud project (setup step 2).";
+    if (status === 401) return "Google sign-in expired. Tap Connect again.";
+    if (status === 403) return "Google refused access to water data. Tap Connect and allow nutrition data.";
+    if (status === 429) return "Google is rate-limiting; it will retry later.";
+    if (status === 0) return "No internet. It will sync when you're back online.";
+    let msg = ""; try { const e = JSON.parse(b).error || {}; msg = e.message || e.status || ""; } catch (e) { msg = b; }
+    msg = String(msg).replace(/\s+/g, " ").trim().slice(0, 140);
+    return `Google Health error ${status}${msg ? ": " + msg : "."}`;
+  }
+
+  function readState(storage) { try { const j = storage && storage.getItem(KEY); return j ? JSON.parse(j) : {}; } catch (e) { return {}; } }
+  function writeState(storage, st) { try { storage && storage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  function fmtTime(iso) {
+    if (!iso) return "never";
+    const d = new Date(iso), n = new Date(), t = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return d.toDateString() === n.toDateString() ? t : `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${t}`;
+  }
+
+  function create({ plugin, getDay, put, storage, now = () => new Date(), onChange } = {}) {
+    let st = readState(storage);
+    let tok = null, busy = null, lastAuto = 0;
+    const save = () => writeState(storage, st);
+    const emit = () => { try { onChange && onChange(status()); } catch (e) {} };
+
+    function status() {
+      let state;
+      if (!plugin) state = "no-plugin";
+      else if (!st.connected) state = "not-connected";
+      else if (st.lastError) state = "error";
+      else state = "ready";
+      return { state, busy: !!busy, connected: !!st.connected, lastSyncAt: st.lastSyncAt || null, lastError: st.lastError || null, lastResult: st.lastResult || null };
+    }
+
+    async function token(interactive) {
+      if (tok && now().getTime() - tok.at < TOKEN_MS) return tok.token;
+      const r = await plugin.authorize({ interactive: !!interactive });
+      if (!r || !r.granted || !r.token) { tok = null; return null; }
+      tok = { token: r.token, at: now().getTime() };
+      return tok.token;
+    }
+
+    async function get(query, interactive) {
+      let t = await token(interactive);
+      if (!t) return { status: 401, body: "needs consent" };
+      let res;
+      try { res = await plugin.get({ path: PATH, query, token: t }); }
+      catch (e) { return { status: 0, body: String(e && e.message || e) }; }
+      if (res && res.status === 401) { // token revoked or expired early: one silent retry
+        tok = null; t = await token(false);
+        if (!t) return { status: 401, body: "needs consent" };
+        try { res = await plugin.get({ path: PATH, query, token: t }); } catch (e) { return { status: 0, body: String(e) }; }
+      }
+      return res || { status: 0, body: "" };
+    }
+
+    // Reads `days` days (today included) and makes each day's Google Health records match exactly.
+    async function pull(days, interactive) {
+      const t = now();
+      const first = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (days - 1));
+      const firstDay = ymd(first);
+      // hydration-log is a session type: Google only filters it on civil (local) start time.
+      // If Google still rejects the filter (400), read unfiltered; points come newest first,
+      // so paging stops once a whole page is older than the window.
+      let recs = [], pageToken = "", pages = 0, filtered = !st.noFilter;
+      for (;;) {
+        const query = { pageSize: "1000" };
+        if (filtered) query.filter = `hydration_log.interval.civil_start_time >= "${firstDay}"`;
+        if (pageToken) query.pageToken = pageToken;
+        const res = await get(query, interactive);
+        if (res.status === 400 && filtered && !/ACCOUNT_NOT_LINKED/.test(String(res.body || ""))) {
+          filtered = false; st.noFilter = true; save(); recs = []; pageToken = ""; pages = 0; continue;
+        }
+        if (res.status !== 200) return { error: errorText(res.status, res.body), status: res.status };
+        let json; try { json = JSON.parse(res.body || "{}"); } catch (e) { return { error: "Google Health sent an unreadable reply." }; }
+        const got = parseDataPoints(json);
+        recs = recs.concat(got);
+        pageToken = json.nextPageToken || "";
+        if (!filtered && got.length && got.every(r => r.date < firstDay)) break;
+        if (!pageToken || ++pages >= 20) break;
+      }
+      recs = recs.filter(r => r.date >= firstDay);
+      const byDay = {};
+      for (const r of recs) (byDay[r.date] = byDay[r.date] || []).push(r);
+      const dates = new Set(Object.keys(byDay));
+      for (let d = new Date(first); d <= t; d.setDate(d.getDate() + 1)) dates.add(ymd(d));
+      let imported = 0, removed = 0, touched = 0;
+      for (const d of [...dates].sort()) {
+        const before = getDay(d);
+        const had = HC.currentRecords(before, SOURCE);
+        const list = byDay[d] || [];
+        if (!list.length && !Object.keys(had).length) continue; // never wipe a pasted / manual figure
+        let day = HC.applyRecords(before, list, { now: t, source: SOURCE });
+        const keep = new Set(list.map(r => r.id));
+        day = HC.removeRecords(day, Object.keys(had).filter(id => !keep.has(id)), { now: t, source: SOURCE });
+        if (day === before) continue;
+        const after = HC.currentRecords(day, SOURCE);
+        imported += Object.keys(after).filter(id => !had[id]).length;
+        removed += Object.keys(had).filter(id => !after[id]).length;
+        touched++;
+        put("days", d, day, { quiet: true });
+      }
+      return { imported, removed, days: touched, seen: recs.length, todayMl: (byDay[ymd(t)] || []).reduce((a, r) => a + Math.round(r.ml), 0) };
+    }
+
+    async function connect() {
+      if (!plugin) return { error: "no-plugin" };
+      let t;
+      try { t = await token(true); } catch (e) { t = null; st.lastError = "Google sign-in failed: " + String(e && e.message || e); }
+      if (!t) { st.connected = false; st.lastError = st.lastError || "Google access was not granted."; save(); emit(); return { error: st.lastError }; }
+      st.connected = true; st.lastError = null; st.synced = false; save();
+      return syncNow({ reason: "manual" });
+    }
+
+    async function syncNow({ reason = "manual" } = {}) {
+      if (busy) return busy;
+      busy = (async () => {
+        if (!plugin) return { error: "no-plugin" };
+        if (!st.connected) return { error: "not-connected" };
+        let r;
+        try { r = await pull(st.synced ? NEXT_DAYS : FIRST_DAYS, reason === "manual"); }
+        catch (e) { r = { error: "Sync failed: " + String(e && e.message || e) }; }
+        if (r.error) { if (r.status !== 0 || !st.lastError) st.lastError = r.error; }
+        else { st.lastError = null; st.synced = true; st.lastSyncAt = now().toISOString(); st.lastResult = { seen: r.seen, imported: r.imported, removed: r.removed, todayMl: r.todayMl }; }
+        save(); emit();
+        return r;
+      })();
+      try { return await busy; } finally { busy = null; }
+    }
+
+    async function autoSync() {
+      if (!plugin || !st.connected) return { skipped: true };
+      const t = now().getTime();
+      if (t - lastAuto < AUTO_GAP_MS) return { skipped: true };
+      lastAuto = t;
+      return syncNow({ reason: "auto" });
+    }
+
+    function disconnect() { st = {}; tok = null; save(); emit(); }
+
+    function html(day) {
+      const s = status();
+      if (s.state === "no-plugin") return "";
+      const recs = HC ? HC.currentRecords(day, SOURCE) : {};
+      const n = Object.keys(recs).length, ml = n ? Object.keys(recs).reduce((a, k) => a + recs[k].ml, 0) : 0;
+      const dot = { ready: "ok", error: "bad", "not-connected": "off" }[s.state];
+      const head = s.state === "not-connected" ? "Fitbit / Google Health: not connected"
+        : s.state === "error" ? `Fitbit / Google Health: ${esc(s.lastError)}`
+        : `Fitbit / Google Health connected${n ? ` · ${n} water log${n === 1 ? "" : "s"} today (${(ml / 1000).toFixed(2)} L)` : " · no water logs for today yet"}`;
+      const lr = s.lastResult;
+      const last = s.connected ? `<p class="muted" style="font-size:.85rem;margin:4px 0">Last sync ${fmtTime(s.lastSyncAt)}${s.busy ? " · syncing…" : lr ? ` · read ${lr.seen} log${lr.seen === 1 ? "" : "s"} · ${lr.imported} new` : ""}</p>` : "";
+      const btns = s.connected
+        ? `<div class="row"><button class="btn small" data-act="ghsync" ${s.busy ? "disabled" : ""}>Sync Fitbit now</button><button class="btn ghost small" data-act="ghdisconnect">Disconnect</button></div>`
+        : `<div class="row"><button class="btn small" data-act="ghconnect">Connect Fitbit / Google Health</button></div>`;
+      return `<div class="gh-block" style="margin:6px 0 2px"><p class="muted hc-line" style="font-size:.85rem;margin:4px 0"><span class="hc-dot hc-${dot}"></span>${head}</p>${last}${btns}</div>`;
+    }
+
+    function guideHTML() {
+      if (!plugin) return "";
+      return `<details><summary>How Fitbit water sync works</summary>
+        <ol class="muted" style="font-size:.85rem;padding-left:18px;margin:6px 0;display:flex;flex-direction:column;gap:4px">
+          <li>WaterH sends each sip to Fitbit. This app reads your Fitbit / Google Health water log over the internet with read-only access to nutrition data. Nothing is written back.</li>
+          <li>Tap <b>Connect Fitbit / Google Health</b> once and pick the Google account you use in the Fitbit / Google Health app. Google may warn that the app is unverified; it is your own private app, so tap <i>Continue</i>.</li>
+          <li>It syncs when you open or come back to the app (at most every 10 minutes) and when you tap <b>Sync Fitbit now</b>. Offline, it waits until you're online.</li>
+          <li>Each Fitbit water log is counted once by its id; edits and deletions in Fitbit are followed for the last 3 days. Your +250 ml taps and the Drinks card stay separate.</li>
+        </ol></details>`;
+    }
+
+    return { status, connect, syncNow, autoSync, disconnect, html, guideHTML, state: () => Object.assign({}, st) };
+  }
+
+  return { KEY, SOURCE, SCOPE, PATH, offsetSec, civilDate, parseDataPoints, errorText, create };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = GoogleHealthWater;
 </script>
 <script>
 /* Voice logging for the Aziz Cut Tracker: say a set ("bench 60 for 10, 10, 8") or a meal ("had a chicken shawarma").
@@ -2872,34 +3126,105 @@ if (typeof globalThis !== 'undefined') globalThis.PRCelebrate = PRCelebrate;
 </script>
 <script>
 /*
- * GymSounds: the logger's two cues, in the style of Strong. These are original sounds synthesised
+ * GymSounds: the logger's cues, in the style of Strong. These are original sounds synthesised
  * here, not copies of Strong's audio files.
- *   restDone: a bright ding-ding-DING when the rest timer reaches 0
+ *   restDone: a bright ding-ding-DING when the rest timer reaches 0 (the default rest sound)
  *   finish:   a rising four-note chime when you press Finish
+ *   REST_SOUNDS: every sound the rest timer can end with, [{ id, label }], picked in Settings
  *
  *   GymSounds.prime()          call from a tap (set tick, timer start) so Android lets audio play later
  *   GymSounds.play(name)       'restDone' | 'finish'; returns true if it played
  *   GymSounds.render(name, sr) Float32Array of samples (the same sound the app plays)
  *   GymSounds.wav(name, sr)    Uint8Array, a 16-bit mono WAV (used for the Android notification sound)
+ *   GymSounds.rawName(id)      Android res/raw file for a rest sound ("rest_done.wav", "rest_boxing.wav", …)
+ *   GymSounds.setCustom(file)  saves the user's own audio file (≤ 3 MB, kept on this device in IndexedDB);
+ *                              resolves { name, seconds }. play('custom') plays it; clearCustom() removes it.
+ *   GymSounds.customInfo()     { name, seconds } or null; loadCustom() reads it back after a restart.
  *
- * No DOM, no storage. Works in Node for tests (render/wav); play() needs Web Audio.
+ * No DOM. Works in Node for tests (render/wav); play() needs Web Audio, the custom sound needs IndexedDB.
  */
 (function (root) {
-  // Bell partials: frequency ratio, loudness, how fast it fades (higher = shorter).
+  // Partials: frequency ratio, loudness, how fast it fades (higher = shorter).
   const BELL = [[1, 1, 1], [2, 0.42, 1.6], [3.01, 0.2, 2.4], [4.2, 0.1, 3.4], [5.4, 0.05, 4.5]];
+  const RING = [[1, 1, 1], [2.76, 0.5, 1.4], [5.4, 0.25, 2], [8.93, 0.1, 2.8]];          // boxing-ring bell, metallic
+  const GONG = [[1, 1, 1], [1.48, 0.6, 1.3], [2.1, 0.45, 1.7], [2.9, 0.3, 2.2], [3.7, 0.2, 2.8]];
+  const WOOD = [[1, 1, 1], [2.4, 0.4, 1.8], [4.1, 0.15, 2.6]];
+  const SQUARE = [[1, 1], [3, 0.3], [5, 0.15]];                                            // held tones (beeps)
+  const SAW = [[1, 1], [2, 0.5], [3, 0.33], [4, 0.25], [5, 0.2], [6, 0.16]];               // buzzy charge-ups
+  const HUM = [[1, 1], [2, 0.6], [3, 0.35], [4, 0.2]];                                      // aura drone
+  const HARMONICS = { SQUARE, SAW, HUM };
+  // Measured from Aziz's recording (Nov 1, 2026): inharmonic partials over a 743 Hz base, two strikes 0.19 s apart.
+  const DOUBLE = [[1, 0.6, 1], [1.754, 1, 0.9], [2.652, 0.4, 1.7], [3.565, 0.45, 1.4], [5.652, 0.35, 2.3], [8.06, 0.45, 3.4]];
+  const PARTIALS = { BELL, RING, GONG, WOOD, DOUBLE };
+  const strikes = (times, note) => times.map(t => Object.assign({ t }, note));
+  // Struck notes: { t start s, f Hz, a loudness, d decay, p partial set }. Held tones: kind 'tone', hold s, vib [Hz, depth Hz], air (breath noise),
+  // f1 (glide to this Hz), h (harmonic set), grow (swell: loudness rises as (i/hold)^grow), trem [Hz, depth 0-1].
+  // Noise bursts: kind 'noise', d decay, lp (0-1, lower = darker), grow, hold (s before the decay starts).
   const SOUNDS = {
     restDone: { len: 1.25, notes: [{ t: 0, f: 1568, a: 0.8, d: 9 }, { t: 0.17, f: 1568, a: 0.8, d: 9 }, { t: 0.34, f: 2093, a: 1, d: 3.6 }] },
-    finish: { len: 1.6, notes: [{ t: 0, f: 1047, a: 0.75, d: 6 }, { t: 0.1, f: 1319, a: 0.75, d: 6 }, { t: 0.2, f: 1568, a: 0.8, d: 5 }, { t: 0.3, f: 2093, a: 1, d: 2.4 }, { t: 0.3, f: 523, a: 0.35, d: 2.2 }] }
+    finish: { len: 1.6, notes: [{ t: 0, f: 1047, a: 0.75, d: 6 }, { t: 0.1, f: 1319, a: 0.75, d: 6 }, { t: 0.2, f: 1568, a: 0.8, d: 5 }, { t: 0.3, f: 2093, a: 1, d: 2.4 }, { t: 0.3, f: 523, a: 0.35, d: 2.2 }] },
+    boxing: { len: 1.6, notes: strikes([0, 0.13, 0.26, 0.39], { f: 960, a: 1, d: 3.2, p: 'RING' }) },
+    dingdong: { len: 1.7, notes: [{ t: 0, f: 1568, a: 1, d: 2.6 }, { t: 0.42, f: 1319, a: 0.95, d: 2.2 }] },
+    beeps: { len: 1.0, notes: strikes([0, 0.2, 0.4], { kind: 'tone', f: 2000, a: 0.8, hold: 0.09 }).concat([{ t: 0.6, kind: 'tone', f: 2400, a: 1, hold: 0.3 }]) },
+    whistle: { len: 1.0, notes: [{ t: 0, kind: 'tone', f: 2850, a: 0.9, hold: 0.14, vib: [32, 70], air: 0.06 }, { t: 0.24, kind: 'tone', f: 2850, a: 1, hold: 0.55, vib: [32, 70], air: 0.06 }] },
+    gong: { len: 2.4, notes: [{ t: 0, f: 196, a: 1, d: 1.1, p: 'GONG' }, { t: 0, f: 392, a: 0.25, d: 1.6, p: 'BELL' }] },
+    doubleDing: { len: 1.0, notes: strikes([0, 0.19], { f: 743, a: 1, d: 4.4, p: 'DOUBLE' }) },
+    knock: { len: 0.8, notes: strikes([0, 0.16, 0.32], { f: 820, a: 1, d: 38, p: 'WOOD' }) },
+    // Anime-style pack: original effects, no voices or clips from any show.
+    powerup: { len: 2.1, notes: [{ t: 0, kind: 'tone', f: 110, f1: 880, h: 'SAW', a: 0.7, hold: 1.3, grow: 2, trem: [18, 0.35] }, { t: 0, kind: 'noise', a: 0.35, lp: 0.08, hold: 1.25, grow: 2, d: 30 }, { t: 1.3, f: 1760, a: 1, d: 2.4 }, { t: 1.3, kind: 'noise', a: 0.5, lp: 0.25, d: 9 }] },
+    blast: { len: 1.9, notes: [{ t: 0, kind: 'tone', f: 260, f1: 1400, h: 'SAW', a: 0.55, hold: 0.55, grow: 1.5 }, { t: 0.55, kind: 'noise', a: 1, lp: 0.35, d: 3.2 }, { t: 0.55, kind: 'tone', f: 140, f1: 38, a: 1, hold: 0.45 }, { t: 0.55, kind: 'noise', a: 0.6, lp: 0.04, d: 2.2 }] },
+    aura: { len: 1.9, notes: [{ t: 0, kind: 'tone', f: 98, h: 'HUM', a: 0.9, hold: 1.6, grow: 0.6, trem: [9, 0.45] }, { t: 0, kind: 'tone', f: 147, h: 'HUM', a: 0.45, hold: 1.6, grow: 0.8, trem: [11, 0.5] }, { t: 0, kind: 'noise', a: 0.25, lp: 0.05, hold: 1.5, grow: 1, d: 25 }] },
+    scouter: { len: 1.2, notes: [1800, 2000, 2200, 2400, 2600, 2800, 3000, 3200].map((f, i) => ({ t: i * 0.07, kind: 'tone', f, a: 0.55, hold: 0.04 })).concat([{ t: 0.6, kind: 'noise', a: 1, lp: 0.6, d: 22 }, { t: 0.6, f: 2600, a: 0.5, d: 14, p: 'RING' }]) },
+    teleport: { len: 0.7, notes: [{ t: 0, kind: 'tone', f: 2600, f1: 500, a: 0.8, hold: 0.12, h: 'SQUARE' }, { t: 0.16, kind: 'tone', f: 500, f1: 2600, a: 0.8, hold: 0.12, h: 'SQUARE' }, { t: 0.16, kind: 'noise', a: 0.3, lp: 0.5, d: 30 }] },
+    impact: { len: 1.6, notes: [{ t: 0, kind: 'tone', f: 170, f1: 42, a: 1, hold: 0.3 }, { t: 0, kind: 'noise', a: 0.9, lp: 0.2, d: 9 }, { t: 0.02, f: 420, a: 0.45, d: 2.4, p: 'RING' }] }
   };
   const NAMES = Object.keys(SOUNDS);
+  const REST_SOUNDS = [
+    { id: 'doubleDing', label: 'Double ding (yours)' }, { id: 'restDone', label: 'Bell (Strong-style)' }, { id: 'boxing', label: 'Boxing bell' }, { id: 'dingdong', label: 'Ding-dong' },
+    { id: 'beeps', label: 'Watch beeps' }, { id: 'whistle', label: 'Coach whistle' }, { id: 'gong', label: 'Gong' }, { id: 'knock', label: 'Wood knock' },
+    { id: 'powerup', label: 'Power-up', pack: 'anime' }, { id: 'blast', label: 'Energy blast', pack: 'anime' }, { id: 'aura', label: 'Aura charge', pack: 'anime' },
+    { id: 'scouter', label: 'Scouter', pack: 'anime' }, { id: 'teleport', label: 'Teleport', pack: 'anime' }, { id: 'impact', label: 'Big hit', pack: 'anime' }
+  ];
+  const rawName = id => (id === 'restDone' ? 'rest_done' : 'rest_' + String(id).toLowerCase()) + '.wav';
 
   function render(name, sr) {
     const s = SOUNDS[name]; if (!s) throw new Error('unknown sound ' + name);
     sr = sr || 44100;
     const n = Math.round(s.len * sr), out = new Float32Array(n), atk = 0.004 * sr;
+    let seed = 7; const noise = () => { seed = (seed * 16807) % 2147483647; return seed / 1073741823.5 - 1; };   // fixed noise: same samples every render
     for (const note of s.notes) {
       const start = Math.round(note.t * sr);
-      for (const [ratio, amp, fade] of BELL) {
+      if (note.kind === 'tone') {
+        const hold = Math.round(note.hold * sr), rel = Math.round(0.015 * sr), ta = Math.round(0.005 * sr), harm = HARMONICS[note.h || 'SQUARE'];
+        let ph = 0;
+        for (let i = 0; i < hold + rel && start + i < n; i++) {
+          const x = Math.min(1, i / hold);
+          let env = Math.min(1, i / ta) * (i < hold ? 1 : 1 - (i - hold) / rel);
+          if (note.grow) env *= 0.08 + 0.92 * Math.pow(x, note.grow);
+          if (note.trem) env *= 1 - note.trem[1] * (0.5 + 0.5 * Math.sin(2 * Math.PI * note.trem[0] * i / sr));
+          const base = note.f1 ? note.f * Math.pow(note.f1 / note.f, x) : note.f;
+          const f = base + (note.vib ? note.vib[1] * Math.sin(2 * Math.PI * note.vib[0] * i / sr) : 0);
+          ph += 2 * Math.PI * f / sr;
+          let v = 0;
+          if (note.vib) v = Math.sin(ph);
+          else for (const [ratio, amp] of harm) if (f * ratio < sr / 2.2) v += amp * Math.sin(ph * ratio);
+          out[start + i] += note.a * env * (v + (note.air ? note.air * noise() : 0));
+        }
+        continue;
+      }
+      if (note.kind === 'noise') {
+        const hold = Math.round((note.hold || 0) * sr), k = note.d / sr, ta = Math.round(0.003 * sr);
+        let y = 0;
+        for (let i = 0; start + i < n; i++) {
+          let env = Math.min(1, i / ta) * (i < hold ? 1 : Math.exp(-k * (i - hold)));
+          if (note.grow && hold) env *= 0.05 + 0.95 * Math.pow(Math.min(1, i / hold), note.grow);
+          if (env < 1e-4 && i > hold + ta) break;
+          y += note.lp * (noise() - y);
+          out[start + i] += note.a * env * y * 3;
+        }
+        continue;
+      }
+      for (const [ratio, amp, fade] of PARTIALS[note.p || 'BELL']) {
         const f = note.f * ratio; if (f > sr / 2.2) continue;     // stay under Nyquist
         const w = 2 * Math.PI * f / sr, k = note.d * fade / sr;
         for (let i = 0; start + i < n; i++) {
@@ -2934,8 +3259,52 @@ if (typeof globalThis !== 'undefined') globalThis.PRCelebrate = PRCelebrate;
     return ctx;
   }
   function prime() { try { return !!context(); } catch (e) { return false; } }
+  // ---- The user's own sound (IndexedDB, this device only; never synced or backed up) ----
+  const DB = 'gym-sounds', STORE = 'custom', MAX_BYTES = 3 * 1024 * 1024, MAX_SECONDS = 20;
+  let custom = null; // { name, seconds, bytes: ArrayBuffer }
+  function idb() {
+    return new Promise((ok, no) => {
+      const IDB = root.indexedDB; if (!IDB) return no(new Error('This browser cannot store files.'));
+      const r = IDB.open(DB, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+      r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+    });
+  }
+  function tx(mode, fn) { return idb().then(db => new Promise((ok, no) => { const t = db.transaction(STORE, mode), q = fn(t.objectStore(STORE)); t.oncomplete = () => ok(q && q.result); t.onerror = () => no(t.error); })); }
+  function decode(bytes) {
+    const c = context(); if (!c) return Promise.reject(new Error('This phone cannot play sounds here.'));
+    return new Promise((ok, no) => { const p = c.decodeAudioData(bytes.slice(0), ok, no); if (p && p.then) p.then(ok, no); });
+  }
+  function readFile(file) {
+    if (file.arrayBuffer) return file.arrayBuffer();
+    return new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => no(fr.error); fr.readAsArrayBuffer(file); });
+  }
+  function setCustom(file) {
+    if (!file) return Promise.reject(new Error('No file chosen.'));
+    if (file.size > MAX_BYTES) return Promise.reject(new Error('That file is over 3 MB. Pick a shorter clip.'));
+    return readFile(file).then(bytes => decode(bytes).then(buf => {
+      const rec = { name: String(file.name || 'My sound').slice(0, 60), seconds: Math.round(Math.min(buf.duration, MAX_SECONDS) * 10) / 10, bytes };
+      buffers.custom = buf;
+      return tx('readwrite', s => s.put(rec, 'rest')).then(() => { custom = rec; return customInfo(); });
+    }, () => { throw new Error("That file isn't a sound this phone can play. Try an MP3, M4A or WAV."); }));
+  }
+  function loadCustom() {
+    return tx('readonly', s => s.get('rest')).then(rec => {
+      custom = rec || null; delete buffers.custom;
+      if (!custom) return null;
+      return decode(custom.bytes).then(buf => { buffers.custom = buf; return customInfo(); }, () => customInfo());
+    }).catch(() => null);
+  }
+  function clearCustom() { custom = null; delete buffers.custom; return tx('readwrite', s => s.delete('rest')).catch(() => {}); }
+  function customInfo() { return custom ? { name: custom.name, seconds: custom.seconds } : null; }
+
   function play(name) {
     try {
+      if (name === 'custom') {
+        const c = context(), b = buffers.custom; if (!c || !b) return false;
+        const src = c.createBufferSource(); src.buffer = b; src.connect(c.destination); src.start(0, 0, Math.min(b.duration, MAX_SECONDS));
+        return true;
+      }
       const c = context(); if (!c || !SOUNDS[name]) return false;
       if (!buffers[name]) { const x = render(name, c.sampleRate), buf = c.createBuffer(1, x.length, c.sampleRate); buf.getChannelData(0).set(x); buffers[name] = buf; }
       const src = c.createBufferSource(); src.buffer = buffers[name]; src.connect(c.destination); src.start();
@@ -2943,7 +3312,8 @@ if (typeof globalThis !== 'undefined') globalThis.PRCelebrate = PRCelebrate;
     } catch (e) { return false; }
   }
 
-  const GymSounds = { NAMES, prime, play, render, wav };
+  const GymSounds = { NAMES, REST_SOUNDS, rawName, prime, play, render, wav, setCustom, loadCustom, clearCustom, customInfo };
+  if (root.indexedDB && (root.AudioContext || root.webkitAudioContext)) loadCustom();
   root.GymSounds = GymSounds;
   if (typeof module !== 'undefined' && module.exports) module.exports = GymSounds;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -2965,6 +3335,8 @@ if (typeof globalThis !== 'undefined') globalThis.PRCelebrate = PRCelebrate;
  * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
  *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
+ * Rest timer look (settings.restStyle: bar | half | ring | fill | plates | blocks; ring and fill take the whole
+ *   screen like Strong) and end sound (settings.restSound: a GymSounds.REST_SOUNDS id) are picked in Settings.
  * Live workouts open in Gym mode (one set at a time, big steppers, RIR, rest countdown with "up next");
  *   "List view" in the header switches to the full table. Sets may carry rir (0-4, 4 = 4+).
  * Styling uses the shell tokens (--bg --surface --sunk --line --ink --muted --accent --accent-ink
@@ -3403,6 +3775,7 @@ Power Clean (Barbell)|Other|Barbell|`;
 
   const DEFAULT_SETTINGS = {
     unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: false,
+    restStyle: 'bar', restSound: 'restDone', countBuzz: true,
     bar: 20, barLb: 45, platesKg: [25, 20, 15, 10, 5, 2.5, 1.25], platesLb: [45, 35, 25, 10, 5, 2.5],
     rotOverride: null, seeded: false
   };
@@ -3709,9 +4082,9 @@ Power Clean (Barbell)|Other|Barbell|`;
   let audio = null, wakeLock = null;
   // GymSounds (modules/gym-sounds) gives the Strong-style cues; the three plain tones stay as a fallback.
   const GS = () => (typeof window !== 'undefined' && window.GymSounds) || null;
-  function beep() {
+  function beep(name) {
     if (!S.settings.sound) return;
-    if (GS() && GS().play('restDone')) return;
+    if (GS() && (GS().play(name || S.settings.restSound || 'restDone') || GS().play('restDone'))) return;
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
       [0, 0.22, 0.44].forEach((d, i) => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = i === 2 ? 1320 : 880; g.gain.setValueAtTime(0.0001, audio.currentTime + d); g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + d + 0.18); o.connect(g).connect(audio.destination); o.start(audio.currentTime + d); o.stop(audio.currentTime + d + 0.2); });
@@ -4205,8 +4578,24 @@ Power Clean (Barbell)|Other|Barbell|`;
     const st = S.settings, tog = (k, l) => '<label class="lb-check"><input type="checkbox" data-ch="setTog" data-k="' + k + '"' + (st[k] ? ' checked' : '') + '> ' + l + '</label>';
     return '<label class="lb-field inline">Default unit<select class="lb-input" data-ch="setUnit"><option' + (st.unit === 'kg' ? ' selected' : '') + '>kg</option><option' + (st.unit === 'lb' ? ' selected' : '') + '>lb</option></select></label>' +
       '<label class="lb-field inline">Rest after big compounds (s)<input class="lb-input num" inputmode="numeric" value="' + st.restCompound + '" data-ch="setNum" data-k="restCompound"></label><label class="lb-field inline">Rest after other lifts (s)<input class="lb-input num" inputmode="numeric" value="' + st.restIso + '" data-ch="setNum" data-k="restIso"></label>' +
-      tog('sound', 'Beep when rest ends') + tog('vibrate', 'Vibrate when rest ends') + tog('wake', 'Keep the screen on during a workout') + tog('rpe', 'Show an RPE column') + tog('rir', 'Show an RIR column (reps in reserve)') + tog('gym', 'Open workouts in Gym mode (big buttons, one set at a time)');
+      restLookHtml() +
+      tog('sound', 'Play a sound when rest ends') + tog('vibrate', 'Vibrate when rest ends') + tog('countBuzz', 'Buzz at 3, 2 and 1 seconds left') + tog('wake', 'Keep the screen on during a workout') + tog('rpe', 'Show an RPE column') + tog('rir', 'Show an RIR column (reps in reserve)') + tog('gym', 'Open workouts in Gym mode (big buttons, one set at a time)');
   }
+  function restLookHtml() {
+    const st = S.settings, chips = (k, list) => '<div class="lb-row tight lb-chips">' + list.map(([id, l]) => '<button class="lb-btn small' + (st[k] === id ? ' primary' : ' ghost') + '" data-a="setPick" data-k="' + k + '" data-v="' + id + '" aria-pressed="' + (st[k] === id) + '">' + esc(l) + '</button>').join('') + '</div>';
+    return '<div class="lb-field"><span>Rest timer look</span>' + chips('restStyle', REST_STYLES) + '<button class="lb-link small" data-a="restTry">Try it (10 s)</button></div>' +
+      '<div class="lb-field"><span>Sound when rest ends</span>' + chips('restSound', restSounds()) + '</div>';
+  }
+  on('setPick', t => {
+    const k = t.dataset.k, v = t.dataset.v;
+    if (k === 'restStyle' && !REST_STYLES.some(r => r[0] === v)) return;
+    if (k === 'restSound' && !restSounds().some(r => r[0] === v)) return;
+    S.settings[k] = v; saveSettings();
+    if (k === 'restSound' && GS()) { GS().prime(); GS().play(v); }
+    if (k === 'restStyle' && rest) renderRest();
+    rerenderTools();
+  });
+  on('restTry', () => { primeAudio(); previewRest(10); });
   on('setTog', t => { S.settings[t.dataset.k] = t.checked; saveSettings(); });
   on('setUnit', t => { S.settings.unit = t.value; saveSettings(); bump(); });
   on('setNum', t => { const v = num(t.value); if (v) { S.settings[t.dataset.k] = v; saveSettings(); } });
@@ -4773,22 +5162,62 @@ Power Clean (Barbell)|Other|Barbell|`;
   }
 
   // ---------- Rest timer ----------
-  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec } })); } catch (e) { } }
+  // Looks (Settings → Rest timer look). ring and fill cover the whole screen like Strong; "Minimise" drops to the bar for that rest.
+  const REST_STYLES = [['bar', 'Loading bar'], ['half', 'Half circle'], ['ring', 'Full circle'], ['fill', 'Screen fill'], ['plates', 'Plates off the bar'], ['blocks', 'Blocks']];
+  const FULL_STYLES = { ring: 1, fill: 1 };
+  const restSounds = () => (GS() && GS().REST_SOUNDS ? GS().REST_SOUNDS.map(r => [r.id, r.label]).concat(GS().customInfo && GS().customInfo() ? [['custom', 'Your sound: ' + GS().customInfo().name]] : []) : [['restDone', 'Bell (Strong-style)']]);
+  const restStyle = () => (REST_STYLES.some(r => r[0] === S.settings.restStyle) ? S.settings.restStyle : 'bar');
+  // Plates per side, inner to outer; they come off outer first as the rest runs down.
+  const REST_PLATES = [['20', 'b', 1], ['15', 'y', .86], ['10', 'g', .72], ['5', 'w', .56], ['2.5', 'r', .44]];
+  const REST_BLOCKS = 10;
+  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec, sound: S.settings.restSound || 'restDone' } })); } catch (e) { } }
+  function previewRest(sec) { startRest(sec); }
   function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
   on('restManual', t => { primeAudio(); startRest(+t.dataset.s); toast('Rest timer ' + mmss(+t.dataset.s)); renderRest(); });
   on('restAdj', t => { if (!rest) return; rest.end += +t.dataset.d * 1000; rest.total = Math.max(rest.total + +t.dataset.d, 1); persistRest(); renderRest(); });
   on('restSkip', () => stopRest());
+  on('restMini', () => { if (!rest) return; rest.mini = true; persistRest(); renderRest(); });
+  on('restFull', () => { if (!rest) return; rest.mini = false; persistRest(); renderRest(); });
   function restHost() { return E && liveEl && !liveEl.hidden ? liveEl.querySelector('.lb-rest') : floatingRest(); }
   let floatEl;
   function floatingRest() { if (!floatEl) { floatEl = document.createElement('div'); floatEl.className = 'lb-rest floating'; floatEl.hidden = true; overlay.appendChild(floatEl); } return floatEl; }
+  const restLeft = () => Math.max(0, Math.ceil((rest.end - Date.now()) / 1000));
+  const restFrac = () => Math.max(0, Math.min(1, (rest.end - Date.now()) / (rest.total * 1000)));
+  function restVisual(style, p, left) {
+    const time = '<span class="lb-rest-time lb-mono" aria-live="off">' + mmss(left) + '</span>';
+    if (style === 'half') return '<div class="lb-rest-half"><svg viewBox="0 0 200 108" aria-hidden="true"><path class="trk" d="M12 100 A88 88 0 0 1 188 100" pathLength="100"/><path class="val" d="M12 100 A88 88 0 0 1 188 100" pathLength="100"/></svg>' + time + '</div>';
+    if (style === 'ring') return '<div class="lb-rest-ring"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="trk" cx="50" cy="50" r="45" pathLength="100"/><circle class="val" cx="50" cy="50" r="45" pathLength="100"/></svg><div class="lb-rest-mid">' + time + '<span class="lb-rest-of">of ' + mmss(rest.total) + '</span></div></div>';
+    if (style === 'fill') return '<div class="lb-rest-level" aria-hidden="true"></div><div class="lb-rest-mid">' + time + '<span class="lb-rest-of">rest · ' + mmss(rest.total) + '</span></div>';
+    if (style === 'plates') { const side = REST_PLATES.map(([kg, c, h], i) => '<i class="pl ' + c + '" data-i="' + i + '" style="--h:' + h + '" title="' + kg + ' kg"></i>'); return '<div class="lb-rest-plates" aria-hidden="true"><span class="side l">' + side.slice().reverse().join('') + '</span><span class="sleeve"></span><span class="side r">' + side.join('') + '</span></div>'; }
+    if (style === 'blocks') return '<div class="lb-rest-blocks" aria-hidden="true">' + Array.from({ length: REST_BLOCKS }, (_, i) => '<i data-i="' + i + '"></i>').join('') + '</div>';
+    return '<div class="lb-rest-bar"><i></i></div>';
+  }
+  // Moves the countdown without rebuilding it: --p (rest left, 0-1) drives bars, arcs and the fill level.
+  function paintRest(h) {
+    if (!rest || !h) return;
+    const p = restFrac(), left = restLeft();
+    h.style.setProperty('--p', p.toFixed(4));
+    h.classList.toggle('ending', left <= 10);
+    const tEl = h.querySelector('.lb-rest-time'); if (tEl) tEl.textContent = mmss(left);
+    const plates = Math.ceil(p * REST_PLATES.length - 1e-9), blocks = Math.ceil(p * REST_BLOCKS - 1e-9);
+    h.querySelectorAll('.lb-rest-plates .pl').forEach(el => el.classList.toggle('off', +el.dataset.i >= plates));
+    h.querySelectorAll('.lb-rest-blocks i').forEach(el => el.classList.toggle('off', +el.dataset.i >= blocks));
+  }
   function renderRest() {
     const hosts = [liveEl && liveEl.querySelector('.lb-rest'), floatEl].filter(Boolean);
-    hosts.forEach(h => { h.hidden = true; });
+    hosts.forEach(h => { h.hidden = true; h.classList.remove('full'); h.removeAttribute('role'); });
     if (!rest) return;
     const h = restHost(); h.hidden = false;
-    const left = Math.max(0, Math.ceil((rest.end - Date.now()) / 1000));
-    h.innerHTML = '<div class="lb-rest-bar"><i style="width:' + (left / rest.total * 100).toFixed(1) + '%"></i></div><div class="lb-rest-row"><button class="lb-btn small ghost" data-a="restAdj" data-d="-15">−15</button><span class="lb-rest-time lb-mono" aria-live="off">' + mmss(left) + '</span><button class="lb-btn small ghost" data-a="restAdj" data-d="15">+15</button><button class="lb-btn small" data-a="restSkip">Skip</button></div>' + (E && E.view === 'gym' && h !== floatEl ? upNextHtml() : '');
+    const left = restLeft(), chosen = restStyle(), full = FULL_STYLES[chosen] && !rest.mini, style = FULL_STYLES[chosen] && rest.mini ? 'bar' : chosen;
+    const inline = !(style === 'half' || full);
+    const ctl = '<div class="lb-rest-row"><button class="lb-btn small ghost" data-a="restAdj" data-d="-15" aria-label="15 seconds less">−15</button>' + (inline ? '<span class="lb-rest-time lb-mono" aria-live="off">' + mmss(left) + '</span>' : '') + '<button class="lb-btn small ghost" data-a="restAdj" data-d="15" aria-label="15 seconds more">+15</button><button class="lb-btn small" data-a="restSkip">Skip</button>' +
+      (FULL_STYLES[chosen] && rest.mini ? '<button class="lb-btn small ghost" data-a="restFull" aria-label="Full screen">⤢</button>' : '') + '</div>';
+    h.dataset.style = style;
+    h.classList.toggle('full', !!full);
+    if (full) { h.setAttribute('role', 'dialog'); h.setAttribute('aria-label', 'Rest timer'); }
+    h.innerHTML = (full ? '<button class="lb-rest-min" data-a="restMini" data-close aria-label="Minimise rest timer">Minimise</button><div class="lb-rest-eyebrow">Rest</div>' : '') + restVisual(style, restFrac(), left) + ctl + (E && E.view === 'gym' && (h !== floatEl || full) ? upNextHtml() : '');
+    paintRest(h);
   }
   function startTick() {
     if (tickT) return;
@@ -4798,8 +5227,10 @@ Power Clean (Barbell)|Other|Barbell|`;
         const left = Math.ceil((rest.end - Date.now()) / 1000);
         if (left <= 0) { if (!rest.alerted) { rest.alerted = true; beep(); if (S.settings.vibrate && navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch (e) { } toast('Rest is over'); } stopRest(); }
         else {
-          const h = restHost(); const tEl = h && h.querySelector('.lb-rest-time');
-          if (tEl) { tEl.textContent = mmss(left); h.querySelector('.lb-rest-bar i').style.width = (left / rest.total * 100).toFixed(1) + '%'; } else renderRest();
+          // 3-2-1: one short buzz as each of the last three seconds starts, then the end sound.
+          if (left <= 3 && S.settings.countBuzz !== false && rest.buzz !== left) { rest.buzz = left; if (navigator.vibrate) try { navigator.vibrate(left === 1 ? 220 : 120); } catch (e) { } }
+          const h = restHost();
+          if (h && !h.hidden && h.firstChild) paintRest(h); else renderRest();
         }
       }
       if (!rest && !S.active && !E) { clearInterval(tickT); tickT = null; }
@@ -4998,7 +5429,36 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-exfoot .lb-link{position:absolute;right:0}
 .lb-rest{position:absolute;left:0;right:0;bottom:0;background:var(--lb-surface);border-top:1px solid var(--lb-line);padding:8px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));box-shadow:0 -6px 20px rgba(0,0,0,.12)}
 .lb-rest.floating{position:fixed;z-index:15;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));border-radius:14px;border:1px solid var(--lb-line);max-width:480px;margin:0 auto}
-.lb-rest-bar{height:5px;background:var(--lb-sunk);border-radius:3px;overflow:hidden} .lb-rest-bar i{display:block;height:100%;background:var(--lb-accent);transition:width .5s linear}
+.lb-rest-bar{height:5px;background:var(--lb-sunk);border-radius:3px;overflow:hidden} .lb-rest-bar i{display:block;height:100%;width:calc(var(--p,1) * 100%);background:var(--lb-accent);transition:width .5s linear}
+.lb-rest.ending .lb-rest-time{animation:lb-rest-pulse 1s ease-in-out infinite}
+@keyframes lb-rest-pulse{50%{opacity:.55}}
+.lb-rest-half{position:relative;max-width:260px;margin:0 auto} .lb-rest-half svg{display:block;width:100%;height:auto;overflow:visible}
+.lb-rest-half path,.lb-rest-ring circle{fill:none;stroke-width:12;stroke-linecap:round} .lb-rest-ring circle{stroke-width:5}
+.lb-rest-half .trk,.lb-rest-ring .trk{stroke:var(--lb-sunk)} .lb-rest-half .val,.lb-rest-ring .val{stroke:var(--lb-accent);stroke-dasharray:100 100;stroke-dashoffset:calc((1 - var(--p,1)) * 100);transition:stroke-dashoffset .5s linear}
+.lb-rest-half .lb-rest-time{position:absolute;left:0;right:0;bottom:2px;text-align:center}
+.lb-rest-ring{position:relative;width:min(78vw,52vh,360px);aspect-ratio:1;max-width:100%;margin:0 auto} .lb-rest-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.lb-rest-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;pointer-events:none}
+.lb-rest-of{color:var(--lb-muted);font-size:.95rem}
+.lb-rest-plates{display:flex;align-items:center;justify-content:center;height:58px;margin:4px auto 2px;max-width:100%}
+.lb-rest-plates .sleeve{flex:0 1 120px;height:6px;border-radius:3px;background:var(--lb-muted);opacity:.6}
+.lb-rest-plates .side{display:flex;align-items:center;gap:2px}
+.lb-rest-plates .pl{display:block;width:9px;height:calc(var(--h) * 56px);border-radius:3px;transition:transform .45s ease,opacity .45s ease}
+.lb-rest-plates .pl.b{background:#1F5FD1}.lb-rest-plates .pl.y{background:#F2C230}.lb-rest-plates .pl.g{background:#1B8048}.lb-rest-plates .pl.w{background:#EEF0F2;box-shadow:inset 0 0 0 1px #A9B1BA}.lb-rest-plates .pl.r{background:#D0302A}
+.lb-rest-plates .l .pl.off{transform:translateX(-26px);opacity:0}.lb-rest-plates .r .pl.off{transform:translateX(26px);opacity:0}
+.lb-rest-blocks{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;max-width:720px;margin:0 auto}
+.lb-rest-blocks i{display:block;height:14px;border-radius:3px;background:var(--lb-accent);transition:background-color .3s ease,opacity .3s ease}
+.lb-rest-blocks i.off{background:var(--lb-sunk)}
+.lb-rest.full{position:fixed;inset:0;z-index:30;border:0;border-radius:0;max-width:none;margin:0;box-shadow:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));background:var(--lb-bg);overflow:hidden;animation:lb-rest-in .25s ease-out}
+@keyframes lb-rest-in{from{opacity:0;transform:scale(.98)}}
+.lb-rest.full .lb-rest-time{font-family:var(--lb-display);font-size:clamp(3.5rem,18vw,6rem);line-height:1;min-width:0}
+.lb-rest.full .lb-rest-row{position:relative;z-index:1} .lb-rest.full .lb-rest-row .lb-btn{min-height:56px;min-width:72px;font-size:1.05rem}
+.lb-rest.full .lb-rest-next{position:relative;z-index:1}
+.lb-rest-eyebrow{position:relative;z-index:1;text-transform:uppercase;letter-spacing:.12em;font-weight:700;font-size:.8rem;color:var(--lb-muted)}
+.lb-rest-min{position:absolute;z-index:2;top:calc(12px + env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--lb-line);background:var(--lb-surface);color:var(--lb-ink);font:600 .9rem var(--lb-body);cursor:pointer}
+.lb-rest.full[data-style="fill"] .lb-rest-mid{position:relative;inset:auto;z-index:1}
+.lb-rest-level{position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,1) * 100%);background:color-mix(in srgb,var(--lb-accent) 26%,var(--lb-bg));border-top:3px solid var(--lb-accent);transition:height .5s linear}
+.lb-chips{flex-wrap:wrap;gap:6px;margin-top:4px}
+@media (prefers-reduced-motion:reduce){.lb-rest *,.lb-rest{transition:none!important;animation:none!important}}
 .lb-rest-row{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:6px;max-width:720px;margin-left:auto;margin-right:auto}
 .lb-rest-time{font-size:1.7rem;font-weight:700;min-width:5.5rem;text-align:center}
 .lb-headmid{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.15}
@@ -5098,7 +5558,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   // Host settings screen: read the logger's settings and change some of them (gym, unit, rest) without opening its Tools tab.
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
-  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, settings, setSettings, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -23062,7 +23522,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = CloudStore
  *   AndroidShell.notifyAt(id, when, title, body) / AndroidShell.cancel(id)
  *
  * Back button order: a registered handler → a visible sheet/dialog's close button → the Today tab → minimise the app.
- * Rest timer: the workout logger fires "lb:rest" {end,total} and "lb:rest-stop" on window; a local
+ * Rest timer: the workout logger fires "lb:rest" {end,total,sound} and "lb:rest-stop" on window; a local
  * notification is scheduled 1 s after the end so the in-app beep (which cancels it) wins while the app is open.
  */
 window.AndroidShell = (function () {
@@ -23116,14 +23576,26 @@ window.AndroidShell = (function () {
     try { const bg = rgbToHex(getComputedStyle(doc.body).backgroundColor); if (bg) sb.setBackgroundColor({ color: bg }); } catch (e) { }
   }
 
-  // The rest notification has its own channel that plays the GymSounds "rest over" ding
-  // (android/app/src/main/res/raw/rest_done.wav, written by modules/gym-sounds/make-wav.js).
-  // A channel's sound is fixed once created, so a new sound needs a new channel id.
+  // The rest notification has its own channel that plays the rest sound picked in Settings (GymSounds
+  // REST_SOUNDS; android/app/src/main/res/raw/rest_*.wav, written by modules/gym-sounds/make-wav.js).
+  // A channel's sound is fixed once created, so each sound has its own channel, and a changed sound needs a new id.
   const REST_CHANNEL = { id: "rest_v1", name: "Rest timer", description: "Rings when your rest is over", importance: 5, visibility: 1, sound: "rest_done.wav", vibration: true };
-  let channelReady = null;
-  function restChannel(ln) {
-    if (!channelReady) channelReady = Promise.resolve(ln.createChannel ? ln.createChannel(REST_CHANNEL) : null).then(() => true, () => false);
-    return channelReady;
+  function channelFor(sound) {
+    if (!sound || sound === "restDone" || !/^[a-z0-9]+$/i.test(sound)) return REST_CHANNEL;
+    const GS = typeof window !== "undefined" && window.GymSounds;
+    const pick = GS && GS.REST_SOUNDS && GS.REST_SOUNDS.find(s => s.id === sound);
+    if (GS && GS.REST_SOUNDS && !pick) return REST_CHANNEL;
+    return Object.assign({}, REST_CHANNEL, { id: "rest_" + sound.toLowerCase() + "_v1", name: "Rest timer: " + (pick ? pick.label : sound), sound: "rest_" + sound.toLowerCase() + ".wav" });
+  }
+  const channelReady = {};
+  function restChannel(ln, ch) {
+    ch = ch || REST_CHANNEL;
+    if (!channelReady[ch.id]) channelReady[ch.id] = Promise.resolve(ln.createChannel ? ln.createChannel(ch) : null).then(() => true, () => false);
+    return channelReady[ch.id];
+  }
+  function restSound(d) {
+    if (d && d.sound) return d.sound;
+    try { return window.WorkoutLogger && WorkoutLogger.settings && WorkoutLogger.settings().restSound; } catch (e) { return null; }
   }
 
   async function notifyAt(id, when, title, body, extra) {
@@ -23147,14 +23619,206 @@ window.AndroidShell = (function () {
     syncStatusBar(document);
     try { new MutationObserver(() => syncStatusBar(document)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) { }
     if (window.matchMedia) { try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => syncStatusBar(document)); } catch (e) { } }
-    window.addEventListener("lb:rest", e => { const d = (e && e.detail) || {}; if (d.end) restChannel(plugin("LocalNotifications") || {}).then(ok => notifyAt(REST_ID, d.end + 1000, "Rest is over", "Back to the next set.", ok ? { channelId: REST_CHANNEL.id, sound: REST_CHANNEL.sound } : null)); });
+    window.addEventListener("lb:rest", e => { const d = (e && e.detail) || {}; if (!d.end) return; const ch = channelFor(restSound(d)); restChannel(plugin("LocalNotifications") || {}, ch).then(ok => notifyAt(REST_ID, d.end + 1000, "Rest is over", "Back to the next set.", ok ? { channelId: ch.id, sound: ch.sound } : null)); });
     window.addEventListener("lb:rest-stop", () => cancel(REST_ID));
     return true;
   }
 
-  return { isNative, init, onBack, backPress, notifyAt, cancel, syncStatusBar, REST_CHANNEL, _handlers: handlers };
+  return { isNative, init, onBack, backPress, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;
+</script>
+<script>
+/*
+ * AppUpdate: an "Update" button inside the Android app.
+ *
+ * It reads the private GitHub release `android-latest` (the one CI fills on every merge to main),
+ * compares its build number with the installed versionCode, downloads aziz-fitness.apk and hands it
+ * to Android's installer. Android still shows its own "Update" confirmation; the app's data stays
+ * because every build is signed with the same key (the native side refuses a file signed otherwise).
+ *
+ * The repo is private, so the app needs a read-only GitHub key (fine-grained token, this repo only,
+ * Contents: read). It is pasted once in Settings and kept only on this phone (localStorage key
+ * "aziz-update-token"): never in the APK, never in the synced data, never in backups.
+ *
+ * Native side: Capacitor plugin "AppUpdate" (android/AppUpdatePlugin.kt in this folder):
+ *   info() -> {versionCode, versionName}      latest({token, url}) -> {status, body}
+ *   download({url, token, minVersion}) -> {path, versionCode}   install({path})
+ *   canInstall() -> {allowed}                 openInstallSettings()
+ *   event "progress" {done, total}
+ *
+ * Shell API: AppUpdate.bind({render, toast}); AppUpdate.cardHTML(); AppUpdate.bannerHTML();
+ * AppUpdate.autoCheck(). Pure helpers for tests: parseRelease, compare, errorText, TOKEN_URL.
+ */
+(function (root) {
+  const REPO = { owner: "Shalaglag", repo: "aziz-fitness-app", tag: "android-latest", asset: "aziz-fitness.apk" };
+  const RELEASE_URL = `https://api.github.com/repos/${REPO.owner}/${REPO.repo}/releases/tags/${REPO.tag}`;
+  const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new?name=Aziz%20Fitness%20updates&description=Lets%20the%20Aziz%20Fitness%20app%20download%20its%20own%20updates&target_name=" + REPO.owner + "&expires_in=none&contents=read";
+  const KEY = "aziz-update-token";
+  const AUTO_EVERY = 6 * 3600e3;
+
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // GitHub release JSON -> {build, sha, assetUrl, size, at}. The body says "Newest build from main (build 71, <sha>)".
+  function parseRelease(json) {
+    if (!json || typeof json !== "object") return null;
+    const m = /build\s+(\d+)(?:,\s*([0-9a-f]{7,40}))?/i.exec(json.body || "");
+    const a = (json.assets || []).find(x => x && x.name === REPO.asset);
+    if (!m || !a || !a.url) return null;
+    return { build: +m[1], sha: m[2] || "", assetUrl: a.url, size: +a.size || 0, at: a.updated_at || json.updated_at || "" };
+  }
+  function compare(current, latest) {
+    if (!latest) return "unknown";
+    if (!current || !(current.versionCode > 0)) return "unknown";
+    return latest.build > current.versionCode ? "available" : "up-to-date";
+  }
+  function errorText(code, status) {
+    if (code === "no-token") return "Add your download key first.";
+    if (status === 401) return "GitHub rejected the key. It may have expired: make a new one and paste it again.";
+    if (status === 403 || status === 404) return "The key can't see the app's repository. Make sure it's for aziz-fitness-app with Contents: Read-only.";
+    if (code === "signature") return "That file isn't signed with your app's key, so it was not installed.";
+    if (code === "not-newer") return "That build is not newer than the one you have.";
+    if (code === "install-not-allowed") return "Android needs your OK first: allow Mizan to install updates, then tap Update again.";
+    if (code === "offline") return "No internet connection. Try again on Wi-Fi or data.";
+    return "Couldn't check for updates right now. Try again in a minute.";
+  }
+
+  const S = { phase: "idle", current: null, latest: null, msg: "", done: 0, total: 0, editing: false };
+  let ctx = { render: () => {}, toast: () => {} };
+
+  const cap = () => root.Capacitor || null;
+  const native = () => { const c = cap(); try { return !!(c && c.isNativePlatform && c.isNativePlatform()); } catch (e) { return false; } };
+  const plugin = () => { const c = cap(); return (c && c.Plugins && c.Plugins.AppUpdate) || null; };
+  const store = () => { try { return root.localStorage || null; } catch (e) { return null; } };
+  function getToken() { try { return (store() && store().getItem(KEY)) || ""; } catch (e) { return ""; } }
+  function setToken(t) { try { const s = store(); if (!s) return; t ? s.setItem(KEY, t.trim()) : s.removeItem(KEY); } catch (e) { } }
+  const redraw = () => { try { ctx.render(); } catch (e) { } };
+
+  async function current() {
+    if (S.current) return S.current;
+    const p = plugin(); if (!p) return null;
+    try { S.current = await p.info(); } catch (e) { S.current = null; }
+    return S.current;
+  }
+
+  async function check(opts = {}) {
+    const p = plugin(), token = getToken();
+    if (!p) { S.phase = "web"; redraw(); return S; }
+    await current();
+    if (!token) { S.phase = "no-token"; S.msg = ""; redraw(); return S; }
+    S.phase = "checking"; S.msg = ""; if (!opts.quiet) redraw();
+    try {
+      const r = await p.latest({ token, url: RELEASE_URL });
+      if (r.status !== 200) { S.phase = "error"; S.msg = errorText("http", r.status); redraw(); return S; }
+      S.latest = parseRelease(JSON.parse(r.body));
+      const c = compare(S.current, S.latest);
+      S.phase = c === "unknown" ? "error" : c; S.msg = c === "unknown" ? errorText() : "";
+    } catch (e) { S.phase = "error"; S.msg = errorText(e && e.code === "offline" ? "offline" : ""); }
+    redraw(); return S;
+  }
+
+  async function update() {
+    const p = plugin(), token = getToken();
+    if (!p || !S.latest) return;
+    try {
+      const ok = await p.canInstall();
+      if (!ok.allowed) { S.phase = "allow"; S.msg = errorText("install-not-allowed"); redraw(); return; }
+      S.phase = "downloading"; S.done = 0; S.total = S.latest.size; S.msg = ""; redraw();
+      const sub = p.addListener ? await p.addListener("progress", e => { S.done = e.done || 0; S.total = e.total || S.total; const bar = root.document && root.document.getElementById("auBar"); if (bar) bar.style.width = pct() + "%"; }) : null;
+      let got;
+      try { got = await p.download({ url: S.latest.assetUrl, token, minVersion: (S.current && S.current.versionCode || 0) + 1 }); }
+      finally { try { sub && sub.remove && sub.remove(); } catch (e) { } }
+      S.phase = "installing"; redraw();
+      await p.install({ path: got.path });
+    } catch (e) {
+      const code = e && e.code, status = e && e.data && e.data.status;
+      S.phase = code === "install-not-allowed" ? "allow" : "available"; S.msg = errorText(code, status); redraw();
+    }
+  }
+  const pct = () => S.total ? Math.min(100, Math.round(S.done / S.total * 100)) : 0;
+  const mb = n => (n / 1048576).toFixed(1) + " MB";
+
+  function cardHTML() {
+    const cur = S.current, has = !!getToken();
+    const ver = cur ? `Installed: build ${esc(cur.versionCode)}${cur.versionName ? " · " + esc(cur.versionName) : ""}` : "";
+    let body = "";
+    if (S.phase === "web" || !native()) return `<div class="card au"><h3>App updates</h3><p class="muted">Updates install from inside the Android app. Here, get the newest APK from the release page.</p></div>`;
+    if (!has || S.editing) {
+      body = `<p class="muted">One-time setup so the app can fetch its own updates from your private GitHub repository.</p>
+      <ol class="au-steps">
+        <li><a href="${TOKEN_URL}" target="_blank" rel="noopener">Open GitHub's key page</a> and sign in.</li>
+        <li>Repository access: <b>Only select repositories</b> → <b>aziz-fitness-app</b>.</li>
+        <li>Permissions → Repository → <b>Contents: Read-only</b> (nothing else).</li>
+        <li>Tap <b>Generate token</b>, copy it and paste it here.</li>
+      </ol>
+      <div class="row"><input id="auToken" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" aria-label="GitHub download key" style="flex:1;min-width:0">
+      <button class="btn small" data-au="save">Save</button>${has ? `<button class="btn ghost small" data-au="cancel">Cancel</button>` : ""}</div>
+      <p class="muted" style="font-size:.8rem">The key can only read this one repository and stays on this phone. It is not synced or put in backups.</p>`;
+    } else if (S.phase === "downloading") {
+      body = `<p>Downloading build ${esc(S.latest && S.latest.build)}…</p><div class="au-track" aria-hidden="true"><span id="auBar" style="width:${pct()}%"></span></div>`;
+    } else if (S.phase === "installing") {
+      body = `<p>Android is asking you to confirm. Tap <b>Update</b> there. Your data stays.</p><div class="row"><button class="btn ghost small" data-au="update">Open the installer again</button></div>`;
+    } else if (S.phase === "available" || S.phase === "allow") {
+      body = `<p><b>Build ${esc(S.latest.build)} is ready</b>${S.latest.size ? ` (${mb(S.latest.size)})` : ""}.</p>
+      <div class="row">${S.phase === "allow" ? `<button class="btn small" data-au="allow">Allow updates</button>` : ""}<button class="btn small${S.phase === "allow" ? " ghost" : ""}" data-au="update">Update now</button></div>`;
+    } else if (S.phase === "checking") {
+      body = `<p class="muted">Checking…</p>`;
+    } else if (S.phase === "up-to-date") {
+      body = `<p>You have the newest version.</p><div class="row"><button class="btn ghost small" data-au="check">Check again</button></div>`;
+    } else {
+      body = `<div class="row"><button class="btn small" data-au="check">Check for updates</button></div>`;
+    }
+    const foot = has && !S.editing ? `<p class="muted" style="font-size:.8rem"><button class="linkbtn" data-au="edit">Change download key</button> · <button class="linkbtn" data-au="forget">Remove it</button></p>` : "";
+    return `<div class="card au" id="auCard"><h3>App updates</h3>${ver ? `<p class="muted" style="font-size:.85rem">${ver}</p>` : ""}${body}${S.msg ? `<p class="au-msg" role="status">${esc(S.msg)}</p>` : ""}${foot}</div>`;
+  }
+  function bannerHTML() {
+    if (!native() || !S.latest || !(S.phase === "available" || S.phase === "allow")) return "";
+    return `<div class="card au-banner"><div class="spread"><span><b>New version ready</b> · build ${esc(S.latest.build)}</span><button class="btn small" data-au="update">Update</button></div></div>`;
+  }
+
+  async function onClick(e) {
+    const b = e.target.closest && e.target.closest("[data-au]"); if (!b) return;
+    const a = b.dataset.au;
+    if (a === "save") {
+      const v = (root.document.getElementById("auToken") || {}).value || "";
+      if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(v.trim())) { ctx.toast("That doesn't look like a GitHub key (it starts with github_pat_)."); return; }
+      setToken(v); S.editing = false; await check();
+      if (S.phase === "error") { ctx.toast(S.msg); } else ctx.toast("Saved. Updates will be checked automatically.");
+    } else if (a === "cancel") { S.editing = false; redraw(); }
+    else if (a === "edit") { S.editing = true; redraw(); }
+    else if (a === "forget") { setToken(""); S.phase = "no-token"; S.latest = null; S.msg = ""; redraw(); ctx.toast("Download key removed from this phone."); }
+    else if (a === "check") check();
+    else if (a === "update") update();
+    else if (a === "allow") { const p = plugin(); if (p) { try { await p.openInstallSettings(); } catch (er) { } } S.phase = "available"; S.msg = "After you allow it, come back and tap Update now."; redraw(); }
+  }
+
+  function bind(o) {
+    ctx = Object.assign(ctx, o || {});
+    if (root.document && !bind.done) { root.document.addEventListener("click", onClick); bind.done = true; }
+    if (native()) {
+      current().then(redraw); autoCheck();
+      const app = cap().Plugins && cap().Plugins.App;
+      if (app && app.addListener && !bind.resume) { bind.resume = true; try { app.addListener("resume", () => autoCheck()); } catch (e) { } }
+    }
+  }
+  // Quietly checks at start-up and when the app comes back to the front, at most every 6 hours, only with a key.
+  function autoCheck(now) {
+    if (!native() || !getToken()) return false;
+    const t = now || Date.now();
+    if (S.lastAuto && t - S.lastAuto < AUTO_EVERY) return false;
+    S.lastAuto = t; check({ quiet: true });
+    return true;
+  }
+
+  const css = `.au-steps{margin:.4em 0 .6em 1.2em;padding:0;font-size:.9rem}.au-steps li{margin:.2em 0}
+.au-track{height:8px;border-radius:4px;background:var(--line,#ddd);overflow:hidden}.au-track span{display:block;height:100%;background:var(--accent,#2b6);transition:width .2s}
+.au-msg{font-size:.88rem;margin:.5em 0 0}.au-banner .spread{gap:10px;align-items:center}
+.linkbtn{background:none;border:0;padding:0;color:inherit;text-decoration:underline;font:inherit;cursor:pointer}`;
+
+  const AppUpdate = { REPO, RELEASE_URL, TOKEN_URL, parseRelease, compare, errorText, check, update, cardHTML, bannerHTML, bind, autoCheck, getToken, setToken, css, _state: S };
+  root.AppUpdate = AppUpdate;
+  if (typeof module !== "undefined" && module.exports) module.exports = AppUpdate;
+})(typeof window !== "undefined" ? window : globalThis);
 </script>
 <script>
 try{ const th=localStorage.getItem("aziz-cut-theme"); if(th==="light"||th==="dark") document.documentElement.setAttribute("data-theme",th); }catch(e){}
@@ -23467,6 +24131,20 @@ try{
     }
   }
 }catch(e){ console.warn("HealthConnectSync", e); }
+/* WaterH via Fitbit: read the Google Health API water log (GoogleHealthWater); a no-op without the Capacitor plugin */
+let ghSync=null;
+try{
+  if(window.GoogleHealthWater){
+    const ghPlugin=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.GoogleHealth)||null;
+    ghSync=GoogleHealthWater.create({plugin:ghPlugin, getDay, put, storage:window.localStorage, onChange:()=>{ renderPending=true; }});
+    if(ghPlugin){
+      const ghAuto=()=>{ ghSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)){ render(); toast(`Fitbit: ${r.imported} new water log${r.imported===1?"":"s"}`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
+      document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") ghAuto(); });
+      window.addEventListener("online",ghAuto);
+      setTimeout(ghAuto, 2500);
+    }
+  }
+}catch(e){ console.warn("GoogleHealthWater", e); }
 try{ const m=localStorage.getItem("aziz-cut-tmode"); if(m) view.trainMode=m; }catch(e){}
 try{ const t=localStorage.getItem("aziz-cut-tab"); if(t) view.tab=t; }catch(e){}
 if(["today","train","food","progress","guide","settings"].includes(location.hash.slice(1))) view.tab=location.hash.slice(1);
@@ -23474,7 +24152,7 @@ const main = document.getElementById("main");
 main.before(document.getElementById("lbHost")); // the full logger sits above the Train extras
 
 function currentAccent(){ return S.docs.prefs.main?.accent || "coral"; }
-function applyAccent(a){ if(["coral","red","blue","yellow","green"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
+function applyAccent(a){ if(["coral","red","white","green","yellow","blue"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
 let lastTab=null;
 function render(){
   renderPending=false;
@@ -23711,6 +24389,7 @@ function vToday(){
       </div>`;
   return `
   ${ddGlance(d)}
+  ${window.AppUpdate?AppUpdate.bannerHTML():""}
   ${backupNudge()}
   <div class="card hero">
     <div class="spread"><span class="label">${DAYTYPE_LABEL[type]}</span>${strictDay>=1&&strictDay<=14?`<span class="pill info">Strict tracking · day ${strictDay} of 14</span>`:""}</div>
@@ -23737,6 +24416,8 @@ function vToday(){
       <div class="spread"><h3>Water</h3><span class="muted"><span class="num">${(dayFluid(day)/1000).toFixed(2)} L</span> · target ${waterTarget}</span></div>
       ${day.waterh?`<p class="muted" style="font-size:.85rem">WaterH ${(day.waterh.ml/1000).toFixed(2)} L · synced ${new Date(day.waterh.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${day.water?` · manual ${(day.water/1000).toFixed(2)} L`:""}</p>`:""}
       <div class="row"><button class="chip" data-act="water" data-ml="250">+250 ml</button><button class="chip" data-act="water" data-ml="500">+500 ml</button><button class="chip" data-act="water" data-ml="1000">+1 L</button><button class="chip" data-act="water" data-ml="-250">−250</button></div>
+      ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.html(day):"")}
+      ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.guideHTML():"")}
       ${safeMod("HealthConnectSync",()=>hcSync.html(day))}
       ${safeMod("HealthConnectSync",()=>hcSync.guideHTML())}
       <details><summary>Sync WaterH bottle by hand</summary>
@@ -24205,7 +24886,7 @@ function vSettings(){
   ${tabHead("Settings", `<button class="btn ghost small" data-act="gotab" data-tab="today">Done</button>`)}
   <div class="card"><h3>Appearance</h3><div class="set-list">
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
-    ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","Red"],["blue","Blue"],["yellow","Yellow"],["green","Green"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
+    ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","2.5 kg red"],["white","5 kg white"],["green","10 kg green"],["yellow","15 kg yellow"],["blue","20 kg blue"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
   </div></div>
   <div class="card"><h3>Workout</h3><div class="set-list">
     ${row("Train screen", full?"Templates, Start workout, history":"Today's plan with set rows", seg("tmode",[["full","Full logger"],["quick","Quick log"]],view.trainMode).replace(/data-k=/g,'data-m='))}
@@ -24213,7 +24894,12 @@ function vSettings(){
     ${lb?row("Rest after big lifts","Bench, rows, hack squat",seg("lbset",restOpts,lb.restCompound,'data-s="restCompound"')):row("Rest timer","Starts when you tick a set",seg("rest",restOpts,restSec()))}
     ${lb?row("Rest after other lifts","",seg("lbset",restOpts,lb.restIso,'data-s="restIso"')):""}
     ${row("Start the timer after each set","",sw("restauto",m.restAuto!==false,"Start the rest timer after each set"))}
-    ${lb?row("Beep when rest ends","",sw("lbtog",lb.sound,"Beep when rest ends",'data-s="sound"'))+row("Vibrate when rest ends","",sw("lbtog",lb.vibrate,"Vibrate when rest ends",'data-s="vibrate"'))+row("Keep the screen on","During a workout",sw("lbtog",lb.wake,"Keep the screen on during a workout",'data-s="wake"')):""}
+    ${lb&&WorkoutLogger.restStyles?row("Rest timer look",'Full circle and Screen fill take the whole screen, like Strong',`<span class="row" style="gap:6px;justify-content:flex-end">${WorkoutLogger.restStyles.map(([k,l])=>`<button type="button" class="chip" data-act="lbpick" data-s="restStyle" data-k="${k}" aria-pressed="${(lb.restStyle||"bar")===k}">${l}</button>`).join("")}<button type="button" class="btn ghost small" data-act="lbtry">Try it (10 s)</button></span>`):""}
+    ${lb&&window.GymSounds&&GymSounds.REST_SOUNDS?(()=>{ const cur=lb.restSound||"restDone", chip=(id,label)=>`<button type="button" class="chip" data-act="lbpick" data-s="restSound" data-k="${id}" aria-pressed="${cur===id}">${esc(label)}</button>`, mine=GymSounds.customInfo&&GymSounds.customInfo();
+      return row("Sound when rest ends","Tap one to hear it. A locked phone rings the same sound.",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.REST_SOUNDS.filter(s=>!s.pack).map(s=>chip(s.id,s.label)).join("")}</span>`)
+        +row("Anime-style pack","Original power-up and battle effects",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.REST_SOUNDS.filter(s=>s.pack==="anime").map(s=>chip(s.id,s.label)).join("")}</span>`)
+        +row("Your own sound", mine?`${esc(mine.name)} · ${mine.seconds} s. Kept on this phone only. A locked phone rings the bell instead.`:"Any MP3, M4A or WAV on your phone, up to 3 MB. Kept on this phone only.",`<span class="row" style="gap:6px;justify-content:flex-end">${mine?chip("custom","Use my sound")+`<button type="button" class="btn ghost small" data-act="lbsndclear">Remove</button>`:""}<label class="btn ghost small" style="cursor:pointer">${mine?"Replace":"Add your own sound"}<input type="file" id="restSoundFile" accept="audio/*" hidden></label></span>`); })():""}
+    ${lb?row("Play a sound when rest ends","",sw("lbtog",lb.sound,"Play a sound when rest ends",'data-s="sound"'))+row("Vibrate when rest ends","",sw("lbtog",lb.vibrate,"Vibrate when rest ends",'data-s="vibrate"'))+row("Buzz at 3, 2, 1","One short buzz for each of the last three seconds",sw("lbtog",lb.countBuzz!==false,"Buzz at 3, 2 and 1 seconds left",'data-s="countBuzz"'))+row("Keep the screen on","During a workout",sw("lbtog",lb.wake,"Keep the screen on during a workout",'data-s="wake"')):""}
   </div></div>
   <div class="card"><h3>Units</h3><div class="set-list">
     ${lb?row("Default unit","New exercises in the full logger",seg("lbset",[["kg","kg"],["lb","lb"]],lb.unit,'data-s="unit"')):""}
@@ -24224,6 +24910,7 @@ function vSettings(){
   ${yourNumbersCard()}
   ${fold("fprefs2","Food preferences","Likes, never-pick", foodPrefsHtml())}
   ${fold("rem","Reminders","Phone calendar", safeMod("CalendarReminders",()=>CalendarReminders.html(S.docs.prefs.main||{}, crCtx())))}
+  ${window.AppUpdate?safe("app updates",()=>AppUpdate.cardHTML()):""}
   <div class="card"><h3>Account and sync</h3>
     <p class="muted" style="font-size:.9rem">${who?`Signed in as <b>${esc(who)}</b>. Everything syncs to your account; this phone keeps a copy for offline use.`:`Not signed in. Everything is saved on this phone${window.CloudStore?". Sign in from the banner at the top to sync across devices":""}.`}</p>
     <p class="muted" style="font-size:.85rem">Status: <span id="syncCopy">${esc(document.getElementById("sync").textContent)}</span>. Changing any setting never deletes your history.</p>
@@ -24231,6 +24918,8 @@ function vSettings(){
 }
 /* ===================== Events ===================== */
 // Android app (modules/android-shell): back button closes sheets, then returns to Today, then minimises.
+// In-app updates (modules/app-update): Settings card + Today banner; checks the private release with a key kept on the phone.
+if(window.AppUpdate){ try{ const st=document.createElement("style"); st.textContent=AppUpdate.css; document.head.appendChild(st); AppUpdate.bind({ render, toast }); }catch(e){} }
 if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
 function openDrawer(on){ const d=document.getElementById("drawer"); d.hidden=!on; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
 document.getElementById("menuBtn").onclick=()=>openDrawer(true);
@@ -24338,6 +25027,9 @@ main.addEventListener("click",e=>{
   if(a==="rest"){ const p=clone(S.docs.prefs.main); p.restSec=+el.dataset.k; put("prefs","main",p); return; }
   if(a==="restauto"){ const p=clone(S.docs.prefs.main); p.restAuto=!(p.restAuto!==false); put("prefs","main",p); return; }
   if(a==="lbset"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings(k==="gym" ? {gym:v==="gym"} : k==="unit" ? {unit:v} : {[k]:+v}); if(k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=+v; put("prefs","main",p); } else render(); return; }
+  if(a==="lbpick"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings({[k]:v}); if(k==="restSound"&&window.GymSounds){ GymSounds.prime(); GymSounds.play(v); } render(); return; }
+  if(a==="lbsndclear"){ if(!window.GymSounds) return; GymSounds.clearCustom().then(()=>{ if(lbSettings()&&lbSettings().restSound==="custom") WorkoutLogger.setSettings({restSound:"restDone"}); toast("Your sound was removed"); render(); }); return; }
+  if(a==="lbtry"){ if(window.WorkoutLogger&&WorkoutLogger.previewRest){ if(window.GymSounds) GymSounds.prime(); WorkoutLogger.previewRest(10); } return; }
   if(a==="lbtog"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, cur=lbSettings()||{}; WorkoutLogger.setSettings({[k]:!cur[k]}); render(); return; }
   if(a==="gotrain"){ view.tab="train"; render(); window.scrollTo(0,0); }
   else if(a==="gofood"){ view.tab="food"; render(); window.scrollTo(0,0); }
@@ -24375,6 +25067,9 @@ main.addEventListener("click",e=>{
   else if(a==="hcsync"){ if(!hcSync) return; el.disabled=true; hcSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : r.imported||r.removed ? `Water: ${r.imported} new record${r.imported===1?"":"s"}${r.removed?`, ${r.removed} removed`:""}` : `Health Connect: ${r.seen||0} record${r.seen===1?"":"s"} seen, nothing new`); }); }
   else if(a==="hcperm"){ if(!hcSync) return; hcSync.requestAccess().then(ok=>{ render(); if(ok) hcSync.syncNow({reason:"manual"}).then(()=>render()); else toast("Hydration access not granted"); }); }
   else if(a==="hcsettings"){ if(hcSync) hcSync.openSettings(); }
+  else if(a==="ghconnect"){ if(!ghSync) return; el.disabled=true; ghSync.connect().then(r=>{ render(); toast(r.error ? `Fitbit: ${r.error}` : `Fitbit connected · ${r.imported||0} water log${r.imported===1?"":"s"} imported`); }); }
+  else if(a==="ghsync"){ if(!ghSync) return; el.disabled=true; ghSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Fitbit: ${r.error}` : `Fitbit: read ${r.seen||0} log${r.seen===1?"":"s"}, ${r.imported||0} new${r.removed?`, ${r.removed} removed`:""}`); }); }
+  else if(a==="ghdisconnect"){ if(ghSync){ ghSync.disconnect(); render(); toast("Fitbit disconnected. Logged water stays."); } }
   else if(a==="hcreread"){ if(!hcSync) return; el.disabled=true; hcSync.reread().then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : `Health Connect: read ${r.seen||0} record${r.seen===1?"":"s"}, ${r.imported||0} new`); }); }
   else if(a==="tmode"){ view.trainMode=el.dataset.m; try{localStorage.setItem("aziz-cut-tmode",view.trainMode)}catch(_){} render(); }
   else if(a==="pick"){ runPicker(); }
@@ -24389,7 +25084,8 @@ main.addEventListener("change",e=>{
   if(el.id==="strongFile" && el.files && el.files[0]){ importStrong(el.files[0]); return; }
   if(el.id==="stepsFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyStepsText(String(fr.result)); fr.readAsText(el.files[0]); return; }
   if(el.id==="sleepH"){ const day=getDay(d); const v=parseFloat(el.value); if(isFinite(v)&&v>=0&&v<=16) day.sleep=v; else delete day.sleep; saveDay(day,{quiet:true}); renderPending=true; return; }
-  if(el.id==="waterhFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyWaterHText(String(fr.result)); fr.readAsText(el.files[0]); return; }
+  if(el.id==="restSoundFile" && el.files && el.files[0]){ if(!window.GymSounds||!GymSounds.setCustom) return; GymSounds.prime(); GymSounds.setCustom(el.files[0]).then(info=>{ if(window.WorkoutLogger&&WorkoutLogger.setSettings) WorkoutLogger.setSettings({restSound:"custom"}); GymSounds.play("custom"); toast("Rest will end with "+info.name); render(); }, err=>toast(err.message||"That sound could not be added")); el.value=""; return; }
+    if(el.id==="waterhFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyWaterHText(String(fr.result)); fr.readAsText(el.files[0]); return; }
   if(el.dataset.act==="eat"){ const day=getDay(d); const it=day.food.find(i=>i.id===el.dataset.id); if(it) it.eaten=el.checked; saveDay(day); if(el.checked && window.FitMotion){ const c=main.querySelector(`[data-act="eat"][data-id="${el.dataset.id}"]`); if(c) FitMotion.pop(c); } }
   else if(el.dataset.act==="supp"){ const day=getDay(d); day.supps[el.dataset.k]=el.checked; saveDay(day); }
   else if(el.dataset.act==="tread"){ const day=getDay(d); day.treadmill=el.checked; saveDay(day,{quiet:view.tab==="train"}); }
@@ -24554,17 +25250,19 @@ function syncLogger(){
 }
 
 /* rest timer: a bar above the tabs with −15 / +15 / Skip, like Strong */
-let tInt=null, tEnd=0, tTotal=0;
+let tInt=null, tEnd=0, tTotal=0, tBuzz=0;
 function tickTimer(){
   const el=document.getElementById("timer"); const left=Math.max(0,Math.round((tEnd-Date.now())/1000));
   el.innerHTML=`<span class="tbar" style="width:${tTotal?Math.min(100,Math.max(0,100-left/tTotal*100)):100}%"></span><span class="label" style="color:inherit">${left?"Rest":"Go"}</span><span class="num">${Math.floor(left/60)}:${pad(left%60)}</span><span class="row" style="gap:6px;flex-wrap:nowrap"><button type="button" data-t="-15" aria-label="15 seconds less">−15</button><button type="button" data-t="15" aria-label="15 seconds more">+15</button><button type="button" data-t="stop" id="tStop">${left?"Skip":"Done"}</button></span>`;
-  if(!left){ clearInterval(tInt); tInt=null; restCue("rest-stop"); if(lbPref("sound")) window.GymSounds&&GymSounds.play("restDone"); if(lbPref("vibrate")) try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(_){} }
+  if(left>0&&left<=3&&lbPref("countBuzz")&&tBuzz!==left){ tBuzz=left; try{navigator.vibrate&&navigator.vibrate(left===1?220:120)}catch(_){} }
+  if(!left){ clearInterval(tInt); tInt=null; restCue("rest-stop"); if(lbPref("sound")) window.GymSounds&&(GymSounds.play(lbRestSound())||GymSounds.play("restDone")); if(lbPref("vibrate")) try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(_){} }
 }
 // Quick log uses the logger's "Beep / Vibrate when rest ends" settings, and the same lb:rest events so
 // the Android shell schedules the locked-screen "Rest is over" notification for it too.
 function lbPref(k){ try{ return !(window.WorkoutLogger && WorkoutLogger.settings && WorkoutLogger.settings()[k]===false); }catch(_){ return true; } }
-function restCue(kind){ try{ window.dispatchEvent(new CustomEvent("lb:"+kind, {detail:{end:tEnd, total:tTotal}})); }catch(_){} }
-function startTimer(sec){ const el=document.getElementById("timer"); tEnd=Date.now()+sec*1000; tTotal=sec; clearInterval(tInt); el.hidden=false; if(window.GymSounds) GymSounds.prime(); restCue("rest"); tickTimer(); tInt=setInterval(tickTimer,500); }
+function lbRestSound(){ const s=lbSettings(); return (s&&s.restSound)||"restDone"; }
+function restCue(kind){ try{ window.dispatchEvent(new CustomEvent("lb:"+kind, {detail:{end:tEnd, total:tTotal, sound:lbRestSound()}})); }catch(_){} }
+function startTimer(sec){ const el=document.getElementById("timer"); tEnd=Date.now()+sec*1000; tTotal=sec; tBuzz=0; clearInterval(tInt); el.hidden=false; if(window.GymSounds) GymSounds.prime(); restCue("rest"); tickTimer(); tInt=setInterval(tickTimer,500); }
 document.getElementById("timer").addEventListener("click",e=>{
   const b=e.target.closest("button[data-t]"); if(!b) return;
   if(b.dataset.t==="stop"){ clearInterval(tInt); tInt=null; restCue("rest-stop"); document.getElementById("timer").hidden=true; return; }

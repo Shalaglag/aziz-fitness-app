@@ -10,9 +10,13 @@ the app's WebView. The web/Claude versions still work from the same file.
    if asked; the repo is private).
 2. Tap **aziz-fitness.apk**. Chrome downloads it; tap **Open** in the download bar (or open it from Files → Downloads).
 3. Android asks to allow installs from Chrome once: **Settings → Allow from this source**, then back, then **Install**.
-4. Open **Aziz Fitness** from the home screen. Allow notifications when asked (the rest timer uses them).
+4. Open **Mizan** from the home screen. Allow notifications when asked (the rest timer uses them).
 
 ## Update it
+
+**From inside the app (build 72 and later):** open Settings, then App updates. The first time, paste a read-only GitHub key; the card has the steps and a link to GitHub's key page. Choose only this repository and Contents: Read-only. From then on, the app checks for a newer build at start-up. When there is one, a banner on Today and **Update now** in Settings download it. Android then asks you to confirm. The app only installs a newer build signed with your key (see `modules/app-update/README.md`).
+
+**By hand:**
 
 Open the same release page, download the newest `aziz-fitness.apk`, tap it, **Update**. Your data stays: every build
 is signed with the same key (see Signing below) and gets a higher version number, so Android
@@ -63,7 +67,7 @@ Changing the key means the next APK cannot install over the old one (export data
 - Hardware back button: closes an open sheet, else returns to Today, else minimises the app (a running workout
   is kept).
 - Status bar colour follows the app theme (light/dark/system).
-- Rest timer: a local notification fires when the rest ends while the app is in the background. It rings the same ding as the app (channel "Rest timer", `res/raw/rest_done.wav`); its sound and volume can be changed in Android Settings, Apps, Aziz Fitness, Notifications.
+- Rest timer: a local notification fires when the rest ends while the app is in the background. It rings the same ding as the app (channel "Rest timer", `res/raw/rest_done.wav`); its sound and volume can be changed in Android Settings, Apps, Mizan, Notifications.
 - Permissions declared: internet, vibrate, wake lock (keep screen on during a workout), notifications, exact
   alarms, camera (food and progress photos through the normal file picker), location (GPS run tracker; asked
   the first time a run starts).

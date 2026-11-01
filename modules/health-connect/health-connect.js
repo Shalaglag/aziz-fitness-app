@@ -64,24 +64,26 @@ const HealthConnectSync = (() => {
     return Object.keys(records).some(k => k !== id && records[k].s === r.s && records[k].e === r.e && records[k].ml === r.ml && records[k].o !== r.o);
   }
 
-  function rebuild(day, records, now) {
+  // `source` lets another automatic feed (Google Health, modules/google-health) reuse the same
+  // per-record dedupe on the same `waterh` field. Defaults to Health Connect.
+  function rebuild(day, records, now, source = SOURCE) {
     const out = Object.assign({}, day);
     const ids = Object.keys(records);
     if (!ids.length) { delete out.waterh; return out; }
     const ml = ids.reduce((a, k) => a + records[k].ml, 0);
-    out.waterh = { ml, at: now.toISOString(), source: SOURCE, records };
+    out.waterh = { ml, at: now.toISOString(), source, records };
     return out;
   }
 
-  function currentRecords(day) {
+  function currentRecords(day, source = SOURCE) {
     const w = day && day.waterh;
-    return w && w.source === SOURCE && w.records ? Object.assign({}, w.records) : {};
+    return w && w.source === source && w.records ? Object.assign({}, w.records) : {};
   }
 
   // Upsert Health Connect records into a day (returns a new day, or the same object if nothing changed).
-  function applyRecords(day, recs, { now = new Date(), ownPackage } = {}) {
-    const records = currentRecords(day);
-    let changed = !(day && day.waterh && day.waterh.source === SOURCE); // first HC sync replaces a pasted figure
+  function applyRecords(day, recs, { now = new Date(), ownPackage, source = SOURCE } = {}) {
+    const records = currentRecords(day, source);
+    let changed = !(day && day.waterh && day.waterh.source === source); // first sync replaces a pasted figure
     for (const rec of recs || []) {
       const r = cleanRecord(rec, ownPackage);
       if (!r) { if (rec && rec.id && records[rec.id]) { delete records[rec.id]; changed = true; } continue; }
@@ -91,14 +93,14 @@ const HealthConnectSync = (() => {
       records[rec.id] = r; changed = true;
     }
     if (!changed) return day;
-    return rebuild(day, records, now);
+    return rebuild(day, records, now, source);
   }
 
-  function removeRecords(day, ids, { now = new Date() } = {}) {
-    const records = currentRecords(day);
+  function removeRecords(day, ids, { now = new Date(), source = SOURCE } = {}) {
+    const records = currentRecords(day, source);
     let changed = false;
     for (const id of ids || []) if (records[id]) { delete records[id]; changed = true; }
-    return changed ? rebuild(day, records, now) : day;
+    return changed ? rebuild(day, records, now, source) : day;
   }
 
   function bottleMl(day) { return (day && day.waterh && day.waterh.ml) || 0; }
@@ -341,6 +343,6 @@ const HealthConnectSync = (() => {
 
   const CSS = `.hc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--muted,#888)}.hc-ok{background:#2e9e5b}.hc-warn{background:#d9a21b}.hc-bad{background:#d14b3c}.hc-off{background:#9aa0a6}`;
 
-  return { KEY, SOURCE, DEFAULT_LOOKBACK_DAYS, EXPIRED_LOOKBACK_DAYS, localDate, applyRecords, removeRecords, bottleMl, create, errorText, CSS };
+  return { KEY, SOURCE, DEFAULT_LOOKBACK_DAYS, EXPIRED_LOOKBACK_DAYS, localDate, applyRecords, removeRecords, currentRecords, bottleMl, create, errorText, CSS };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = HealthConnectSync;
