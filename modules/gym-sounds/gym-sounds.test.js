@@ -5,7 +5,7 @@ const fs = require("fs"), path = require("path");
 const G = require("./gym-sounds.js");
 
 test("every sound renders, peaks under clipping, ends in silence", () => {
-  assert.deepEqual(G.NAMES, ["restDone", "finish", "boxing", "dingdong", "beeps", "whistle", "gong", "knock", "powerup", "blast", "aura", "scouter", "teleport", "impact"]);
+  assert.deepEqual(G.NAMES, ["restDone", "finish", "boxing", "dingdong", "beeps", "whistle", "gong", "doubleDing", "knock", "powerup", "blast", "aura", "scouter", "teleport", "impact"]);
   for (const name of G.NAMES) {
     const x = G.render(name, 22050);
     let peak = 0; for (const v of x) peak = Math.max(peak, Math.abs(v));
@@ -36,8 +36,8 @@ test("wav header and the Android copy match the in-app sound", () => {
   }
 });
 
-test("rest sound choices: Strong-style bell first, every id renders, Android-safe file names", () => {
-  assert.equal(G.REST_SOUNDS[0].id, "restDone");
+test("rest sound choices: Aziz's double ding first, every id renders, Android-safe file names", () => {
+  assert.equal(G.REST_SOUNDS[0].id, "doubleDing");
   assert.equal(G.rawName("restDone"), "rest_done.wav");
   for (const { id, label } of G.REST_SOUNDS) {
     assert.ok(G.NAMES.includes(id) && label, id);
@@ -63,4 +63,10 @@ test("custom sound: no file or no storage rejects; play without one is false", a
   assert.equal(G.customInfo(), null);
   assert.equal(G.play("custom"), false);
   await assert.rejects(G.setCustom({ size: 4 * 1024 * 1024, name: "big.mp3" }), /3 MB/);
+});
+
+test("double ding: two strikes 0.19 s apart", () => {
+  const sr = 22050, x = G.render("doubleDing", sr);
+  const loud = t => { let m = 0; for (let i = Math.round(t * sr); i < Math.round((t + 0.02) * sr); i++) m = Math.max(m, Math.abs(x[i])); return m; };
+  assert.ok(loud(0.19) > loud(0.165) * 1.3, "second strike at 0.19 s");
 });
