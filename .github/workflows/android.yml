@@ -96,6 +96,19 @@ jobs:
             latest.json
       # Public copy for the in-app updater: only the APK and latest.json, never the code. Needs a
       # fine-grained token for Shalaglag/mizan-releases with Contents: Read and write (secret RELEASES_TOKEN).
+      - name: Give the public repo its first commit if it is empty (a release needs one)
+        if: ${{ github.event_name != 'pull_request' && env.RELEASES_TOKEN != '' }}
+        env:
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          api=https://api.github.com/repos/Shalaglag/mizan-releases/contents/README.md
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $RELEASES_TOKEN" "$api")
+          if [ "$code" = "404" ]; then
+            body=$(printf '%s\n' "# Mizan releases" "" "Android builds of the Mizan fitness app. Install aziz-fitness.apk from the android-latest release; the app updates itself after that." | base64 -w0)
+            curl -s -o /dev/null -w 'README created: %{http_code}\n' -X PUT -H "Authorization: Bearer $RELEASES_TOKEN" "$api" -d "{\"message\":\"Mizan releases\",\"content\":\"$body\"}"
+          else
+            echo "public repo already has content ($code)"
+          fi
       - name: Publish to the public releases repo (Shalaglag/mizan-releases)
         if: ${{ github.event_name != 'pull_request' && env.RELEASES_TOKEN != '' }}
         env:
