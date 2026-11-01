@@ -206,7 +206,7 @@ test("html shows status, last sync time and the Sync now button; guide explains 
   const A = fakeApp(P);
   await A.sync.syncNow();
   const h = A.sync.html(A.getDay("2026-10-26"));
-  assert.match(h, /connected through Health Connect/);
+  assert.match(h, /Health Connect connected/);
   assert.match(h, /Last sync/);
   assert.match(h, /data-act="hcsync"/);
   assert.match(A.sync.guideHTML(), /App permissions/);
@@ -231,4 +231,19 @@ test("the compiled Android plugin is the same file as the module's source copy",
   for (const m of ["isAvailable", "hasHydrationAccess", "requestHydrationAccess", "readHydration", "getChangesToken", "getChanges", "openSettings"])
     assert.match(src, new RegExp(`@PluginMethod\\s+fun ${m}\\(`), m);
   assert.doesNotMatch(src, /fun (checkPermissions|requestPermissions)\(/);
+});
+
+test("status shows what the last sync saw (count, source app, days) and Re-read drops the token", async () => {
+  const P = fakePlugin(); P.add(rec("a", 194, 0, { origin: "com.fitbit.FitbitMobile" })); P.add(rec("b", 258, 0, { origin: "com.fitbit.FitbitMobile", startMs: ms(0, 1) }));
+  const A = fakeApp(P);
+  await A.sync.syncNow();
+  const lr = A.sync.status().lastResult;
+  assert.equal(lr.seen, 2); assert.deepEqual(lr.origins, ["com.fitbit.FitbitMobile"]); assert.deepEqual(lr.recDays, ["2026-10-26", "2026-10-26"]);
+  const h = A.sync.html(A.getDay("2026-10-26"));
+  assert.match(h, /read 2 records from Fitbit \(2026-10-26\) · 2 new/);
+  assert.match(h, /data-act="hcreread"/);
+  assert.equal(A.getDay("2026-10-26").waterh.ml, 452);
+  const r = await A.sync.reread();
+  assert.equal(r.mode, "full"); assert.equal(r.imported, 0);
+  assert.equal(A.getDay("2026-10-26").waterh.ml, 452, "re-reading never doubles");
 });
