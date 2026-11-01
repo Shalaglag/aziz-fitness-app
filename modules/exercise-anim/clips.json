@@ -5,9 +5,9 @@
   "clips": {
     "bench-press-barbell": {
       "file": "bench-press-barbell.mp4",
-      "bytes": 318636,
-      "sha256": "687d06e0710abbd4c40745ad6ebdb994c8d6e05797719f354cddef612c0a3ade",
-      "revision": "v3.1",
+      "bytes": 317221,
+      "sha256": "f48aa4155be3d740d5cb47a4f14f45ec391a6d04d1de7a230f883d2786aeb2fe",
+      "revision": "v4",
       "status": "preview",
       "reviewedBy": null,
       "reviewedAt": null,
@@ -20,19 +20,19 @@
         "chest"
       ],
       "secondary": [
-        "shoulders (whole deltoid)",
+        "front delts",
         "triceps"
       ],
       "camera": "high three-quarter side view",
       "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
       "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
-      "notes": "Whole deltoid is amber, not only the front part."
+      "notes": "Triceps are mostly hidden from this angle."
     },
     "squat-barbell": {
       "file": "squat-barbell.mp4",
-      "bytes": 346918,
-      "sha256": "4a3967a7786de73b766818564f58d9915e25f221a2cbcefa2967e8d0028cf6b5",
-      "revision": "v3.1",
+      "bytes": 353248,
+      "sha256": "60a5bceea47aae957b46accdd64fef88e5716eb4c2439bc6f2cbbc90fe58e88b",
+      "revision": "v4",
       "status": "preview",
       "reviewedBy": null,
       "reviewedAt": null,
@@ -52,13 +52,14 @@
       ],
       "camera": "behind and to the side",
       "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
-      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "From the rear-side camera the far leg can look like it is kneeling."
     },
     "bicep-curl-dumbbell": {
       "file": "bicep-curl-dumbbell.mp4",
-      "bytes": 173811,
-      "sha256": "56577882c1ede39c7867f1df98e8e99b210ea3e776ce4c85c4b1a3e51776254b",
-      "revision": "v3.1",
+      "bytes": 188851,
+      "sha256": "3f819574f4c70826d5f57dc1ddb6fda31fbfd5e6e57a7808ebaebdae58edac2f",
+      "revision": "v4",
       "status": "preview",
       "reviewedBy": null,
       "reviewedAt": null,
@@ -73,16 +74,15 @@
       "secondary": [
         "forearm flexors"
       ],
-      "camera": "side-on view; biceps visible through the rep",
+      "camera": "side-on, slightly frontal; biceps visible through the rep",
       "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
-      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
-      "notes": "Forearm flexors show as a thin amber strip."
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
     },
     "push-up": {
       "file": "push-up.mp4",
-      "bytes": 294214,
-      "sha256": "f56c6d6a11854fc696cd90afdee4eb960e810f47ff7a75d8758f2a7d00c3a9dd",
-      "revision": "v3.1",
+      "bytes": 332443,
+      "sha256": "269fccf082d8ba066826630531018ed44131426f9cbbee079e3add1adb7e27d7",
+      "revision": "v4",
       "status": "preview",
       "reviewedBy": null,
       "reviewedAt": null,
@@ -95,14 +95,13 @@
         "chest"
       ],
       "secondary": [
-        "shoulders (whole deltoid)",
-        "triceps",
-        "abs"
+        "front delts",
+        "triceps"
       ],
-      "camera": "low front three-quarter view",
+      "camera": "low front three-quarter view, slightly to the side",
       "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
       "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
-      "notes": "Amber shoulder is large and partly covers the chest; abs face the floor so their amber is hard to see."
+      "notes": "Triceps barely show from this camera."
     }
   }
 }
