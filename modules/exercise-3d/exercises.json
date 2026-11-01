@@ -1,0 +1,90 @@
+{
+ "_comment": "Exercises offered in the shared 3D body view (phase 1 preview). Muscles use the ids in app/3d/body_meta.json `muscles` (from the exercise research thread); `id@L` limits a muscle to one side. Nothing here is reviewed: status stays preview until Aziz approves. handleRadius and kit come from the gym kit (gym-kit/kit-manifest.json): real grip sizes.",
+ "base": "",
+ "exercises": {
+  "squat-barbell": {
+   "status": "preview",
+   "gripType": "overhand",
+   "primary": [
+    "quads_vasti",
+    "glute_max"
+   ],
+   "secondary": [
+    "adductors",
+    "erector_spinae",
+    "hamstrings",
+    "rectus_femoris",
+    "abs_rectus",
+    "calves_soleus"
+   ],
+   "kit": [
+    "barbell",
+    "plate"
+   ],
+   "handleRadius": 0.0145
+  },
+  "chest-press-machine": {
+   "status": "preview",
+   "gripType": "neutral",
+   "primary": [
+    "chest_mid",
+    "chest_lower"
+   ],
+   "secondary": [
+    "chest_upper",
+    "delt_front",
+    "triceps_long",
+    "triceps_lateral"
+   ],
+   "kit": [
+    "chest-press-machine"
+   ],
+   "handleRadius": 0.016,
+   "cam": {
+    "yaw": 0.45,
+    "pitch": 0.2
+   }
+  },
+  "bayesian-curl-cable": {
+   "status": "preview",
+   "gripType": "underhand",
+   "primary": [
+    "biceps_long@L"
+   ],
+   "secondary": [
+    "biceps_short@L",
+    "brachialis@L",
+    "brachioradialis@L"
+   ],
+   "kit": [
+    "cable-tower",
+    "d-handle"
+   ],
+   "handleRadius": 0.016
+  },
+  "bench-press-barbell": {
+   "status": "preview",
+   "gripType": "overhand",
+   "primary": [
+    "chest_mid",
+    "chest_lower"
+   ],
+   "secondary": [
+    "chest_upper",
+    "delt_front",
+    "triceps_long",
+    "triceps_lateral"
+   ],
+   "kit": [
+    "barbell",
+    "plate",
+    "flat-bench"
+   ],
+   "handleRadius": 0.0145,
+   "cam": {
+    "yaw": 0.35,
+    "pitch": 1.05
+   }
+  }
+ }
+}

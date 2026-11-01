@@ -29,6 +29,8 @@
     { "file": "modules/form-cues/form-cues.js" },
     { "file": "modules/exercise-anim/clips.json", "json": "EXERCISE_CLIPS" },
     { "file": "modules/exercise-anim/exercise-anim.js" },
+    { "file": "modules/exercise-3d/exercises.json", "json": "EXERCISE_3D" },
+    { "file": "modules/exercise-3d/exercise-3d.js" },
     { "file": "modules/photo-food/photo-food.js" },
     { "file": "modules/macro-target/macro-target.js", "expose": ["MacroTarget"] },
     { "file": "modules/meal-grade/meal-grade.js" },

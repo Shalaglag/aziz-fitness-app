@@ -32,3 +32,6 @@ Look (Nov 1): neutral grey body, target muscles drawn red with fibre lines (seco
 
 ## List pictures (Nov 1)
 `anim.thumb(id)` returns a small WebP for exercise lists: the clip still `clips/thumbs/<id>.webp` when the exercise has a usable clip, else the 3D still `clips/thumbs3d/<id>.webp`, else `null` (the logger shows a letter circle). Remake them after adding clips with `node tools/clip-thumbs/make-thumbs.js` (ffmpeg, a frame a quarter into the clip, 144×144) and after adding or changing 3D demos with `node tools/clip-thumbs/make-3d-thumbs.js` (Playwright). The tests fail when a clip or a 3D demo has no picture.
+
+## Shared 3D body (Nov 1)
+When `window.Exercise3D.has(id)` (modules/exercise-3d), the Rotate view paints the real-time 3D body instead of the line mannequin, tagged "3D body · preview". The line mannequin shows while the body loads or if WebGL fails. With the body ready the card loop is capped at 60 fps. Motion keys may set `ease: 'in' | 'out' | 'linear'` per key so a movement can pass through middle keys without stopping (the Bayesian curl's hand arc uses this).
