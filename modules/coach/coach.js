@@ -650,7 +650,7 @@ const Coach = (() => {
 .co-err{color:var(--bad);font-size:.85rem;margin-top:6px}
 @media (prefers-reduced-motion:no-preference){.co-new{animation:co-in .25s ease-out}@keyframes co-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
 /* Ask Claude: floating button + panel (bottom sheet on phones, side panel on desktop) */
-.co-fab{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:30;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;padding:12px 16px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:700;box-shadow:0 6px 20px rgb(0 0 0/.25);cursor:pointer}
+.co-fab{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:30;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;padding:11px 15px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:700;box-shadow:0 6px 18px rgb(0 0 0/.16);cursor:pointer}
 .co-fab .co-fab-i{font-size:1.1rem;line-height:1}
 .co-fab:active{transform:scale(.97)}
 @media (min-width:721px){.co-fab{bottom:24px;right:24px}}
@@ -879,7 +879,7 @@ const Coach = (() => {
     const msgs = S.msgs.map((m, i) => (m.pending && live) ? "" : (m.q ? '<div class="co-q">' + esc(m.q) + "</div>" : "") + answerHtml(m, i)).join("") + live;
     S.msgs.forEach(m => { m.seen = true; });
     const form = '<form class="co-ask" data-coach-form><input data-coach-input placeholder="Ask about your training, food or weight" value="' + esc(S.draft) + '" maxlength="600"' + (S.busy ? " disabled" : "") + ' autocomplete="off"><button class="co-btn" style="margin:0"' + (S.busy ? " disabled" : "") + ">Ask</button>" + (S.busy ? '<button type="button" class="co-btn co-ghost" style="margin:0" data-coach-stop>Stop</button>' : "") + "</form>";
-    return '<button class="co-fab" data-coach-open aria-label="Ask Claude" title="Ask Claude"><span class="co-fab-i">✦</span><span class="co-fab-t">Ask Claude</span></button>' +
+    return '<button class="co-fab" data-coach-open aria-label="Ask the coach" title="Ask the coach"><span class="co-fab-i">✦</span><span class="co-fab-t">Coach</span></button>' +
       '<div class="co-scrim" data-coach-close' + (S.open ? "" : " hidden") + '></div>' +
       '<section class="co-panel' + (S.open ? " co-open" : "") + '" role="dialog" aria-label="Ask Claude" aria-hidden="' + (S.open ? "false" : "true") + '">' +
       '<header class="co-ph"><div><b>Ask Claude</b><div class="co-src" style="margin:0">Answers use only what you\'ve logged</div></div><div class="co-nav">' +
