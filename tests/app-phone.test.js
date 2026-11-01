@@ -249,6 +249,25 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("warm light look: coral accent by default, warm neutrals in light and dark, cards rise in on a tab change", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      const read = () => page.evaluate(() => { const cs = getComputedStyle(document.documentElement); return { accent: document.documentElement.dataset.accent, bg: cs.getPropertyValue("--bg").trim(), protein: cs.getPropertyValue("--protein").trim(), rise: document.querySelectorAll("#main > .anim-rise").length }; });
+      const light = await read();
+      assert.strictEqual(light.accent, "coral");
+      assert.strictEqual(light.bg.toUpperCase(), "#F7F5F0");
+      assert.strictEqual(light.protein.toUpperCase(), "#0F8B8D");
+      await page.emulateMedia({ colorScheme: "dark" }); await page.waitForTimeout(50);
+      const dark = await read();
+      assert.strictEqual(dark.bg.toUpperCase(), "#15120F");
+      await go(page, "food");
+      assert.ok((await read()).rise > 0, "cards get the rise animation after a tab change");
+      await go(page, "settings");
+      const chips = await page.$$eval('[data-act="accent"]', els => els.map(e => e.dataset.k));
+      assert.deepStrictEqual(chips, ["coral", "red", "blue", "yellow", "green"]);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     for (const phone of PHONES) {
       await t.test(phone.name + ": every tab renders with no errors and no sideways scroll", async () => {
         for (const data of [null, seed]) {

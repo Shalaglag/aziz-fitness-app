@@ -12,8 +12,8 @@
    Colours, type and motion come from the shared "Plate" theme kit (theme.css + motion.css). */
 /* ==========================================================================
    Fitness app theme  ·  "Plate" system
-   Neutrals: cool chalk (light) and gunmetal (dark).
-   Accents: named after Olympic bumper plates (25 kg red, 20 kg blue,
+   Neutrals: warm chalk (light) and warm charcoal (dark) — the "Warm Light" look (Nov 2026).
+   Accents: coral (default) plus the bumper-plate set (25 kg red, 20 kg blue,
    15 kg yellow, 10 kg green). Pick one with <html data-accent="blue">.
    Mode: <html data-theme="light|dark">, or no attribute to follow the system.
    Fonts (Google Fonts):
@@ -22,27 +22,27 @@
 
 :root {
   /* ---- Neutrals (light) ---- */
-  --bg: #F2F4F6;
+  --bg: #F7F5F0;
   --surface: #FFFFFF;
-  --surface-2: #E7EBEF;
-  --surface-3: #DAE0E6;
-  --fg: #12161B;
-  --fg-muted: #586370;
-  --fg-faint: #8A949F;
-  --line: #D3DAE1;
-  --overlay: rgba(18, 22, 27, .45);
+  --surface-2: #F1ECE4;
+  --surface-3: #E6E0D6;
+  --fg: #1C1917;
+  --fg-muted: #625B55;
+  --fg-faint: #8C847C;
+  --line: #E4DED4;
+  --overlay: rgba(28, 25, 23, .45);
 
   /* ---- Accent palettes (each has a light and dark value) ---- */
-  --accent-light: #1F5FD1;  --accent-dark: #6B9BF5;      /* default: 20 kg blue */
-  --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222;
+  --accent-light: #C64F19;  --accent-dark: #F08A57;      /* default: coral (Warm Light look, Nov 2026) */
+  --on-accent-light: #FFFFFF; --on-accent-dark: #2A1208;
   --accent: var(--accent-light);
   --on-accent: var(--on-accent-light);
   --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--surface));
 
   /* ---- Macros (fixed across accents so charts stay readable) ---- */
-  --protein: #6E52D4;
-  --carbs: #D07F12;
-  --fat: #158C8C;
+  --protein: #0F8B8D;
+  --carbs: #BF7A0F;
+  --fat: #7A5AD9;
   --kcal: var(--fg);
 
   /* ---- Status ---- */
@@ -82,6 +82,7 @@
 }
 
 /* ---- Accent choices ---- */
+[data-accent="coral"]  { --accent-light: #C64F19; --accent-dark: #F08A57; --on-accent-light: #FFFFFF; --on-accent-dark: #2A1208; }
 [data-accent="red"]    { --accent-light: #D0302A; --accent-dark: #F2665D; --on-accent-light: #FFFFFF; --on-accent-dark: #220B0A; }
 [data-accent="blue"]   { --accent-light: #1F5FD1; --accent-dark: #6B9BF5; --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222; }
 [data-accent="yellow"] { --accent-light: #A87300; --accent-dark: #F2C230; --on-accent-light: #FFFFFF; --on-accent-dark: #221A02; }
@@ -90,11 +91,11 @@
 /* ---- Dark (system setting, unless light was chosen) ---- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0D1013; --surface: #161A1F; --surface-2: #1F252C; --surface-3: #29303A;
-    --fg: #EDF0F3; --fg-muted: #9AA4AF; --fg-faint: #6B7580; --line: #2A323B;
+    --bg: #15120F; --surface: #1E1A17; --surface-2: #29241F; --surface-3: #342E28;
+    --fg: #F3EEE6; --fg-muted: #A79E94; --fg-faint: #776F67; --line: #322C26;
     --overlay: rgba(0, 0, 0, .6);
     --accent: var(--accent-dark); --on-accent: var(--on-accent-dark);
-    --protein: #A08BF2; --carbs: #F0AE4A; --fat: #3CC4C4;
+    --protein: #3EC1C3; --carbs: #F0AE4A; --fat: #A08BF2;
     --good: #43C47E; --warn: #F2A93B; --bad: #F2665D;
     --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
     --shadow-2: 0 8px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
@@ -103,11 +104,11 @@
 }
 /* ---- Dark (chosen explicitly) ---- */
 :root[data-theme="dark"] {
-  --bg: #0D1013; --surface: #161A1F; --surface-2: #1F252C; --surface-3: #29303A;
-  --fg: #EDF0F3; --fg-muted: #9AA4AF; --fg-faint: #6B7580; --line: #2A323B;
+  --bg: #15120F; --surface: #1E1A17; --surface-2: #29241F; --surface-3: #342E28;
+  --fg: #F3EEE6; --fg-muted: #A79E94; --fg-faint: #776F67; --line: #322C26;
   --overlay: rgba(0, 0, 0, .6);
   --accent: var(--accent-dark); --on-accent: var(--on-accent-dark);
-  --protein: #A08BF2; --carbs: #F0AE4A; --fat: #3CC4C4;
+  --protein: #3EC1C3; --carbs: #F0AE4A; --fat: #A08BF2;
   --good: #43C47E; --warn: #F2A93B; --bad: #F2665D;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
   --shadow-2: 0 8px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
@@ -161,6 +162,20 @@
   animation: fit-rise var(--dur-enter) var(--ease-out) backwards;
   animation-delay: calc(var(--i, 0) * var(--stagger));
 }
+
+/* ---- Warm Light motion (Nov 2026): bars and rings fill as their card rises in ---- */
+@keyframes fit-fill { from { width: 0; } }
+@keyframes fit-ring { from { stroke-dashoffset: 100; } }
+.anim-rise .mbar .eaten, .anim-rise .mbar .planned, .anim-rise .bar > span {
+  animation: fit-fill var(--dur-fill) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger) + 120ms);
+}
+.anim-rise .ring-fill { animation: fit-ring var(--dur-fill) var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * var(--stagger) + 120ms); }
+.anim-rise .fsum .v.big { animation: fit-rise var(--dur-enter) var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * var(--stagger) + 80ms); }
+/* ---- Press feedback everywhere (the logger has its own) ---- */
+#main button, nav.drawer button, .fsheet button, .co-fab, .fold > summary { transition: transform var(--dur-tap) var(--ease-out), background-color var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out); }
+#main button:active, nav.drawer button:active, .fsheet button:active, .co-fab:active { transform: scale(.96); }
+@media (prefers-reduced-motion: reduce) { #main button:active, nav.drawer button:active, .fsheet button:active { transform: none; } }
 
 /* ---- Pop: checking off a set, marking a meal as eaten ---- */
 @keyframes fit-pop {
@@ -876,8 +891,8 @@ if(["today","train","food","progress","guide","settings"].includes(location.hash
 const main = document.getElementById("main");
 main.before(document.getElementById("lbHost")); // the full logger sits above the Train extras
 
-function currentAccent(){ return S.docs.prefs.main?.accent || "blue"; }
-function applyAccent(a){ if(["red","blue","yellow","green"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
+function currentAccent(){ return S.docs.prefs.main?.accent || "coral"; }
+function applyAccent(a){ if(["coral","red","blue","yellow","green"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
 let lastTab=null;
 function render(){
   renderPending=false;
@@ -1609,7 +1624,7 @@ function vSettings(){
   ${tabHead("Settings", `<button class="btn ghost small" data-act="gotab" data-tab="today">Done</button>`)}
   <div class="card"><h3>Appearance</h3><div class="set-list">
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
-    ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["red","Red"],["blue","Blue"],["yellow","Yellow"],["green","Green"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
+    ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","Red"],["blue","Blue"],["yellow","Yellow"],["green","Green"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
   </div></div>
   <div class="card"><h3>Workout</h3><div class="set-list">
     ${row("Train screen", full?"Templates, Start workout, history":"Today's plan with set rows", seg("tmode",[["full","Full logger"],["quick","Quick log"]],view.trainMode).replace(/data-k=/g,'data-m='))}
