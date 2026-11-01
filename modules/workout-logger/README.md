@@ -58,3 +58,6 @@ Data shape is unchanged apart from the optional `rir` on sets and the optional `
 
 ## Collapsed demos and List view default (v48)
 Exercise demos (ExerciseAnim) no longer auto-play: the live list, the Gym card and the About sheet show a small "▶ Demo" toggle (`demoSlot(id)`); tapping it mounts the player, "Hide" removes it. Open state lives in the `demoOpen` set for the session only. The first time the logger loads after this version it switches to the Strong-style List view once (`settings.listOnce`); the Gym/List switch stays the user's afterwards.
+
+## Strong import (v65)
+`WorkoutLogger.parseStrong(text, {unit, existing})` is pure: Strong CSV (either layout) → `{workouts:[{doc, action}], newExercises}` with `action` add / update (same workout imported before) / skip (a workout logged in the app that day). `importStrong(text, opts)` applies it (waits for the logger's data to load) and returns `{added, updated, skipped, newEx}`. Strong names Aziz uses are aliased to library ids in `STRONG_ALIASES`; unknown names become custom exercises. Program lb exercises are stored in lb. The app's Settings › Data and backup › Import from Strong calls it, and Tools › Your data › Import Strong CSV uses the same path.

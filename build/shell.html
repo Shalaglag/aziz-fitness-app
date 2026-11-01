@@ -1338,7 +1338,7 @@ function otherLogged(){
 }
 function strongCard(){
   return `<div class="card"><div class="spread"><h3>Import from Strong</h3><label class="btn ghost small" style="cursor:pointer">Choose CSV file<input type="file" id="strongFile" accept=".csv,text/csv" hidden></label></div>
-  <p class="muted" style="font-size:.9rem">In Strong, open Settings, then Export Strong Data, and pick the CSV here. Warm-ups are skipped, weights convert to each exercise's unit, and importing again replaces that day's Strong sets instead of doubling them.</p>
+  <p class="muted" style="font-size:.9rem">In Strong, open Settings, then Export Strong Data, and pick the CSV here. Every Strong workout lands in Train › History (list and calendar) and in each day's record; weights convert to each exercise's unit, and importing again replaces instead of doubling.</p>
   ${view.strongMsg?`<p class="note info">${view.strongMsg}</p>`:""}</div>`;
 }
 function usedFor(wk, planName){ const m=(wk&&wk.swapped)||{}; return Object.keys(m).find(u=>m[u]===planName) || null; }
@@ -2019,14 +2019,24 @@ main.addEventListener("submit",e=>{
 /* Strong CSV import (StrongCSV module) */
 function importStrong(file){
   const fr=new FileReader();
-  fr.onload=()=>{
+  fr.onload=async()=>{
+    const text=String(fr.result);
     try{
-      const {docs, report} = StrongCSV.toWorkouts(String(fr.result), {program:programEff(), rotation:ROTATION, existing:S.docs.workouts});
+      const {docs, report} = StrongCSV.toWorkouts(text, {program:programEff(), rotation:ROTATION, existing:S.docs.workouts});
       const list = Array.isArray(docs) ? docs : Object.values(docs);
       let sets=0; list.forEach(doc=>{ Object.values(doc.sets||{}).forEach(a=>sets+=a.length); put("workouts",doc.date,doc,{quiet:true}); });
       const un = (report && report.unmatched) || {};
       const unNames = Array.isArray(un) ? un.map(u=>typeof u==="string"?u:(u.name||"")).filter(Boolean) : Object.keys(un);
       view.strongMsg = `Imported <b>${list.length}</b> workout${list.length===1?"":"s"} with <b>${sets}</b> sets.` + (unNames.length?` Not in your program (saved under their own names): ${unNames.map(esc).join(", ")}.`:"");
+      // The same file also fills the full logger's History (list and calendar), so every Strong day is a finished workout there.
+      view.strongMsg += " Adding them to Train › History…"; render();
+      if(window.WorkoutLogger && WorkoutLogger.importStrong){
+        try{
+          syncLogger();
+          const r = await WorkoutLogger.importStrong(text, {});
+          view.strongMsg = view.strongMsg.replace(" Adding them to Train › History…", r.error ? ` History: ${esc(r.error)}` : ` Train › History: <b>${r.added}</b> added${r.updated?`, ${r.updated} updated`:""}${r.skipped?`, ${r.skipped} skipped (already logged here)`:""}.`);
+        }catch(err){ view.strongMsg = view.strongMsg.replace(" Adding them to Train › History…", " The History list could not be filled; open Train › History once and import again."); }
+      } else view.strongMsg = view.strongMsg.replace(" Adding them to Train › History…", "");
     }catch(err){ view.strongMsg = "Couldn't read that file. Export it again from Strong as CSV and pick that file."; }
     render();
   };

@@ -65,3 +65,10 @@ test("re-import keeps app-typed sets and drops the previous Strong keys, even re
   assert.deepEqual(d.sets["Bench Press (Barbell)"].length, 2);
   assert.ok(d.strong.names.includes("Bench Press (Barbell)") && !d.strong.names.includes("Gundam"));
 });
+
+test("two Strong names that map to one app name in the same workout add up instead of overwriting", () => {
+  const csv = CSV + `"1";"2026-10-28 15:56:18";"Push A";"3900";"Flat Bench Barbell";"1";"60.0";"12";"";"";"";"";""\n`;
+  const { docs, report } = StrongCSV.toWorkouts(csv, { program: PROGRAM, rotation: ROTATION });
+  assert.deepEqual(docs["2026-10-28"].sets["Bench Press (Barbell)"], [{ w: 90, r: 8 }, { w: 90, r: 7 }, { w: 60, r: 12 }]);
+  assert.equal(report.sets, 9);
+});

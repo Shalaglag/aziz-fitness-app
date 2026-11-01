@@ -239,7 +239,7 @@ const StrongCSV = (() => {
         const to = unitOf[key] || ex.sets[0]?.unit || "kg";
         const sets = ex.sets.filter(s => s.kind !== "warmup" && s.r > 0).map(s => ({ w: convert(s.w, s.unit, to), r: s.r }));
         if (!sets.length) continue;
-        doc.sets[key] = (docs[wo.date] && docs[wo.date].strongNames && docs[wo.date].strongNames.includes(key)) ? doc.sets[key].concat(sets) : sets;
+        doc.sets[key] = (doc.strongNames && doc.strongNames.includes(key)) ? doc.sets[key].concat(sets) : sets; // two Strong names on one app name (same day) add up
         doc.strongNames = (doc.strongNames || []).concat(key);
         report.sets += sets.length;
       }
