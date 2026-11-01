@@ -14,6 +14,10 @@ the app's WebView. The web/Claude versions still work from the same file.
 
 ## Update it
 
+**From inside the app (build 72 and later):** open Settings, then App updates. The first time, paste a read-only GitHub key; the card has the steps and a link to GitHub's key page. Choose only this repository and Contents: Read-only. From then on, the app checks for a newer build at start-up. When there is one, a banner on Today and **Update now** in Settings download it. Android then asks you to confirm. The app only installs a newer build signed with your key (see `modules/app-update/README.md`).
+
+**By hand:**
+
 Open the same release page, download the newest `aziz-fitness.apk`, tap it, **Update**. Your data stays: every build
 is signed with the same key (see Signing below) and gets a higher version number, so Android
 installs it over the old one without uninstalling. Never uninstall to update; that deletes on-device data that is not
