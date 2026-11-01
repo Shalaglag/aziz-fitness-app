@@ -133,3 +133,10 @@ test('a preview clip is offered but 3D stays the default; an approved clip is th
   assert.ok(!an.cardHtml('lat-pulldown-wide-grip-cable').includes('<video'), 'no clip, 3D card only');
 });
 
+test('defaultMode clip makes a preview clip the starting view', () => {
+  const clips = { base: 'clips/', defaultMode: 'clip', clips: { 'bench-press-barbell': { file: 'b.mp4', status: 'preview' }, 'squat-barbell': { file: 's.mp4', status: 'pending' } } };
+  const an = A.create({ clips });
+  assert.ok(an.cardHtml('bench-press-barbell').includes('data-mode="clip"'));
+  assert.ok(an.cardHtml('squat-barbell').includes('data-mode="3d"'), 'ignored statuses stay 3D');
+  assert.strictEqual(CLIPS.defaultMode, 'clip');
+});
