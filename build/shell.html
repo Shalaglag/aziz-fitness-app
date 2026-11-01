@@ -13,8 +13,8 @@
 /* ==========================================================================
    Fitness app theme  ·  "Plate" system
    Neutrals: warm chalk (light) and warm charcoal (dark) — the "Warm Light" look (Nov 2026).
-   Accents: coral (default) plus the bumper-plate set (25 kg red, 20 kg blue,
-   15 kg yellow, 10 kg green). Pick one with <html data-accent="blue">.
+   Accents: coral (default) plus Aziz's bumper plates (2.5 kg red, 5 kg white,
+   10 kg green, 15 kg yellow, 20 kg blue). Pick one with <html data-accent="blue">.
    Mode: <html data-theme="light|dark">, or no attribute to follow the system.
    Fonts (Google Fonts):
    https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap
@@ -86,6 +86,8 @@
 [data-accent="red"]    { --accent-light: #D0302A; --accent-dark: #F2665D; --on-accent-light: #FFFFFF; --on-accent-dark: #220B0A; }
 [data-accent="blue"]   { --accent-light: #1F5FD1; --accent-dark: #6B9BF5; --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222; }
 [data-accent="yellow"] { --accent-light: #A87300; --accent-dark: #F2C230; --on-accent-light: #FFFFFF; --on-accent-dark: #221A02; }
+/* 5 kg white plate: graphite on light backgrounds so it stays visible, white on dark */
+[data-accent="white"]  { --accent-light: #2B3139; --accent-dark: #F2F4F6; --on-accent-light: #FFFFFF; --on-accent-dark: #0D1013; }
 [data-accent="green"]  { --accent-light: #1B8048; --accent-dark: #43C47E; --on-accent-light: #FFFFFF; --on-accent-dark: #06200F; }
 
 /* ---- Dark (system setting, unless light was chosen) ---- */
@@ -906,7 +908,7 @@ const main = document.getElementById("main");
 main.before(document.getElementById("lbHost")); // the full logger sits above the Train extras
 
 function currentAccent(){ return S.docs.prefs.main?.accent || "coral"; }
-function applyAccent(a){ if(["coral","red","blue","yellow","green"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
+function applyAccent(a){ if(["coral","red","white","green","yellow","blue"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
 let lastTab=null;
 function render(){
   renderPending=false;
@@ -1640,7 +1642,7 @@ function vSettings(){
   ${tabHead("Settings", `<button class="btn ghost small" data-act="gotab" data-tab="today">Done</button>`)}
   <div class="card"><h3>Appearance</h3><div class="set-list">
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
-    ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","Red"],["blue","Blue"],["yellow","Yellow"],["green","Green"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
+    ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","2.5 kg red"],["white","5 kg white"],["green","10 kg green"],["yellow","15 kg yellow"],["blue","20 kg blue"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
   </div></div>
   <div class="card"><h3>Workout</h3><div class="set-list">
     ${row("Train screen", full?"Templates, Start workout, history":"Today's plan with set rows", seg("tmode",[["full","Full logger"],["quick","Quick log"]],view.trainMode).replace(/data-k=/g,'data-m='))}

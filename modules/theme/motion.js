@@ -40,8 +40,8 @@
 
   function pop(el) { replay(el, "anim-pop"); }
 
-  // Olympic plate colors: 25 kg red, 20 kg blue, 15 kg yellow, 10 kg green.
-  var PLATES = ["#D0302A", "#1F5FD1", "#F2C230", "#1B8048"];
+  // Plate colors: 2.5 kg red, 5 kg white, 10 kg green, 15 kg yellow, 20 kg blue.
+  var PLATES = ["#D0302A", "#E9ECEF", "#1B8048", "#F2C230", "#1F5FD1"];
 
   function celebrate(el) {
     replay(el, "anim-pr");
@@ -51,14 +51,14 @@
     var h = host.getBoundingClientRect();
     var cx = r.left - h.left + r.width / 2 + host.scrollLeft;
     var cy = r.top - h.top + r.height / 2 + host.scrollTop;
-    for (var i = 0; i < 18; i++) {
+    for (var i = 0; i < 20; i++) {
       var piece = document.createElement("span");
       piece.className = "fit-burst-piece";
-      var angle = (Math.PI * 2 * i) / 18 + Math.random() * .3;
+      var angle = (Math.PI * 2 * i) / 20 + Math.random() * .3;
       var dist = 40 + Math.random() * 50;
       piece.style.left = cx + "px";
       piece.style.top = cy + "px";
-      piece.style.background = PLATES[i % 4];
+      piece.style.background = PLATES[i % PLATES.length];
       piece.style.setProperty("--dx", Math.cos(angle) * dist + "px");
       piece.style.setProperty("--dy", Math.sin(angle) * dist - 20 + "px");
       piece.style.setProperty("--rot", (Math.random() * 360 - 180) + "deg");
