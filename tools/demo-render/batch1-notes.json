@@ -1,0 +1,16 @@
+{
+ "incline-bench-press-dumbbell": {"primary":["upper chest (whole pec)"],"secondary":["front delts"],"camera":"high three-quarter side view"},
+ "lateral-raise-dumbbell": {"primary":["side delts"],"secondary":[]},
+ "cable-crossover": {"primary":["chest"],"secondary":["front delts"],"notes":"Plain upright pillars stand in for the cable station."},
+ "gundam-chest-press-machine": {"primary":["chest"],"secondary":["front delts","triceps"],"notes":"Approximate machine: lever arms are plain bars. Your machine may differ."},
+ "lat-pulldown-wide-grip-cable": {"primary":["lats"],"secondary":["biceps","rear delts"],"camera":"from behind","notes":"Seen from behind so the lats show."},
+ "reverse-fly-machine": {"primary":["rear delts"],"secondary":["traps"],"camera":"from behind","notes":"Lever arms are plain bars; upper back shows as traps."},
+ "triceps-extension-cable": {"primary":["triceps"],"secondary":[],"notes":"Rope is a single line; the pulley sits at head height."},
+ "triceps-pushdown-straight-bar": {"primary":["triceps"],"secondary":["forearms"]},
+ "triceps-rope-pushdown-cable": {"primary":["triceps"],"secondary":["forearms"],"notes":"Thin rope lines make the split at the bottom hard to see."},
+ "seated-row-cable": {"primary":["traps","lats"],"secondary":["biceps","rear delts"],"notes":"Rhomboids are not modelled, so the mid back shows as traps."},
+ "front-raise-dumbbell": {"primary":["front delts"],"secondary":[]},
+ "seated-overhead-press-dumbbell": {"primary":["front delts","side delts"],"secondary":["triceps"]},
+ "lateral-raise-cable": {"primary":["side delts (working arm)"],"secondary":[]},
+ "standing-lateral-raise-machine": {"primary":["side delts"],"secondary":[],"notes":"Approximate machine: simple pads and levers."}
+}
