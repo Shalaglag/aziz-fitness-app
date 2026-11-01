@@ -55,3 +55,6 @@ Data shape is unchanged apart from the optional `rir` on sets and the optional `
 
 ## Host hooks (v47)
 `mount(el, opts)` also takes `title` (an `<h1>` above the section tabs), `hideTabs` (tab keys left out of the nav; `show(k)` still opens them) and `adaptStart(info)`: called when a template starts with `{name, exercises:[{exId, name, sets}]}` (working sets only); return `{exercises:[{from, exId?, name, sets?, note?}], suffix?}` to change the list (unknown names become custom exercises, `sets` trims working sets, `suffix` is appended to the workout name) or `null` to leave it. The app uses it for Travel workout and Short on time. In a live workout an exercise with no machine settings shows "Machine settings" in its ••• menu instead of a line; once every warm-up set is ticked they collapse to one "N warm-up sets done · show" line.
+
+## Collapsed demos and List view default (v48)
+Exercise demos (ExerciseAnim) no longer auto-play: the live list, the Gym card and the About sheet show a small "▶ Demo" toggle (`demoSlot(id)`); tapping it mounts the player, "Hide" removes it. Open state lives in the `demoOpen` set for the session only. The first time the logger loads after this version it switches to the Strong-style List view once (`settings.listOnce`); the Gym/List switch stays the user's afterwards.

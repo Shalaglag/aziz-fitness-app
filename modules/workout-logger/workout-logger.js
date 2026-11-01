@@ -522,6 +522,8 @@ Power Clean (Barbell)|Other|Barbell|`;
     S.data = { templates: index(t), workouts: index(w), exercises: index(e), measures: index(m) };
     const metaIdx = index(meta);
     if (metaIdx.settings) { const s = Object.assign({}, metaIdx.settings); delete s.id; S.settings = Object.assign(clone(DEFAULT_SETTINGS), s); }
+    // Nov 2026: live workouts open in the Strong-style List view (all exercises in one list). Applied once; Gym mode stays available in Settings.
+    if (!S.settings.listOnce) { S.settings.gym = false; S.settings.listOnce = true; saveSettings(); }
     let act = metaIdx.active ? metaIdx.active.workout : null;
     try { const loc = JSON.parse(localStorage.getItem('lb_active') || 'null'); if (loc && (!act || (loc.updated || 0) > (act.updated || 0))) act = loc; } catch (e) { }
     S.active = act && !act.end ? act : null;
@@ -1039,6 +1041,17 @@ Power Clean (Barbell)|Other|Barbell|`;
   let exTab = 'about';
   // Form cues (optional FormCues instance passed as opts.formCues).
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
+  // Demos start collapsed: a small "Demo" toggle expands the built-in animation card in place (Gym mode, List view, About).
+  const demoOpen = new Set();
+  function demoSlot(id) {
+    const an = S.opts && S.opts.anim; if (!an || !an.has(id)) return '';
+    return demoOpen.has(id)
+      ? '<div class="lb-demo-wrap">' + an.cardHtml(id) + '<button type="button" class="lb-link small" data-a="demoHide" data-id="' + esc(id) + '">Hide demo</button></div>'
+      : '<button type="button" class="lb-demo-toggle" data-a="demoShow" data-id="' + esc(id) + '" aria-expanded="false">&#9654; Demo</button>';
+  }
+  function demoRerender() { if (E) renderEditor(); const sh = topSheet(); if (sh) sh.render(); }
+  on('demoShow', t => { demoOpen.add(t.dataset.id); demoRerender(); });
+  on('demoHide', t => { demoOpen.delete(t.dataset.id); demoRerender(); });
   // Demo button: opens the built-in animation (opts.anim). No external video or search links.
   function demoBtn(id) {
     const an = S.opts && S.opts.anim;
@@ -1057,7 +1070,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   function exDetail(id) {
     const ex = getEx(id), ss = sessions(id), R = records(id), weighted = isWeighted(ex);
     if (exTab === 'about') {
-      return (S.opts.anim ? S.opts.anim.cardHtml(id) : '') + '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div>' + (weighted ? '<div><b>' + fmtN(weightStep(ex, ex.unit || S.settings.unit), 2) + ' ' + (ex.unit || S.settings.unit) + '</b><span>Weight step' + (num(ex.step) ? '' : ' (default)') + '</span></div>' : '') + '</div>' +
+      return demoSlot(id) + '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div>' + (weighted ? '<div><b>' + fmtN(weightStep(ex, ex.unit || S.settings.unit), 2) + ' ' + (ex.unit || S.settings.unit) + '</b><span>Weight step' + (num(ex.step) ? '' : ' (default)') + '</span></div>' : '') + '</div>' +
         (ex.avoided ? '<p class="lb-warnbox">Your plan avoids this lift (no deadlifts, RDLs, hip thrusts, back extensions, glute-ham raises, reverse hypers or cable pull-throughs). Pick a machine-based option instead.</p>' : '') +
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
@@ -1508,6 +1521,7 @@ Power Clean (Barbell)|Other|Barbell|`;
       html += '<article class="lb-exblock' + (e.ss ? ' ss ss' + (ssIdx % 4) : '') + '" data-ei="' + i + '">' +
         (e.ss ? '<div class="lb-sslabel">Superset ' + String.fromCharCode(65 + ssIdx) + '</div>' : '') +
         '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
+        (live ? demoSlot(e.exId) : '') +
         (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') +
         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
@@ -1595,7 +1609,7 @@ Power Clean (Barbell)|Other|Barbell|`;
       '<div class="lb-gym-top"><span>Exercise ' + (ei + 1) + ' of ' + d.exercises.length + '</span>' +
       (e.ss ? '<span class="lb-gym-ss ss' + (ssIds.indexOf(e.ss) % 4) + '">Superset ' + String.fromCharCode(65 + ssIds.indexOf(e.ss)) + ' · ' + (partners.findIndex(o => o.k === ei) + 1) + '/' + partners.length + '</span>' : '') + '</div>' +
       '<div class="lb-gym-headrow"><button class="lb-gym-name" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + ei + '" aria-label="Exercise options">•••</button></div>' +
-      (S.opts.anim ? S.opts.anim.cardHtml(e.exId) : '') +
+      demoSlot(e.exId) +
       (e.ss ? '<p class="lb-muted small">Alternate with ' + esc(partners.filter(o => o.k !== ei).map(o => getEx(o.x.exId).name).join(', ')) + ', rest after the round.</p>' : '') +
       '<div class="lb-gym-tools">' + demoBtn(e.exId, entry) +
       '<button class="lb-btn small ghost" data-a="exOpen" data-id="' + e.exId + '">How to</button><button class="lb-btn small ghost" data-a="restEdit" data-ei="' + ei + '">Rest ' + restLabel(restOf(e)) + '</button>' +
@@ -1996,6 +2010,8 @@ button.lb-card:hover{border-color:var(--lb-muted)}
 .lb-empty{padding:22px 16px;text-align:center;color:var(--lb-muted);border:1px dashed var(--lb-line);border-radius:var(--lb-r)}
 .lb-active-bar{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;margin:-4px 0 12px;border-radius:var(--lb-r);background:var(--lb-accent);color:var(--lb-accent-ink)}
 .lb-active-bar .dot{width:9px;height:9px;border-radius:50%;background:currentColor;animation:lbpulse 1.4s 6}
+.lb-demo-toggle{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;margin:2px 0 8px;border-radius:999px;border:1px solid var(--lb-line);background:var(--lb-surface);color:var(--lb-muted);font-size:.84rem;font-weight:600;font-family:inherit}
+.lb-demo-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin-bottom:6px}.lb-demo-wrap .ea-card{width:100%;margin:0}
 .lb-screen-title{font-family:var(--display,inherit);font-size:1.9rem;line-height:1;margin:2px 0 12px;font-weight:700}
 .lb-warmfold{display:block;width:100%;text-align:left;padding:8px 2px;font-size:.92rem;color:var(--lb-muted);background:none;border:0;border-bottom:1px solid var(--lb-line);margin-bottom:4px}
 .lb-active-bar .lb-chev{margin-left:auto;font-weight:700}

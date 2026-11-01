@@ -309,6 +309,35 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("navigation setting: bottom bar and both, flashes after a change, demos start collapsed, list view once", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "settings");
+      await page.click('[data-act="navset"][data-k="bottom"]'); await page.waitForTimeout(150);
+      const b = await page.evaluate(() => ({ nav: document.documentElement.dataset.nav, bar: getComputedStyle(document.getElementById("bottomNav")).display, menu: getComputedStyle(document.getElementById("menuBtn")).display, pref: S.docs.prefs.main.nav }));
+      assert.deepStrictEqual(b, { nav: "bottom", bar: "flex", menu: "none", pref: "bottom" });
+      await page.click('#bottomNav button[data-tab="food"]'); await page.waitForTimeout(200);
+      assert.strictEqual(await page.evaluate(() => view.tab + ":" + document.querySelector('#bottomNav button[aria-current="page"]').dataset.tab), "food:food");
+      await page.evaluate(() => document.querySelector('[data-act="eat"]').click()); await page.waitForTimeout(80);
+      assert.ok(await page.evaluate(() => document.querySelectorAll(".mbar .eaten.flash").length) >= 1, "macro bars glow after ticking food");
+      await page.click('#bottomNav button[data-more]'); await page.waitForTimeout(100);
+      assert.strictEqual(await page.evaluate(() => document.getElementById("drawer").hidden), false, "More opens the menu");
+      // The ☰ button is hidden in bottom mode, so Settings is reached through More.
+      await page.click("#openSettings"); await page.waitForTimeout(150);
+      await page.click('[data-act="navset"][data-k="both"]'); await page.waitForTimeout(100);
+      const both = await page.evaluate(() => ({ nav: document.documentElement.dataset.nav, menu: getComputedStyle(document.getElementById("menuBtn")).display, guide: getComputedStyle(document.querySelector('#bottomNav button[data-tab="guide"]')).display, more: getComputedStyle(document.querySelector('#bottomNav button[data-more]')).display }));
+      assert.strictEqual(both.nav, "both"); assert.notStrictEqual(both.menu, "none", "menu button stays in Both mode"); assert.notStrictEqual(both.guide, "none"); assert.strictEqual(both.more, "none");
+      await page.click('[data-act="navset"][data-k="drawer"]'); await page.waitForTimeout(100);
+      assert.strictEqual(await page.evaluate(() => document.documentElement.dataset.nav), undefined);
+      await go(page, "train");
+      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      const lg = await page.evaluate(async () => { const s = WorkoutLogger.settings(); const btn = [...document.querySelectorAll('#lbHost [data-a="startTplName"],#lbHost [data-a="startTpl"]')][0]; btn.click(); await new Promise(r => setTimeout(r, 400)); const tog = document.querySelectorAll(".lb-live-body .lb-demo-toggle").length, before = document.querySelectorAll(".lb-live-body .ea-card").length; const t = document.querySelector(".lb-live-body .lb-demo-toggle"); if (t) t.click(); await new Promise(r => setTimeout(r, 200)); return { gym: s.gym, listOnce: s.listOnce, tog, before, after: document.querySelectorAll(".lb-live-body .ea-card").length }; });
+      assert.strictEqual(lg.gym, false, "live workouts open in List view");
+      assert.strictEqual(lg.listOnce, true);
+      assert.ok(lg.tog > 0 && lg.before === 0 && lg.after === 1, "demos start collapsed and one opens on tap: " + JSON.stringify(lg));
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     for (const phone of PHONES) {
       await t.test(phone.name + ": every tab renders with no errors and no sideways scroll", async () => {
         for (const data of [null, seed]) {
