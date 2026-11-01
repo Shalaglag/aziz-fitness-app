@@ -441,6 +441,9 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 .fold>summary small+.chev{margin-left:4px}
 .fold[open]>summary .chev{transform:rotate(45deg)}
 .fold[open]>summary{border-bottom:1px solid var(--line)}
+.card>.fold{margin-top:6px}
+.setcat{margin:16px 4px 0;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.mval{text-align:right;white-space:nowrap}.mval .plannedn{display:block;font-size:.72rem;color:var(--muted);font-weight:400}
 .fold-body{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}
 .fold-body>.card,.fold-body>section>.card,.fold-body>div>.card{border:0;padding:12px 0 0;background:transparent;border-radius:0}
 .fold-body>.card>h3:first-child,.fold-body>.card>.spread:first-child>h3{font-size:1rem;color:var(--muted)}
@@ -3731,7 +3734,8 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (!root) return;
     if (!S.ready) { root.innerHTML = '<div class="lb-empty">Loading your workouts…</div>'; return; }
     const body = { workout: viewWorkout, history: viewHistory, exercises: viewExercises, progress: viewProgress, tools: viewTools }[tab]();
-    root.innerHTML = '<nav class="lb-subnav" aria-label="Workout sections">' + TABS.map(([k, l]) => '<button data-a="tab" data-k="' + k + '" class="' + (k === tab ? 'on' : '') + '" aria-current="' + (k === tab) + '">' + l + '</button>').join('') + '</nav>' + activeBanner() + '<div class="lb-view">' + body + '</div>';
+    const tabs = TABS.filter(([k]) => k === tab || !(S.opts.hideTabs || []).includes(k));
+    root.innerHTML = (S.opts.title ? '<h1 class="lb-screen-title">' + esc(S.opts.title) + '</h1>' : '') + '<nav class="lb-subnav" aria-label="Workout sections">' + tabs.map(([k, l]) => '<button data-a="tab" data-k="' + k + '" class="' + (k === tab ? 'on' : '') + '" aria-current="' + (k === tab) + '">' + l + '</button>').join('') + '</nav>' + activeBanner() + '<div class="lb-view">' + body + '</div>';
     const q = root.querySelector('#lb-exq'); if (q && exFilter.focus) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   }
   on('tab', t => { tab = t.dataset.k; renderMain(); });
@@ -3963,8 +3967,10 @@ Power Clean (Barbell)|Other|Barbell|`;
   function memoHtml(ex, editable) {
     const txt = ex.memo ? esc(ex.memo).replace(/\n+/g, ' · ') : '';
     if (!editable) return txt ? '<p class="lb-memo small">' + txt + '</p>' : '';
-    return '<button class="lb-memo-btn' + (txt ? '' : ' empty') + '" data-a="exSetup" data-id="' + esc(ex.id) + '" aria-label="Machine settings">' + (txt ? '⚙ ' + txt : '⚙ Add seat, pin or weight step') + '</button>';
+    if (!txt) return ''; // empty: "Machine settings" sits in the exercise's ••• menu instead of a line under every exercise
+    return '<button class="lb-memo-btn" data-a="exSetup" data-id="' + esc(ex.id) + '" aria-label="Machine settings">⚙ ' + txt + '</button>';
   }
+  on('exSetupM', t => { const e = menuEx(t); closeSheet(); actions.exSetup({ dataset: { id: e.exId } }); });
   on('exSetup', t => {
     const id = t.dataset.id;
     openSheet({
@@ -4301,7 +4307,33 @@ Power Clean (Barbell)|Other|Barbell|`;
     const w = { id: uid(), name: tpl ? tpl.name : (from ? from.name : workoutNameNow()), templateId: tpl ? tpl.id : from && from.templateId, templateName: tpl ? tpl.name : from && from.templateName, start: Date.now(), notes: '', exercises: [], updated: Date.now() };
     const src = tpl || from;
     if (src) w.exercises = src.exercises.map(e => ({ exId: e.exId, unit: e.unit || defUnit(e.exId), notes: '', tplNote: e.notes || '', rest: e.rest, ss: e.ss, base: tpl ? e.sets.map(s => clone(s)) : null, sets: e.sets.map(s => ({ t: s.t, w: '', r: '', km: '', min: '', sec: '', done: false })) }));
+    // Host hook: opts.adaptStart({name, exercises:[{exId, name, sets}]}) may return {exercises:[{from, exId?, name, sets?, note?}], suffix?}
+    // (the app uses it for its Travel workout and Short-on-time choices). Unknown names become custom exercises.
+    if (tpl && S.opts && S.opts.adaptStart) {
+      try {
+        const a = S.opts.adaptStart({ name: tpl.name, exercises: w.exercises.map(e => ({ exId: e.exId, name: getEx(e.exId).name, sets: e.sets.filter(s => s.t !== 'w').length })) });
+        if (a && Array.isArray(a.exercises)) { w.exercises = adaptExercises(w, a.exercises); if (a.suffix) w.name += ' · ' + a.suffix; }
+      } catch (err) { console.error('[logger] adaptStart', err); }
+    }
     return w;
+  }
+  const blankSet = () => ({ t: 'n', w: '', r: '', km: '', min: '', sec: '', done: false });
+  function adaptExercises(w, list) {
+    return list.map(x => {
+      const base = w.exercises.find(e => e.exId === x.from) || null;
+      let exId = x.exId && S.data.exercises[x.exId] ? x.exId : null;
+      if (!exId) {
+        const n = String(x.name || '').trim().toLowerCase();
+        const hit = Object.values(S.data.exercises).find(e => String(e.name).trim().toLowerCase() === n);
+        if (hit) exId = hit.id; else { exId = 'c-' + slug(x.name || 'exercise'); put('exercises', { id: exId, name: x.name || 'Exercise', part: 'Other', cat: guessCat(x.name || ''), custom: true }); }
+      }
+      const same = !!base && exId === base.exId;
+      let sets = base ? base.sets.map(s => Object.assign({}, s)) : [];
+      if (!same) sets = sets.filter(s => s.t !== 'w');
+      if (!sets.length) sets = Array.from({ length: x.sets || 3 }, blankSet);
+      if (x.sets) { let keep = x.sets; sets = sets.filter(s => s.t === 'w' || keep-- > 0); }
+      return { exId, unit: same ? base.unit : defUnit(exId), notes: '', tplNote: x.note || (same ? base.tplNote : ''), rest: base ? base.rest : undefined, ss: same ? base.ss : undefined, base: same ? base.base : null, sets };
+    });
   }
   function workoutNameNow() { const h = new Date().getHours(); return h < 12 ? 'Morning workout' : h < 17 ? 'Afternoon workout' : 'Evening workout'; }
   function startLive(w) {
@@ -4419,7 +4451,10 @@ Power Clean (Barbell)|Other|Barbell|`;
         (e.showNote || e.notes ? '<textarea class="lb-input lb-notes" rows="1" placeholder="Note for this exercise" data-in="eNote" data-ei="' + i + '">' + esc(e.notes || '') + '</textarea>' : '') +
         '<div class="lb-sets" style="--cols:' + cols + '"><div class="lb-setrow head"><span>Set</span><span>Previous</span>' + f.map(k => '<span>' + ({ w: e.unit.toUpperCase(), r: 'Reps', km: 'Km', min: 'Min', sec: 'Sec' }[k]) + '</span>').join('') + xc.map(k => '<span>' + k.toUpperCase() + '</span>').join('') + '<span>' + (live ? '✓' : '') + '</span></div>';
       let n = 0;
+      const warmN = e.sets.filter(s => s.t === 'w').length, warmFold = live && warmN > 0 && !e.showWarm && e.sets.every(s => s.t !== 'w' || s.done);
+      if (warmFold) html += '<button class="lb-warmfold" data-a="showWarm" data-ei="' + i + '">✓ ' + warmN + (warmN === 1 ? ' warm-up set done' : ' warm-up sets done') + ' · show</button>';
       e.sets.forEach((s, j) => {
+        if (warmFold && s.t === 'w') return;
         const p = prevMatch(prev, e, j), label = s.t === 'n' ? ++n : s.t.toUpperCase();
         const pTxt = p ? fmtSet(p, { unit: p._base ? e.unit : (prev.unit || e.unit), exId: e.exId }, ex) : '';
         html += '<div class="lb-setrow' + (s.done ? ' done' : '') + '" data-ei="' + i + '" data-si="' + j + '"><button class="lb-settag ' + s.t + '" data-a="setType" data-ei="' + i + '" data-si="' + j + '" aria-label="Set type">' + label + '</button>' +
@@ -4569,6 +4604,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   const cellOf = t => E.doc.exercises[+t.dataset.ei];
   on('wName', t => { E.doc.name = t.value; touch(); });
   on('wNotes', t => { E.doc.notes = t.value; touch(); });
+  on('showWarm', t => { E.doc.exercises[+t.dataset.ei].showWarm = true; renderEditor(); });
   on('tFolder', t => { E.doc.folder = t.value; });
   on('eNote', t => { cellOf(t).notes = t.value; touch(); });
   on('cell', t => {
@@ -4638,6 +4674,7 @@ Power Clean (Barbell)|Other|Barbell|`;
       title: ex.name, body: () =>
         opt('exNote', e.notes || e.showNote ? 'Edit note' : 'Add a note') +
         (weighted ? opt('exWarm', 'Add warm-up sets') + opt('exPlates', 'Plate calculator for this lift') + opt('exUnit', 'Switch to ' + (e.unit === 'kg' ? 'lb' : 'kg')) : '') +
+        (getEx(e.exId).memo ? '' : opt('exSetupM', 'Machine settings (seat, pin, weight step)')) +
         opt('exSuper', e.ss ? 'Remove from superset' : 'Superset with the next exercise') +
         opt('exUp', 'Move up') + opt('exDown', 'Move down') + opt('exReplace', 'Replace exercise') + opt('exRemove', 'Remove exercise', ' danger')
     });
@@ -4851,7 +4888,9 @@ button.lb-card:hover{border-color:var(--lb-muted)}
 .lb-tpl-top b{font-family:var(--lb-display);font-size:1.2rem}
 .lb-empty{padding:22px 16px;text-align:center;color:var(--lb-muted);border:1px dashed var(--lb-line);border-radius:var(--lb-r)}
 .lb-active-bar{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;margin:-4px 0 12px;border-radius:var(--lb-r);background:var(--lb-accent);color:var(--lb-accent-ink)}
-.lb-active-bar .dot{width:9px;height:9px;border-radius:50%;background:currentColor;animation:lbpulse 1.4s infinite}
+.lb-active-bar .dot{width:9px;height:9px;border-radius:50%;background:currentColor;animation:lbpulse 1.4s 6}
+.lb-screen-title{font-family:var(--display,inherit);font-size:1.9rem;line-height:1;margin:2px 0 12px;font-weight:700}
+.lb-warmfold{display:block;width:100%;text-align:left;padding:8px 2px;font-size:.92rem;color:var(--lb-muted);background:none;border:0;border-bottom:1px solid var(--lb-line);margin-bottom:4px}
 .lb-active-bar .lb-chev{margin-left:auto;font-weight:700}
 @keyframes lbpulse{50%{opacity:.3}}
 .lb-stats{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.85rem;color:var(--lb-muted);margin:.25rem 0 .4rem;font-variant-numeric:tabular-nums}
@@ -23358,7 +23397,7 @@ function macroBars(items){
   return `<div class="macros">${rows.map(([lab,k,lo,hi,max,cls,u])=>`
     <div class="mrow"><span class="label">${lab}</span>
       <div class="mbar" aria-hidden="true"><span class="planned ${cls}" style="width:${Math.min(100,all[k]/max*100)}%"></span><span class="eaten ${cls}" style="width:${Math.min(100,eaten[k]/max*100)}%"></span><span class="zone" style="left:${lo/max*100}%;width:${(hi-lo)/max*100}%"></span></div>
-      <span class="mval">${r0(eaten[k])}${u} <span class="muted">/ ${r0(all[k])}</span></span></div>`).join("")}
+      <span class="mval">${r0(eaten[k])}${u} <span class="muted">of ${k==="kcal"?fkc(KT):`${lo}–${hi}`}</span>${all[k]>eaten[k]+0.5?`<small class="plannedn">+${r0(all[k]-eaten[k])}${u} planned</small>`:""}</span></div>`).join("")}
     <p class="muted" style="font-size:.8rem">Solid = eaten, faded = planned, brackets = target range.</p></div>`;
 }
 function verdict(items){
@@ -23560,12 +23599,7 @@ function vToday(){
         <button class="btn" type="submit">${w?"Update":"Log weight"}</button>
         ${w?`<button class="btn ghost small" type="button" data-act="delweight">Remove</button>`:""}
       </form>
-      ${w?`<div class="stats">
-        <div class="stat"><div class="v num">${w.kg.toFixed(1)}</div><span class="label">kg today</span></div>
-        <div class="stat"><div class="v num">${prev?((w.kg-prev.kg>0?"+":"")+(w.kg-prev.kg).toFixed(1)):"—"}</div><span class="label">vs last weigh-in</span></div>
-        <div class="stat"><div class="v num">${a7?a7.toFixed(1):"—"}</div><span class="label">7-day avg</span></div>
-        <div class="stat"><div class="v num">${(w.kg-GOAL_KG).toFixed(1)}</div><span class="label">kg to ${GOAL_KG}</span></div>
-      </div>`:`<p class="muted" style="font-size:.9rem">Weigh after the bathroom, before food or water. The weekly average is what counts.</p>`}
+      ${w?`<p class="muted" style="font-size:.88rem">${prev?`<span class="num">${(w.kg-prev.kg>0?"+":"")+(w.kg-prev.kg).toFixed(1)}</span> kg vs last weigh-in`:"First weigh-in"}${a7?` · 7-day avg <span class="num">${a7.toFixed(1)}</span>`:""} · <button class="unitbtn" style="text-transform:none" data-act="gotab" data-tab="progress">Progress</button></p>`:`<p class="muted" style="font-size:.9rem">Weigh after the bathroom, before food or water. The weekly average is what counts.</p>`}
       ${safeMod("GoalDate",()=>GoalDate.compact(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}))}
       ${dayType(d)==="saturday"?`<p class="note">Saturday weigh-ins often run high after Friday's salty shrimp. Don't react to it.</p>`:""}
     </div>
@@ -23574,22 +23608,20 @@ function vToday(){
       ${day.waterh?`<p class="muted" style="font-size:.85rem">WaterH ${(day.waterh.ml/1000).toFixed(2)} L · synced ${new Date(day.waterh.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${day.water?` · manual ${(day.water/1000).toFixed(2)} L`:""}</p>`:""}
       <div class="row"><button class="chip" data-act="water" data-ml="250">+250 ml</button><button class="chip" data-act="water" data-ml="500">+500 ml</button><button class="chip" data-act="water" data-ml="1000">+1 L</button><button class="chip" data-act="water" data-ml="-250">−250</button></div>
       ${safeMod("HealthConnectSync",()=>hcSync.html(day))}
-      ${safeMod("HealthConnectSync",()=>hcSync.guideHTML())}
-      <details><summary>Sync WaterH bottle by hand</summary>
+      ${fold("wsync","Sync the WaterH bottle by hand","Fallback", `
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
           <p class="muted" style="font-size:.85rem">Fallback when auto-sync can't see the bottle. Run your WaterH Shortcut, then paste its line here (like <span class="num">WATERH 2026-10-25 2350 mL</span>), or pick a Health export file. Syncing again replaces the day's bottle total instead of adding to it. Log Gatorade, Pocari and shakes in Drinks and supplements so they are not counted twice.</p>
           <textarea id="waterhText" rows="2" style="width:100%;border:1px solid var(--line);background:var(--sunk);border-radius:8px;padding:8px;font-family:var(--mono);font-size:.85rem" placeholder="WATERH 2026-10-25 2350 mL"></textarea>
           <div class="row"><button class="btn small" data-act="waterh">Apply</button><label class="btn ghost small" style="cursor:pointer">Choose file<input type="file" id="waterhFile" accept=".csv,.xml,.txt" hidden></label></div>
-        </div>
-      </details>
+        </div>`)}
     </div>
   </section>
   ${safe("Ramadan",()=>ramadanCard(d))}
   ${safe("Budget recovery",()=>recoveryCard(d))}
-  ${fold("check","Checklist", training?"Treadmill, sleep":"Sleep", checklist)}
+  <div class="card"><div class="spread"><h3>Check-in</h3><span class="muted" style="font-size:.85rem">${training?"Treadmill, sleep":"Sleep"}</span></div>${checklist}
+  ${fold("feel","How do you feel","Soreness, energy", rfSafe(()=>RecoveryFatigue.checkinHtml(S.docs, {date:d, ...rfOpts()})))}</div>
   ${fold("drinks","Drinks and supplements","", safeMod("SuppDrinks",()=>SuppDrinks.html(day, S.docs.prefs.main||{}, {date:d, today:TODAY, training})))}
   ${fold("steps","Steps", day.steps?`${(+day.steps).toLocaleString("en-US")}`:"", safeMod("Steps",()=>{ const g=Steps.stepGoal(S.docs.prefs.main||{}); return Steps.stepsCardHTML(day,{goal:g, week:Steps.weekSteps(getDay,d,g)}); }))}
-  ${fold("feel","How do you feel","Recovery check-in", rfSafe(()=>RecoveryFatigue.checkinHtml(S.docs, {date:d, ...rfOpts()})))}
   ${fold("score","Daily score","", safeMod("DailyScore",()=>DailyScore.html(S.docs, d, {today:TODAY, sessionFor:x=>sessionFor(x)?.session, targets:dayTargets})))}
   ${fold("sched","Schedule", DAYTYPE_LABEL[type], `<ul class="tl" style="padding-top:8px">${SCHEDULE[type].map(([t,x])=>`<li><span class="t">${t}</span><span>${x}</span></li>`).join("")}</ul>`)}
   ${fold("cal","Calendar","", ddCalendar(d))}`;
@@ -23612,13 +23644,19 @@ function vTrain(){
   const run = safeMod("RunTracker",()=>RunTracker.cardHTML(view.date, S.docs));
   const feel = window.MuscleFeedback ? safe("Muscle feedback", ()=>MuscleFeedback.cardHtml(S.docs.workouts[view.date], view.date, mfOpts())) : "";
   const warn = rfSafe(()=>RecoveryFatigue.warningsHtml(RecoveryFatigue.fatigue(S.docs, rfOpts())));
-  const extras = fold("mmap","Muscle recovery","Last 7 days", safeMod("MuscleMap",()=>MuscleMap.html(S.docs, mmOpts())))
+  // Full logger: Travel workout and Short on time live in folds here; the choice is applied when the matching template starts (lbAdaptStart).
+  const wkDoc=S.docs.workouts[view.date], planSes = ses && ses.session!=="Rest" && PROGRAM[ses.session] ? ses.session : null;
+  const twOn = planSes && window.TravelWorkout ? TravelWorkout.active(wkDoc) : null, ssOn = planSes && window.ShortSession ? ShortSession.active(wkDoc) : null;
+  const applyNote = `<p class="muted" style="font-size:.85rem;margin:0 0 6px">Applies when you tap Start ${esc(planSes||"")} in the logger. A workout already running keeps its list.</p>`;
+  const adapt = (full && planSes) ? fold("travel","Travel workout", twOn?`On · ${TravelWorkout.kitOf(twOn).label}`:"Dumbbells, bands or bodyweight", applyNote + travelCard(planSes, wkDoc))
+    + fold("short","Short on time", ssOn?`On · ${ssOn} min`:"30, 45 or 60 min version", applyNote + shortCard(planSes, wkDoc)) : "";
+  const extras = adapt
+    + fold("mmap","Muscle recovery","Last 7 days", safeMod("MuscleMap",()=>MuscleMap.html(S.docs, mmOpts())))
     + fold("cardio","Cardio","", cardio)
     + fold("run","Outdoor run","", run)
     + fold("feel","Muscle feedback","", feel)
     + fold("goals","Lift goals","", liftGoalsCard())
-    + fold("strong","Import from Strong","CSV", strongCard())
-    + `<p class="muted" style="font-size:.85rem;text-align:center">${full?"Full logger":"Quick log"} · <button class="unitbtn" style="text-transform:none" data-act="tmode" data-m="${full?"quick":"full"}">Switch to ${full?"Quick log":"the full logger"}</button> · <button class="unitbtn" style="text-transform:none" data-act="gotab" data-tab="settings">Settings</button></p>`;
+    + (full ? "" : `<p class="muted" style="font-size:.85rem;text-align:center">Quick log · <button class="unitbtn" style="text-transform:none" data-act="tmode" data-m="full">Switch to the full logger</button> · Import from Strong is under Settings, Data and backup.</p>`);
   return warn + eb.nudge + (full ? "" : safe("Workout", vTrainSession)) + eb.picker + otherLogged() + extras;
 }
 /* Lift goals (LiftGoals): prefs/liftGoals = {goals:[{id,name,w,r,unit,by,created}]}; bars run on StrengthAnalytics est. 1RM */
@@ -23680,6 +23718,24 @@ function shortApply(min){
   const d=view.date, w=workoutDoc(d), p=ShortSession.plan(PROGRAM[w.session]||[], {minutes:min, mainLifts:MAIN_LIFTS, cardioMin:cdDocs().prefs.main.cardio.min});
   put("workouts", d, ShortSession.apply(w, p)); view.ssOpen=false;
   toast(`${min} min version on: about ${Math.round(p.est.total)} min. Main lifts keep their sets.`);
+}
+/* Full logger: when a template named like today's plan session starts, apply the day's Travel / Short-on-time choices
+   (workouts/{date}.travel and .short, the same records the Quick log uses). Returns null when nothing is on. */
+function lbAdaptStart(info){
+  const name=info&&info.name, plan=PROGRAM[name]; if(!plan || !info.exercises) return null;
+  const wk=S.docs.workouts[view.date]||{}; const parts=[];
+  let list=info.exercises.map(e=>({from:e.exId, exId:e.exId, name:e.name, plan:e.name, sets:e.sets}));
+  const kit = window.TravelWorkout ? TravelWorkout.active(wk) : null;
+  if(kit){ try{ const items=TravelWorkout.convert(plan,{kit, workouts:S.docs.workouts});
+    list=list.map(e=>{ const it=items.find(x=>x.plan===e.plan); if(!it||it.missing||!it.name||it.name===e.plan) return e;
+      const reps=it.reps?(it.reps.seconds?`${it.reps.lo}–${it.reps.hi} s`:`${it.reps.lo}–${it.reps.hi} reps`):"";
+      return Object.assign({}, e, {exId:it.loggerId||null, name:it.name, sets:it.sets||e.sets, note:[reps, it.cue].filter(Boolean).join(" · ")}); });
+    parts.push(TravelWorkout.kitOf(kit).label); }catch(e){ console.error("[travel → logger]", e); } }
+  const min = window.ShortSession ? ShortSession.active(wk) : null;
+  if(min){ try{ list=list.filter(e=>{ const s=ShortSession.slot(wk,e.plan); return !(s&&s.drop); })
+      .map(e=>{ const s=ShortSession.slot(wk,e.plan); return s&&s.sets ? Object.assign({}, e, {sets:Math.min(e.sets||s.sets, s.sets)}) : e; });
+    parts.push(min+" min"); }catch(e){ console.error("[short → logger]", e); } }
+  return parts.length ? {exercises:list, suffix:parts.join(" · ")} : null;
 }
 /* BreakRamp: lighter weights after 7+ days off a lift (nothing stored) */
 const brStep = (name,unit) => unit==="lb" ? 5 : /\bDB\b|Dumbbell/i.test(name) ? 2 : 2.5;
@@ -23750,7 +23806,7 @@ const FOOD_SLOTS=["Breakfast","Meal 1","Snack","Meal 2","Extra"];
 const slotLabel = s => s==="Snack"?"Snacks":s==="Extra"?"Extras":s==="Fixed"?"Every day":s;
 function foodItemHtml(i){ return `<div class="item ${i.eaten?"":"planned"}">
         <input type="checkbox" data-act="eat" data-id="${i.id}" ${i.eaten?"checked":""} aria-label="Eaten">
-        <div class="nm"><button type="button" data-act="foodedit" data-id="${i.id}" aria-label="Edit ${esc(i.name)}"><b>${mgBadge(i)} ${esc(i.name)}</b><small>${i.est?"estimate · ":""}${i.auto?"auto · ":""}${i.eaten?"eaten":"planned"}${isNever(i.name)?` · <span style="color:var(--bad)">never-pick list</span>`:""}</small></button></div>
+        <div class="nm"><button type="button" data-act="foodedit" data-id="${i.id}" aria-label="Edit ${esc(i.name)}"><b>${esc(i.name)}</b><small>${i.est?"estimate · ":""}${i.auto?"auto · ":""}${i.eaten?"eaten":"planned"}${isNever(i.name)?` · <span style="color:var(--bad)">never-pick list</span>`:""}</small></button></div>
         <div class="mac">${r0(i.kcal)} kcal<br><span style="color:var(--protein)">${r1(+i.p||0)}P</span> <span style="color:var(--carbs)">${r1(+i.c||0)}C</span> <span style="color:var(--fat)">${r1(+i.f||0)}F</span></div>
         <button class="x" data-act="delfood" data-id="${i.id}" aria-label="Remove">×</button>
       </div>`; }
@@ -23772,7 +23828,7 @@ function vFood(){
   const meals = day.food.filter(i=>/Meal/.test(i.slot)), mealP=sum(meals).p;
   const slots = FOOD_SLOTS.filter(s=>s!=="Breakfast" || type==="saturday" || day.food.some(i=>i.slot==="Breakfast")).concat([...new Set(day.food.map(i=>i.slot))].filter(s=>!FOOD_SLOTS.includes(s)));
   const group = slot => { const items=day.food.filter(i=>i.slot===slot), k=sum(items.filter(i=>i.eaten)).kcal, kp=sum(items).kcal;
-    return `<div class="mealgrp"><div class="mh"><span>${esc(slotLabel(slot))}</span><small>${items.length?`${fkc(k)}${kp>k+0.5?` / ${fkc(kp)}`:""} kcal`:""}</small></div>
+    return `<div class="mealgrp"><div class="mh"><span>${esc(slotLabel(slot))}</span><small>${items.length?`${fkc(k)} kcal eaten${kp>k+0.5?` · ${fkc(kp-k)} planned`:""}`:""}</small></div>
       ${items.length?`<div class="items">${items.map(foodItemHtml).join("")}</div>`:""}
       <button class="madd" data-act="foodadd" data-slot="${esc(slot)}">+ Add food</button></div>`; };
   return `
@@ -23781,10 +23837,11 @@ function vFood(){
     ${kcalSummary(day,d)}
     ${macroBars(day.food)}
     ${verdict(day.food)}
-    ${safe("Protein gap",()=>proteinGapHtml(day))}
   </div>
-  ${meals.length&&mealP<135?`<p class="note" style="font-size:.9rem">The 2 meals carry <b class="num">${r0(mealP)} g</b> protein. They need ~135–145 g combined, because snacks add 6 g or less.</p>`:""}
-  ${day.food.length && !day.food.some(i=>/Adonis/.test(i.name))?`<p class="note">No Adonis yet. It's every day unless you skip it on purpose, and it doesn't count as one of the 2 snacks.</p>`:""}
+  ${day.food.length?fold("fcheck","Food check","Grades, protein gap, tips", `${safe("Protein gap",()=>proteinGapHtml(day))}
+    ${meals.length&&mealP<135?`<p class="note" style="font-size:.9rem">The 2 meals carry <b class="num">${r0(mealP)} g</b> protein. They need ~135–145 g combined, because snacks add 6 g or less.</p>`:""}
+    ${!day.food.some(i=>/Adonis/.test(i.name))?`<p class="note">No Adonis yet. It's every day unless you skip it on purpose, and it doesn't count as one of the 2 snacks.</p>`:""}
+    ${window.MealGrade?`<div class="items" style="padding-top:6px">${day.food.map(i=>`<div class="item" style="grid-template-columns:auto 1fr auto"><span>${mgBadge(i)}</span><span>${esc(i.name)}</span><small class="muted">${i.eaten?"eaten":"planned"}</small></div>`).join("")}</div>`:""}`):""}
   ${slots.map(group).join("")}
   ${day.food.length?`<div class="row"><button class="btn ghost small" data-act="copyday">Copy to next day</button><button class="btn ghost small" data-act="clearday">New day (clear)</button></div>`:""}
   ${fold("fauto","Automatic foods","Adonis, Gatorade rules", safeMod("AutoFoods",()=>AutoFoods.html((S.docs.prefs.main||{}).autoFoods,{day,training,type,hasDrinks:!!window.SuppDrinks})))}
@@ -23943,6 +24000,7 @@ function vProgress(){
       const st = !l?`<span class="muted">Not logged yet</span>`:dropping(n)?`<span class="pill bad">Dropping</span>`:l.best.v>=e1rm(convW(base[1],base[4],"kg"),base[2])-0.01?`<span class="pill good">Holding</span>`:`<span class="pill warn">Below baseline</span>`;
       return `<tr><td>${n}</td><td class="n">${base[1]} ${base[4]} × ${base[2]}</td><td class="n">${l?`${l.best.w} ${setUnit(l.best,n)} × ${l.best.r}`:"—"}</td><td>${st}</td></tr>`; }).join("")}
     </tbody></table></div></div>`)
+    + (window.WorkoutLogger?fold("lbstats","Workout stats","Weeks, streak, sets per muscle", `<p class="muted" style="font-size:.9rem">Workouts per week, your streak and the sets each muscle got in the last 7 days, from the logger.</p><button class="btn ghost small" data-act="lbshow" data-k="progress">Open workout stats</button>`):"")
     + fold("sscore","Strength score","", safeMod("StrengthScore",()=>StrengthScore.html(S.docs, strengthOpts())))
     + fold("mfplan","Muscle feedback","Sets per muscle", safeMod("MuscleFeedback",()=>MuscleFeedback.planHtml(S.docs, mfOpts())))
     + fold("tc","Compare trends","", safeMod("TrendCompare",()=>TrendCompare.html(S.docs, tcOpts())))
@@ -24032,6 +24090,7 @@ function vGuide(){
 function vSettings(){
   const m=S.docs.prefs.main||{}, theme=m.theme||"system", lb=lbSettings(), full=view.trainMode==="full";
   const seg=(act,opts,cur,extra)=>`<span class="seg" role="group">${opts.map(([k,l])=>`<button type="button" data-act="${act}" data-k="${k}" ${extra||""} aria-pressed="${String(cur)===String(k)}">${l}</button>`).join("")}</span>`;
+  const cat=t=>`<p class="label setcat">${t}</p>`;
   const row=(t,sub,ctl)=>`<div class="set-row"><span><span>${t}</span>${sub?`<small>${sub}</small>`:""}</span>${ctl}</div>`;
   const sw=(act,on,label,extra)=>`<button class="switch" role="switch" aria-checked="${!!on}" data-act="${act}" ${extra||""} aria-label="${label}"></button>`;
   const who = window.CloudStore && CloudStore.currentEmail ? CloudStore.currentEmail() : null;
@@ -24039,10 +24098,12 @@ function vSettings(){
   const restOpts=[[90,"1:30"],[120,"2:00"],[150,"2:30"],[180,"3:00"]];
   return `
   ${tabHead("Settings", `<button class="btn ghost small" data-act="gotab" data-tab="today">Done</button>`)}
-  <div class="card"><h3>Appearance</h3><div class="set-list">
+  ${cat("Appearance")}
+  <div class="card"><div class="set-list">
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
     ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","Red"],["blue","Blue"],["yellow","Yellow"],["green","Green"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
   </div></div>
+  ${cat("Workouts and units")}
   <div class="card"><h3>Workout</h3><div class="set-list">
     ${row("Train screen", full?"Templates, Start workout, history":"Today's plan with set rows", seg("tmode",[["full","Full logger"],["quick","Quick log"]],view.trainMode).replace(/data-k=/g,'data-m='))}
     ${lb?row("Live workout view","List is the Strong-style table; Gym is one set at a time with big buttons",seg("lbset",[["list","List"],["gym","Gym"]],lb.gym?"gym":"list",'data-s="gym"')):""}
@@ -24057,13 +24118,20 @@ function vSettings(){
   </div>
   ${fold("units","Plan exercises",`${names.filter(n=>exUnit(n)==="lb").length} in lb`, `<div class="set-list" style="padding-top:4px">${names.map(n=>row(esc(n),"",seg("exunit",[["kg","kg"],["lb","lb"]],exUnit(n),`data-n="${esc(n)}"`))).join("")}</div>`)}
   </div>
+  ${cat("Targets")}
   ${yourNumbersCard()}
   ${fold("fprefs2","Food preferences","Likes, never-pick", foodPrefsHtml())}
-  ${fold("rem","Reminders","Phone calendar", safeMod("CalendarReminders",()=>CalendarReminders.html(S.docs.prefs.main||{}, crCtx())))}
+  ${cat("Reminders")}
+  ${fold("rem","Phone calendar reminders","Workouts, meals, weigh-in", safeMod("CalendarReminders",()=>CalendarReminders.html(S.docs.prefs.main||{}, crCtx())))}
+  ${cat("Connections")}
   <div class="card"><h3>Account and sync</h3>
     <p class="muted" style="font-size:.9rem">${who?`Signed in as <b>${esc(who)}</b>. Everything syncs to your account; this phone keeps a copy for offline use.`:`Not signed in. Everything is saved on this phone${window.CloudStore?". Sign in from the banner at the top to sync across devices":""}.`}</p>
     <p class="muted" style="font-size:.85rem">Status: <span id="syncCopy">${esc(document.getElementById("sync").textContent)}</span>. Changing any setting never deletes your history.</p>
-  </div>`;
+  </div>
+  ${fold("hcset","Health Connect","Water from the phone", safeMod("HealthConnectSync",()=>hcSync.guideHTML()))}
+  ${cat("Data and backup")}
+  ${strongCard()}
+  <p class="muted" style="font-size:.85rem;margin:0 4px">Backups, restore and other imports are just below.</p>`;
 }
 /* ===================== Events ===================== */
 // Android app (modules/android-shell): back button closes sheets, then returns to Today, then minimises.
@@ -24216,6 +24284,7 @@ main.addEventListener("click",e=>{
   else if(a==="pick"){ runPicker(); }
   else if(a==="pickclear"){ view.pick=null; render(); }
   else if(a==="usepick"){ usePick(+el.dataset.i); }
+  else if(a==="lbshow"){ view.tab="train"; view.trainMode="full"; render(); try{ WorkoutLogger.show(el.dataset.k); }catch(e){} window.scrollTo(0,0); }
   else if(a==="accent"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.accent=el.dataset.k; applyAccent(p.accent); put("prefs","main",p); }
   else if(a==="deldislike"){ const p=Object.assign({dislikes:[]},clone(S.docs.prefs.main)); p.dislikes.splice(+el.dataset.i,1); put("prefs","main",p); }
 });
@@ -24369,6 +24438,7 @@ function syncLogger(){
   try{
     Promise.resolve(WorkoutLogger.mount(host, {
       storage, targets: APPT || undefined,
+      title: "Train", hideTabs: ["progress"], adaptStart: lbAdaptStart,
       formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE) : undefined,
       anim: window.ExerciseAnim ? ExerciseAnim.create() : undefined,
       breakRamp: window.BreakRamp || undefined,

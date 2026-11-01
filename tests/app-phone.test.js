@@ -130,8 +130,11 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       const r = await page.evaluate(() => ({ a7: avg7(TODAY), yesterday: avg7(addDays(TODAY, -1)) }));
       assert.ok(Math.abs(r.a7 - 91.0) < 1e-9, "average of the seven readings is 91.0, got " + r.a7);
       assert.strictEqual(r.yesterday, null, "only 6 readings up to yesterday, so no average yet");
-      const shown = await page.evaluate(() => [...document.querySelectorAll(".stat")].find(s => /7-day avg/.test(s.textContent))?.querySelector(".v").textContent);
-      assert.strictEqual(shown, "91.0");
+      const shown = await page.evaluate(() => (/7-day avg\s*([\d.]+)/.exec(document.querySelector("#main").textContent) || [])[1]);
+      assert.strictEqual(shown, "91.0", "Today's weigh-in card shows the 7-day average once");
+      await go(page, "progress");
+      const hero = await page.evaluate(() => [...document.querySelectorAll(".stat")].find(s => /Avg, last 7 days/.test(s.textContent))?.querySelector(".v").textContent);
+      assert.strictEqual(hero, "91.0", "Progress › Weight has the full stats");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });

@@ -780,7 +780,8 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (!root) return;
     if (!S.ready) { root.innerHTML = '<div class="lb-empty">Loading your workouts…</div>'; return; }
     const body = { workout: viewWorkout, history: viewHistory, exercises: viewExercises, progress: viewProgress, tools: viewTools }[tab]();
-    root.innerHTML = '<nav class="lb-subnav" aria-label="Workout sections">' + TABS.map(([k, l]) => '<button data-a="tab" data-k="' + k + '" class="' + (k === tab ? 'on' : '') + '" aria-current="' + (k === tab) + '">' + l + '</button>').join('') + '</nav>' + activeBanner() + '<div class="lb-view">' + body + '</div>';
+    const tabs = TABS.filter(([k]) => k === tab || !(S.opts.hideTabs || []).includes(k));
+    root.innerHTML = (S.opts.title ? '<h1 class="lb-screen-title">' + esc(S.opts.title) + '</h1>' : '') + '<nav class="lb-subnav" aria-label="Workout sections">' + tabs.map(([k, l]) => '<button data-a="tab" data-k="' + k + '" class="' + (k === tab ? 'on' : '') + '" aria-current="' + (k === tab) + '">' + l + '</button>').join('') + '</nav>' + activeBanner() + '<div class="lb-view">' + body + '</div>';
     const q = root.querySelector('#lb-exq'); if (q && exFilter.focus) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   }
   on('tab', t => { tab = t.dataset.k; renderMain(); });
@@ -1012,8 +1013,10 @@ Power Clean (Barbell)|Other|Barbell|`;
   function memoHtml(ex, editable) {
     const txt = ex.memo ? esc(ex.memo).replace(/\n+/g, ' · ') : '';
     if (!editable) return txt ? '<p class="lb-memo small">' + txt + '</p>' : '';
-    return '<button class="lb-memo-btn' + (txt ? '' : ' empty') + '" data-a="exSetup" data-id="' + esc(ex.id) + '" aria-label="Machine settings">' + (txt ? '⚙ ' + txt : '⚙ Add seat, pin or weight step') + '</button>';
+    if (!txt) return ''; // empty: "Machine settings" sits in the exercise's ••• menu instead of a line under every exercise
+    return '<button class="lb-memo-btn" data-a="exSetup" data-id="' + esc(ex.id) + '" aria-label="Machine settings">⚙ ' + txt + '</button>';
   }
+  on('exSetupM', t => { const e = menuEx(t); closeSheet(); actions.exSetup({ dataset: { id: e.exId } }); });
   on('exSetup', t => {
     const id = t.dataset.id;
     openSheet({
@@ -1350,7 +1353,33 @@ Power Clean (Barbell)|Other|Barbell|`;
     const w = { id: uid(), name: tpl ? tpl.name : (from ? from.name : workoutNameNow()), templateId: tpl ? tpl.id : from && from.templateId, templateName: tpl ? tpl.name : from && from.templateName, start: Date.now(), notes: '', exercises: [], updated: Date.now() };
     const src = tpl || from;
     if (src) w.exercises = src.exercises.map(e => ({ exId: e.exId, unit: e.unit || defUnit(e.exId), notes: '', tplNote: e.notes || '', rest: e.rest, ss: e.ss, base: tpl ? e.sets.map(s => clone(s)) : null, sets: e.sets.map(s => ({ t: s.t, w: '', r: '', km: '', min: '', sec: '', done: false })) }));
+    // Host hook: opts.adaptStart({name, exercises:[{exId, name, sets}]}) may return {exercises:[{from, exId?, name, sets?, note?}], suffix?}
+    // (the app uses it for its Travel workout and Short-on-time choices). Unknown names become custom exercises.
+    if (tpl && S.opts && S.opts.adaptStart) {
+      try {
+        const a = S.opts.adaptStart({ name: tpl.name, exercises: w.exercises.map(e => ({ exId: e.exId, name: getEx(e.exId).name, sets: e.sets.filter(s => s.t !== 'w').length })) });
+        if (a && Array.isArray(a.exercises)) { w.exercises = adaptExercises(w, a.exercises); if (a.suffix) w.name += ' · ' + a.suffix; }
+      } catch (err) { console.error('[logger] adaptStart', err); }
+    }
     return w;
+  }
+  const blankSet = () => ({ t: 'n', w: '', r: '', km: '', min: '', sec: '', done: false });
+  function adaptExercises(w, list) {
+    return list.map(x => {
+      const base = w.exercises.find(e => e.exId === x.from) || null;
+      let exId = x.exId && S.data.exercises[x.exId] ? x.exId : null;
+      if (!exId) {
+        const n = String(x.name || '').trim().toLowerCase();
+        const hit = Object.values(S.data.exercises).find(e => String(e.name).trim().toLowerCase() === n);
+        if (hit) exId = hit.id; else { exId = 'c-' + slug(x.name || 'exercise'); put('exercises', { id: exId, name: x.name || 'Exercise', part: 'Other', cat: guessCat(x.name || ''), custom: true }); }
+      }
+      const same = !!base && exId === base.exId;
+      let sets = base ? base.sets.map(s => Object.assign({}, s)) : [];
+      if (!same) sets = sets.filter(s => s.t !== 'w');
+      if (!sets.length) sets = Array.from({ length: x.sets || 3 }, blankSet);
+      if (x.sets) { let keep = x.sets; sets = sets.filter(s => s.t === 'w' || keep-- > 0); }
+      return { exId, unit: same ? base.unit : defUnit(exId), notes: '', tplNote: x.note || (same ? base.tplNote : ''), rest: base ? base.rest : undefined, ss: same ? base.ss : undefined, base: same ? base.base : null, sets };
+    });
   }
   function workoutNameNow() { const h = new Date().getHours(); return h < 12 ? 'Morning workout' : h < 17 ? 'Afternoon workout' : 'Evening workout'; }
   function startLive(w) {
@@ -1468,7 +1497,10 @@ Power Clean (Barbell)|Other|Barbell|`;
         (e.showNote || e.notes ? '<textarea class="lb-input lb-notes" rows="1" placeholder="Note for this exercise" data-in="eNote" data-ei="' + i + '">' + esc(e.notes || '') + '</textarea>' : '') +
         '<div class="lb-sets" style="--cols:' + cols + '"><div class="lb-setrow head"><span>Set</span><span>Previous</span>' + f.map(k => '<span>' + ({ w: e.unit.toUpperCase(), r: 'Reps', km: 'Km', min: 'Min', sec: 'Sec' }[k]) + '</span>').join('') + xc.map(k => '<span>' + k.toUpperCase() + '</span>').join('') + '<span>' + (live ? '✓' : '') + '</span></div>';
       let n = 0;
+      const warmN = e.sets.filter(s => s.t === 'w').length, warmFold = live && warmN > 0 && !e.showWarm && e.sets.every(s => s.t !== 'w' || s.done);
+      if (warmFold) html += '<button class="lb-warmfold" data-a="showWarm" data-ei="' + i + '">✓ ' + warmN + (warmN === 1 ? ' warm-up set done' : ' warm-up sets done') + ' · show</button>';
       e.sets.forEach((s, j) => {
+        if (warmFold && s.t === 'w') return;
         const p = prevMatch(prev, e, j), label = s.t === 'n' ? ++n : s.t.toUpperCase();
         const pTxt = p ? fmtSet(p, { unit: p._base ? e.unit : (prev.unit || e.unit), exId: e.exId }, ex) : '';
         html += '<div class="lb-setrow' + (s.done ? ' done' : '') + '" data-ei="' + i + '" data-si="' + j + '"><button class="lb-settag ' + s.t + '" data-a="setType" data-ei="' + i + '" data-si="' + j + '" aria-label="Set type">' + label + '</button>' +
@@ -1618,6 +1650,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   const cellOf = t => E.doc.exercises[+t.dataset.ei];
   on('wName', t => { E.doc.name = t.value; touch(); });
   on('wNotes', t => { E.doc.notes = t.value; touch(); });
+  on('showWarm', t => { E.doc.exercises[+t.dataset.ei].showWarm = true; renderEditor(); });
   on('tFolder', t => { E.doc.folder = t.value; });
   on('eNote', t => { cellOf(t).notes = t.value; touch(); });
   on('cell', t => {
@@ -1687,6 +1720,7 @@ Power Clean (Barbell)|Other|Barbell|`;
       title: ex.name, body: () =>
         opt('exNote', e.notes || e.showNote ? 'Edit note' : 'Add a note') +
         (weighted ? opt('exWarm', 'Add warm-up sets') + opt('exPlates', 'Plate calculator for this lift') + opt('exUnit', 'Switch to ' + (e.unit === 'kg' ? 'lb' : 'kg')) : '') +
+        (getEx(e.exId).memo ? '' : opt('exSetupM', 'Machine settings (seat, pin, weight step)')) +
         opt('exSuper', e.ss ? 'Remove from superset' : 'Superset with the next exercise') +
         opt('exUp', 'Move up') + opt('exDown', 'Move down') + opt('exReplace', 'Replace exercise') + opt('exRemove', 'Remove exercise', ' danger')
     });
@@ -1900,7 +1934,9 @@ button.lb-card:hover{border-color:var(--lb-muted)}
 .lb-tpl-top b{font-family:var(--lb-display);font-size:1.2rem}
 .lb-empty{padding:22px 16px;text-align:center;color:var(--lb-muted);border:1px dashed var(--lb-line);border-radius:var(--lb-r)}
 .lb-active-bar{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;margin:-4px 0 12px;border-radius:var(--lb-r);background:var(--lb-accent);color:var(--lb-accent-ink)}
-.lb-active-bar .dot{width:9px;height:9px;border-radius:50%;background:currentColor;animation:lbpulse 1.4s infinite}
+.lb-active-bar .dot{width:9px;height:9px;border-radius:50%;background:currentColor;animation:lbpulse 1.4s 6}
+.lb-screen-title{font-family:var(--display,inherit);font-size:1.9rem;line-height:1;margin:2px 0 12px;font-weight:700}
+.lb-warmfold{display:block;width:100%;text-align:left;padding:8px 2px;font-size:.92rem;color:var(--lb-muted);background:none;border:0;border-bottom:1px solid var(--lb-line);margin-bottom:4px}
 .lb-active-bar .lb-chev{margin-left:auto;font-weight:700}
 @keyframes lbpulse{50%{opacity:.3}}
 .lb-stats{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.85rem;color:var(--lb-muted);margin:.25rem 0 .4rem;font-variant-numeric:tabular-nums}

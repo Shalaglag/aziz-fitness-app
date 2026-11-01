@@ -46,3 +46,6 @@ Data shape is unchanged apart from the optional `rir` on sets and the optional `
 ## Host settings (v45)
 
 `WorkoutLogger.settings()` returns a copy of the logger settings; `WorkoutLogger.setSettings({gym, unit, restCompound, restIso, sound, vibrate, wake, rpe, rir})` merges, saves to `lb_meta/settings` and re-renders the home screen. The app's Settings screen uses these. Gym mode is off by default since v45: live workouts open in the Strong-style List view.
+
+## Host hooks (v47)
+`mount(el, opts)` also takes `title` (an `<h1>` above the section tabs), `hideTabs` (tab keys left out of the nav; `show(k)` still opens them) and `adaptStart(info)`: called when a template starts with `{name, exercises:[{exId, name, sets}]}` (working sets only); return `{exercises:[{from, exId?, name, sets?, note?}], suffix?}` to change the list (unknown names become custom exercises, `sets` trims working sets, `suffix` is appended to the workout name) or `null` to leave it. The app uses it for Travel workout and Short on time. In a live workout an exercise with no machine settings shows "Machine settings" in its ••• menu instead of a line; once every warm-up set is ticked they collapse to one "N warm-up sets done · show" line.
