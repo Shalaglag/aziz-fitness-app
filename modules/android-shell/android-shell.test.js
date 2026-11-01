@@ -56,5 +56,13 @@ test("rest notification uses the rest channel with the GymSounds ding", async ()
   assert.equal(scheduled.length, 2);
   assert.equal(scheduled[0].channelId, A.REST_CHANNEL.id);
   assert.equal(scheduled[0].id, 7001);
+  // A different rest sound picked in Settings rings through its own channel and wav
+  listeners["lb:rest"]({ detail: { end: 1e12, total: 90, sound: "boxing" } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(channels.length, 2);
+  assert.deepEqual([channels[1].id, channels[1].sound], ["rest_boxing_v1", "rest_boxing.wav"]);
+  assert.equal(scheduled[2].channelId, "rest_boxing_v1");
+  assert.equal(A.channelFor("restDone").id, "rest_v1");
+  assert.equal(A.channelFor("../x").id, "rest_v1", "odd ids fall back to the bell");
   delete global.document; global.window = {};
 });

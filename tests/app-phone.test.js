@@ -233,6 +233,34 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("rest timer: every look renders, full-screen looks minimise, the picked sound plays", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "settings");
+      assert.strictEqual(await page.$$eval('[data-act="lbpick"][data-s="restStyle"]', b => b.length), 6, "six looks in Settings");
+      assert.ok(await page.$$eval('[data-act="lbpick"][data-s="restSound"]', b => b.length) >= 7, "rest sounds in Settings");
+      await page.evaluate(() => { window.played = []; GymSounds.play = n => { played.push(n); return true; }; });
+      await page.click('[data-act="lbpick"][data-s="restSound"][data-k="boxing"]');
+      assert.strictEqual(await page.evaluate(() => WorkoutLogger.settings().restSound), "boxing");
+      assert.ok(await page.evaluate(() => played.includes("boxing")), "tapping a sound previews it");
+      const vis = sel => page.evaluate(sel => [...document.querySelectorAll(sel)].some(e => e.offsetParent || getComputedStyle(e).position === "fixed"), sel);
+      for (const [look, sel] of [["bar", ".lb-rest-bar"], ["half", ".lb-rest-half"], ["ring", ".lb-rest-ring"], ["fill", ".lb-rest-level"], ["plates", ".lb-rest-plates"], ["blocks", ".lb-rest-blocks"]]) {
+        await page.evaluate(l => { WorkoutLogger.setSettings({ restStyle: l }); WorkoutLogger.previewRest(30); }, look);
+        await page.waitForTimeout(80);
+        assert.ok(await vis(".lb-rest:not([hidden]) " + sel), look + " renders");
+        assert.strictEqual(await page.evaluate(() => !!document.querySelector(".lb-rest.full[role=dialog]")), look === "ring" || look === "fill", look + " full screen");
+        if (look === "ring") {
+          await page.click('.lb-rest.full [data-a="restMini"]');
+          assert.ok(await vis(".lb-rest:not([hidden]) .lb-rest-bar") && !(await page.$(".lb-rest.full")), "Minimise drops to the bar");
+        }
+        await page.evaluate(() => [...document.querySelectorAll('[data-a="restSkip"]')].forEach(b => b.offsetParent && b.click()));
+      }
+      await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ restStyle: "plates", sound: true }); WorkoutLogger.previewRest(5); });
+      await page.waitForFunction(() => played.length > 0, null, { timeout: 8000 });
+      assert.deepStrictEqual(await page.evaluate(() => played), ["boxing"], "rest over plays the picked sound");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("guide: search filters sections and jump chips exist; progress has four sections", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "guide");

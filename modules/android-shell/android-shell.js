@@ -10,7 +10,7 @@
  *   AndroidShell.notifyAt(id, when, title, body) / AndroidShell.cancel(id)
  *
  * Back button order: a registered handler → a visible sheet/dialog's close button → the Today tab → minimise the app.
- * Rest timer: the workout logger fires "lb:rest" {end,total} and "lb:rest-stop" on window; a local
+ * Rest timer: the workout logger fires "lb:rest" {end,total,sound} and "lb:rest-stop" on window; a local
  * notification is scheduled 1 s after the end so the in-app beep (which cancels it) wins while the app is open.
  */
 const AndroidShell = (function () {
@@ -64,14 +64,26 @@ const AndroidShell = (function () {
     try { const bg = rgbToHex(getComputedStyle(doc.body).backgroundColor); if (bg) sb.setBackgroundColor({ color: bg }); } catch (e) { }
   }
 
-  // The rest notification has its own channel that plays the GymSounds "rest over" ding
-  // (android/app/src/main/res/raw/rest_done.wav, written by modules/gym-sounds/make-wav.js).
-  // A channel's sound is fixed once created, so a new sound needs a new channel id.
+  // The rest notification has its own channel that plays the rest sound picked in Settings (GymSounds
+  // REST_SOUNDS; android/app/src/main/res/raw/rest_*.wav, written by modules/gym-sounds/make-wav.js).
+  // A channel's sound is fixed once created, so each sound has its own channel, and a changed sound needs a new id.
   const REST_CHANNEL = { id: "rest_v1", name: "Rest timer", description: "Rings when your rest is over", importance: 5, visibility: 1, sound: "rest_done.wav", vibration: true };
-  let channelReady = null;
-  function restChannel(ln) {
-    if (!channelReady) channelReady = Promise.resolve(ln.createChannel ? ln.createChannel(REST_CHANNEL) : null).then(() => true, () => false);
-    return channelReady;
+  function channelFor(sound) {
+    if (!sound || sound === "restDone" || !/^[a-z0-9]+$/i.test(sound)) return REST_CHANNEL;
+    const GS = typeof window !== "undefined" && window.GymSounds;
+    const pick = GS && GS.REST_SOUNDS && GS.REST_SOUNDS.find(s => s.id === sound);
+    if (GS && GS.REST_SOUNDS && !pick) return REST_CHANNEL;
+    return Object.assign({}, REST_CHANNEL, { id: "rest_" + sound.toLowerCase() + "_v1", name: "Rest timer: " + (pick ? pick.label : sound), sound: "rest_" + sound.toLowerCase() + ".wav" });
+  }
+  const channelReady = {};
+  function restChannel(ln, ch) {
+    ch = ch || REST_CHANNEL;
+    if (!channelReady[ch.id]) channelReady[ch.id] = Promise.resolve(ln.createChannel ? ln.createChannel(ch) : null).then(() => true, () => false);
+    return channelReady[ch.id];
+  }
+  function restSound(d) {
+    if (d && d.sound) return d.sound;
+    try { return window.WorkoutLogger && WorkoutLogger.settings && WorkoutLogger.settings().restSound; } catch (e) { return null; }
   }
 
   async function notifyAt(id, when, title, body, extra) {
@@ -95,11 +107,11 @@ const AndroidShell = (function () {
     syncStatusBar(document);
     try { new MutationObserver(() => syncStatusBar(document)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) { }
     if (window.matchMedia) { try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => syncStatusBar(document)); } catch (e) { } }
-    window.addEventListener("lb:rest", e => { const d = (e && e.detail) || {}; if (d.end) restChannel(plugin("LocalNotifications") || {}).then(ok => notifyAt(REST_ID, d.end + 1000, "Rest is over", "Back to the next set.", ok ? { channelId: REST_CHANNEL.id, sound: REST_CHANNEL.sound } : null)); });
+    window.addEventListener("lb:rest", e => { const d = (e && e.detail) || {}; if (!d.end) return; const ch = channelFor(restSound(d)); restChannel(plugin("LocalNotifications") || {}, ch).then(ok => notifyAt(REST_ID, d.end + 1000, "Rest is over", "Back to the next set.", ok ? { channelId: ch.id, sound: ch.sound } : null)); });
     window.addEventListener("lb:rest-stop", () => cancel(REST_ID));
     return true;
   }
 
-  return { isNative, init, onBack, backPress, notifyAt, cancel, syncStatusBar, REST_CHANNEL, _handlers: handlers };
+  return { isNative, init, onBack, backPress, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;
