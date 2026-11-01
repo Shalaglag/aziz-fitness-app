@@ -1,6 +1,6 @@
 # exercise-3d: the shared real-time 3D body (phase 1)
 
-One skinned body (MakeHuman CC0, Extreme build, 200k triangles, 68 bones with three per finger; look A "Studio", both locked by Aziz on Nov 1) drives every listed exercise from the motions already in `modules/exercise-anim` (`ExerciseAnim.sample` + `skeleton(p, BODY)`). Equipment comes from each motion's `props`. Muscles are coloured per vertex: primary red `#d9392c`, secondary amber `#f0a030`.
+One skinned body (MakeHuman CC0, Extreme build reshaped to Aziz's Baki mesh, 200k triangles, 68 bones with three per finger; look A "Studio", both locked by Aziz on Nov 1) drives every listed exercise from the motions already in `modules/exercise-anim` (`ExerciseAnim.sample` + `skeleton(p, BODY)`). Equipment comes from each motion's `props`. Muscles are coloured per vertex: primary red `#d9392c`, secondary amber `#f0a030`.
 
 ## In the app
 - The Rotate view of an exercise card shows this body when the exercise is listed in `exercises.json`, otherwise the line mannequin. The Video view (clips) is unchanged.
@@ -26,7 +26,7 @@ One skinned body (MakeHuman CC0, Extreme build, 200k triangles, 68 bones with th
 `tools/exercise-3d/bake_body.py in.glb body_meta.json regions.png out.glb out_meta.json muscle-vocabulary.csv` turns `body-model/out200/body_extreme.glb` (shared project files) into `app/3d/body.glb`: eyes merged into one primitive, `regions.png` baked into a `_MUSCLE` vertex attribute (r = vocabulary index + 1, g = membership, b = eye, a = left side), int8 normals and tangents, uint16 UVs (6.2 MB). Copy `out200/normal_A.png` to `app/3d/` with it (normal maps belong to their mesh). `paint_muscles.py` is the older rule-based painter for the 72k body.
 
 ## Quality checks
-Run the project's demo checker (`demo-qa`, see its README) against the preview page. Known limits as of Nov 1 (Extreme body): deep squat hip crease squashes ~30 mm (linear-blend skinning), squat wrists 12 deg past the deviation limit, bench sacrum floats 17 mm above the pad (the bigger back touches first), the Bayesian curl cable brushes the forearm ~5 mm, fingers press up to 2 mm into handles.
+Run the project's demo checker (`demo-qa`, see its README) against the preview page. Known limits as of Nov 1 (Extreme Baki body): deep squat hip crease squashes ~36 mm (linear-blend skinning), squat upper arms touch the bar ~13 mm and wrists are 12 deg past the deviation limit, the chest-press thigh capsule is 0.2 mm past the seat limit, the Bayesian curl cable brushes the forearm ~5 mm. Bench press passes everything. Grip contacts report the handle point under the palm as the anchor.
 
 ## Tests
 `node --test modules/exercise-3d/exercise-3d.test.mjs`: data (every entry preview, known muscles, motion exists), body meta (200k, skeleton), and the engine posing every exercise in node with three.js, fingers wrapping a 16 mm handle.

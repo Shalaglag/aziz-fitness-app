@@ -265,7 +265,7 @@
       (def.props ? def.props(sk0) : []).forEach((sh, i) => { if (sh.k === 'box' && sh.col === 'pad') pads.push(i); });
       cur.hasPads = pads.length > 0;
       if (pads.length) {
-        const torsoV = []; for (let i = 0; i < domBone.length; i += 3) { const b = skinned.skeleton.bones[domBone[i]].name; if (/^(root|spine0[1-5]|pelvis)/.test(b)) torsoV.push(i); }
+        const torsoV = []; for (let i = 0; i < domBone.length; i += 3) { const b = skinned.skeleton.bones[domBone[i]].name; if (/^(root|spine0[1-5]|pelvis|upperleg01)/.test(b)) torsoV.push(i); }
         for (let pass = 0; pass < 2; pass++) {
           let deep = pads.map(() => -1e9);
           for (let fi = 0; fi < 10; fi++) {
@@ -282,7 +282,7 @@
               }
             });
           }
-          pads.forEach((pi, n) => { if (deep[n] > -0.3) { const d = deep[n] - 0.004; cur.lift = cur.lift.map((x, j) => x + cur.padN[n].getComponent(j) * d); } });
+          pads.forEach((pi, n) => { if (deep[n] > -0.3) { const d = deep[n] - 0.002; cur.lift = cur.lift.map((x, j) => x + cur.padN[n].getComponent(j) * d); } });
         }
       }
       cur.meshes = null; posePure(0);
@@ -439,7 +439,10 @@
     // targets for the quality checker (demo-qa page contract)
     function contacts() {
       const c = {}, h = cur.held || {};
-      for (const s of SIDES) if (h[s]) c[(h.L && h.R && h.L.hd.i === h.R.hd.i) ? 'barbell.grip' + s : 'grip' + s + '.grip'] = { shape: 'cylinder', pos: h[s].gp.toArray(), axis: h[s].a.toArray(), radius: h[s].r };
+      for (const s of SIDES) if (h[s]) {   // anchor = the point of the handle axis under the palm (where along the handle this hand holds it)
+        const pw = B2W(P['wrist.' + s].clone().add(hand[s].qaGrip.clone().sub(hand[s].w).applyQuaternion(Q['wrist.' + s]))), a = h[s].a.clone().normalize();
+        const pos = h[s].gp.clone().addScaledVector(a, pw.clone().sub(h[s].gp).dot(a));
+        c[(h.L && h.R && h.L.hd.i === h.R.hd.i) ? 'barbell.grip' + s : 'grip' + s + '.grip'] = { shape: 'cylinder', pos: pos.toArray(), axis: a.toArray(), radius: h[s].r }; }
       c.floor = { shape: 'plane', pos: [0, 0, 0], normal: [0, 1, 0] };
       (cur.roles || []).forEach((r, i) => { if (r.role && /\.pad$/.test(r.role)) { const sh = cur.shapes[i], n = cur.padN && cur.padN[0] ? cur.padN : null; const u = sh.ax.map(A3); const toBody = B2W(P.root).sub(A3(sh.c)); let k = 0, bd = -1; u.forEach((v, j) => { const d = Math.abs(v.clone().normalize().dot(toBody)) / v.length(); if (d > bd) { bd = d; k = j; } }); const nr = u[k].clone().normalize().multiplyScalar(Math.sign(u[k].dot(toBody)) || 1); c[r.role.replace(/\.pad$/, '.surface')] = { shape: 'plane', pos: A3(sh.c).addScaledVector(nr, u[k].length()).toArray(), normal: nr.toArray() }; } });
       return c;
