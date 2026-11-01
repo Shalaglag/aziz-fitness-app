@@ -1774,9 +1774,10 @@ main.addEventListener("click",e=>{
   else if(a==="stepsimport"){ applyStepsText(document.getElementById("stepsText").value); }
   else if(a==="stepsgoal"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.stepGoal=Steps.stepGoal({stepGoal:document.getElementById("stepsGoalInput").value}); put("prefs","main",p); }
   else if(a==="waterh"){ applyWaterHText(document.getElementById("waterhText").value); }
-  else if(a==="hcsync"){ if(!hcSync) return; el.disabled=true; hcSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : r.imported||r.removed ? `WaterH: ${r.imported} new record${r.imported===1?"":"s"}${r.removed?`, ${r.removed} removed`:""}` : "WaterH: nothing new in Health Connect"); }); }
+  else if(a==="hcsync"){ if(!hcSync) return; el.disabled=true; hcSync.syncNow({reason:"manual"}).then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : r.imported||r.removed ? `Water: ${r.imported} new record${r.imported===1?"":"s"}${r.removed?`, ${r.removed} removed`:""}` : `Health Connect: ${r.seen||0} record${r.seen===1?"":"s"} seen, nothing new`); }); }
   else if(a==="hcperm"){ if(!hcSync) return; hcSync.requestAccess().then(ok=>{ render(); if(ok) hcSync.syncNow({reason:"manual"}).then(()=>render()); else toast("Hydration access not granted"); }); }
   else if(a==="hcsettings"){ if(hcSync) hcSync.openSettings(); }
+  else if(a==="hcreread"){ if(!hcSync) return; el.disabled=true; hcSync.reread().then(r=>{ render(); toast(r.error ? `Health Connect: ${r.error}` : `Health Connect: read ${r.seen||0} record${r.seen===1?"":"s"}, ${r.imported||0} new`); }); }
   else if(a==="tmode"){ view.trainMode=el.dataset.m; try{localStorage.setItem("aziz-cut-tmode",view.trainMode)}catch(_){} render(); }
   else if(a==="pick"){ runPicker(); }
   else if(a==="pickclear"){ view.pick=null; render(); }

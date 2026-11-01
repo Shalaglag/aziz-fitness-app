@@ -123,6 +123,9 @@ const HealthConnectSync = (() => {
     return d.toDateString() === n.toDateString() ? t : `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${t}`;
   }
 
+  const APP_NAMES = { "com.fitbit.FitbitMobile": "Fitbit", "com.google.android.apps.fitness": "Google Fit", "com.sec.android.app.shealth": "Samsung Health", "com.waterh": "WaterH", "com.google.android.apps.healthdata": "Health Connect" };
+  function appName(pkg) { return APP_NAMES[pkg] || String(pkg).split(".").slice(-1)[0]; }
+
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
   // ---- the live sync object ---------------------------------------------------------------
@@ -144,7 +147,7 @@ const HealthConnectSync = (() => {
       else if (hc.granted === false) state = "needs-permission";
       else if (hc.granted === true) state = st.lastError ? "error" : "ready";
       else state = "unknown";
-      return { state, busy: !!busy, lastSyncAt: st.lastSyncAt || null, lastError: st.lastError || null, lastCount: st.lastCount || 0, hasToken: !!st.token, firstSyncAt: st.firstSyncAt || null };
+      return { state, busy: !!busy, lastSyncAt: st.lastSyncAt || null, lastError: st.lastError || null, lastCount: st.lastCount || 0, hasToken: !!st.token, firstSyncAt: st.firstSyncAt || null, lastResult: st.lastResult || null };
     }
 
     async function probe() {
@@ -209,6 +212,9 @@ const HealthConnectSync = (() => {
       return out;
     }
 
+    function originsOf(recs) { return [...new Set(recs.map(x => x && x.origin).filter(Boolean))].slice(0, 4); }
+    function daysOf(recs) { const ds = recs.map(x => x && x.startMs ? dayOf(x) : null).filter(Boolean).sort(); return ds.length ? [ds[0], ds[ds.length - 1]] : []; }
+
     async function fullRead(days) {
       const t = now();
       const startMs = new Date(t.getFullYear(), t.getMonth(), t.getDate() - days).getTime();
@@ -224,6 +230,7 @@ const HealthConnectSync = (() => {
         for (const id of Object.keys(currentRecords(getDay(d)))) if (!seen.has(id)) gone.push(id);
       }
       const r = applyBatch(recs, gone);
+      r.seen = recs.length; r.origins = originsOf(recs); r.recDays = daysOf(recs);
       const tok = await plugin.getChangesToken();
       st.token = tok && tok.token || null;
       return Object.assign({ mode: "full" }, r);
@@ -242,6 +249,7 @@ const HealthConnectSync = (() => {
         if (!res.hasMore || ++loops > 50) break;
       }
       const r = applyBatch(up, del);
+      r.seen = up.length + del.length; r.origins = originsOf(up); r.recDays = daysOf(up);
       st.token = token;
       return Object.assign({ mode: "changes" }, r);
     }
@@ -267,7 +275,7 @@ const HealthConnectSync = (() => {
           } else r = { mode: "error", error: errorText(e) };
         }
         if (r.error) { st.lastError = r.error; st.token = r.mode === "error" && /expired|denied|permission/i.test(r.error) ? null : st.token; }
-        else { st.lastError = null; st.lastSyncAt = now().toISOString(); st.firstSyncAt = st.firstSyncAt || st.lastSyncAt; st.lastCount = r.imported; }
+        else { st.lastError = null; st.lastSyncAt = now().toISOString(); st.firstSyncAt = st.firstSyncAt || st.lastSyncAt; st.lastCount = r.imported; st.lastResult = { mode: r.mode, seen: r.seen || 0, imported: r.imported || 0, removed: r.removed || 0, origins: r.origins || [], recDays: r.recDays || [] }; }
         save(); emit();
         return r;
       })();
@@ -285,6 +293,10 @@ const HealthConnectSync = (() => {
 
     function reset() { st = {}; save(); emit(); }
 
+    // "Re-read 14 days": forget the change token and read the window again. Dedupe by id means
+    // nothing doubles; use it when Health Connect shows water the app hasn't picked up.
+    async function reread() { st.token = null; save(); return syncNow({ reason: "manual" }); }
+
     // ---- Water card block ----------------------------------------------------------------
     function html(day) {
       const s = status();
@@ -297,12 +309,15 @@ const HealthConnectSync = (() => {
       else if (s.state === "not-supported") head = line("warn", "Health Connect is not supported on this phone (needs Android 9 or newer).");
       else if (s.state === "needs-permission") head = line("warn", "Health Connect: hydration access not allowed yet.");
       else if (s.state === "error") head = line("bad", `Health Connect: ${esc(s.lastError)}`);
-      else if (s.state === "ready") head = line("ok", `WaterH connected through Health Connect${n ? ` · ${n} record${n === 1 ? "" : "s"} today (${(ml / 1000).toFixed(2)} L)` : " · no bottle records today yet"}`);
+      else if (s.state === "ready") head = line("ok", `Health Connect connected${n ? ` · ${n} water record${n === 1 ? "" : "s"} today (${(ml / 1000).toFixed(2)} L)` : " · no water records for today yet"}`);
       else head = line("off", "Checking Health Connect…");
-      const sync = s.state === "no-plugin" ? "" : `<p class="muted" style="font-size:.85rem;margin:4px 0">Last sync ${fmtTime(s.lastSyncAt)}${s.busy ? " · syncing…" : ""}</p>`;
+      const lr = s.lastResult;
+      const what = lr ? ` · ${lr.mode === "full" ? "read" : "checked changes:"} ${lr.seen} record${lr.seen === 1 ? "" : "s"}${lr.origins.length ? ` from ${lr.origins.map(appName).join(", ")}` : ""}${lr.recDays.length ? ` (${lr.recDays[0] === lr.recDays[1] ? lr.recDays[0] : lr.recDays.join(" to ")})` : ""} · ${lr.imported} new` : "";
+      const sync = s.state === "no-plugin" ? "" : `<p class="muted" style="font-size:.85rem;margin:4px 0">Last sync ${fmtTime(s.lastSyncAt)}${s.busy ? " · syncing…" : esc(what)}</p>`;
       const btns = s.state === "no-plugin" ? "" : `<div class="row">
         ${s.state === "needs-permission" || s.state === "unknown" ? `<button class="btn small" data-act="hcperm">Allow access</button>` : ""}
         <button class="btn ${s.state === "needs-permission" ? "ghost " : ""}small" data-act="hcsync" ${s.busy ? "disabled" : ""}>Sync now</button>
+        ${s.state === "ready" || s.state === "error" ? `<button class="btn ghost small" data-act="hcreread" ${s.busy ? "disabled" : ""}>Re-read ${lookbackDays} days</button>` : ""}
         ${s.state === "not-installed" ? "" : `<button class="btn ghost small" data-act="hcsettings">Health Connect settings</button>`}
       </div>`;
       return `<div class="hc-block" style="margin:6px 0 2px">${head}${sync}${btns}</div>`;
@@ -321,7 +336,7 @@ const HealthConnectSync = (() => {
       </details>`;
     }
 
-    return { available, status, probe, requestAccess, openSettings, syncNow, autoSync, reset, html, guideHTML, state: () => Object.assign({}, st) };
+    return { available, status, probe, requestAccess, openSettings, syncNow, autoSync, reset, reread, html, guideHTML, state: () => Object.assign({}, st) };
   }
 
   const CSS = `.hc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--muted,#888)}.hc-ok{background:#2e9e5b}.hc-warn{background:#d9a21b}.hc-bad{background:#d14b3c}.hc-off{background:#9aa0a6}`;
