@@ -1,14 +1,16 @@
 /*
  * AppUpdate: an "Update" button inside the Android app.
  *
- * It reads the private GitHub release `android-latest` (the one CI fills on every merge to main),
- * compares its build number with the installed versionCode, downloads aziz-fitness.apk and hands it
- * to Android's installer. Android still shows its own "Update" confirmation; the app's data stays
- * because every build is signed with the same key (the native side refuses a file signed otherwise).
+ * It reads `latest.json` from the PUBLIC releases-only repository (Shalaglag/mizan-releases, release
+ * `android-latest`, which CI fills on every merge to main), compares its build number with the installed
+ * versionCode, downloads aziz-fitness.apk from the same release and hands it to Android's installer.
+ * No account, key or setup: anyone with the APK gets updates. Android still shows its own "Update"
+ * confirmation; the app's data stays because every build is signed with the same key (the native side
+ * refuses a file signed otherwise).
  *
- * The repo is private, so the app needs a read-only GitHub key (fine-grained token, this repo only,
- * Contents: read). It is pasted once in Settings and kept only on this phone (localStorage key
- * "aziz-update-token"): never in the APK, never in the synced data, never in backups.
+ * Fallback (Advanced): until the public repository exists, or if it is ever taken down, a read-only
+ * GitHub key for the private code repository still works. It is pasted in Settings and kept only on
+ * this phone (localStorage key "aziz-update-token"): never in the APK, synced data or backups.
  *
  * Native side: Capacitor plugin "AppUpdate" (android/AppUpdatePlugin.kt in this folder):
  *   info() -> {versionCode, versionName}      latest({token, url}) -> {status, body}
@@ -17,9 +19,15 @@
  *   event "progress" {done, total}
  *
  * Shell API: AppUpdate.bind({render, toast}); AppUpdate.cardHTML(); AppUpdate.bannerHTML();
- * AppUpdate.autoCheck(). Pure helpers for tests: parseRelease, compare, errorText, TOKEN_URL.
+ * AppUpdate.autoCheck(). Pure helpers for tests: parseLatest, parseRelease, compare, errorText, LATEST_URL, APK_URL, TOKEN_URL.
  */
 (function (root) {
+  // Public releases-only repository: APK + latest.json, no code, no key needed.
+  const PUBLIC = { owner: "Shalaglag", repo: "mizan-releases", tag: "android-latest", asset: "aziz-fitness.apk" };
+  const PUBLIC_BASE = `https://github.com/${PUBLIC.owner}/${PUBLIC.repo}/releases/download/${PUBLIC.tag}/`;
+  const LATEST_URL = PUBLIC_BASE + "latest.json";
+  const APK_URL = PUBLIC_BASE + PUBLIC.asset;
+  // Private code repository (fallback with a read-only key).
   const REPO = { owner: "Shalaglag", repo: "aziz-fitness-app", tag: "android-latest", asset: "aziz-fitness.apk" };
   const RELEASE_URL = `https://api.github.com/repos/${REPO.owner}/${REPO.repo}/releases/tags/${REPO.tag}`;
   const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new?name=Aziz%20Fitness%20updates&description=Lets%20the%20Aziz%20Fitness%20app%20download%20its%20own%20updates&target_name=" + REPO.owner + "&expires_in=none&contents=read";
@@ -28,13 +36,18 @@
 
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  // GitHub release JSON -> {build, sha, assetUrl, size, at}. The body says "Newest build from main (build 71, <sha>)".
+  // latest.json from the public release ({build, sha, size, at, versionName}, written by CI) -> {build, sha, assetUrl, size, at}.
+  function parseLatest(json) {
+    if (!json || typeof json !== "object" || !(+json.build > 0)) return null;
+    return { build: +json.build, sha: String(json.sha || ""), assetUrl: APK_URL, size: +json.size || 0, at: String(json.at || ""), versionName: String(json.versionName || ""), source: "public" };
+  }
+  // Private GitHub release JSON -> {build, sha, assetUrl, size, at}. The body says "Newest build from main (build 71, <sha>)".
   function parseRelease(json) {
     if (!json || typeof json !== "object") return null;
     const m = /build\s+(\d+)(?:,\s*([0-9a-f]{7,40}))?/i.exec(json.body || "");
     const a = (json.assets || []).find(x => x && x.name === REPO.asset);
     if (!m || !a || !a.url) return null;
-    return { build: +m[1], sha: m[2] || "", assetUrl: a.url, size: +a.size || 0, at: a.updated_at || json.updated_at || "" };
+    return { build: +m[1], sha: m[2] || "", assetUrl: a.url, size: +a.size || 0, at: a.updated_at || json.updated_at || "", source: "private" };
   }
   function compare(current, latest) {
     if (!latest) return "unknown";
@@ -43,6 +56,7 @@
   }
   function errorText(code, status) {
     if (code === "no-token") return "Add your download key first.";
+    if (code === "not-published") return "No update has been published yet. Try again later.";
     if (status === 401) return "GitHub rejected the key. It may have expired: make a new one and paste it again.";
     if (status === 403 || status === 404) return "The key can't see the app's repository. Make sure it's for aziz-fitness-app with Contents: Read-only.";
     if (code === "signature") return "That file isn't signed with your app's key, so it was not installed.";
@@ -70,16 +84,23 @@
     return S.current;
   }
 
+  // Public release first (no key). If it is not there yet, the private release with the phone's key, if any.
   async function check(opts = {}) {
     const p = plugin(), token = getToken();
     if (!p) { S.phase = "web"; redraw(); return S; }
     await current();
-    if (!token) { S.phase = "no-token"; S.msg = ""; redraw(); return S; }
     S.phase = "checking"; S.msg = ""; if (!opts.quiet) redraw();
     try {
-      const r = await p.latest({ token, url: RELEASE_URL });
-      if (r.status !== 200) { S.phase = "error"; S.msg = errorText("http", r.status); redraw(); return S; }
-      S.latest = parseRelease(JSON.parse(r.body));
+      let latest = null;
+      const pub = await p.latest({ token: "", url: LATEST_URL });
+      if (pub.status === 200) latest = parseLatest(JSON.parse(pub.body));
+      if (!latest) {
+        if (!token) { S.phase = "error"; S.msg = errorText("not-published", pub.status); redraw(); return S; }
+        const r = await p.latest({ token, url: RELEASE_URL });
+        if (r.status !== 200) { S.phase = "error"; S.msg = errorText("http", r.status); redraw(); return S; }
+        latest = parseRelease(JSON.parse(r.body));
+      }
+      S.latest = latest;
       const c = compare(S.current, S.latest);
       S.phase = c === "unknown" ? "error" : c; S.msg = c === "unknown" ? errorText() : "";
     } catch (e) { S.phase = "error"; S.msg = errorText(e && e.code === "offline" ? "offline" : ""); }
@@ -95,7 +116,7 @@
       S.phase = "downloading"; S.done = 0; S.total = S.latest.size; S.msg = ""; redraw();
       const sub = p.addListener ? await p.addListener("progress", e => { S.done = e.done || 0; S.total = e.total || S.total; const bar = root.document && root.document.getElementById("auBar"); if (bar) bar.style.width = pct() + "%"; }) : null;
       let got;
-      try { got = await p.download({ url: S.latest.assetUrl, token, minVersion: (S.current && S.current.versionCode || 0) + 1 }); }
+      try { got = await p.download({ url: S.latest.assetUrl, token: S.latest.source === "private" ? token : "", minVersion: (S.current && S.current.versionCode || 0) + 1 }); }
       finally { try { sub && sub.remove && sub.remove(); } catch (e) { } }
       S.phase = "installing"; redraw();
       await p.install({ path: got.path });
@@ -112,8 +133,8 @@
     const ver = cur ? `Installed: build ${esc(cur.versionCode)}${cur.versionName ? " · " + esc(cur.versionName) : ""}` : "";
     let body = "";
     if (S.phase === "web" || !native()) return `<div class="card au"><h3>App updates</h3><p class="muted">Updates install from inside the Android app. Here, get the newest APK from the release page.</p></div>`;
-    if (!has || S.editing) {
-      body = `<p class="muted">One-time setup so the app can fetch its own updates from your private GitHub repository.</p>
+    if (S.editing) {
+      body = `<p class="muted">Advanced: a read-only GitHub key for the private code repository. Not needed for normal updates.</p>
       <ol class="au-steps">
         <li><a href="${TOKEN_URL}" target="_blank" rel="noopener">Open GitHub's key page</a> and sign in.</li>
         <li>Repository access: <b>Only select repositories</b> → <b>aziz-fitness-app</b>.</li>
@@ -121,7 +142,7 @@
         <li>Tap <b>Generate token</b>, copy it and paste it here.</li>
       </ol>
       <div class="row"><input id="auToken" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" aria-label="GitHub download key" style="flex:1;min-width:0">
-      <button class="btn small" data-au="save">Save</button>${has ? `<button class="btn ghost small" data-au="cancel">Cancel</button>` : ""}</div>
+      <button class="btn small" data-au="save">Save</button><button class="btn ghost small" data-au="cancel">Cancel</button></div>
       <p class="muted" style="font-size:.8rem">The key can only read this one repository and stays on this phone. It is not synced or put in backups.</p>`;
     } else if (S.phase === "downloading") {
       body = `<p>Downloading build ${esc(S.latest && S.latest.build)}…</p><div class="au-track" aria-hidden="true"><span id="auBar" style="width:${pct()}%"></span></div>`;
@@ -135,9 +156,9 @@
     } else if (S.phase === "up-to-date") {
       body = `<p>You have the newest version.</p><div class="row"><button class="btn ghost small" data-au="check">Check again</button></div>`;
     } else {
-      body = `<div class="row"><button class="btn small" data-au="check">Check for updates</button></div>`;
+      body = `<p class="muted" style="font-size:.9rem">Updates download from inside the app. No account or setup needed.</p><div class="row"><button class="btn small" data-au="check">Check for updates</button></div>`;
     }
-    const foot = has && !S.editing ? `<p class="muted" style="font-size:.8rem"><button class="linkbtn" data-au="edit">Change download key</button> · <button class="linkbtn" data-au="forget">Remove it</button></p>` : "";
+    const foot = S.editing ? "" : has ? `<p class="muted" style="font-size:.8rem"><button class="linkbtn" data-au="edit">Change download key</button> · <button class="linkbtn" data-au="forget">Remove it</button></p>` : `<p class="muted" style="font-size:.8rem"><button class="linkbtn" data-au="edit">Advanced: use a GitHub key</button></p>`;
     return `<div class="card au" id="auCard"><h3>App updates</h3>${ver ? `<p class="muted" style="font-size:.85rem">${ver}</p>` : ""}${body}${S.msg ? `<p class="au-msg" role="status">${esc(S.msg)}</p>` : ""}${foot}</div>`;
   }
   function bannerHTML() {
@@ -155,7 +176,7 @@
       if (S.phase === "error") { ctx.toast(S.msg); } else ctx.toast("Saved. Updates will be checked automatically.");
     } else if (a === "cancel") { S.editing = false; redraw(); }
     else if (a === "edit") { S.editing = true; redraw(); }
-    else if (a === "forget") { setToken(""); S.phase = "no-token"; S.latest = null; S.msg = ""; redraw(); ctx.toast("Download key removed from this phone."); }
+    else if (a === "forget") { setToken(""); S.phase = "idle"; S.latest = null; S.msg = ""; redraw(); ctx.toast("Download key removed from this phone."); }
     else if (a === "check") check();
     else if (a === "update") update();
     else if (a === "allow") { const p = plugin(); if (p) { try { await p.openInstallSettings(); } catch (er) { } } S.phase = "available"; S.msg = "After you allow it, come back and tap Update now."; redraw(); }
@@ -170,9 +191,9 @@
       if (app && app.addListener && !bind.resume) { bind.resume = true; try { app.addListener("resume", () => autoCheck()); } catch (e) { } }
     }
   }
-  // Quietly checks at start-up and when the app comes back to the front, at most every 6 hours, only with a key.
+  // Quietly checks at start-up and when the app comes back to the front, at most every 6 hours.
   function autoCheck(now) {
-    if (!native() || !getToken()) return false;
+    if (!native()) return false;
     const t = now || Date.now();
     if (S.lastAuto && t - S.lastAuto < AUTO_EVERY) return false;
     S.lastAuto = t; check({ quiet: true });
@@ -184,7 +205,7 @@
 .au-msg{font-size:.88rem;margin:.5em 0 0}.au-banner .spread{gap:10px;align-items:center}
 .linkbtn{background:none;border:0;padding:0;color:inherit;text-decoration:underline;font:inherit;cursor:pointer}`;
 
-  const AppUpdate = { REPO, RELEASE_URL, TOKEN_URL, parseRelease, compare, errorText, check, update, cardHTML, bannerHTML, bind, autoCheck, getToken, setToken, css, _state: S };
+  const AppUpdate = { PUBLIC, LATEST_URL, APK_URL, REPO, RELEASE_URL, TOKEN_URL, parseLatest, parseRelease, compare, errorText, check, update, cardHTML, bannerHTML, bind, autoCheck, getToken, setToken, css, _state: S };
   root.AppUpdate = AppUpdate;
   if (typeof module !== "undefined" && module.exports) module.exports = AppUpdate;
 })(typeof window !== "undefined" ? window : globalThis);

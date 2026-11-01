@@ -1,6 +1,8 @@
 # Builds the Android app (Capacitor wrapper around app/) on every PR and push to main.
 # PR: the APK is kept as a workflow artifact. main: the APK and AAB are attached to the
-# "android-latest" release, so the phone can always download the newest build from one link.
+# "android-latest" release of this (private) repo, and the APK plus latest.json are copied to the
+# public releases-only repo Shalaglag/mizan-releases when the RELEASES_TOKEN secret exists, so the
+# app's Update button works on any phone with no GitHub account or key (modules/app-update).
 name: Android
 
 on:
@@ -62,6 +64,16 @@ jobs:
             -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
           cp app/build/outputs/apk/release/app-release.apk ../aziz-fitness.apk
           cp app/build/outputs/bundle/release/app-release.aab ../aziz-fitness.aab
+      - name: Write latest.json (what the in-app updater reads)
+        run: |
+          node -e '
+            const fs = require("fs");
+            fs.writeFileSync("latest.json", JSON.stringify({
+              build: ${{ github.run_number }}, versionName: "1.0.${{ github.run_number }}", sha: "${{ github.sha }}",
+              size: fs.statSync("aziz-fitness.apk").size, at: new Date().toISOString(), asset: "aziz-fitness.apk"
+            }, null, 2) + "\n");
+          '
+          cat latest.json
       - uses: actions/upload-artifact@v4
         with:
           name: aziz-fitness-android
@@ -81,3 +93,22 @@ jobs:
           files: |
             aziz-fitness.apk
             aziz-fitness.aab
+            latest.json
+      # Public copy for the in-app updater: only the APK and latest.json, never the code. Needs a
+      # fine-grained token for Shalaglag/mizan-releases with Contents: Read and write (secret RELEASES_TOKEN).
+      - name: Publish to the public releases repo (Shalaglag/mizan-releases)
+        if: ${{ github.event_name != 'pull_request' && env.RELEASES_TOKEN != '' }}
+        env:
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: Shalaglag/mizan-releases
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: android-latest
+          name: Mizan for Android (latest)
+          body: |
+            Mizan build ${{ github.run_number }}. Install: tap **aziz-fitness.apk** on the phone, then Open.
+            Updates after that come from inside the app (Settings, App updates).
+          files: |
+            aziz-fitness.apk
+            latest.json
