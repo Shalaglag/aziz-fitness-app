@@ -100,6 +100,31 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("calorie rule: cardio, steps and an over-budget day never change the 2,000 target on their own", async () => {
+      const busy = today => {
+        const d = seed(today);
+        d.days[today].steps = 14000;                                                    // a big step day
+        d.cardio = { [today]: { date: today, sessions: [{ id: "c1", kind: "treadmill", min: 40, kcal: 450, kcalSrc: "manual", source: "manual" }] } };
+        const y = addDays(today, -1);                                                   // yesterday 1,000 over, recovery not accepted
+        d.days[y] = { date: y, food: [{ id: "big", name: "Feast", slot: "Meal 2", kcal: 3000, p: 120, c: 300, f: 120, eaten: true }], water: 0, supps: {} };
+        return d;
+      };
+      const { page, errors } = await openApp(browser, PHONES[0], busy);
+      const r = await page.evaluate(() => {
+        const next = Array.from({ length: 15 }, (_, i) => kcalTarget(addDays(TODAY, i)));
+        return { base: TARGET.kcal, next: [...new Set(next)], profile: (S.docs.prefs.main || {}).profile || null, cardio: (S.docs.cardio[TODAY].sessions[0] || {}).kcal };
+      });
+      assert.strictEqual(r.cardio, 450, "the treadmill session is logged");
+      assert.strictEqual(r.base, 2000);
+      assert.deepStrictEqual(r.next, [2000], "today and the next 14 days all stay at 2,000");
+      assert.strictEqual((r.profile || {}).cutKcal, undefined, "nothing wrote a new calorie target");
+      await go(page, "food");
+      const v = await page.evaluate(() => [...document.querySelectorAll(".fsum .v")].map(e => e.textContent.trim()));
+      assert.deepStrictEqual(v, ["2,000", "870", "1,130"], "budget ignores the 450 kcal treadmill and 14k steps");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("7-day average needs 7 weigh-ins and averages them", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       const r = await page.evaluate(() => ({ a7: avg7(TODAY), yesterday: avg7(addDays(TODAY, -1)) }));
