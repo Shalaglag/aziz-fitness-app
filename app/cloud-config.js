@@ -6,5 +6,9 @@ window.FITNESS_CLOUD_CONFIG = {
   apiKey: "AIzaSyB1xvB49LW6gyXM1U7Q1NIO3cKYDkNO_a8",
   authDomain: "aziz-fitness.firebaseapp.com",
   projectId: "aziz-fitness",
-  appId: "1:323272267870:web:ff4fd558a826bd36d6fccf"
+  appId: "1:323272267870:web:ff4fd558a826bd36d6fccf",
+  // "Continue with Google" in the Android app: the Web client ID shown under Firebase console → Authentication →
+  // Sign-in method → Google → Web SDK configuration (…apps.googleusercontent.com). Empty = the Google button
+  // says it isn't switched on yet; email sign-in keeps working. Not a secret (docs/GOOGLE-SIGN-IN.md).
+  googleClientId: ""
 };

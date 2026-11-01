@@ -397,7 +397,7 @@ const Friends = (() => {
     return nav + banner + body + (st.compareUid ? compareHTML(st, ctx) : "");
   }
   function signedOutHTML(cloudReady) {
-    return `<div class="card fr-empty"><span class="big">👥</span><p>Friends needs an account, so each person's data stays their own.</p>${cloudReady ? `<button class="btn" data-a="cloudsignin">Sign in or create account</button>` : `<p class="muted">Sign in isn't available in this copy of the app.</p>`}</div>`;
+    return `<div class="card fr-empty"><span class="big">👥</span><p>Friends needs an account, so each person's data stays their own.</p>${cloudReady ? `<button class="btn" data-act="cloudsignin">Sign in or create account</button>` : `<p class="muted">Sign in isn't available in this copy of the app.</p>`}</div>`;
   }
 
   /* ---------- controller: Firestore listeners + actions ---------- */

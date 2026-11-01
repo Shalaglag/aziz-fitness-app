@@ -1,13 +1,20 @@
 # Cloud store (own website: sign-in, sync, offline)
 
 Inside Claude the app saves through Claude's synced database. On its own website it uses this module
-instead: Firebase email + password sign-in, and Firestore for storage, under `users/{uid}/...`.
+instead: Firebase sign-in (email + password, or **Continue with Google**), and Firestore for storage,
+under `users/{uid}/...`.
 
 - `CloudStore.loadConfig()` loads `app/cloud-config.js` on demand (never inside Claude) and resolves whether a valid config is present.
 - `CloudStore.connect({mount})` → a db with the same shape the shell already uses
   (`collection(c).doc(id).set/update/delete/get`, `collection(c).onSnapshot/add/get`), or `null`
   when `app/cloud-config.js` is empty or the person picks "Use without an account".
-- Shows a sign-in sheet the first time on each device; after that the session is remembered.
+- Shows a sign-in sheet the first time on each device; after that the session is remembered. Settings →
+  Account and sync (and the Friends screen) have **Sign in or create account** (`data-act="cloudsignin"`)
+  for people who picked "Use without an account" first.
+- `CloudStore.signInWithGoogle()`: in the Android app the `GoogleSignIn` Capacitor plugin
+  (`android/GoogleSignInPlugin.kt`, Credential Manager) returns a Google ID token that signs the Firebase
+  account in with `signInWithCredential`; on the website Firebase's `signInWithPopup` does it. Needs
+  `FITNESS_CLOUD_CONFIG.googleClientId` (the Web client ID) on Android; setup in `docs/GOOGLE-SIGN-IN.md`.
 - Firestore's offline cache (`enablePersistence`) keeps logging working at the gym with no signal and
   syncs when back online. `app/sw.js` caches the app itself so it opens offline.
 - `update()` on a missing doc is reported as `invalid_argument`, which the outbox (pending-writes)
@@ -20,7 +27,8 @@ read the image, and progress photos need Claude's file storage, so those cards w
 ## Setup (once)
 
 1. Firebase console → Add project (Analytics off) → Build → Authentication → Sign-in method →
-   Email/Password → Enable.
+   Email/Password → Enable. For Google, follow `docs/GOOGLE-SIGN-IN.md` (provider, Android SHA-1, Web
+   client ID).
 2. Build → Firestore Database → Create database (production mode, nearest region) → Rules → paste
    `firestore.rules` from the repo root → Publish.
 3. Project settings → Your apps → Web (`</>`) → register → copy `apiKey`, `authDomain`,
