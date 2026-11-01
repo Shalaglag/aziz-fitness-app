@@ -14,7 +14,9 @@ the app's WebView. The web/Claude versions still work from the same file.
 
 ## Update it
 
-**From inside the app (build 72 and later):** open Settings, then App updates. The first time, paste a read-only GitHub key; the card has the steps and a link to GitHub's key page. Choose only this repository and Contents: Read-only. From then on, the app checks for a newer build at start-up. When there is one, a banner on Today and **Update now** in Settings download it. Android then asks you to confirm. The app only installs a newer build signed with your key (see `modules/app-update/README.md`).
+**From inside the app:** nothing to set up. The app checks the public releases repo (`Shalaglag/mizan-releases`, APK and `latest.json` only, no code) at start-up and on resume. When there is a newer build, a banner on Today and **Update now** in Settings → App updates download it; Android then asks you to confirm. The app only installs a newer build signed with the same key (see `modules/app-update/README.md`). Anyone you give the APK to gets updates the same way, with their own account and their own data (Firestore rules allow each signed-in person to read and write only `users/{their uid}`; the APK carries no account). If they tapped "Use without an account" at first start, Settings → Account and sync has **Sign in or create account**.
+
+Advanced: if the public repo has no build yet, a read-only GitHub key for the private repo (Contents: Read-only) still works, behind "Advanced: use a GitHub key" on the card.
 
 **By hand:**
 

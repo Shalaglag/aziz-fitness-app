@@ -12,8 +12,17 @@ const release = (build, extra = {}) => ({
   ...extra
 });
 
+const LATEST = { build: 110, sha: "abc1234", size: 16177772, at: "2026-11-01T18:00:00Z", versionName: "1.0.110" };
+
+test("parseLatest reads CI's latest.json from the public release; the APK comes from the same release", () => {
+  assert.deepEqual(A.parseLatest(LATEST), { build: 110, sha: "abc1234", assetUrl: "https://github.com/Shalaglag/mizan-releases/releases/download/android-latest/aziz-fitness.apk", size: 16177772, at: "2026-11-01T18:00:00Z", versionName: "1.0.110", source: "public" });
+  assert.equal(A.LATEST_URL, "https://github.com/Shalaglag/mizan-releases/releases/download/android-latest/latest.json");
+  assert.equal(A.parseLatest({ build: "x" }), null);
+  assert.equal(A.parseLatest(null), null);
+});
+
 test("parseRelease reads the build number and the APK asset", () => {
-  assert.deepEqual(A.parseRelease(release(71)), { build: 71, sha: "6ba312b68d46e0b8b4711d63f23d204aee7a69b2", assetUrl: "https://api.github.com/repos/Shalaglag/aziz-fitness-app/releases/assets/698147007", size: 5890736, at: "2026-11-01T11:29:33Z" });
+  assert.deepEqual(A.parseRelease(release(71)), { build: 71, sha: "6ba312b68d46e0b8b4711d63f23d204aee7a69b2", assetUrl: "https://api.github.com/repos/Shalaglag/aziz-fitness-app/releases/assets/698147007", size: 5890736, at: "2026-11-01T11:29:33Z", source: "private" });
   assert.equal(A.parseRelease({ body: "build 5", assets: [] }), null, "no APK asset");
   assert.equal(A.parseRelease({ body: "nothing", assets: release(1).assets }), null, "no build number");
   assert.equal(A.parseRelease(null), null);
@@ -43,11 +52,12 @@ test("the key page link asks only for read access to contents, with no expiry", 
   assert.equal([...u.searchParams.keys()].filter(k => !["name", "description", "target_name", "expires_in", "contents"].includes(k)).length, 0, "no other permissions");
 });
 
-function fakePhone({ installed = 70, latest = 71, status = 200, canInstall = true, downloadErr = null } = {}) {
+// pub: the public latest.json ({status, json}); the private release is answered with `status` + release(latest).
+function fakePhone({ installed = 70, latest = 71, status = 200, canInstall = true, downloadErr = null, pub = { status: 404, json: null } } = {}) {
   const calls = [], mem = {};
   const AppUpdate = {
     info: async () => ({ versionCode: installed, versionName: "1.0" }),
-    latest: async o => { calls.push(["latest", o]); return { status, body: JSON.stringify(release(latest)) }; },
+    latest: async o => { calls.push(["latest", o]); if (/mizan-releases/.test(o.url)) return { status: pub.status, body: pub.json ? JSON.stringify(pub.json) : "Not Found" }; return { status, body: JSON.stringify(release(latest)) }; },
     canInstall: async () => ({ allowed: canInstall }),
     openInstallSettings: async () => { calls.push(["settings"]); },
     addListener: async (ev, fn) => { calls.push(["listen", ev]); fn({ done: 10, total: 20 }); return { remove() { calls.push(["unlisten"]); } }; },
@@ -61,27 +71,62 @@ function fakePhone({ installed = 70, latest = 71, status = 200, canInstall = tru
 }
 const TOKEN = "github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz";
 
-test("no key: the card shows the one-time setup and nothing is fetched", async () => {
+test("no key, no setup: the public release is checked, Today shows a banner, Update downloads the public APK without a key", async () => {
+  const { calls } = fakePhone({ pub: { status: 200, json: LATEST } });
+  const s = await A.check();
+  assert.equal(s.phase, "available");
+  assert.equal(calls.length, 1, "only the public latest.json was fetched");
+  assert.equal(calls[0][1].token, "", "no key sent");
+  assert.equal(calls[0][1].url, A.LATEST_URL);
+  const html = A.cardHTML();
+  assert.match(html, /Build 110 is ready/);
+  assert.match(html, /Installed: build 70/);
+  assert.doesNotMatch(html, /auToken/, "no key box");
+  assert.doesNotMatch(html, /One-time setup/);
+  assert.match(html, /Advanced: use a GitHub key/);
+  assert.match(A.bannerHTML(), /New version ready/);
+  await A.update();
+  const dl = calls.find(c => c[0] === "download")[1];
+  assert.deepEqual(dl, { url: A.APK_URL, token: "", minVersion: 71 });
+  assert.deepEqual(calls.find(c => c[0] === "install")[1], { path: "/cache/updates/aziz-fitness.apk" });
+  assert.equal(A._state.phase, "installing");
+});
+
+test("no key and nothing published yet: a plain message, no setup steps", async () => {
   const { calls } = fakePhone();
   const s = await A.check();
-  assert.equal(s.phase, "no-token");
-  assert.deepEqual(calls, []);
+  assert.equal(s.phase, "error");
+  assert.match(s.msg, /No update has been published yet/);
+  assert.equal(calls.length, 1, "the private release is not tried without a key");
   const html = A.cardHTML();
-  assert.match(html, /One-time setup/);
-  assert.match(html, /Contents: Read-only/);
-  assert.match(html, /id="auToken" type="password"/);
-  assert.match(html, /Installed: build 70/);
+  assert.match(html, /data-au="check"/);
+  assert.doesNotMatch(html, /auToken/);
   assert.equal(A.bannerHTML(), "");
 });
 
-test("with a key: finds build 71, Today shows a banner, Update downloads it and opens the installer", async () => {
+test("public release wins over the private one even with a key saved", async () => {
+  const { calls } = fakePhone({ pub: { status: 200, json: LATEST } }); A.setToken(TOKEN);
+  assert.equal((await A.check()).phase, "available");
+  assert.equal(calls.length, 1);
+  await A.update();
+  assert.equal(calls.find(c => c[0] === "download")[1].token, "", "the key is never sent for the public file");
+});
+
+test("Advanced link opens the key steps; with a key the private release is the fallback: finds build 71, downloads with the key", async () => {
+  fakePhone();
+  Object.assign(A._state, { editing: true });
+  const edit = A.cardHTML();
+  assert.match(edit, /Contents: Read-only/);
+  assert.match(edit, /id="auToken" type="password"/);
+  Object.assign(A._state, { editing: false });
   const { calls, mem } = fakePhone();
   A.setToken(TOKEN);
   assert.equal(mem["aziz-update-token"], TOKEN, "kept in this phone's storage only");
   const s = await A.check();
   assert.equal(s.phase, "available");
-  assert.equal(calls[0][1].token, TOKEN);
-  assert.match(calls[0][1].url, /releases\/tags\/android-latest$/);
+  assert.equal(calls[0][1].token, "", "public first");
+  assert.equal(calls[1][1].token, TOKEN);
+  assert.match(calls[1][1].url, /releases\/tags\/android-latest$/);
   assert.match(A.cardHTML(), /Build 71 is ready/);
   assert.match(A.bannerHTML(), /New version ready/);
   await A.update();
@@ -115,11 +160,9 @@ test("installs not allowed yet: asks to allow instead of failing; wrong signatur
   assert.match(A._state.msg, /isn't signed with your app's key/);
 });
 
-test("auto-check runs at most every 6 hours and only with a key", () => {
-  const { calls } = fakePhone();
-  assert.equal(A.autoCheck(1e12), false, "no key, no check");
-  A.setToken(TOKEN);
-  assert.equal(A.autoCheck(1e12), true);
+test("auto-check runs at most every 6 hours, with or without a key", () => {
+  const { calls } = fakePhone({ pub: { status: 200, json: LATEST } });
+  assert.equal(A.autoCheck(1e12), true, "no key needed");
   assert.equal(A.autoCheck(1e12 + 3600e3), false, "an hour later: skipped");
   assert.equal(A.autoCheck(1e12 + 7 * 3600e3), true, "seven hours later: checks again");
   void calls;
