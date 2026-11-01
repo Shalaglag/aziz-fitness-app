@@ -1530,10 +1530,8 @@ Power Clean (Barbell)|Other|Barbell|`;
         (e.showNote || e.notes ? '<textarea class="lb-input lb-notes" rows="1" placeholder="Note for this exercise" data-in="eNote" data-ei="' + i + '">' + esc(e.notes || '') + '</textarea>' : '') +
         '<div class="lb-sets" style="--cols:' + cols + '"><div class="lb-setrow head"><span>Set</span><span>Previous</span>' + f.map(k => '<span>' + ({ w: e.unit.toUpperCase(), r: 'Reps', km: 'Km', min: 'Min', sec: 'Sec' }[k]) + '</span>').join('') + xc.map(k => '<span>' + k.toUpperCase() + '</span>').join('') + '<span>' + (live ? '✓' : '') + '</span></div>';
       let n = 0;
-      const warmN = e.sets.filter(s => s.t === 'w').length, warmFold = live && warmN > 0 && !e.showWarm && e.sets.every(s => s.t !== 'w' || s.done);
-      if (warmFold) html += '<button class="lb-warmfold" data-a="showWarm" data-ei="' + i + '">✓ ' + warmN + (warmN === 1 ? ' warm-up set done' : ' warm-up sets done') + ' · show</button>';
+      // Every set stays on screen once ticked (Strong-style); nothing folds away mid-workout.
       e.sets.forEach((s, j) => {
-        if (warmFold && s.t === 'w') return;
         const p = prevMatch(prev, e, j), label = s.t === 'n' ? ++n : s.t.toUpperCase();
         const pTxt = p ? fmtSet(p, { unit: p._base ? e.unit : (prev.unit || e.unit), exId: e.exId }, ex) : '';
         html += '<div class="lb-setrow' + (s.done ? ' done' : '') + '" data-ei="' + i + '" data-si="' + j + '"><button class="lb-settag ' + s.t + '" data-a="setType" data-ei="' + i + '" data-si="' + j + '" aria-label="Set type">' + label + '</button>' +
@@ -1683,7 +1681,6 @@ Power Clean (Barbell)|Other|Barbell|`;
   const cellOf = t => E.doc.exercises[+t.dataset.ei];
   on('wName', t => { E.doc.name = t.value; touch(); });
   on('wNotes', t => { E.doc.notes = t.value; touch(); });
-  on('showWarm', t => { E.doc.exercises[+t.dataset.ei].showWarm = true; renderEditor(); });
   on('tFolder', t => { E.doc.folder = t.value; });
   on('eNote', t => { cellOf(t).notes = t.value; touch(); });
   on('cell', t => {
@@ -2013,7 +2010,7 @@ button.lb-card:hover{border-color:var(--lb-muted)}
 .lb-demo-toggle{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;margin:2px 0 8px;border-radius:999px;border:1px solid var(--lb-line);background:var(--lb-surface);color:var(--lb-muted);font-size:.84rem;font-weight:600;font-family:inherit}
 .lb-demo-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin-bottom:6px}.lb-demo-wrap .ea-card{width:100%;margin:0}
 .lb-screen-title{font-family:var(--display,inherit);font-size:1.9rem;line-height:1;margin:2px 0 12px;font-weight:700}
-.lb-warmfold{display:block;width:100%;text-align:left;padding:8px 2px;font-size:.92rem;color:var(--lb-muted);background:none;border:0;border-bottom:1px solid var(--lb-line);margin-bottom:4px}
+
 .lb-active-bar .lb-chev{margin-left:auto;font-weight:700}
 @keyframes lbpulse{50%{opacity:.3}}
 .lb-stats{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.85rem;color:var(--lb-muted);margin:.25rem 0 .4rem;font-variant-numeric:tabular-nums}
