@@ -1,0 +1,39 @@
+{
+ "id": "squat-barbell",
+ "check": {
+  "contacts": [
+   {
+    "body": "grip.L",
+    "target": "barbell.gripL",
+    "grip": "overhand",
+    "tolMm": 10
+   },
+   {
+    "body": "grip.R",
+    "target": "barbell.gripR",
+    "grip": "overhand",
+    "tolMm": 10
+   },
+   {
+    "body": "sole.L",
+    "target": "floor",
+    "tolMm": 8
+   },
+   {
+    "body": "sole.R",
+    "target": "floor",
+    "tolMm": 8
+   }
+  ],
+  "allowTouch": [
+   {
+    "body": [
+     "spine",
+     "head"
+    ],
+    "equipment": "barbell",
+    "maxMm": 25
+   }
+  ]
+ }
+}

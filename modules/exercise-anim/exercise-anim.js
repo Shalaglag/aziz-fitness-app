@@ -435,7 +435,7 @@
 
     'chest-press-machine': { name: 'Chest Press (Machine)', eq: 'Machine', hi: ['torso'],
       keys: like('gundam-chest-press-machine'),
-      props: sk => E.seat(0.5, 0).concat(E.back([0, 0.95, -0.17], 0.6), E.upright(0.42, -0.25, 1.5), E.upright(-0.42, -0.25, 1.5), levers(sk, [0.42, 1.1, -0.2])) },
+      props: sk => E.seat(0.5, -0.04).concat(E.back([0, 0.95, -0.17], 0.6), E.upright(0.42, -0.25, 1.5), E.upright(-0.42, -0.25, 1.5), levers(sk, [0.42, 1.1, -0.2])) },
 
     'incline-chest-press-machine': { name: 'Incline Chest Press (Machine)', eq: 'Machine', hi: ['torso', 'delts'],
       keys: rep(seated({ up: [0, 1, -0.06], hands: one([0.25, 1.12, 0.12]), elbows: one([1, -0.5, -0.6]) }), seated({ up: [0, 1, -0.06], hands: one([0.17, 1.33, 0.44]), elbows: one([1, -0.5, -0.6]) })),
@@ -604,7 +604,7 @@
         // the upper arm stays about 25 deg behind the torso; the hand travels on an arc around the elbow
         const P = h => Object.assign({}, S, { hands: { L: h, R: [-0.22, 0.95, 0.05] } });
         return [{ at: 0, p: P([0.26, 0.949, -0.154]) }, { at: 0.06, p: P([0.26, 0.949, -0.154]), ease: 'in' }, { at: 0.25, p: P([0.26, 0.989, 0.071]), ease: 'linear' }, { at: 0.326, p: P([0.26, 1.14, 0.177]), ease: 'out' }, { at: 0.46, p: P([0.26, 1.302, 0.17]) }, { at: 0.54, p: P([0.26, 1.302, 0.17]), ease: 'in' }, { at: 0.693, p: P([0.26, 1.14, 0.177]), ease: 'linear' }, { at: 0.781, p: P([0.26, 0.989, 0.071]), ease: 'out' }]; })(),
-      props: sk => E.pulley([0.4, 0.15, -0.8], 0.5).concat(E.handle(sk.grip.L, [1, 0, 0]), [line([0.4, 0.15, -0.8], sk.grip.L)]) },
+      props: sk => E.pulley([0.6, 0.15, -0.8], 0.5).concat(E.handle(sk.grip.L, [1, 0, 0]), [line([0.6, 0.15, -0.8], sk.grip.L)]) },
 
     'concentration-curl-dumbbell': { name: 'Concentration Curl (Dumbbell)', eq: 'Dumbbell', hi: ['arms'], cam: { yaw: 0.5, pitch: 0.25 },
       keys: (() => { const A = { pelvis: [0, 0.5, 0], up: [0, 0.8, 0.6], elbows: { L: [-0.3, -1, 0.3], R: [-0.5, -0.3, -0.5] }, feet: one([0.35, 0.08, 0.45]), knees: one([0.5, 1, 0.5]) };
@@ -638,8 +638,9 @@
 
     // ----- legs -----
     'squat-barbell': { name: 'Squat (Barbell)', eq: 'Barbell', hi: ['thighs', 'pelvis'], cam: { yaw: 1.15, pitch: 0.15 },
-      keys: like('squat-smith-machine'),
-      props: sk => { const c = add(add(sk.P, mul(sk.up, 0.5)), mul(sk.f, -0.07)); return E.barbell(add(c, [-0.3, 0, 0]), add(c, [0.3, 0, 0]), { len: 1.9, plateAt: 0.8, r: 0.2 }); } },
+      // knees track out over a wider, turned-out stance (keeps the thighs beside the belly at the bottom); wider grip, bar a little lower on the back
+      keys: like('squat-smith-machine', p => Object.assign(p, { hands: one({ t: [0.36, 0.48, -0.1] }), elbows: one([0.7, -1, -0.15]), feet: one([0.26, 0.08, 0.12]), knees: one([0.6, 0, 1]), footDir: one([0.45, 0, 1]) })),
+      props: sk => { const c = add(add(sk.P, mul(sk.up, 0.48)), mul(sk.f, -0.09)); return E.barbell(add(c, [-0.3, 0, 0]), add(c, [0.3, 0, 0]), { len: 1.9, plateAt: 0.8, r: 0.2 }); } },
 
     'front-squat-barbell': { name: 'Front Squat (Barbell)', eq: 'Barbell', hi: ['thighs'], cam: { yaw: 1.15, pitch: 0.15 },
       keys: (() => { const S = { hands: one({ t: [0.2, 0.47, 0.2] }), elbows: one([0.2, 0.3, 1]), feet: one([0.2, 0.08, 0.12]), knees: one([0.3, 0, 1]), footDir: one([0.25, 0, 1]) };

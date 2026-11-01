@@ -1,0 +1,35 @@
+{
+ "id": "bayesian-curl-cable",
+ "check": {
+  "contacts": [
+   {
+    "body": "grip.L",
+    "target": "gripL.grip",
+    "grip": "underhand",
+    "tolMm": 10
+   },
+   {
+    "body": "sole.L",
+    "target": "floor",
+    "tolMm": 8
+   },
+   {
+    "body": "sole.R",
+    "target": "floor",
+    "tolMm": 8
+   }
+  ],
+  "allowTouch": [
+   [
+    "hand.L",
+    "cable",
+    6
+   ],
+   [
+    "forearm.L",
+    "cable",
+    6
+   ]
+  ]
+ }
+}

@@ -121,14 +121,19 @@
       const across = (s === 'L' ? k2.clone().sub(k5) : k5.clone().sub(k2)).normalize();
       const pn = dir.clone().cross(across).normalize(); if (pn.dot(V3(s === 'L' ? -1 : 1, 0, 0)) < 0) pn.negate();
       const palm = w.clone().lerp(kMid, 0.55);
-      hand[s] = { w, dir, pn, curlAxis: dir.clone().cross(pn).normalize(), thumbSide: k2.clone().sub(k5).normalize(), palm, base: w.clone().lerp(kMid, opts.gripAt || 0.7), qaGrip: w.clone().lerp(kMid, 0.62).addScaledVector(pn, 0.026),
+      hand[s] = { w, dir, pn, curlAxis: dir.clone().cross(pn).normalize(), thumbSide: k2.clone().sub(k5).normalize(), palm, kMid, base: w.clone().lerp(kMid, opts.gripAt || 0.7), qaGrip: w.clone().lerp(kMid, 0.62).addScaledVector(pn, 0.026),
         palmSkin: vertsOf('wrist.' + s, i => restV(i).sub(palm).dot(pn) > 0 && restV(i).distanceTo(palm) < 0.05),
         seg: {} };
       for (let f = 1; f <= 5; f++) for (let j = 1; j <= 3; j++) hand[s].seg[f + '-' + j] = vertsOf(`finger${f}-${j}.${s}`);
       // power grip: the handle runs slightly diagonally across the palm, nearer the wrist on the little-finger side
-      const hs = hand[s], ts = Math.sign(hs.thumbSide.dot(hs.curlAxis)) || 1, th = opts.gripDiag == null ? 0.3 : opts.gripDiag;
-      hs.gripAxis = hs.curlAxis.clone().multiplyScalar(ts).addScaledVector(hs.dir, Math.tan(th)).normalize();
+      const hs = hand[s]; hs.ts = Math.sign(hs.thumbSide.dot(hs.curlAxis)) || 1;
     }
+    const DIAG = opts.gripDiag == null ? 0.3 : opts.gripDiag, AT = opts.gripAt || 0.7; let curDiag = null;
+    function setDiag(th, at) {   // exercises.json gripDiag / gripAt override the defaults (e.g. a back squat holds the bar straighter across the palm)
+      if (th + '|' + at === curDiag) return; curDiag = th + '|' + at;
+      for (const s of SIDES) { const hs = hand[s]; hs.gripAxis = hs.curlAxis.clone().multiplyScalar(hs.ts).addScaledVector(hs.dir, Math.tan(th)).normalize(); hs.base = hs.w.clone().lerp(hs.kMid, at); }
+    }
+    setDiag(DIAG, AT);
     const _v = V3();
     function skinPos(i) { _v.fromBufferAttribute(geo.attributes.position, i); skinned.applyBoneTransform(i, _v); return _v; }
     // signed distance (rest units) from the vertex set to a cylinder (centre c, unit axis a, radius r)
@@ -145,14 +150,14 @@
     // Solve palm offset, finger and thumb curl for a cylinder of radius r (rest units) once, in the rest pose:
     // the cylinder runs along the hand's curl axis, so turning the hand about the handle never changes the fit.
     function solveGrip(s, r) {
-      const key = s + Math.round(r * 2000); if (gripCache[key]) return gripCache[key];
+      const key = s + Math.round(r * 2000) + '|' + curDiag; if (gripCache[key]) return gripCache[key];
       const h = hand[s], a = h.gripAxis;
       restPose(); apply();
       const C = d => h.base.clone().addScaledVector(h.pn, d);
       let lo = 0, hi = 0.08;      // palm offset: palm skin 0.8 mm off the surface
       for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (cylGap(h.palmSkin, C(m), a, r) < 0.003 / K) lo = m; else hi = m; }
       const c = C(hi), F = { f: [], t: [0, 0, 0, 0] };
-      const touch = 0.0036 / K;
+      const touch = 0.0037 / K;
       const solveJoint = (set, setAngle, max) => {   // smallest angle where the segment touches; never through
         let prev = 0; setAngle(0); apply(); if (cylGap(set, c, a, r) <= touch) return 0;
         for (let ang = 0.05; ang <= max + 1e-9; ang += 0.05) {
@@ -248,7 +253,7 @@
         if (sh.k !== 'cap' || sh.ra > 0.03) return;
         const a = A3(sh.a), b = A3(sh.b), d = b.clone().sub(a), L = d.length(); if (L < 0.04) return; d.normalize();
         const t = Math.max(0, Math.min(L, A3(g).sub(a).dot(d))), p = a.clone().addScaledVector(d, t), e = p.distanceTo(A3(g));
-        if (e < 0.06 && (!best || e < best.e)) best = { i, a: d, p, e, r: sh.ra, A: a, B: b };
+        if (e < 0.12 && (!best || e < best.e)) best = { i, a: d, p, e, r: sh.ra, A: a, B: b };
       });
       return best;
     }
@@ -257,7 +262,7 @@
       const def = EA.defs[id]; if (!def) return null;
       const info = (DATA.exercises || {})[id] || {};
       while (gear.children.length) { const m = gear.children.pop(); m.geometry && m.geometry.dispose(); }
-      cur = { id, def, info, lift: [0, 0, 0], meshes: null };
+      cur = { id, def, info, lift: [0, 0, 0], meshes: null }; setDiag(info.gripDiag == null ? DIAG : info.gripDiag, info.gripAt || AT);
       setMuscles(info.primary, info.secondary);
       // support pads: lift or lower the body so the back, seat or bench is touched (about 4 mm into the pad)
       const pads = []; cur.hasPads = false;
@@ -428,6 +433,7 @@
             }); }
         }
         if (sh.k === 'box' && sh.col === 'pad') roles[i].role = roles[i].role || ('pad' + i + '.pad');
+        if (sh.k === 'line' && sh.col === 'cable') roles[i].role = roles[i].role || ('cable.line' + i);
         return o;
       });
       // D-handle frames for cable handles
