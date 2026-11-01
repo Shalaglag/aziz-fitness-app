@@ -63,6 +63,7 @@
     { "file": "modules/pending-writes/pending-writes.js" },
     { "file": "modules/app-shortcuts/app-shortcuts.js", "expose": ["AppShortcuts"] },
     { "file": "modules/cloud-store/cloud-store.js", "expose": ["CloudStore"] },
+    { "file": "modules/friends/friends.js", "expose": ["Friends"] },
     { "file": "modules/android-shell/android-shell.js", "expose": ["AndroidShell"] },
     { "file": "modules/app-update/app-update.js" }
   ]
