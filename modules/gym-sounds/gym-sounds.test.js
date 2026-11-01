@@ -4,14 +4,14 @@ const assert = require("node:assert/strict");
 const fs = require("fs"), path = require("path");
 const G = require("./gym-sounds.js");
 
-test("both sounds render, peak under clipping, end in silence", () => {
-  assert.deepEqual(G.NAMES, ["restDone", "finish"]);
+test("every sound renders, peaks under clipping, ends in silence", () => {
+  assert.deepEqual(G.NAMES, ["restDone", "finish", "boxing", "dingdong", "beeps", "whistle", "gong", "knock"]);
   for (const name of G.NAMES) {
     const x = G.render(name, 22050);
     let peak = 0; for (const v of x) peak = Math.max(peak, Math.abs(v));
     assert.ok(peak > 0.8 && peak <= 0.86, name + " peak " + peak);
     assert.ok(Math.abs(x[x.length - 1]) < 1e-3, name + " fades out");
-    assert.ok(x.length / 22050 < 2, name + " is short");
+    assert.ok(x.length / 22050 <= 2.4, name + " is short");
   }
   assert.throws(() => G.render("nope"));
 });
@@ -30,8 +30,19 @@ test("wav header and the Android copy match the in-app sound", () => {
   assert.equal(v.getUint32(24, true), 22050);
   assert.equal(v.getUint16(34, true), 16);
   assert.equal(v.getUint32(40, true), b.length - 44);
-  const raw = path.join(__dirname, "../../android/app/src/main/res/raw/rest_done.wav");
-  assert.ok(Buffer.from(b).equals(fs.readFileSync(raw)), "run node modules/gym-sounds/make-wav.js");
+  for (const { id } of G.REST_SOUNDS) {
+    const raw = path.join(__dirname, "../../android/app/src/main/res/raw", G.rawName(id));
+    assert.ok(Buffer.from(G.wav(id, 22050)).equals(fs.readFileSync(raw)), id + ": run node modules/gym-sounds/make-wav.js");
+  }
+});
+
+test("rest sound choices: Strong-style bell first, every id renders, Android-safe file names", () => {
+  assert.equal(G.REST_SOUNDS[0].id, "restDone");
+  assert.equal(G.rawName("restDone"), "rest_done.wav");
+  for (const { id, label } of G.REST_SOUNDS) {
+    assert.ok(G.NAMES.includes(id) && label, id);
+    assert.match(G.rawName(id), /^[a-z0-9_]+\.wav$/);
+  }
 });
 
 test("play without Web Audio returns false instead of throwing", () => {

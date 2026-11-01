@@ -21,6 +21,12 @@ Live workouts open in Gym mode by default. "List view" in the header switches to
 - Reopening a workout picks up after the furthest checked set, so skipped warm-ups don't pull you back.
 - Wake lock, beep and vibration settings are the existing ones.
 
+## Rest timer look and sound
+Settings → Workout (app) or Tools → Settings (logger) pick both; stored in `lb_meta/settings` as `restStyle` and `restSound`.
+- `restStyle`: `bar` Loading bar (default) · `half` Half circle · `ring` Full circle, full screen like Strong · `fill` Screen fill (the colour drains down the screen) · `plates` Plates off the bar (2.5 → 20 kg plates come off as rest runs down) · `blocks` Blocks (10 segments). Full-screen looks are a `role="dialog"` with Minimise (also the Android back button), which drops to the bar for that rest.
+- `restSound`: a `GymSounds.REST_SOUNDS` id (default `restDone`, the Strong-style bell). The `lb:rest` event carries it as `detail.sound` so the Android notification rings the same sound.
+- `--p` (rest left, 0–1) on `.lb-rest` drives every look; the last 10 s pulse. `WorkoutLogger.previewRest(sec)` starts a rest (Settings "Try it"); `WorkoutLogger.restStyles` lists the looks.
+
 ## Machine settings and weight steps
 - Every exercise keeps `memo` (seat height, pin, grips…) and an optional `step` + `stepUnit` (the smallest jump its stack or rack allows). Edit them from the exercise sheet (Edit) or, while logging, from the ⚙ line under the exercise name in Gym mode and the list view ("Add seat, pin or weight step" when empty). Saved as an override in `lb_exercises/{exId}`; library exercises without a saved step use the equipment default.
 - `step` drives the Gym steppers, the "All sets hit 12, try X next" hint and `warmSets(w, unit, bar, step)`. A step saved in kg is converted (to 0.25 lb) when the exercise is logged in lb, and vice versa.

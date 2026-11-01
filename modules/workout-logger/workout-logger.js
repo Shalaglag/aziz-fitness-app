@@ -14,6 +14,8 @@
  * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
  *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
+ * Rest timer look (settings.restStyle: bar | half | ring | fill | plates | blocks; ring and fill take the whole
+ *   screen like Strong) and end sound (settings.restSound: a GymSounds.REST_SOUNDS id) are picked in Settings.
  * Live workouts open in Gym mode (one set at a time, big steppers, RIR, rest countdown with "up next");
  *   "List view" in the header switches to the full table. Sets may carry rir (0-4, 4 = 4+).
  * Styling uses the shell tokens (--bg --surface --sunk --line --ink --muted --accent --accent-ink
@@ -452,6 +454,7 @@ Power Clean (Barbell)|Other|Barbell|`;
 
   const DEFAULT_SETTINGS = {
     unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: false,
+    restStyle: 'bar', restSound: 'restDone',
     bar: 20, barLb: 45, platesKg: [25, 20, 15, 10, 5, 2.5, 1.25], platesLb: [45, 35, 25, 10, 5, 2.5],
     rotOverride: null, seeded: false
   };
@@ -758,9 +761,9 @@ Power Clean (Barbell)|Other|Barbell|`;
   let audio = null, wakeLock = null;
   // GymSounds (modules/gym-sounds) gives the Strong-style cues; the three plain tones stay as a fallback.
   const GS = () => (typeof window !== 'undefined' && window.GymSounds) || null;
-  function beep() {
+  function beep(name) {
     if (!S.settings.sound) return;
-    if (GS() && GS().play('restDone')) return;
+    if (GS() && (GS().play(name || S.settings.restSound || 'restDone') || GS().play('restDone'))) return;
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
       [0, 0.22, 0.44].forEach((d, i) => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = i === 2 ? 1320 : 880; g.gain.setValueAtTime(0.0001, audio.currentTime + d); g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + d + 0.18); o.connect(g).connect(audio.destination); o.start(audio.currentTime + d); o.stop(audio.currentTime + d + 0.2); });
@@ -1254,8 +1257,24 @@ Power Clean (Barbell)|Other|Barbell|`;
     const st = S.settings, tog = (k, l) => '<label class="lb-check"><input type="checkbox" data-ch="setTog" data-k="' + k + '"' + (st[k] ? ' checked' : '') + '> ' + l + '</label>';
     return '<label class="lb-field inline">Default unit<select class="lb-input" data-ch="setUnit"><option' + (st.unit === 'kg' ? ' selected' : '') + '>kg</option><option' + (st.unit === 'lb' ? ' selected' : '') + '>lb</option></select></label>' +
       '<label class="lb-field inline">Rest after big compounds (s)<input class="lb-input num" inputmode="numeric" value="' + st.restCompound + '" data-ch="setNum" data-k="restCompound"></label><label class="lb-field inline">Rest after other lifts (s)<input class="lb-input num" inputmode="numeric" value="' + st.restIso + '" data-ch="setNum" data-k="restIso"></label>' +
-      tog('sound', 'Beep when rest ends') + tog('vibrate', 'Vibrate when rest ends') + tog('wake', 'Keep the screen on during a workout') + tog('rpe', 'Show an RPE column') + tog('rir', 'Show an RIR column (reps in reserve)') + tog('gym', 'Open workouts in Gym mode (big buttons, one set at a time)');
+      restLookHtml() +
+      tog('sound', 'Play a sound when rest ends') + tog('vibrate', 'Vibrate when rest ends') + tog('wake', 'Keep the screen on during a workout') + tog('rpe', 'Show an RPE column') + tog('rir', 'Show an RIR column (reps in reserve)') + tog('gym', 'Open workouts in Gym mode (big buttons, one set at a time)');
   }
+  function restLookHtml() {
+    const st = S.settings, chips = (k, list) => '<div class="lb-row tight lb-chips">' + list.map(([id, l]) => '<button class="lb-btn small' + (st[k] === id ? ' primary' : ' ghost') + '" data-a="setPick" data-k="' + k + '" data-v="' + id + '" aria-pressed="' + (st[k] === id) + '">' + esc(l) + '</button>').join('') + '</div>';
+    return '<div class="lb-field"><span>Rest timer look</span>' + chips('restStyle', REST_STYLES) + '<button class="lb-link small" data-a="restTry">Try it (10 s)</button></div>' +
+      '<div class="lb-field"><span>Sound when rest ends</span>' + chips('restSound', restSounds()) + '</div>';
+  }
+  on('setPick', t => {
+    const k = t.dataset.k, v = t.dataset.v;
+    if (k === 'restStyle' && !REST_STYLES.some(r => r[0] === v)) return;
+    if (k === 'restSound' && !restSounds().some(r => r[0] === v)) return;
+    S.settings[k] = v; saveSettings();
+    if (k === 'restSound' && GS()) { GS().prime(); GS().play(v); }
+    if (k === 'restStyle' && rest) renderRest();
+    rerenderTools();
+  });
+  on('restTry', () => { primeAudio(); previewRest(10); });
   on('setTog', t => { S.settings[t.dataset.k] = t.checked; saveSettings(); });
   on('setUnit', t => { S.settings.unit = t.value; saveSettings(); bump(); });
   on('setNum', t => { const v = num(t.value); if (v) { S.settings[t.dataset.k] = v; saveSettings(); } });
@@ -1822,22 +1841,62 @@ Power Clean (Barbell)|Other|Barbell|`;
   }
 
   // ---------- Rest timer ----------
-  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec } })); } catch (e) { } }
+  // Looks (Settings → Rest timer look). ring and fill cover the whole screen like Strong; "Minimise" drops to the bar for that rest.
+  const REST_STYLES = [['bar', 'Loading bar'], ['half', 'Half circle'], ['ring', 'Full circle'], ['fill', 'Screen fill'], ['plates', 'Plates off the bar'], ['blocks', 'Blocks']];
+  const FULL_STYLES = { ring: 1, fill: 1 };
+  const restSounds = () => (GS() && GS().REST_SOUNDS ? GS().REST_SOUNDS.map(r => [r.id, r.label]) : [['restDone', 'Bell (Strong-style)']]);
+  const restStyle = () => (REST_STYLES.some(r => r[0] === S.settings.restStyle) ? S.settings.restStyle : 'bar');
+  // Plates per side, inner to outer; they come off outer first as the rest runs down.
+  const REST_PLATES = [['20', 'b', 1], ['15', 'y', .86], ['10', 'g', .72], ['5', 'w', .56], ['2.5', 'r', .44]];
+  const REST_BLOCKS = 10;
+  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec, sound: S.settings.restSound || 'restDone' } })); } catch (e) { } }
+  function previewRest(sec) { startRest(sec); }
   function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
   on('restManual', t => { primeAudio(); startRest(+t.dataset.s); toast('Rest timer ' + mmss(+t.dataset.s)); renderRest(); });
   on('restAdj', t => { if (!rest) return; rest.end += +t.dataset.d * 1000; rest.total = Math.max(rest.total + +t.dataset.d, 1); persistRest(); renderRest(); });
   on('restSkip', () => stopRest());
+  on('restMini', () => { if (!rest) return; rest.mini = true; persistRest(); renderRest(); });
+  on('restFull', () => { if (!rest) return; rest.mini = false; persistRest(); renderRest(); });
   function restHost() { return E && liveEl && !liveEl.hidden ? liveEl.querySelector('.lb-rest') : floatingRest(); }
   let floatEl;
   function floatingRest() { if (!floatEl) { floatEl = document.createElement('div'); floatEl.className = 'lb-rest floating'; floatEl.hidden = true; overlay.appendChild(floatEl); } return floatEl; }
+  const restLeft = () => Math.max(0, Math.ceil((rest.end - Date.now()) / 1000));
+  const restFrac = () => Math.max(0, Math.min(1, (rest.end - Date.now()) / (rest.total * 1000)));
+  function restVisual(style, p, left) {
+    const time = '<span class="lb-rest-time lb-mono" aria-live="off">' + mmss(left) + '</span>';
+    if (style === 'half') return '<div class="lb-rest-half"><svg viewBox="0 0 200 108" aria-hidden="true"><path class="trk" d="M12 100 A88 88 0 0 1 188 100" pathLength="100"/><path class="val" d="M12 100 A88 88 0 0 1 188 100" pathLength="100"/></svg>' + time + '</div>';
+    if (style === 'ring') return '<div class="lb-rest-ring"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="trk" cx="50" cy="50" r="45" pathLength="100"/><circle class="val" cx="50" cy="50" r="45" pathLength="100"/></svg><div class="lb-rest-mid">' + time + '<span class="lb-rest-of">of ' + mmss(rest.total) + '</span></div></div>';
+    if (style === 'fill') return '<div class="lb-rest-level" aria-hidden="true"></div><div class="lb-rest-mid">' + time + '<span class="lb-rest-of">rest · ' + mmss(rest.total) + '</span></div>';
+    if (style === 'plates') { const side = REST_PLATES.map(([kg, c, h], i) => '<i class="pl ' + c + '" data-i="' + i + '" style="--h:' + h + '" title="' + kg + ' kg"></i>'); return '<div class="lb-rest-plates" aria-hidden="true"><span class="side l">' + side.slice().reverse().join('') + '</span><span class="sleeve"></span><span class="side r">' + side.join('') + '</span></div>'; }
+    if (style === 'blocks') return '<div class="lb-rest-blocks" aria-hidden="true">' + Array.from({ length: REST_BLOCKS }, (_, i) => '<i data-i="' + i + '"></i>').join('') + '</div>';
+    return '<div class="lb-rest-bar"><i></i></div>';
+  }
+  // Moves the countdown without rebuilding it: --p (rest left, 0-1) drives bars, arcs and the fill level.
+  function paintRest(h) {
+    if (!rest || !h) return;
+    const p = restFrac(), left = restLeft();
+    h.style.setProperty('--p', p.toFixed(4));
+    h.classList.toggle('ending', left <= 10);
+    const tEl = h.querySelector('.lb-rest-time'); if (tEl) tEl.textContent = mmss(left);
+    const plates = Math.ceil(p * REST_PLATES.length - 1e-9), blocks = Math.ceil(p * REST_BLOCKS - 1e-9);
+    h.querySelectorAll('.lb-rest-plates .pl').forEach(el => el.classList.toggle('off', +el.dataset.i >= plates));
+    h.querySelectorAll('.lb-rest-blocks i').forEach(el => el.classList.toggle('off', +el.dataset.i >= blocks));
+  }
   function renderRest() {
     const hosts = [liveEl && liveEl.querySelector('.lb-rest'), floatEl].filter(Boolean);
-    hosts.forEach(h => { h.hidden = true; });
+    hosts.forEach(h => { h.hidden = true; h.classList.remove('full'); h.removeAttribute('role'); });
     if (!rest) return;
     const h = restHost(); h.hidden = false;
-    const left = Math.max(0, Math.ceil((rest.end - Date.now()) / 1000));
-    h.innerHTML = '<div class="lb-rest-bar"><i style="width:' + (left / rest.total * 100).toFixed(1) + '%"></i></div><div class="lb-rest-row"><button class="lb-btn small ghost" data-a="restAdj" data-d="-15">−15</button><span class="lb-rest-time lb-mono" aria-live="off">' + mmss(left) + '</span><button class="lb-btn small ghost" data-a="restAdj" data-d="15">+15</button><button class="lb-btn small" data-a="restSkip">Skip</button></div>' + (E && E.view === 'gym' && h !== floatEl ? upNextHtml() : '');
+    const left = restLeft(), chosen = restStyle(), full = FULL_STYLES[chosen] && !rest.mini, style = FULL_STYLES[chosen] && rest.mini ? 'bar' : chosen;
+    const inline = !(style === 'half' || full);
+    const ctl = '<div class="lb-rest-row"><button class="lb-btn small ghost" data-a="restAdj" data-d="-15" aria-label="15 seconds less">−15</button>' + (inline ? '<span class="lb-rest-time lb-mono" aria-live="off">' + mmss(left) + '</span>' : '') + '<button class="lb-btn small ghost" data-a="restAdj" data-d="15" aria-label="15 seconds more">+15</button><button class="lb-btn small" data-a="restSkip">Skip</button>' +
+      (FULL_STYLES[chosen] && rest.mini ? '<button class="lb-btn small ghost" data-a="restFull" aria-label="Full screen">⤢</button>' : '') + '</div>';
+    h.dataset.style = style;
+    h.classList.toggle('full', !!full);
+    if (full) { h.setAttribute('role', 'dialog'); h.setAttribute('aria-label', 'Rest timer'); }
+    h.innerHTML = (full ? '<button class="lb-rest-min" data-a="restMini" data-close aria-label="Minimise rest timer">Minimise</button><div class="lb-rest-eyebrow">Rest</div>' : '') + restVisual(style, restFrac(), left) + ctl + (E && E.view === 'gym' && (h !== floatEl || full) ? upNextHtml() : '');
+    paintRest(h);
   }
   function startTick() {
     if (tickT) return;
@@ -1847,8 +1906,8 @@ Power Clean (Barbell)|Other|Barbell|`;
         const left = Math.ceil((rest.end - Date.now()) / 1000);
         if (left <= 0) { if (!rest.alerted) { rest.alerted = true; beep(); if (S.settings.vibrate && navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch (e) { } toast('Rest is over'); } stopRest(); }
         else {
-          const h = restHost(); const tEl = h && h.querySelector('.lb-rest-time');
-          if (tEl) { tEl.textContent = mmss(left); h.querySelector('.lb-rest-bar i').style.width = (left / rest.total * 100).toFixed(1) + '%'; } else renderRest();
+          const h = restHost();
+          if (h && !h.hidden && h.firstChild) paintRest(h); else renderRest();
         }
       }
       if (!rest && !S.active && !E) { clearInterval(tickT); tickT = null; }
@@ -2047,7 +2106,36 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-exfoot .lb-link{position:absolute;right:0}
 .lb-rest{position:absolute;left:0;right:0;bottom:0;background:var(--lb-surface);border-top:1px solid var(--lb-line);padding:8px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));box-shadow:0 -6px 20px rgba(0,0,0,.12)}
 .lb-rest.floating{position:fixed;z-index:15;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));border-radius:14px;border:1px solid var(--lb-line);max-width:480px;margin:0 auto}
-.lb-rest-bar{height:5px;background:var(--lb-sunk);border-radius:3px;overflow:hidden} .lb-rest-bar i{display:block;height:100%;background:var(--lb-accent);transition:width .5s linear}
+.lb-rest-bar{height:5px;background:var(--lb-sunk);border-radius:3px;overflow:hidden} .lb-rest-bar i{display:block;height:100%;width:calc(var(--p,1) * 100%);background:var(--lb-accent);transition:width .5s linear}
+.lb-rest.ending .lb-rest-time{animation:lb-rest-pulse 1s ease-in-out infinite}
+@keyframes lb-rest-pulse{50%{opacity:.55}}
+.lb-rest-half{position:relative;max-width:260px;margin:0 auto} .lb-rest-half svg{display:block;width:100%;height:auto;overflow:visible}
+.lb-rest-half path,.lb-rest-ring circle{fill:none;stroke-width:12;stroke-linecap:round} .lb-rest-ring circle{stroke-width:5}
+.lb-rest-half .trk,.lb-rest-ring .trk{stroke:var(--lb-sunk)} .lb-rest-half .val,.lb-rest-ring .val{stroke:var(--lb-accent);stroke-dasharray:100 100;stroke-dashoffset:calc((1 - var(--p,1)) * 100);transition:stroke-dashoffset .5s linear}
+.lb-rest-half .lb-rest-time{position:absolute;left:0;right:0;bottom:2px;text-align:center}
+.lb-rest-ring{position:relative;width:min(78vw,52vh,360px);aspect-ratio:1;max-width:100%;margin:0 auto} .lb-rest-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.lb-rest-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;pointer-events:none}
+.lb-rest-of{color:var(--lb-muted);font-size:.95rem}
+.lb-rest-plates{display:flex;align-items:center;justify-content:center;height:58px;margin:4px auto 2px;max-width:100%}
+.lb-rest-plates .sleeve{flex:0 1 120px;height:6px;border-radius:3px;background:var(--lb-muted);opacity:.6}
+.lb-rest-plates .side{display:flex;align-items:center;gap:2px}
+.lb-rest-plates .pl{display:block;width:9px;height:calc(var(--h) * 56px);border-radius:3px;transition:transform .45s ease,opacity .45s ease}
+.lb-rest-plates .pl.b{background:#1F5FD1}.lb-rest-plates .pl.y{background:#F2C230}.lb-rest-plates .pl.g{background:#1B8048}.lb-rest-plates .pl.w{background:#EEF0F2;box-shadow:inset 0 0 0 1px #A9B1BA}.lb-rest-plates .pl.r{background:#D0302A}
+.lb-rest-plates .l .pl.off{transform:translateX(-26px);opacity:0}.lb-rest-plates .r .pl.off{transform:translateX(26px);opacity:0}
+.lb-rest-blocks{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;max-width:720px;margin:0 auto}
+.lb-rest-blocks i{display:block;height:14px;border-radius:3px;background:var(--lb-accent);transition:background-color .3s ease,opacity .3s ease}
+.lb-rest-blocks i.off{background:var(--lb-sunk)}
+.lb-rest.full{position:fixed;inset:0;z-index:30;border:0;border-radius:0;max-width:none;margin:0;box-shadow:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));background:var(--lb-bg);overflow:hidden;animation:lb-rest-in .25s ease-out}
+@keyframes lb-rest-in{from{opacity:0;transform:scale(.98)}}
+.lb-rest.full .lb-rest-time{font-family:var(--lb-display);font-size:clamp(3.5rem,18vw,6rem);line-height:1;min-width:0}
+.lb-rest.full .lb-rest-row{position:relative;z-index:1} .lb-rest.full .lb-rest-row .lb-btn{min-height:56px;min-width:72px;font-size:1.05rem}
+.lb-rest.full .lb-rest-next{position:relative;z-index:1}
+.lb-rest-eyebrow{position:relative;z-index:1;text-transform:uppercase;letter-spacing:.12em;font-weight:700;font-size:.8rem;color:var(--lb-muted)}
+.lb-rest-min{position:absolute;z-index:2;top:calc(12px + env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--lb-line);background:var(--lb-surface);color:var(--lb-ink);font:600 .9rem var(--lb-body);cursor:pointer}
+.lb-rest.full[data-style="fill"] .lb-rest-mid{position:relative;inset:auto;z-index:1}
+.lb-rest-level{position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,1) * 100%);background:color-mix(in srgb,var(--lb-accent) 26%,var(--lb-bg));border-top:3px solid var(--lb-accent);transition:height .5s linear}
+.lb-chips{flex-wrap:wrap;gap:6px;margin-top:4px}
+@media (prefers-reduced-motion:reduce){.lb-rest *,.lb-rest{transition:none!important;animation:none!important}}
 .lb-rest-row{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:6px;max-width:720px;margin-left:auto;margin-right:auto}
 .lb-rest-time{font-size:1.7rem;font-weight:700;min-width:5.5rem;text-align:center}
 .lb-headmid{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.15}
@@ -2147,7 +2235,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   // Host settings screen: read the logger's settings and change some of them (gym, unit, rest) without opening its Tools tab.
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
-  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, settings, setSettings, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
