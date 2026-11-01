@@ -1,0 +1,13 @@
+{
+ "hip-adductor-machine": {"camera":"front three-quarter view","notes":"The inner-thigh muscles sit between the pads, so only a small red patch shows. Approximate machine."},
+ "hip-abductor-machine": {"camera":"side three-quarter view","notes":"The glutes are mostly hidden by the seat in this view. Approximate machine."},
+ "seated-abs-machine": {"camera":"front view","notes":"The chest pad covers the abs for most of the rep; the red patch shows at the start. Approximate machine."},
+ "shrug-machine": {"camera":"rear view","notes":"Plain bar and pillars stand in for the machine."},
+ "standing-calf-raise-machine": {"camera":"rear view","notes":"Plain pillars stand in for the machine."},
+ "calf-press-leg-press": {"notes":"Small range of motion by nature; watch the heels."},
+ "treadmill-incline-walk": {"notes":"Clip is 7.0 s (six strides) so the stride loops cleanly."},
+ "pullover-machine": {"notes":"Approximate machine: lever arms are plain bars."},
+ "hack-squat-machine": {"notes":"Approximate machine: sled and pads are simple shapes."},
+ "iso-lateral-low-row-plate-loaded": {"notes":"Approximate machine: levers are plain bars."},
+ "t-bar-row": {"notes":"Approximate landmine/T-bar handle."}
+}
