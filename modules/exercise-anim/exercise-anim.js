@@ -1864,8 +1864,8 @@
   }
 
   // ---------- drawing ----------
-  const PALETTE = { light: { body: '#b9bec7', sec: '#cf9d96', metal: '#7b828e', plate: '#3d434d', pad: '#3a4252', frame: '#a3aab5', cable: '#6b7280' },
-    dark: { body: '#a7afbb', sec: '#b88a85', metal: '#9aa3af', plate: '#2a2f38', pad: '#454e60', frame: '#5c6573', cable: '#9aa3af' } };
+  const PALETTE = { light: { body: '#b9bec7', sec: '#eaa94e', metal: '#7b828e', plate: '#3d434d', pad: '#3a4252', frame: '#a3aab5', cable: '#6b7280' },
+    dark: { body: '#a7afbb', sec: '#d59a45', metal: '#9aa3af', plate: '#2a2f38', pad: '#454e60', frame: '#5c6573', cable: '#9aa3af' } };
   const hex = h => { h = String(h || '').trim(); if (/^#[0-9a-f]{3}$/i.test(h)) h = '#' + h.slice(1).split('').map(x => x + x).join(''); const m = /^#([0-9a-f]{6})$/i.exec(h); if (m) { const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; } const r = /rgba?\(([^)]+)\)/.exec(h); return r ? r[1].split(',').slice(0, 3).map(Number) : [230, 120, 60]; };
   const shade = (rgb, k) => 'rgb(' + rgb.map(c => Math.round(k >= 0 ? c + (255 - c) * k : c * (1 + k))).join(',') + ')';
 
@@ -1987,18 +1987,29 @@
     const states = {}, cards = new Set();
     const reduce = () => { try { return root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
     const api = { info: opts.info || null };
-    function state(id) {
-      const d = DEFS[id];
-      return states[id] || (states[id] = { t: 0, view: '3d', yaw: VIEWS['3d'](d), pitch: (d.cam && d.cam.pitch) || 0.15, playing: !reduce(), speed: 1 });
+    // Blender video clips (clips.json): 'preview' is offered as a Video option, 'approved' is the default view.
+    // A clip that is missing from the list, not preview/approved, or fails to load falls back to the 3D demo.
+    const clipData = () => opts.clips || root.EXERCISE_CLIPS || {};
+    function clipFor(id) {
+      const c = (clipData().clips || {})[id];
+      return c && c.file && (c.status === 'approved' || c.status === 'preview') ? c : null;
     }
+    function state(id) {
+      const d = DEFS[id], c = clipFor(id);
+      return states[id] || (states[id] = { t: 0, view: '3d', yaw: VIEWS['3d'](d), pitch: (d.cam && d.cam.pitch) || 0.15, playing: !reduce(), speed: 1, mode: c && c.status === 'approved' ? 'clip' : '3d', clipFailed: false, vt: 0 });
+    }
+    const modeOf = id => { const st = state(id); return clipFor(id) && !st.clipFailed ? st.mode : '3d'; };
     const has = id => !!DEFS[id];
     function cardHtml(id, cls) {
       if (!has(id)) return '';
-      const st = state(id), d = DEFS[id];
-      return '<div class="ea-card' + (cls ? ' ' + cls : '') + '" data-ea="' + esc(id) + '">' +
+      const st = state(id), d = DEFS[id], c = clipFor(id), live = c && !st.clipFailed, mode = modeOf(id);
+      const tag = mode === 'clip' ? 'Video demo' + (c.status === 'approved' ? '' : ' · preview') : '3D guide · drag to turn';
+      return '<div class="ea-card' + (cls ? ' ' + cls : '') + '" data-ea="' + esc(id) + '" data-mode="' + mode + '"' + (live ? ' data-clip="1"' : '') + '>' +
+        (live ? '<video muted loop playsinline preload="metadata" src="' + esc((clipData().base || 'clips/') + c.file) + '" aria-label="Video demo: ' + esc(d.name) + '"></video>' : '') +
         '<canvas role="img" aria-label="Animated demo: ' + esc(d.name) + '"></canvas>' +
-        '<span class="ea-tag">3D guide · drag to turn</span>' +
-        '<div class="ea-ctl">' + ['3d', 'front', 'side'].map(v => '<button type="button" data-ea-view="' + v + '" aria-pressed="' + (st.view === v) + '">' + (v === '3d' ? '3D' : v[0].toUpperCase() + v.slice(1)) + '</button>').join('') +
+        '<span class="ea-tag">' + tag + '</span>' +
+        (live ? '<div class="ea-mode" role="group" aria-label="Demo type">' + [['clip', 'Video'], ['3d', 'Rotate']].map(m => '<button type="button" data-ea-mode="' + m[0] + '" aria-pressed="' + (mode === m[0]) + '">' + m[1] + '</button>').join('') + '</div>' : '') +
+        '<div class="ea-ctl"><span class="ea-views">' + ['3d', 'front', 'side'].map(v => '<button type="button" data-ea-view="' + v + '" aria-pressed="' + (st.view === v) + '">' + (v === '3d' ? '3D' : v[0].toUpperCase() + v.slice(1)) + '</button>').join('') + '</span>' +
         '<span class="ea-sp"></span><button type="button" data-ea-play aria-label="' + (st.playing ? 'Pause' : 'Play') + '">' + (st.playing ? '❚❚' : '▶') + '</button>' +
         '<button type="button" data-ea-speed aria-label="Speed">' + (st.speed === 1 ? '1×' : '½×') + '</button>' +
         (cls === 'ea-big' ? '' : '<button type="button" data-ea-full aria-label="Full screen">⤢</button>') + '</div></div>';
@@ -2029,6 +2040,7 @@
       cards.forEach(el => {
         if (!el.isConnected) { cards.delete(el); return; }
         const id = el.dataset.ea, st = state(id);
+        if (el.dataset.mode === 'clip') return;
         if (st.playing && !seen.has(id)) { st.t = (st.t + dt * st.speed / DEFS[id].dur) % 1; if (DEFS[id].still && st.view === '3d') st.yaw += dt * 0.35 * st.speed; seen.add(id); }
         if (el._eaVis !== false) paint(el);
         if (st.playing && el._eaVis !== false) moving = true;
@@ -2040,13 +2052,47 @@
     function mount(el) {
       if (el._eaBound || !has(el.dataset.ea)) return;
       el._eaBound = true; cards.add(el);
-      if (root.IntersectionObserver) { io = io || new root.IntersectionObserver(es => { es.forEach(e => { e.target._eaVis = e.isIntersecting; }); kick(); }); io.observe(el); }
+      const vid = el.querySelector('video');
+      if (vid) {
+        const st = state(el.dataset.ea);
+        vid.playbackRate = st.speed;
+        vid.addEventListener('loadedmetadata', () => { if (st.vt && vid.duration) { try { vid.currentTime = st.vt % vid.duration; } catch (e) { } } });
+        vid.addEventListener('timeupdate', () => { st.vt = vid.currentTime; });
+        vid.addEventListener('error', () => clipFailed(el.dataset.ea));
+        vid.addEventListener('play', () => pauseOthers(vid));
+      }
+      if (root.IntersectionObserver) { io = io || new root.IntersectionObserver(es => { es.forEach(e => { e.target._eaVis = e.isIntersecting; syncVideo(e.target); }); kick(); }); io.observe(el); }
+      else syncVideo(el);
       kick();
     }
     function scan(node) { if (node && node.querySelectorAll) { if (node.matches && node.matches('.ea-card')) mount(node); node.querySelectorAll('.ea-card').forEach(mount); } }
+    // One video plays at a time, only while its card is on screen, in clip mode and not paused.
+    function syncVideo(el) {
+      const vid = el.querySelector && el.querySelector('video'); if (!vid) return;
+      const st = state(el.dataset.ea), want = st.playing && el.dataset.mode === 'clip' && el._eaVis !== false;
+      vid.playbackRate = st.speed;
+      if (want && vid.paused) { const p = vid.play(); if (p && p.catch) p.catch(() => { }); }
+      else if (!want && !vid.paused) vid.pause();
+    }
+    function pauseOthers(vid) {
+      cards.forEach(el => { const v = el.querySelector('video'); if (v && v !== vid && !v.paused) { v.pause(); const s = state(el.dataset.ea); if (s.playing) { s.playing = false; rerenderControls(el.dataset.ea); } } });
+    }
+    function clipFailed(id) {
+      const st = state(id); st.clipFailed = true; st.mode = '3d';
+      document.querySelectorAll('.ea-card[data-ea="' + id + '"]').forEach(el => {
+        el.removeAttribute('data-clip'); const v = el.querySelector('video'); if (v) v.remove();
+        const m = el.querySelector('.ea-mode'); if (m) m.remove();
+      });
+      rerenderControls(id); kick();
+    }
     function rerenderControls(id) {
       document.querySelectorAll('.ea-card[data-ea="' + id + '"]').forEach(el => {
-        const st = state(id);
+        const st = state(id), mode = modeOf(id);
+        el.dataset.mode = mode;
+        const tg = el.querySelector('.ea-tag'), c = clipFor(id);
+        if (tg) tg.textContent = mode === 'clip' ? 'Video demo' + (c && c.status === 'approved' ? '' : ' · preview') : '3D guide · drag to turn';
+        el.querySelectorAll('[data-ea-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.eaMode === mode)));
+        syncVideo(el);
         el.querySelectorAll('[data-ea-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.eaView === st.view)));
         const p = el.querySelector('[data-ea-play]'); if (p) { p.textContent = st.playing ? '❚❚' : '▶'; p.setAttribute('aria-label', st.playing ? 'Pause' : 'Play'); }
         const s = el.querySelector('[data-ea-speed]'); if (s) s.textContent = st.speed === 1 ? '1×' : '½×';
@@ -2062,14 +2108,15 @@
       if (root.MutationObserver) new root.MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(scan))).observe(doc.body || doc, { childList: true, subtree: true });
       if (!doc.getElementById('ea-style')) { const s = doc.createElement('style'); s.id = 'ea-style'; s.textContent = css; doc.head.appendChild(s); }
       doc.addEventListener('click', ev => {
-        const t = ev.target.closest && ev.target.closest('[data-ea-view],[data-ea-play],[data-ea-speed],[data-ea-full],[data-ea-open],[data-ea-close]');
+        const t = ev.target.closest && ev.target.closest('[data-ea-view],[data-ea-mode],[data-ea-play],[data-ea-speed],[data-ea-full],[data-ea-open],[data-ea-close]');
         if (!t) return;
         if (t.hasAttribute('data-ea-open')) { ev.preventDefault(); open(t.getAttribute('data-ea-open')); return; }
         if (t.hasAttribute('data-ea-close')) { ev.preventDefault(); close(); return; }
         const card = t.closest('.ea-card'); if (!card) return;
         const id = card.dataset.ea, st = state(id), d = DEFS[id];
         ev.preventDefault(); ev.stopPropagation();
-        if (t.hasAttribute('data-ea-view')) { st.view = t.dataset.eaView; st.yaw = VIEWS[st.view](d); st.pitch = st.view === '3d' ? ((d.cam && d.cam.pitch) || 0.15) : 0.08; }
+        if (t.hasAttribute('data-ea-mode')) { st.mode = t.dataset.eaMode === 'clip' ? 'clip' : '3d'; if (st.mode === 'clip') st.playing = true; }
+        else if (t.hasAttribute('data-ea-view')) { st.view = t.dataset.eaView; st.yaw = VIEWS[st.view](d); st.pitch = st.view === '3d' ? ((d.cam && d.cam.pitch) || 0.15) : 0.08; }
         else if (t.hasAttribute('data-ea-play')) st.playing = !st.playing;
         else if (t.hasAttribute('data-ea-speed')) st.speed = st.speed === 1 ? 0.5 : 1;
         else if (t.hasAttribute('data-ea-full')) { open(id); return; }
@@ -2103,7 +2150,7 @@
         '<div class="ea-full-body">' + (d.note ? '<p class="ea-note">' + esc(d.note) + '</p>' : '') +
         (cues.length ? '<p class="ea-lbl">Cues</p><ul>' + cues.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
         (steps.length ? '<p class="ea-lbl">The rep</p><ol>' + steps.map(x => '<li>' + esc(x) + '</li>').join('') + '</ol>' : '') +
-        '<p class="ea-muted">Animated guide drawn for this app. The highlighted area is the main muscle worked.</p></div>';
+        '<p class="ea-muted">Made for this app. Red is the main muscle worked; amber shows the muscles that help.</p></div>';
       document.body.appendChild(el);
       scan(el);
       const x = el.querySelector('.ea-x'); if (x) x.focus();
@@ -2119,6 +2166,14 @@
     '.ea-tag{position:absolute;top:6px;left:8px;font-size:.68rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted,#6b7280);pointer-events:none}',
     '.ea-ctl{position:absolute;left:6px;right:6px;bottom:6px;display:flex;gap:4px;align-items:center}',
     '.ea-sp{flex:1}',
+    '.ea-views{display:flex;gap:4px}',
+    '.ea-card video{display:none;width:100%;height:100%;object-fit:contain;background:#eceef2}',
+    '.ea-card[data-mode="clip"] video{display:block}',
+    '.ea-card[data-mode="clip"] canvas,.ea-card[data-mode="clip"] .ea-views{display:none}',
+    '.ea-mode{position:absolute;top:5px;right:6px;display:flex;gap:0;border-radius:999px;overflow:hidden;border:1px solid var(--line,#dde1e6)}',
+    '.ea-mode button{font:inherit;font-size:.72rem;font-weight:600;min-height:30px;padding:2px 10px;border:0;background:var(--surface,#fff);color:var(--ink,#111);cursor:pointer}',
+    '.ea-mode button[aria-pressed="true"]{background:var(--accent,#e8672f);color:var(--accent-ink,#fff)}',
+    '.ea-mode button:focus-visible{outline:2px solid var(--accent,#e8672f);outline-offset:-2px}',
     '.ea-ctl button{font:inherit;font-size:.74rem;font-weight:600;min-width:34px;min-height:30px;padding:2px 8px;border-radius:999px;border:1px solid var(--line,#dde1e6);background:var(--surface,#fff);color:var(--ink,#111);cursor:pointer}',
     '.ea-ctl button[aria-pressed="true"]{background:var(--accent,#e8672f);border-color:var(--accent,#e8672f);color:var(--accent-ink,#fff)}',
     '.ea-ctl button:focus-visible{outline:2px solid var(--accent,#e8672f);outline-offset:1px}',

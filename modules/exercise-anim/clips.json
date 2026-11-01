@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "base": "clips/",
+  "note": "status: preview = offered as a Video option but 3D stays the default; approved = Video is the default view; anything else is ignored. Only Aziz changes a clip to approved. A missing or broken file falls back to the 3D demo.",
+  "clips": {
+    "bench-press-barbell": {
+      "file": "bench-press-barbell.mp4",
+      "bytes": 317221,
+      "sha256": "f48aa4155be3d740d5cb47a4f14f45ec391a6d04d1de7a230f883d2786aeb2fe",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "chest"
+      ],
+      "secondary": [
+        "front delts",
+        "triceps"
+      ],
+      "camera": "high three-quarter side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Triceps are mostly hidden from this angle."
+    },
+    "squat-barbell": {
+      "file": "squat-barbell.mp4",
+      "bytes": 353248,
+      "sha256": "60a5bceea47aae957b46accdd64fef88e5716eb4c2439bc6f2cbbc90fe58e88b",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "calves",
+        "lower back"
+      ],
+      "camera": "behind and to the side",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "From the rear-side camera the far leg can look like it is kneeling."
+    },
+    "bicep-curl-dumbbell": {
+      "file": "bicep-curl-dumbbell.mp4",
+      "bytes": 188851,
+      "sha256": "3f819574f4c70826d5f57dc1ddb6fda31fbfd5e6e57a7808ebaebdae58edac2f",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "biceps"
+      ],
+      "secondary": [
+        "forearm flexors"
+      ],
+      "camera": "side-on, slightly frontal; biceps visible through the rep",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "push-up": {
+      "file": "push-up.mp4",
+      "bytes": 332443,
+      "sha256": "269fccf082d8ba066826630531018ed44131426f9cbbee079e3add1adb7e27d7",
+      "revision": "v4",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "chest"
+      ],
+      "secondary": [
+        "front delts",
+        "triceps"
+      ],
+      "camera": "low front three-quarter view, slightly to the side",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid",
+      "notes": "Triceps barely show from this camera."
+    }
+  }
+}
