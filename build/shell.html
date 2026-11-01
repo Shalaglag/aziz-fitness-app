@@ -350,7 +350,9 @@ nav.drawer{position:relative;width:min(300px,82vw);height:100%;background:var(--
 @keyframes fit-drawer-in{from{transform:translateX(-30px);opacity:0}}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px 14px}
 nav.drawer button[data-tab]{display:flex;align-items:center;gap:12px;width:100%;border:0;background:none;padding:14px 12px;border-radius:12px;cursor:pointer;font-family:var(--display);font-size:1.3rem;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);text-align:left;min-height:52px}
-nav.drawer button[data-tab] .ico{width:26px;text-align:center;font-size:1.1rem;font-family:var(--body)}
+nav.drawer button[data-tab] .ico{width:26px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+nav.drawer button[data-tab] .ico svg{width:22px;height:22px}
+nav.drawer button[data-tab][aria-current="page"] .ico{color:var(--accent)}
 nav.drawer button[aria-current="page"]{background:var(--ink);color:var(--bg)}
 nav.drawer .drawer-sep{height:1px;background:var(--line);margin:8px 12px}
 nav.drawer .drawer-foot{margin-top:auto;padding:12px;font-size:.8rem;color:var(--muted)}
@@ -486,6 +488,7 @@ body:has(#timer:not([hidden])) .bottombar,html.lb-noscroll .bottombar,body:has(.
 .fold>summary small+.chev{margin-left:4px}
 .fold[open]>summary .chev{transform:rotate(45deg)}
 .fold[open]>summary{border-bottom:1px solid var(--line)}
+.dd-tile .dd-v:not(.num){font-family:var(--body);font-size:1.1rem;letter-spacing:0}
 .card>.fold{margin-top:6px;box-shadow:none;background:var(--surface-2);border-color:transparent;border-radius:14px}
 #lbHost .lb-card{border-color:var(--card-line);box-shadow:var(--shadow-card);border-radius:18px}
 #main .dd-tile{border-top-color:transparent;border-right-color:transparent;border-bottom-color:transparent}
@@ -563,7 +566,11 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .mealgrp{background:var(--surface);border:1px solid var(--card-line);box-shadow:var(--shadow-card);border-radius:18px;padding:0 14px;min-width:0}
 .mealgrp .mh{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;font-weight:700;font-size:1.05rem}
 .mealgrp .mh small{color:var(--muted);font-weight:500;font-family:var(--mono);font-size:.85rem}
-.mealgrp .item{padding:10px 0;grid-template-columns:auto 1fr auto auto;border-top:1px solid var(--line)}
+.mealgrp .item{padding:10px 0;grid-template-columns:auto minmax(0,1fr) auto auto;border-top:1px solid var(--line)}
+.mealgrp .item .nm b{overflow-wrap:anywhere;line-height:1.25}
+.mealgrp .item .mac{font-size:.75rem;line-height:1.3}
+.mealgrp .mh>span{white-space:nowrap}
+@media (max-width:380px){.mealgrp .item{grid-template-columns:auto minmax(0,1fr) auto;row-gap:2px}.mealgrp .item .mac{grid-column:2;text-align:left;white-space:normal}.mealgrp .item .mac br{display:none}.mealgrp .item .mac span:first-of-type{margin-left:8px}.mealgrp .item .x{grid-row:1;grid-column:3}}
 .mealgrp .item .nm b{font-weight:600}
 .mealgrp .item .nm button{all:unset;cursor:pointer;display:block}
 .mealgrp .madd{display:block;width:100%;border:0;background:none;color:var(--accent);font-weight:700;text-align:left;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;font-size:.95rem}
@@ -606,13 +613,13 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
   <div class="scrim" data-close-drawer></div>
   <nav class="drawer" id="tabs" aria-label="Sections">
     <div class="drawer-head"><div class="brand">Mi<span>zan</span></div><button class="iconbtn" id="drawerClose" aria-label="Close">✕</button></div>
-    <button data-tab="today"><span class="ico">☀</span>Today</button>
-    <button data-tab="train"><span class="ico">🏋</span>Train</button>
-    <button data-tab="food"><span class="ico">🍽</span>Food</button>
-    <button data-tab="progress"><span class="ico">📈</span>Progress</button>
-    <button data-tab="guide"><span class="ico">📖</span>Guide</button>
+    <button data-tab="today"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg></span>Today</button>
+    <button data-tab="train"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M20 10v4M7 8v8M17 8v8M7 12h10"></path></svg></span>Train</button>
+    <button data-tab="food"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v8a3 3 0 0 0 6 0V3M9 3v18M17 3c-2 2-2 6-2 8h4V3z"></path></svg></span>Food</button>
+    <button data-tab="progress"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16M6 15l4-5 4 3 4-6"></path></svg></span>Progress</button>
+    <button data-tab="guide"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 0-3 3z"></path><path d="M17 7h2v13"></path></svg></span>Guide</button>
     <div class="drawer-sep"></div>
-    <button data-tab="settings" id="openSettings"><span class="ico">⚙</span>Settings</button>
+    <button data-tab="settings" id="openSettings"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg></span>Settings</button>
     <div class="drawer-foot" id="drawerFoot"></div>
   </nav>
 </div>
@@ -1252,7 +1259,7 @@ function vToday(){
       <div class="spread"><h3>Water</h3><span class="muted">target ${waterTarget}</span></div>
       ${waterFluid(dayFluid(day), training?3500:3000)}
       ${day.waterh?`<p class="muted" style="font-size:.85rem">WaterH ${(day.waterh.ml/1000).toFixed(2)} L · synced ${new Date(day.waterh.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${day.water?` · manual ${(day.water/1000).toFixed(2)} L`:""}</p>`:""}
-      <div class="row"><button class="chip" data-act="water" data-ml="250">+250 ml</button><button class="chip" data-act="water" data-ml="500">+500 ml</button><button class="chip" data-act="water" data-ml="1000">+1 L</button><button class="chip" data-act="water" data-ml="-250">−250</button></div>
+      <div class="row"><button class="chip" data-act="water" data-ml="250">+250 ml</button><button class="chip" data-act="water" data-ml="500">+500 ml</button><button class="chip" data-act="water" data-ml="1000">+1 L</button><button class="chip" data-act="water" data-ml="-250">−250 ml</button></div>
       ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.html(day):"")}
       ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.guideHTML():"")}
       ${safeMod("HealthConnectSync",()=>hcSync.html(day))}

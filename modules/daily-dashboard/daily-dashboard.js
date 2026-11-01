@@ -190,7 +190,7 @@ const DailyDashboard = (() => {
   function tile(cls, label, value, sub, act, extra = "") {
     const attrs = act ? Object.entries(act).map(([k, v]) => ` data-${k}="${esc(v)}"`).join("") : "";
     const tag = act ? "button" : "div";
-    return `<${tag} class="dd-tile ${cls}"${act ? ' type="button"' : ""}${attrs}><span class="label">${label}</span><span class="dd-v num">${value}</span><span class="dd-sub">${sub}</span>${extra}</${tag}>`;
+    return `<${tag} class="dd-tile ${cls}"${act ? ' type="button"' : ""}${attrs}><span class="label">${label}</span><span class="dd-v${/\d/.test(String(value))?" num":""}">${value}</span><span class="dd-sub">${sub}</span>${extra}</${tag}>`;
   }
 
   function glanceHtml(docs, date, opts = {}) {
