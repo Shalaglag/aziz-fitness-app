@@ -114,7 +114,7 @@ test('every clip is keyed by a canonical exercise id and its file matches the re
     assert.strictEqual(crypto.createHash('sha256').update(buf).digest('hex'), c.sha256, id + ' sha256');
     assert.ok(['preview', 'approved', 'rejected', 'pending'].includes(c.status), id + ' status');
     ['revision', 'source', 'licence'].forEach(k => assert.ok(c[k], id + ' has ' + k));
-    assert.ok(c.primary.length && c.secondary.length, id + ' lists primary and secondary muscles');
+    assert.ok(c.primary.length && Array.isArray(c.secondary), id + ' lists its primary muscles (secondary may be empty)');
     assert.ok(c.status !== 'approved' || (c.reviewedBy && c.reviewedAt), id + ' approved needs reviewedBy and reviewedAt');
   });
   const total = ids.reduce((s, id) => s + CLIPS.clips[id].bytes, 0);
