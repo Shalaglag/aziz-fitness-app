@@ -1,0 +1,50 @@
+{
+ "id": "bench-press-barbell",
+ "check": {
+  "contacts": [
+   {
+    "body": "grip.L",
+    "target": "barbell.gripL",
+    "grip": "overhand",
+    "tolMm": 10
+   },
+   {
+    "body": "grip.R",
+    "target": "barbell.gripR",
+    "grip": "overhand",
+    "tolMm": 10
+   },
+   {
+    "body": "sole.L",
+    "target": "floor",
+    "tolMm": 8
+   },
+   {
+    "body": "sole.R",
+    "target": "floor",
+    "tolMm": 8
+   },
+   {
+    "body": "upperBack",
+    "target": "pad0.surface",
+    "tolMm": 10
+   },
+   {
+    "body": "sacrum",
+    "target": "pad0.surface",
+    "tolMm": 10
+   }
+  ],
+  "allowTouch": [
+   {
+    "body": [
+     "spine",
+     "head",
+     "legs"
+    ],
+    "equipment": "pad0",
+    "maxMm": 20
+   }
+  ]
+ }
+}

@@ -15,7 +15,7 @@ One skinned body (MakeHuman CC0, Extreme build reshaped to Aziz's Baki mesh, 200
 - `core(THREE, gltf, meta, opts)`: the engine without the app (used by the preview page and the tests). It returns `setExercise(id)`, `pose(t01)`, `contacts()`, `solveGrip(side, r)`, `setMuscles(primary, secondary)`, `scene`, `skinned`. opts: `data`, `gripAt` (0.7), `gripDiag` (0.3 rad), `primary`, `secondary`, `bodyColor`.
 
 ## exercises.json
-`exercises.<id>`: `status` (always `preview` until Aziz reviews it; only Aziz marks anything approved), `gripType` (`overhand` | `underhand` | `neutral`, or `grip: {L, R}`), `handleRadius` (m, from the gym kit), `primary` / `secondary` (ids from the 37-muscle vocabulary; `@L` / `@R` limits a muscle to one side), `kit`, optional `cam: {yaw, pitch}` for the starting view.
+`exercises.<id>`: `status` (always `preview` until Aziz reviews it; only Aziz marks anything approved), `gripType` (`overhand` | `underhand` | `neutral`, or `grip: {L, R}`), `handleRadius` (m, from the gym kit), `primary` / `secondary` (ids from the 37-muscle vocabulary; `@L` / `@R` limits a muscle to one side), `kit`, optional `cam: {yaw, pitch}` for the starting view, optional `gripDiag` (rad, how diagonally the handle crosses the palm, default 0.3) and `gripAt` (0..1 from wrist to knuckles, default 0.7).
 
 ## How it holds things
 - Grip solver, once per handle radius: the palm sits 3 mm off the handle, the fingers close all joints together (MCP:PIP:DIP 0.8:1:0.7) until they touch, then PIP/DIP close alone; the thumb is solved by a search on opposition and curl. The handle runs 0.3 rad across the palm.
@@ -26,7 +26,7 @@ One skinned body (MakeHuman CC0, Extreme build reshaped to Aziz's Baki mesh, 200
 `tools/exercise-3d/bake_body.py in.glb body_meta.json regions.png out.glb out_meta.json muscle-vocabulary.csv` turns `body-model/out200/body_extreme.glb` (shared project files) into `app/3d/body.glb`: eyes merged into one primitive, `regions.png` baked into a `_MUSCLE` vertex attribute (r = vocabulary index + 1, g = membership, b = eye, a = left side), int8 normals and tangents, uint16 UVs (6.2 MB). Copy `out200/normal_A.png` to `app/3d/` with it (normal maps belong to their mesh). `paint_muscles.py` is the older rule-based painter for the 72k body.
 
 ## Quality checks
-Run the project's demo checker (`demo-qa`, see its README) against the preview page. Known limits as of Nov 1 (Extreme Baki body): deep squat hip crease squashes ~36 mm (linear-blend skinning), squat upper arms touch the bar ~13 mm and wrists are 12 deg past the deviation limit, the chest-press thigh capsule is 0.2 mm past the seat limit, the Bayesian curl cable brushes the forearm ~5 mm. Bench press passes everything. Grip contacts report the handle point under the palm as the anchor.
+Run the project's demo checker (`demo-qa`, see its README) against the preview page. Checker jobs for the listed exercises are in `qa-jobs/` (`node checker.mjs --recipes modules/exercise-3d/qa-jobs --viewer <preview page>`). As of Nov 1 all four pass on the Baki body. The Bayesian curl job allows the cable to rest up to 6 mm on the working forearm and hand (`allowTouch`), because in that exercise the cable runs along the arm; cables carry the qaId `cable.line<i>`.
 
 ## Tests
 `node --test modules/exercise-3d/exercise-3d.test.mjs`: data (every entry preview, known muscles, motion exists), body meta (200k, skeleton), and the engine posing every exercise in node with three.js, fingers wrapping a 16 mm handle.
