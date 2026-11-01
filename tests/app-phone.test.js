@@ -27,7 +27,8 @@ function seed(today) {
 }
 
 // Sections live in a side drawer (☰) since Oct 31: open it, then tap the section.
-async function go(page, tab) { await page.click("#menuBtn"); await page.click(tab === "settings" ? "#openSettings" : `#tabs button[data-tab="${tab}"]`); await page.waitForTimeout(150); }
+// The bottom bar is the default since Nov 1; its More button opens the same drawer when ☰ is hidden.
+async function go(page, tab) { await page.evaluate(() => { const m = document.getElementById("menuBtn"); (getComputedStyle(m).display === "none" ? document.querySelector("#bottomNav button[data-more]") : m).click(); }); await page.click(tab === "settings" ? "#openSettings" : `#tabs button[data-tab="${tab}"]`); await page.waitForTimeout(150); }
 
 async function openApp(browser, phone, data) {
   const page = await browser.newPage({ viewport: { width: phone.width, height: phone.height }, isMobile: true, hasTouch: true });
@@ -312,6 +313,10 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
     await t.test("navigation setting: bottom bar and both, flashes after a change, demos start collapsed, list view once", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "settings");
+      assert.strictEqual(await page.evaluate(() => document.documentElement.dataset.nav), "bottom", "bottom bar is the default");
+      await page.click('[data-act="navset"][data-k="drawer"]'); await page.waitForTimeout(100);
+      const dr = await page.evaluate(() => ({ nav: document.documentElement.dataset.nav, menu: getComputedStyle(document.getElementById("menuBtn")).display }));
+      assert.strictEqual(dr.nav, undefined); assert.notStrictEqual(dr.menu, "none", "Side menu brings the ☰ button back");
       await page.click('[data-act="navset"][data-k="bottom"]'); await page.waitForTimeout(150);
       const b = await page.evaluate(() => ({ nav: document.documentElement.dataset.nav, bar: getComputedStyle(document.getElementById("bottomNav")).display, menu: getComputedStyle(document.getElementById("menuBtn")).display, pref: S.docs.prefs.main.nav }));
       assert.deepStrictEqual(b, { nav: "bottom", bar: "flex", menu: "none", pref: "bottom" });

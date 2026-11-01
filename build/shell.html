@@ -31,6 +31,9 @@
   --fg-faint: #8C847C;
   --line: #E4DED4;
   --overlay: rgba(28, 25, 23, .45);
+  /* Soft cards (S2, Nov 2026): no outline, a soft shadow instead */
+  --card-line: transparent;
+  --shadow-card: 0 1px 2px rgba(28, 25, 23, .05), 0 8px 24px rgba(28, 25, 23, .06);
 
   /* ---- Accent palettes (each has a light and dark value) ---- */
   --accent-light: #C64F19;  --accent-dark: #F08A57;      /* default: coral (Warm Light look, Nov 2026) */
@@ -100,6 +103,8 @@
     --protein: #3EC1C3; --carbs: #F0AE4A; --fat: #A08BF2;
     --good: #43C47E; --warn: #F2A93B; --bad: #F2665D;
     --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --card-line: rgba(255, 255, 255, .05); --shadow-card: 0 1px 2px rgba(0, 0, 0, .35), 0 8px 24px rgba(0, 0, 0, .28);
+    --card-line: rgba(255, 255, 255, .05); --shadow-card: 0 1px 2px rgba(0, 0, 0, .35), 0 8px 24px rgba(0, 0, 0, .28);
     --shadow-2: 0 8px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
     color-scheme: dark;
   }
@@ -311,7 +316,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* header */
-header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg);border-bottom:1px solid var(--line)}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg)}
 .toprow{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;padding-block:10px 8px;flex-wrap:wrap}
 .brand{font-family:var(--display);font-weight:700;font-size:1.35rem;letter-spacing:.02em;text-transform:uppercase}
 .brand span{color:var(--accent)}
@@ -346,8 +351,8 @@ nav.drawer .drawer-foot{margin-top:auto;padding:12px;font-size:.8rem;color:var(-
 .lb-rest.floating{bottom:calc(12px + var(--bottom-nav) + env(safe-area-inset-bottom,0px))!important}
 main{padding-block:22px 40px;display:flex;flex-direction:column;gap:18px}
 .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
-.card.hero{border-color:var(--ink)}
+.card{background:var(--surface);border:1px solid var(--card-line);box-shadow:var(--shadow-card);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card.hero{border-color:var(--card-line);box-shadow:var(--shadow-2)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .spread{display:flex;gap:10px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
 .btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600}
@@ -445,7 +450,7 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 /* ---- Calm layout (v35): collapsed rows, Strong-style set rows, settings, Lose It-style food ---- */
 :root{--bottom-nav:0px}
 :root[data-nav="bottom"],:root[data-nav="both"]{--bottom-nav:64px}
-.bottombar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:9;align-items:flex-start;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line)}
+.bottombar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:9;align-items:flex-start;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));background:var(--surface);box-shadow:0 -1px 0 var(--line),0 -8px 24px rgba(28,25,23,.06)}
 :root[data-nav="bottom"] .bottombar,:root[data-nav="both"] .bottombar{display:flex}
 :root[data-nav="bottom"] .bottombar .only-both,:root[data-nav="both"] .bottombar .only-bottom{display:none}
 :root[data-nav="bottom"] #menuBtn{display:none}
@@ -455,7 +460,7 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 .bottombar button[aria-current="page"] .ico{background:var(--accent-soft)}
 .bottombar button:active .ico{transform:scale(.92)}
 body:has(#timer:not([hidden])) .bottombar,html.lb-noscroll .bottombar,body:has(.sheet-wrap) .bottombar{display:none!important}
-.fold{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);min-width:0}
+.fold{background:var(--surface);border:1px solid var(--card-line);box-shadow:var(--shadow-card);border-radius:18px;min-width:0}
 .fold>summary{list-style:none;display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer;font-weight:600;min-height:var(--tap)}
 .fold>summary::-webkit-details-marker{display:none}
 .fold>summary small{margin-left:auto;color:var(--muted);font-weight:500;font-size:.85rem;text-align:right}
@@ -463,7 +468,10 @@ body:has(#timer:not([hidden])) .bottombar,html.lb-noscroll .bottombar,body:has(.
 .fold>summary small+.chev{margin-left:4px}
 .fold[open]>summary .chev{transform:rotate(45deg)}
 .fold[open]>summary{border-bottom:1px solid var(--line)}
-.card>.fold{margin-top:6px}
+.card>.fold{margin-top:6px;box-shadow:none;background:var(--surface-2);border-color:transparent;border-radius:14px}
+#lbHost .lb-card{border-color:var(--card-line);box-shadow:var(--shadow-card);border-radius:18px}
+#main .dd-tile{border-top-color:transparent;border-right-color:transparent;border-bottom-color:transparent}
+.bottombar .ico svg{width:22px;height:22px}
 .setcat{margin:16px 4px 0;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .mval{text-align:right;white-space:nowrap}.mval .plannedn{display:block;font-size:.72rem;color:var(--muted);font-weight:400}
 .fold-body{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}
@@ -474,7 +482,7 @@ body:has(#timer:not([hidden])) .bottombar,html.lb-noscroll .bottombar,body:has(.
 .tabhead h1{font-size:1.9rem;line-height:1}
 .tabhead .row{gap:6px;flex-wrap:nowrap}
 /* Strong-style exercise blocks (Quick log) */
-.xcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.xcard{background:var(--surface);border:1px solid var(--card-line);box-shadow:var(--shadow-card);border-radius:18px;padding:16px 14px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .xcard.ss-skip{opacity:.6}
 .xhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .xname{font-weight:700;font-size:1.1rem;color:var(--accent);background:none;border:0;padding:0;text-align:left;cursor:pointer;min-width:0;overflow-wrap:anywhere;font-family:var(--body)}
@@ -534,7 +542,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .fsum .v.over{color:var(--bad)}
 .fsum .op{font-size:1.3rem;color:var(--muted);padding-bottom:8px}
 .fsum .label{display:block;margin-top:4px}
-.mealgrp{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:0 14px;min-width:0}
+.mealgrp{background:var(--surface);border:1px solid var(--card-line);box-shadow:var(--shadow-card);border-radius:18px;padding:0 14px;min-width:0}
 .mealgrp .mh{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;font-weight:700;font-size:1.05rem}
 .mealgrp .mh small{color:var(--muted);font-weight:500;font-family:var(--mono);font-size:.85rem}
 .mealgrp .item{padding:10px 0;grid-template-columns:auto 1fr auto auto;border-top:1px solid var(--line)}
@@ -591,12 +599,12 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
   </nav>
 </div>
 <nav class="bottombar" id="bottomNav" aria-label="Sections">
-  <button data-tab="today"><span class="ico" aria-hidden="true">☀</span>Today</button>
-  <button data-tab="train"><span class="ico" aria-hidden="true">🏋</span>Train</button>
-  <button data-tab="food"><span class="ico" aria-hidden="true">🍽</span>Food</button>
-  <button data-tab="progress"><span class="ico" aria-hidden="true">📈</span>Progress</button>
-  <button data-tab="guide" class="only-both"><span class="ico" aria-hidden="true">📖</span>Guide</button>
-  <button data-more class="only-bottom" aria-haspopup="dialog"><span class="ico" aria-hidden="true">•••</span>More</button>
+  <button data-tab="today"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg></span>Today</button>
+  <button data-tab="train"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M20 10v4M7 8v8M17 8v8M7 12h10"></path></svg></span>Train</button>
+  <button data-tab="food"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v8a3 3 0 0 0 6 0V3M9 3v18M17 3c-2 2-2 6-2 8h4V3z"></path></svg></span>Food</button>
+  <button data-tab="progress"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16M6 15l4-5 4 3 4-6"></path></svg></span>Progress</button>
+  <button data-tab="guide" class="only-both"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 0-3 3z"></path><path d="M17 7h2v13"></path></svg></span>Guide</button>
+  <button data-more class="only-bottom" aria-haspopup="dialog"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor"></circle><circle cx="19" cy="12" r="1.6" fill="currentColor"></circle></svg></span>More</button>
 </nav>
 <div class="wrap err-banner" id="errBanner" hidden role="alert"></div>
 <main class="wrap" id="main"></main>
@@ -608,7 +616,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 
 <!-- @modules -->
 <script>
-try{ const nv=localStorage.getItem("aziz-cut-nav"); if(nv==="bottom"||nv==="both") document.documentElement.setAttribute("data-nav",nv); }catch(e){}
+try{ const nv=localStorage.getItem("aziz-cut-nav"); if(nv!=="drawer") document.documentElement.setAttribute("data-nav",nv==="both"?"both":"bottom"); }catch(e){ document.documentElement.setAttribute("data-nav","bottom"); }
 try{ const th=localStorage.getItem("aziz-cut-theme"); if(th==="light"||th==="dark") document.documentElement.setAttribute("data-theme",th); }catch(e){}
 /* ===================== Plan data (from Aziz's handoff, Oct 25 2026) ===================== */
 const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:220};
@@ -1041,7 +1049,7 @@ function setUnit(s,name){ return s && (s.unit==="lb"||s.unit==="kg") ? s.unit : 
 function setKg(s,name){ return convW(s.w, setUnit(s,name), "kg"); }
 // PROGRAM with each exercise's chosen unit and its baseline converted to it (for imports, analytics and the coach)
 function programEff(){ const o={}; for(const s in PROGRAM){ o[s]=PROGRAM[s].map(e=>{ const u=exUnit(e[0]); return u===(e[4]||"kg") ? e : [e[0], convW(e[1], e[4]||"kg", u), e[2], e[3], u, e[5]]; }); } return o; }
-function applyNav(n){ n=(n==="bottom"||n==="both")?n:"drawer"; if(n==="drawer") document.documentElement.removeAttribute("data-nav"); else document.documentElement.setAttribute("data-nav",n); try{ localStorage.setItem("aziz-cut-nav",n); }catch(e){} }
+function applyNav(n){ n=(n==="drawer"||n==="both")?n:"bottom"; if(n==="drawer") document.documentElement.removeAttribute("data-nav"); else document.documentElement.setAttribute("data-nav",n); try{ localStorage.setItem("aziz-cut-nav",n); }catch(e){} }
 function applyTheme(t){ t=t||"system"; if(t==="light"||t==="dark") document.documentElement.setAttribute("data-theme",t); else document.documentElement.removeAttribute("data-theme"); try{ localStorage.setItem("aziz-cut-theme",t); }catch(e){} }
 function lbSettings(){ try{ return window.WorkoutLogger && WorkoutLogger.settings ? WorkoutLogger.settings() : null; }catch(e){ return null; } }
 function restSec(){ const s=lbSettings(); return S.docs.prefs.main?.restSec || (s && s.restCompound) || 150; }
@@ -1705,7 +1713,7 @@ function vSettings(){
   ${tabHead("Settings", `<button class="btn ghost small" data-act="gotab" data-tab="today">Done</button>`)}
   ${cat("Appearance")}
   <div class="card"><div class="set-list">
-    ${row("Navigation","Where the sections live",seg("navset",[["drawer","Side menu"],["bottom","Bottom bar"],["both","Both"]],m.nav||"drawer"))}
+    ${row("Navigation","Where the sections live",seg("navset",[["bottom","Bottom bar"],["drawer","Side menu"],["both","Both"]],m.nav||"bottom"))}
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
     ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","2.5 kg red"],["white","5 kg white"],["green","10 kg green"],["yellow","15 kg yellow"],["blue","20 kg blue"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
   </div></div>
