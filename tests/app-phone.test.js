@@ -263,7 +263,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.ok((await read()).rise > 0, "cards get the rise animation after a tab change");
       await go(page, "settings");
       const chips = await page.$$eval('[data-act="accent"]', els => els.map(e => e.dataset.k));
-      assert.deepStrictEqual(chips, ["coral", "red", "blue", "yellow", "green"]);
+      assert.deepStrictEqual(chips, ["coral", "red", "white", "green", "yellow", "blue"]);
       assert.deepStrictEqual(errors, []);
       await page.close();
     });

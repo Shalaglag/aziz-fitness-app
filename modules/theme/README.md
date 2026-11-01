@@ -21,7 +21,7 @@ Framework-free. Works in a plain HTML app, a single-file Artifact (inline the fi
 
 ## Modes and accents
 - `<html data-theme="light|dark">`, or no attribute = follow the system. Use `FitTheme.setMode("system"|"light"|"dark")`.
-- `<html data-accent="red|blue|yellow|green">` (25/20/15/10 kg plates). Default blue. `FitTheme.setAccent(name)`.
+- `<html data-accent="red|white|green|yellow|blue">` (2.5/5/10/15/20 kg plates). Default blue. `FitTheme.setAccent(name)`.
 - Style everything through tokens: `--bg --surface --surface-2 --surface-3 --fg --fg-muted --fg-faint --line --accent --on-accent --accent-soft`.
 - Macro colors are fixed across accents: `--protein --carbs --fat`. Status: `--good --warn --bad`.
 
