@@ -15,6 +15,7 @@ self.addEventListener("fetch", e => {
   const url = req.url;
   const same = new URL(url).origin === self.location.origin;
   if (!same && !CDN.some(p => url.startsWith(p))) return;
+  if (/\.mp4(\?|$)/i.test(url)) return; // demo clips use range requests; the browser or WebView handles them
   // Stale-while-revalidate: answer from cache at once, update it in the background.
   e.respondWith(caches.open(CACHE).then(async c => {
     const hit = await c.match(req, { ignoreSearch: same });

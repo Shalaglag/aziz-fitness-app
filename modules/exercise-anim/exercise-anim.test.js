@@ -96,3 +96,40 @@ test('card html is escaped and only for known ids', () => {
   assert.ok(h.includes('data-ea="bench-press-barbell"') && h.includes('<canvas') && h.includes('data-ea-full'));
   assert.ok(!an.cardHtml('bench-press-barbell', 'ea-big').includes('data-ea-full'));
 });
+
+// ---- Blender video clips (clips.json, files in app/clips) ----
+const fs = require('fs'), path = require('path'), crypto = require('crypto');
+const CLIPS = JSON.parse(fs.readFileSync(path.join(__dirname, 'clips.json'), 'utf8'));
+const CLIP_DIR = path.join(__dirname, '..', '..', 'app', CLIPS.base);
+
+test('every clip is keyed by a canonical exercise id and its file matches the record', () => {
+  const ids = Object.keys(CLIPS.clips);
+  assert.ok(ids.length >= 4);
+  ids.forEach(id => {
+    const c = CLIPS.clips[id];
+    assert.ok(A.has(id) && library[id], 'unknown exercise: ' + id);
+    assert.strictEqual(c.file, id + '.mp4', 'file is named after the exercise id');
+    const buf = fs.readFileSync(path.join(CLIP_DIR, c.file));
+    assert.strictEqual(buf.length, c.bytes, id + ' size');
+    assert.strictEqual(crypto.createHash('sha256').update(buf).digest('hex'), c.sha256, id + ' sha256');
+    assert.ok(['preview', 'approved', 'rejected', 'pending'].includes(c.status), id + ' status');
+    ['revision', 'source', 'licence'].forEach(k => assert.ok(c[k], id + ' has ' + k));
+    assert.ok(c.primary.length && c.secondary.length, id + ' lists primary and secondary muscles');
+    assert.ok(c.status !== 'approved' || (c.reviewedBy && c.reviewedAt), id + ' approved needs reviewedBy and reviewedAt');
+  });
+  const total = ids.reduce((s, id) => s + CLIPS.clips[id].bytes, 0);
+  assert.ok(total / ids.length < 1.5e6, 'clips stay small (avg under 1.5 MB)');
+});
+
+test('a preview clip is offered but 3D stays the default; an approved clip is the default', () => {
+  const clips = { base: 'clips/', clips: { 'bench-press-barbell': { file: 'b.mp4', status: 'preview' }, 'push-up': { file: 'p.mp4', status: 'approved' }, 'squat-barbell': { file: 's.mp4', status: 'pending' } } };
+  const an = A.create({ clips });
+  const prev = an.cardHtml('bench-press-barbell');
+  assert.ok(prev.includes('data-mode="3d"') && prev.includes('<video') && prev.includes('src="clips/b.mp4"') && prev.includes('data-ea-mode="clip"') && prev.includes('data-ea-mode="3d"'));
+  const appr = an.cardHtml('push-up');
+  assert.ok(appr.includes('data-mode="clip"') && appr.includes('Video demo') && !appr.includes('preview'));
+  const none = an.cardHtml('squat-barbell');
+  assert.ok(!none.includes('<video') && !none.includes('data-ea-mode') && none.includes('data-mode="3d"'), 'pending clips are ignored');
+  assert.ok(!an.cardHtml('lat-pulldown-wide-grip-cable').includes('<video'), 'no clip, 3D card only');
+});
+

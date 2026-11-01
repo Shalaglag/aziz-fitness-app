@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "base": "clips/",
+  "note": "status: preview = offered as a Video option but 3D stays the default; approved = Video is the default view; anything else is ignored. Only Aziz changes a clip to approved. A missing or broken file falls back to the 3D demo.",
+  "clips": {
+    "bench-press-barbell": {
+      "file": "bench-press-barbell.mp4",
+      "bytes": 308193,
+      "sha256": "b6e3b25e03ba5c4cd530386f113c1f49390350904e8273328042c8570161dd81",
+      "revision": "v3",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "chest"
+      ],
+      "secondary": [
+        "front delts",
+        "triceps"
+      ],
+      "camera": "high three-quarter side view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "squat-barbell": {
+      "file": "squat-barbell.mp4",
+      "bytes": 328271,
+      "sha256": "64492daa172161912a4d032978c13eeb4cf7bab48124e3d3db2b7b1d0b396506",
+      "revision": "v3",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "calves",
+        "lower back"
+      ],
+      "camera": "behind and to the side",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "bicep-curl-dumbbell": {
+      "file": "bicep-curl-dumbbell.mp4",
+      "bytes": 218463,
+      "sha256": "ef81f75ac24cc928146d110dbc342b59d59585fffc37c0df78f00fc1c8159ae5",
+      "revision": "v3",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "biceps"
+      ],
+      "secondary": [
+        "forearms",
+        "brachialis"
+      ],
+      "camera": "three-quarter front view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    },
+    "push-up": {
+      "file": "push-up.mp4",
+      "bytes": 291723,
+      "sha256": "91b0a225ae7ec51f84fdb89d787598b01d7940548a6fdd6f81377d83edfd3f6f",
+      "revision": "v3",
+      "status": "preview",
+      "reviewedBy": null,
+      "reviewedAt": null,
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "seconds": 6.8,
+      "reps": 2,
+      "primary": [
+        "chest"
+      ],
+      "secondary": [
+        "front delts",
+        "triceps",
+        "abs"
+      ],
+      "camera": "low front three-quarter view",
+      "source": "Own Blender 4.5 render (3D mannequin, generated muscle shapes, props and motion taken from this app's exercise-anim keyframes)",
+      "licence": "Own work. Body base mesh and assets from MPFB 2 (CC0); nothing third-party or paid"
+    }
+  }
+}

@@ -24,3 +24,6 @@ Add an entry to `DEFS` keyed by the logger id, with `name` and `eq` exactly as i
 Tests: `node --test modules/exercise-anim/exercise-anim.test.js`
 
 Look (Nov 1): neutral grey body, target muscles drawn red with fibre lines (secondary muscles pale red), belly shapes (pecs, glutes, biceps, quads, calves) only on highlighted groups, so the rest stays a clean silhouette. The highlight colour is a fixed red, not the app accent.
+
+## Video clips (Nov 1)
+`clips.json` (inlined as `window.EXERCISE_CLIPS`) lists Blender-rendered MP4 demos kept in `app/clips/<exercise-id>.mp4`. Each entry records file, bytes, sha256, revision, source, licence, primary and secondary muscles, and a status. `preview` offers a Video/Rotate switch while 3D stays the default; `approved` makes the video the default view; any other status is ignored. Only Aziz moves a clip to `approved` (set `reviewedBy`, `reviewedAt`). A missing or broken file falls back to the 3D card. One video plays at a time and only while on screen; pause and ½× work as on the 3D card. Red is the main muscle, amber the helpers, in the clips and the 3D demos. The tests check every clip against its recorded size and hash. Clips are 1080×1080, 30 fps, 6.8 s (two reps) and loop.
