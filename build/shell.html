@@ -1129,6 +1129,7 @@ function vToday(){
       </div>`;
   return `
   ${ddGlance(d)}
+  ${window.AppUpdate?AppUpdate.bannerHTML():""}
   ${backupNudge()}
   <div class="card hero">
     <div class="spread"><span class="label">${DAYTYPE_LABEL[type]}</span>${strictDay>=1&&strictDay<=14?`<span class="pill info">Strict tracking · day ${strictDay} of 14</span>`:""}</div>
@@ -1642,6 +1643,7 @@ function vSettings(){
   ${yourNumbersCard()}
   ${fold("fprefs2","Food preferences","Likes, never-pick", foodPrefsHtml())}
   ${fold("rem","Reminders","Phone calendar", safeMod("CalendarReminders",()=>CalendarReminders.html(S.docs.prefs.main||{}, crCtx())))}
+  ${window.AppUpdate?safe("app updates",()=>AppUpdate.cardHTML()):""}
   <div class="card"><h3>Account and sync</h3>
     <p class="muted" style="font-size:.9rem">${who?`Signed in as <b>${esc(who)}</b>. Everything syncs to your account; this phone keeps a copy for offline use.`:`Not signed in. Everything is saved on this phone${window.CloudStore?". Sign in from the banner at the top to sync across devices":""}.`}</p>
     <p class="muted" style="font-size:.85rem">Status: <span id="syncCopy">${esc(document.getElementById("sync").textContent)}</span>. Changing any setting never deletes your history.</p>
@@ -1649,6 +1651,8 @@ function vSettings(){
 }
 /* ===================== Events ===================== */
 // Android app (modules/android-shell): back button closes sheets, then returns to Today, then minimises.
+// In-app updates (modules/app-update): Settings card + Today banner; checks the private release with a key kept on the phone.
+if(window.AppUpdate){ try{ const st=document.createElement("style"); st.textContent=AppUpdate.css; document.head.appendChild(st); AppUpdate.bind({ render, toast }); }catch(e){} }
 if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
 function openDrawer(on){ const d=document.getElementById("drawer"); d.hidden=!on; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
 document.getElementById("menuBtn").onclick=()=>openDrawer(true);
