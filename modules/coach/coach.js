@@ -642,8 +642,8 @@ const Coach = (() => {
 .co-ask{display:flex;gap:6px;margin-top:6px}
 .co-ask input{flex:1;min-width:0;padding:10px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);font:inherit}
 .co-msgs{display:grid;gap:10px;margin-top:10px}
-.co-q{justify-self:end;max-width:85%;background:var(--accent);color:var(--accent-ink);padding:8px 12px;border-radius:14px 14px 4px 14px;font-size:.9rem}
-.co-a{max-width:95%;background:var(--sunk);border:1px solid var(--line);padding:10px 12px;border-radius:14px 14px 14px 4px;font-size:.9rem;color:var(--ink)}
+.co-q{justify-self:end;max-width:85%;min-width:0;overflow-wrap:anywhere;background:var(--accent);color:var(--accent-ink);padding:8px 12px;border-radius:14px 14px 4px 14px;font-size:.9rem}
+.co-a{max-width:95%;min-width:0;overflow-wrap:anywhere;background:var(--sunk);border:1px solid var(--line);padding:10px 12px;border-radius:14px 14px 14px 4px;font-size:.9rem;color:var(--ink)}
 .co-a details{margin-top:6px;color:var(--muted);font-size:.8rem}
 .co-a ul{margin:4px 0 0;padding-left:18px}
 .co-src{font-size:.7rem;color:var(--muted);margin-top:6px}
@@ -660,11 +660,12 @@ const Coach = (() => {
 @media (min-width:721px){.co-panel{left:auto;top:0;width:min(440px,92vw);max-height:none;border-radius:0;border-width:0 0 0 1px;transform:translateX(102%);box-shadow:-10px 0 40px rgb(0 0 0/.25)}}
 .co-ph{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)}
 .co-ph b{font-family:var(--display);font-size:1.25rem;letter-spacing:.02em;text-transform:uppercase}
-.co-body{flex:1;overflow:auto;padding:12px 16px;overscroll-behavior:contain}
+.co-body{flex:1;overflow:auto;overflow-x:hidden;padding:12px 16px;overscroll-behavior:contain;min-width:0}
+.co-panel{max-width:100vw;box-sizing:border-box}
 .co-pf{padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--surface)}
 .co-pf .co-ask{margin-top:0}
 .co-note{margin:0 0 8px}
-.co-live{white-space:pre-wrap}
+.co-live{white-space:pre-wrap;overflow-wrap:anywhere}
 .co-cursor{display:inline-block;width:.5em;height:1em;vertical-align:-.15em;margin-left:2px;background:var(--accent);animation:co-blink 1s steps(2) infinite}
 @keyframes co-blink{to{opacity:0}}
 @media (prefers-reduced-motion:reduce){.co-panel{transition:none}.co-cursor{animation:none}}
@@ -825,6 +826,7 @@ const Coach = (() => {
       case "not_signed_in": return "Sign in to ask Claude. The quick questions still work.";
       case "daily_cap": return "You've reached today's question limit. It resets at midnight; the quick questions still work.";
       case "no_key": return "Claude isn't connected to this website yet. The quick questions still work.";
+      case "no_endpoint": return "The coach service isn't connected to this app yet. The quick questions still work.";
       case "offline": return "You're offline. Logging works; Claude needs a connection.";
       default: return "Something went wrong reaching Claude. Try again.";
     }
@@ -937,6 +939,10 @@ const Coach = (() => {
       if (res.status === 401) code = "not_signed_in"; else if (res.status === 429) code = code === "daily_cap" ? "daily_cap" : "rate_limited"; else if (res.status === 503) code = "no_key";
       throw e(code);
     }
+    // A page instead of the coach function (an app build with no coach service, a host that serves index.html for every path):
+    // never show that HTML as an answer.
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("text/html")) throw e("no_endpoint");
     let text = "";
     if (res.body && res.body.getReader) {
       const rd = res.body.getReader(), dec = new TextDecoder();
@@ -966,7 +972,7 @@ const Coach = (() => {
       const code = e && e.code;
       if (code !== "cancelled" && !(e && e.name === "AbortError")) {
         S.error = errorText(code);
-        if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed", "no_key"].includes(code)) { S.noClaude = true; S.noClaudeWhy = code === "no_key" ? "Claude isn't connected to this website yet (no API key configured). The quick questions still work." : ""; }
+        if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed", "no_key", "no_endpoint"].includes(code)) { S.noClaude = true; S.noClaudeWhy = code === "no_key" ? "Claude isn't connected to this website yet (no API key configured). The quick questions still work." : ""; }
       }
     }
     S.busy = false; S.ctl = null; S.stream = ""; rerender();
