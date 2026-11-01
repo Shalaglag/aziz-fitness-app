@@ -254,6 +254,15 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
         }
         await page.evaluate(() => [...document.querySelectorAll('[data-a="restSkip"]')].forEach(b => b.offsetParent && b.click()));
       }
+      // Your own sound: a WAV from the phone is kept in IndexedDB and becomes the rest sound
+      assert.ok(await page.$$eval('[data-act="lbpick"][data-s="restSound"]', b => b.some(x => /Power-up/.test(x.textContent))), "anime-style pack listed");
+      await page.setInputFiles("#restSoundFile", { name: "my-clip.wav", mimeType: "audio/wav", buffer: Buffer.from(require("../modules/gym-sounds/gym-sounds.js").wav("knock", 22050)) });
+      await page.waitForFunction(() => WorkoutLogger.settings().restSound === "custom", null, { timeout: 5000 });
+      assert.ok(await page.$('[data-act="lbpick"][data-k="custom"]'), "Use my sound chip appears");
+      assert.strictEqual(await page.evaluate(() => GymSounds.customInfo().name), "my-clip.wav");
+      await page.click('[data-act="lbsndclear"]');
+      await page.waitForFunction(() => !GymSounds.customInfo() && WorkoutLogger.settings().restSound === "restDone", null, { timeout: 5000 });
+      await page.evaluate(() => WorkoutLogger.setSettings({ restSound: "boxing" }));
       await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ restStyle: "plates", sound: true }); WorkoutLogger.previewRest(5); });
       await page.waitForFunction(() => played.length > 0, null, { timeout: 8000 });
       assert.deepStrictEqual(await page.evaluate(() => played), ["boxing"], "rest over plays the picked sound");

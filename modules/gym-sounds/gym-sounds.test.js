@@ -5,7 +5,7 @@ const fs = require("fs"), path = require("path");
 const G = require("./gym-sounds.js");
 
 test("every sound renders, peaks under clipping, ends in silence", () => {
-  assert.deepEqual(G.NAMES, ["restDone", "finish", "boxing", "dingdong", "beeps", "whistle", "gong", "knock"]);
+  assert.deepEqual(G.NAMES, ["restDone", "finish", "boxing", "dingdong", "beeps", "whistle", "gong", "knock", "powerup", "blast", "aura", "scouter", "teleport", "impact"]);
   for (const name of G.NAMES) {
     const x = G.render(name, 22050);
     let peak = 0; for (const v of x) peak = Math.max(peak, Math.abs(v));
@@ -48,4 +48,19 @@ test("rest sound choices: Strong-style bell first, every id renders, Android-saf
 test("play without Web Audio returns false instead of throwing", () => {
   assert.equal(G.play("restDone"), false);
   assert.equal(G.prime(), false);
+});
+
+test("anime-style pack is labelled and the power-up rises in pitch", () => {
+  const anime = G.REST_SOUNDS.filter(s => s.pack === "anime").map(s => s.id);
+  assert.deepEqual(anime, ["powerup", "blast", "aura", "scouter", "teleport", "impact"]);
+  const sr = 22050, x = G.render("powerup", sr);
+  const crossings = (a, b) => { let c = 0; for (let i = Math.round(a * sr) + 1; i < Math.round(b * sr); i++) if ((x[i - 1] < 0) !== (x[i] < 0)) c++; return c; };
+  assert.ok(crossings(1.0, 1.2) > crossings(0.1, 0.3) * 2, "pitch climbs during the charge");
+});
+
+test("custom sound: no file or no storage rejects; play without one is false", async () => {
+  await assert.rejects(G.setCustom(null));
+  assert.equal(G.customInfo(), null);
+  assert.equal(G.play("custom"), false);
+  await assert.rejects(G.setCustom({ size: 4 * 1024 * 1024, name: "big.mp3" }), /3 MB/);
 });

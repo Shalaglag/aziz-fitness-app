@@ -1844,7 +1844,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   // Looks (Settings → Rest timer look). ring and fill cover the whole screen like Strong; "Minimise" drops to the bar for that rest.
   const REST_STYLES = [['bar', 'Loading bar'], ['half', 'Half circle'], ['ring', 'Full circle'], ['fill', 'Screen fill'], ['plates', 'Plates off the bar'], ['blocks', 'Blocks']];
   const FULL_STYLES = { ring: 1, fill: 1 };
-  const restSounds = () => (GS() && GS().REST_SOUNDS ? GS().REST_SOUNDS.map(r => [r.id, r.label]) : [['restDone', 'Bell (Strong-style)']]);
+  const restSounds = () => (GS() && GS().REST_SOUNDS ? GS().REST_SOUNDS.map(r => [r.id, r.label]).concat(GS().customInfo && GS().customInfo() ? [['custom', 'Your sound: ' + GS().customInfo().name]] : []) : [['restDone', 'Bell (Strong-style)']]);
   const restStyle = () => (REST_STYLES.some(r => r[0] === S.settings.restStyle) ? S.settings.restStyle : 'bar');
   // Plates per side, inner to outer; they come off outer first as the rest runs down.
   const REST_PLATES = [['20', 'b', 1], ['15', 'y', .86], ['10', 'g', .72], ['5', 'w', .56], ['2.5', 'r', .44]];

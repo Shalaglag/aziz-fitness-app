@@ -10,8 +10,11 @@
  *   GymSounds.render(name, sr) Float32Array of samples (the same sound the app plays)
  *   GymSounds.wav(name, sr)    Uint8Array, a 16-bit mono WAV (used for the Android notification sound)
  *   GymSounds.rawName(id)      Android res/raw file for a rest sound ("rest_done.wav", "rest_boxing.wav", …)
+ *   GymSounds.setCustom(file)  saves the user's own audio file (≤ 3 MB, kept on this device in IndexedDB);
+ *                              resolves { name, seconds }. play('custom') plays it; clearCustom() removes it.
+ *   GymSounds.customInfo()     { name, seconds } or null; loadCustom() reads it back after a restart.
  *
- * No DOM, no storage. Works in Node for tests (render/wav); play() needs Web Audio.
+ * No DOM. Works in Node for tests (render/wav); play() needs Web Audio, the custom sound needs IndexedDB.
  */
 (function (root) {
   // Partials: frequency ratio, loudness, how fast it fades (higher = shorter).
@@ -20,9 +23,14 @@
   const GONG = [[1, 1, 1], [1.48, 0.6, 1.3], [2.1, 0.45, 1.7], [2.9, 0.3, 2.2], [3.7, 0.2, 2.8]];
   const WOOD = [[1, 1, 1], [2.4, 0.4, 1.8], [4.1, 0.15, 2.6]];
   const SQUARE = [[1, 1], [3, 0.3], [5, 0.15]];                                            // held tones (beeps)
+  const SAW = [[1, 1], [2, 0.5], [3, 0.33], [4, 0.25], [5, 0.2], [6, 0.16]];               // buzzy charge-ups
+  const HUM = [[1, 1], [2, 0.6], [3, 0.35], [4, 0.2]];                                      // aura drone
+  const HARMONICS = { SQUARE, SAW, HUM };
   const PARTIALS = { BELL, RING, GONG, WOOD };
   const strikes = (times, note) => times.map(t => Object.assign({ t }, note));
-  // Struck notes: { t start s, f Hz, a loudness, d decay, p partial set }. Held tones: kind 'tone', hold s, vib [Hz, depth Hz], air (breath noise).
+  // Struck notes: { t start s, f Hz, a loudness, d decay, p partial set }. Held tones: kind 'tone', hold s, vib [Hz, depth Hz], air (breath noise),
+  // f1 (glide to this Hz), h (harmonic set), grow (swell: loudness rises as (i/hold)^grow), trem [Hz, depth 0-1].
+  // Noise bursts: kind 'noise', d decay, lp (0-1, lower = darker), grow, hold (s before the decay starts).
   const SOUNDS = {
     restDone: { len: 1.25, notes: [{ t: 0, f: 1568, a: 0.8, d: 9 }, { t: 0.17, f: 1568, a: 0.8, d: 9 }, { t: 0.34, f: 2093, a: 1, d: 3.6 }] },
     finish: { len: 1.6, notes: [{ t: 0, f: 1047, a: 0.75, d: 6 }, { t: 0.1, f: 1319, a: 0.75, d: 6 }, { t: 0.2, f: 1568, a: 0.8, d: 5 }, { t: 0.3, f: 2093, a: 1, d: 2.4 }, { t: 0.3, f: 523, a: 0.35, d: 2.2 }] },
@@ -31,12 +39,21 @@
     beeps: { len: 1.0, notes: strikes([0, 0.2, 0.4], { kind: 'tone', f: 2000, a: 0.8, hold: 0.09 }).concat([{ t: 0.6, kind: 'tone', f: 2400, a: 1, hold: 0.3 }]) },
     whistle: { len: 1.0, notes: [{ t: 0, kind: 'tone', f: 2850, a: 0.9, hold: 0.14, vib: [32, 70], air: 0.06 }, { t: 0.24, kind: 'tone', f: 2850, a: 1, hold: 0.55, vib: [32, 70], air: 0.06 }] },
     gong: { len: 2.4, notes: [{ t: 0, f: 196, a: 1, d: 1.1, p: 'GONG' }, { t: 0, f: 392, a: 0.25, d: 1.6, p: 'BELL' }] },
-    knock: { len: 0.8, notes: strikes([0, 0.16, 0.32], { f: 820, a: 1, d: 38, p: 'WOOD' }) }
+    knock: { len: 0.8, notes: strikes([0, 0.16, 0.32], { f: 820, a: 1, d: 38, p: 'WOOD' }) },
+    // Anime-style pack: original effects, no voices or clips from any show.
+    powerup: { len: 2.1, notes: [{ t: 0, kind: 'tone', f: 110, f1: 880, h: 'SAW', a: 0.7, hold: 1.3, grow: 2, trem: [18, 0.35] }, { t: 0, kind: 'noise', a: 0.35, lp: 0.08, hold: 1.25, grow: 2, d: 30 }, { t: 1.3, f: 1760, a: 1, d: 2.4 }, { t: 1.3, kind: 'noise', a: 0.5, lp: 0.25, d: 9 }] },
+    blast: { len: 1.9, notes: [{ t: 0, kind: 'tone', f: 260, f1: 1400, h: 'SAW', a: 0.55, hold: 0.55, grow: 1.5 }, { t: 0.55, kind: 'noise', a: 1, lp: 0.35, d: 3.2 }, { t: 0.55, kind: 'tone', f: 140, f1: 38, a: 1, hold: 0.45 }, { t: 0.55, kind: 'noise', a: 0.6, lp: 0.04, d: 2.2 }] },
+    aura: { len: 1.9, notes: [{ t: 0, kind: 'tone', f: 98, h: 'HUM', a: 0.9, hold: 1.6, grow: 0.6, trem: [9, 0.45] }, { t: 0, kind: 'tone', f: 147, h: 'HUM', a: 0.45, hold: 1.6, grow: 0.8, trem: [11, 0.5] }, { t: 0, kind: 'noise', a: 0.25, lp: 0.05, hold: 1.5, grow: 1, d: 25 }] },
+    scouter: { len: 1.2, notes: [1800, 2000, 2200, 2400, 2600, 2800, 3000, 3200].map((f, i) => ({ t: i * 0.07, kind: 'tone', f, a: 0.55, hold: 0.04 })).concat([{ t: 0.6, kind: 'noise', a: 1, lp: 0.6, d: 22 }, { t: 0.6, f: 2600, a: 0.5, d: 14, p: 'RING' }]) },
+    teleport: { len: 0.7, notes: [{ t: 0, kind: 'tone', f: 2600, f1: 500, a: 0.8, hold: 0.12, h: 'SQUARE' }, { t: 0.16, kind: 'tone', f: 500, f1: 2600, a: 0.8, hold: 0.12, h: 'SQUARE' }, { t: 0.16, kind: 'noise', a: 0.3, lp: 0.5, d: 30 }] },
+    impact: { len: 1.6, notes: [{ t: 0, kind: 'tone', f: 170, f1: 42, a: 1, hold: 0.3 }, { t: 0, kind: 'noise', a: 0.9, lp: 0.2, d: 9 }, { t: 0.02, f: 420, a: 0.45, d: 2.4, p: 'RING' }] }
   };
   const NAMES = Object.keys(SOUNDS);
   const REST_SOUNDS = [
     { id: 'restDone', label: 'Bell (Strong-style)' }, { id: 'boxing', label: 'Boxing bell' }, { id: 'dingdong', label: 'Ding-dong' },
-    { id: 'beeps', label: 'Watch beeps' }, { id: 'whistle', label: 'Coach whistle' }, { id: 'gong', label: 'Gong' }, { id: 'knock', label: 'Wood knock' }
+    { id: 'beeps', label: 'Watch beeps' }, { id: 'whistle', label: 'Coach whistle' }, { id: 'gong', label: 'Gong' }, { id: 'knock', label: 'Wood knock' },
+    { id: 'powerup', label: 'Power-up', pack: 'anime' }, { id: 'blast', label: 'Energy blast', pack: 'anime' }, { id: 'aura', label: 'Aura charge', pack: 'anime' },
+    { id: 'scouter', label: 'Scouter', pack: 'anime' }, { id: 'teleport', label: 'Teleport', pack: 'anime' }, { id: 'impact', label: 'Big hit', pack: 'anime' }
   ];
   const rawName = id => (id === 'restDone' ? 'rest_done' : 'rest_' + String(id).toLowerCase()) + '.wav';
 
@@ -48,16 +65,32 @@
     for (const note of s.notes) {
       const start = Math.round(note.t * sr);
       if (note.kind === 'tone') {
-        const hold = Math.round(note.hold * sr), rel = Math.round(0.015 * sr), ta = Math.round(0.005 * sr);
+        const hold = Math.round(note.hold * sr), rel = Math.round(0.015 * sr), ta = Math.round(0.005 * sr), harm = HARMONICS[note.h || 'SQUARE'];
         let ph = 0;
         for (let i = 0; i < hold + rel && start + i < n; i++) {
-          const env = Math.min(1, i / ta) * (i < hold ? 1 : 1 - (i - hold) / rel);
-          const f = note.f + (note.vib ? note.vib[1] * Math.sin(2 * Math.PI * note.vib[0] * i / sr) : 0);
+          const x = Math.min(1, i / hold);
+          let env = Math.min(1, i / ta) * (i < hold ? 1 : 1 - (i - hold) / rel);
+          if (note.grow) env *= 0.08 + 0.92 * Math.pow(x, note.grow);
+          if (note.trem) env *= 1 - note.trem[1] * (0.5 + 0.5 * Math.sin(2 * Math.PI * note.trem[0] * i / sr));
+          const base = note.f1 ? note.f * Math.pow(note.f1 / note.f, x) : note.f;
+          const f = base + (note.vib ? note.vib[1] * Math.sin(2 * Math.PI * note.vib[0] * i / sr) : 0);
           ph += 2 * Math.PI * f / sr;
           let v = 0;
           if (note.vib) v = Math.sin(ph);
-          else for (const [ratio, amp] of SQUARE) if (note.f * ratio < sr / 2.2) v += amp * Math.sin(ph * ratio);
+          else for (const [ratio, amp] of harm) if (f * ratio < sr / 2.2) v += amp * Math.sin(ph * ratio);
           out[start + i] += note.a * env * (v + (note.air ? note.air * noise() : 0));
+        }
+        continue;
+      }
+      if (note.kind === 'noise') {
+        const hold = Math.round((note.hold || 0) * sr), k = note.d / sr, ta = Math.round(0.003 * sr);
+        let y = 0;
+        for (let i = 0; start + i < n; i++) {
+          let env = Math.min(1, i / ta) * (i < hold ? 1 : Math.exp(-k * (i - hold)));
+          if (note.grow && hold) env *= 0.05 + 0.95 * Math.pow(Math.min(1, i / hold), note.grow);
+          if (env < 1e-4 && i > hold + ta) break;
+          y += note.lp * (noise() - y);
+          out[start + i] += note.a * env * y * 3;
         }
         continue;
       }
@@ -96,8 +129,52 @@
     return ctx;
   }
   function prime() { try { return !!context(); } catch (e) { return false; } }
+  // ---- The user's own sound (IndexedDB, this device only; never synced or backed up) ----
+  const DB = 'gym-sounds', STORE = 'custom', MAX_BYTES = 3 * 1024 * 1024, MAX_SECONDS = 20;
+  let custom = null; // { name, seconds, bytes: ArrayBuffer }
+  function idb() {
+    return new Promise((ok, no) => {
+      const IDB = root.indexedDB; if (!IDB) return no(new Error('This browser cannot store files.'));
+      const r = IDB.open(DB, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+      r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+    });
+  }
+  function tx(mode, fn) { return idb().then(db => new Promise((ok, no) => { const t = db.transaction(STORE, mode), q = fn(t.objectStore(STORE)); t.oncomplete = () => ok(q && q.result); t.onerror = () => no(t.error); })); }
+  function decode(bytes) {
+    const c = context(); if (!c) return Promise.reject(new Error('This phone cannot play sounds here.'));
+    return new Promise((ok, no) => { const p = c.decodeAudioData(bytes.slice(0), ok, no); if (p && p.then) p.then(ok, no); });
+  }
+  function readFile(file) {
+    if (file.arrayBuffer) return file.arrayBuffer();
+    return new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => no(fr.error); fr.readAsArrayBuffer(file); });
+  }
+  function setCustom(file) {
+    if (!file) return Promise.reject(new Error('No file chosen.'));
+    if (file.size > MAX_BYTES) return Promise.reject(new Error('That file is over 3 MB. Pick a shorter clip.'));
+    return readFile(file).then(bytes => decode(bytes).then(buf => {
+      const rec = { name: String(file.name || 'My sound').slice(0, 60), seconds: Math.round(Math.min(buf.duration, MAX_SECONDS) * 10) / 10, bytes };
+      buffers.custom = buf;
+      return tx('readwrite', s => s.put(rec, 'rest')).then(() => { custom = rec; return customInfo(); });
+    }, () => { throw new Error("That file isn't a sound this phone can play. Try an MP3, M4A or WAV."); }));
+  }
+  function loadCustom() {
+    return tx('readonly', s => s.get('rest')).then(rec => {
+      custom = rec || null; delete buffers.custom;
+      if (!custom) return null;
+      return decode(custom.bytes).then(buf => { buffers.custom = buf; return customInfo(); }, () => customInfo());
+    }).catch(() => null);
+  }
+  function clearCustom() { custom = null; delete buffers.custom; return tx('readwrite', s => s.delete('rest')).catch(() => {}); }
+  function customInfo() { return custom ? { name: custom.name, seconds: custom.seconds } : null; }
+
   function play(name) {
     try {
+      if (name === 'custom') {
+        const c = context(), b = buffers.custom; if (!c || !b) return false;
+        const src = c.createBufferSource(); src.buffer = b; src.connect(c.destination); src.start(0, 0, Math.min(b.duration, MAX_SECONDS));
+        return true;
+      }
       const c = context(); if (!c || !SOUNDS[name]) return false;
       if (!buffers[name]) { const x = render(name, c.sampleRate), buf = c.createBuffer(1, x.length, c.sampleRate); buf.getChannelData(0).set(x); buffers[name] = buf; }
       const src = c.createBufferSource(); src.buffer = buffers[name]; src.connect(c.destination); src.start();
@@ -105,7 +182,8 @@
     } catch (e) { return false; }
   }
 
-  const GymSounds = { NAMES, REST_SOUNDS, rawName, prime, play, render, wav };
+  const GymSounds = { NAMES, REST_SOUNDS, rawName, prime, play, render, wav, setCustom, loadCustom, clearCustom, customInfo };
+  if (root.indexedDB && (root.AudioContext || root.webkitAudioContext)) loadCustom();
   root.GymSounds = GymSounds;
   if (typeof module !== 'undefined' && module.exports) module.exports = GymSounds;
 })(typeof window !== 'undefined' ? window : globalThis);
