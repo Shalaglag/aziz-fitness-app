@@ -275,6 +275,23 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("settings and friends: the sign-in button opens the sign-in sheet (build 119-137 shipped it dead)", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      // Device-only mode with a cloud config present: Settings and Friends offer "Sign in or create account".
+      await page.evaluate(() => { window.connectCalls = 0; CloudStore.connect = () => { connectCalls++; return Promise.resolve(null); }; });
+      for (const tab of ["settings", "friends"]) {
+        await go(page, tab);
+        const btn = await page.$('#main [data-act="cloudsignin"]');
+        assert.ok(btn, tab + " shows the sign-in button");
+        await btn.click();
+        await page.waitForTimeout(100);
+      }
+      assert.strictEqual(await page.evaluate(() => connectCalls), 2, "each tap opens the sign-in flow");
+      assert.strictEqual(await page.$eval('#main [data-act="cloudsignin"]', b => b.disabled), false, "button is usable again after 'Use without an account'");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("guide: search filters sections and jump chips exist; progress has four sections", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "guide");

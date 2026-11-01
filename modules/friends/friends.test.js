@@ -162,5 +162,5 @@ test("screen HTML: empty states, leaderboard rows and sharing switches render wi
   st.sub = "friends"; assert.match(F.screenHTML(st, c), /ABC-123/);
   st.sub = "challenges"; assert.match(F.screenHTML(st, c), /New challenge/);
   st.compareUid = "u_b"; assert.match(F.screenHTML(st, c), /role="dialog"/);
-  assert.match(F.signedOutHTML(true), /cloudsignin/);
+  assert.match(F.signedOutHTML(true), /data-act="cloudsignin"/, "the shell handles data-act buttons; data-a did nothing");
 });
