@@ -183,6 +183,24 @@
 #main button, nav.drawer button, .fsheet button, .co-fab, .fold > summary { transition: transform var(--dur-tap) var(--ease-out), background-color var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out); }
 #main button:active, nav.drawer button:active, .fsheet button:active, .co-fab:active { transform: scale(.96); }
 @media (prefers-reduced-motion: reduce) { #main button:active, nav.drawer button:active, .fsheet button:active { transform: none; } }
+/* ---- Water fluid (Nov 2026, WaterH-style): liquid rises to % of goal, two waves drift on top ---- */
+:root { --water: #2F8FE8; --water-ink: #0B4F9C; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --water: #4FA8F0; --water-ink: #CFE8FF; } }
+:root[data-theme="dark"] { --water: #4FA8F0; --water-ink: #CFE8FF; }
+.wfill { position: relative; height: 156px; margin: 10px 0 12px; border-radius: 16px; overflow: hidden; isolation: isolate;
+  background: color-mix(in srgb, var(--water) 9%, var(--surface)); }
+.wfill-liq { position: absolute; left: 0; right: 0; bottom: 0; height: var(--lvl); z-index: -1;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--water) 34%, transparent), color-mix(in srgb, var(--water) 52%, transparent));
+  animation: wfill-rise 1.1s var(--ease-out) backwards; }
+@keyframes wfill-rise { from { height: var(--from, 0%); } }
+.wfill-liq svg { position: absolute; left: 0; bottom: calc(100% - 1px); width: 200%; height: 18px; display: block; }
+.wfill-liq .wv1 { fill: color-mix(in srgb, var(--water) 34%, transparent); animation: wfill-wave 5s linear infinite; }
+.wfill-liq .wv2 { fill: color-mix(in srgb, var(--water) 20%, transparent); height: 26px; animation: wfill-wave 8s linear infinite reverse; }
+@keyframes wfill-wave { to { transform: translateX(-50%); } }
+.wfill-txt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--water-ink); text-align: center; }
+.wfill-n { font-family: var(--display); font-weight: 700; font-size: 3.4rem; line-height: 1; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+.wfill-n small { font-size: 1.1rem; margin-left: 4px; font-weight: 600; }
+.wfill-sub { font-size: .9rem; font-weight: 600; }
 
 /* ---- Change feedback (flash()): bars glow, numbers tick, the water card ripples ---- */
 @keyframes fit-glow { 0% { filter: brightness(1); } 35% { filter: brightness(1.45); box-shadow: 0 0 12px 3px color-mix(in srgb, var(--accent) 55%, transparent); } 100% { filter: brightness(1); box-shadow: 0 0 0 0 transparent; } }
@@ -24573,6 +24591,7 @@ main.before(document.getElementById("lbHost")); // the full logger sits above th
 function currentAccent(){ return S.docs.prefs.main?.accent || "coral"; }
 function applyAccent(a){ if(["coral","red","white","green","yellow","blue"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
 let lastTab=null;
+let lastWaterLvl=0; // Water fluid rises from the last level drawn
 function render(){
   renderPending=false;
   applyTargets();
@@ -24838,7 +24857,8 @@ function vToday(){
       ${dayType(d)==="saturday"?`<p class="note">Saturday weigh-ins often run high after Friday's salty shrimp. Don't react to it.</p>`:""}
     </div>
     <div class="card" id="waterCard">
-      <div class="spread"><h3>Water</h3><span class="muted"><span class="num">${(dayFluid(day)/1000).toFixed(2)} L</span> · target ${waterTarget}</span></div>
+      <div class="spread"><h3>Water</h3><span class="muted">target ${waterTarget}</span></div>
+      ${waterFluid(dayFluid(day), training?3500:3000)}
       ${day.waterh?`<p class="muted" style="font-size:.85rem">WaterH ${(day.waterh.ml/1000).toFixed(2)} L · synced ${new Date(day.waterh.at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}${day.water?` · manual ${(day.water/1000).toFixed(2)} L`:""}</p>`:""}
       <div class="row"><button class="chip" data-act="water" data-ml="250">+250 ml</button><button class="chip" data-act="water" data-ml="500">+500 ml</button><button class="chip" data-act="water" data-ml="1000">+1 L</button><button class="chip" data-act="water" data-ml="-250">−250</button></div>
       ${safeMod("GoogleHealthWater",()=>ghSync?ghSync.html(day):"")}
@@ -24861,6 +24881,17 @@ function vToday(){
   ${fold("score","Daily score","", safeMod("DailyScore",()=>DailyScore.html(S.docs, d, {today:TODAY, sessionFor:x=>sessionFor(x)?.session, targets:dayTargets})))}
   ${fold("sched","Schedule", DAYTYPE_LABEL[type], `<ul class="tl" style="padding-top:8px">${SCHEDULE[type].map(([t,x])=>`<li><span class="t">${t}</span><span>${x}</span></li>`).join("")}</ul>`)}
   ${fold("cal","Calendar","", ddCalendar(d))}`;
+}
+/* Water fluid panel: big number over a liquid that rises to the share of the goal (capped so the waves stay visible). */
+function waterFluid(ml, goal){
+  ml=Math.max(0, Math.round(+ml||0));
+  const pct=goal?ml/goal:0, lvl=Math.round(Math.min(1,pct)*88)+4, from=lastWaterLvl; lastWaterLvl=lvl;
+  const wave='<path d="M0 8 Q50 0 100 8 T200 8 T300 8 T400 8 V16 H0Z"/>';
+  const sub = pct>=1 ? `Goal hit · ${Math.round(pct*100)}% of ${goal.toLocaleString("en-US")} ml` : `${Math.round(pct*100)}% of ${goal.toLocaleString("en-US")} ml goal`;
+  return `<div class="wfill" role="img" aria-label="${ml} ml of water, ${sub}">
+    <div class="wfill-liq" style="--lvl:${lvl}%;--from:${from}%"><svg class="wv2" viewBox="0 0 400 16" preserveAspectRatio="none" aria-hidden="true">${wave}</svg><svg class="wv1" viewBox="0 0 400 16" preserveAspectRatio="none" aria-hidden="true">${wave}</svg></div>
+    <div class="wfill-txt"><div class="wfill-n">${ml.toLocaleString("en-US")}<small>ml</small></div><div class="wfill-sub">${sub}</div></div>
+  </div>`;
 }
 /* ---------- TRAIN ---------- */
 function trainSwitch(){
