@@ -6,18 +6,19 @@ third-party service. It does not matter which app wrote the record: WaterH, Sams
 manual entry in Health Connect all land in the same place.
 
 ## Is WaterH actually writing to Health Connect?
-Not confirmed. WaterH's site, FAQ and Play listing (v3.5.1, Oct 2025) do not mention Health Connect,
-Google Fit or Samsung Health; the earlier note in `modules/waterh-sync/README.md` was an assumption. The setup
-guide in the app therefore starts with the check Aziz has to do once on his phone:
-
-1. WaterH app → Profile / Settings → look for *Health Connect*, *Google Fit* or *Connected apps* and switch it on.
-2. Health Connect → **App permissions**: WaterH must be listed with *Hydration* allowed.
-
-If WaterH is listed, auto-sync works end to end. If it is not, WaterH does not write to Health Connect on that
-phone and the fallbacks are: (a) WaterH's own export (History → reports) pasted / picked into the existing
-Sync WaterH box (`modules/waterh-sync`), (b) a Health Connect-writing water app that WaterH can push to (none
-known), or (c) asking WaterH support for Health Connect support. Nothing in this module pretends otherwise:
-the status line says "no bottle records today yet" until a record really arrives.
+No, not directly (Aziz checked Nov 1, 2026: WaterH is not in Health Connect → App permissions and there was
+no Hydration data). WaterH is connected to **Fitbit** instead (Fitbit lists WaterH with food and water logs).
+Possible route: WaterH → Fitbit / Google Health cloud → Fitbit / Google Health app → Health Connect.
+- Google's help page for the Google Health app (the Fitbit app was renamed in May 2026) lists Hydration in
+  both the read and write columns for Health Connect. Fitbit community posts from Jan 2026 said Fitbit did not
+  offer a water write permission then, so this depends on the app version on the phone.
+- The legacy Fitbit Web API (which partner apps like WaterH used) is being retired in Sept 2026 and partner
+  apps must reconnect; Fitbit's "partner apps may need reconnecting" notice is that. If WaterH has not moved
+  to the new Google Health API, the WaterH → Fitbit link may stop working.
+- Not verified on Aziz's phone yet. The one-time test is in the in-app guide and below. Records arriving
+  through Fitbit carry Fitbit / Google Health as their origin; the module doesn't filter on origin, so they
+  count. A sip that appears twice from two apps with the same time and ml is skipped as a mirror.
+- If the route doesn't work, the paste / file box (`modules/waterh-sync`) stays the daily path.
 
 ## Files
 - `health-connect.js`: all the logic (plain script, `window.HealthConnectSync`, no DOM at module level).
