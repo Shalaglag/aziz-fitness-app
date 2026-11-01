@@ -310,6 +310,43 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("ticking sets never hides a row: every template, every set (Aziz's bench warm-ups vanished after the 4th tick)", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "train");
+      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      const tap = (a, id) => page.evaluate(([a, id]) => { const b = [...document.querySelectorAll(`[data-a="${a}"]` + (id ? `[data-id="${id}"]` : ""))].filter(e => e.offsetParent).pop(); if (b) b.click(); return !!b; }, [a, id]);
+      const tpls = await page.$$eval('[data-a="tplPreview"]', b => [...new Set(b.map(e => e.dataset.id))]);
+      assert.ok(tpls.length >= 6, "all program templates listed (" + tpls.length + ")");
+      let checked = 0;
+      for (const id of tpls) {
+        await tap("tplPreview", id); await page.waitForTimeout(80);
+        await tap("startTpl"); await page.waitForSelector('[data-a="check"]');
+        const rows = () => page.$$eval('.lb-setrow[data-si]', r => r.filter(e => e.offsetParent).map(e => e.dataset.ei + ":" + e.dataset.si));
+        const all = await rows();
+        assert.ok(all.length > 0, id + " has sets");
+        for (const key of all) {
+          const [ei, si] = key.split(":");
+          await page.evaluate(([ei, si]) => {
+            const row = document.querySelector(`.lb-setrow[data-ei="${ei}"][data-si="${si}"]`);
+            row.querySelectorAll("input.lb-cell").forEach(c => { if (!c.value && !c.placeholder) { c.value = "1"; c.dispatchEvent(new Event("input", { bubbles: true })); } });
+            row.querySelector('[data-a="check"]').click();
+          }, [ei, si]);
+          await page.waitForTimeout(20);
+          const now = await rows();
+          assert.deepStrictEqual(now, all, `${id}: ticking set ${key} changed the visible rows`);
+          assert.ok(await page.evaluate(([ei, si]) => document.querySelector(`.lb-setrow[data-ei="${ei}"][data-si="${si}"]`).classList.contains("done"), [ei, si]), `${id}: set ${key} shows as done`);
+          checked++;
+        }
+        await page.evaluate(() => [...document.querySelectorAll('[data-a="restSkip"]')].forEach(b => b.offsetParent && b.click()));
+        await page.evaluate(() => WorkoutLogger && document.querySelector('[data-a="askCancel"]').click());
+        await tap("cancelLive"); await page.waitForTimeout(100);
+        await page.waitForSelector('[data-a="tplPreview"]');
+      }
+      assert.ok(checked > 50, "ticked " + checked + " sets");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("navigation setting: bottom bar and both, flashes after a change, demos start collapsed, list view once", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "settings");
