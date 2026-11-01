@@ -8,11 +8,9 @@
  *   app shell's workouts/{date} shape: {date, session, idx, sets:{name:[{w,r}]}, treadmill}.
  * weights: optional { list() -> Promise<[{date:'YYYY-MM-DD', kg}]>, put(date, kg) -> Promise }
  *   so body weight logs go to the shell's own weights collection.
- * formCues: optional FormCues.create(guide) instance (form cues + demo links).
+ * formCues: optional FormCues.create(guide) instance (form cues, no external links).
  * anim: optional ExerciseAnim.create() instance. Exercises it has get a built-in 3D animated demo in Gym
  *   mode and the exercise sheet, and the Demo button opens it full screen.
- * demos: optional ExerciseDemos.create(data, {library}) instance. When given, every exercise gets a
- *   Demo button (a checked video, else a YouTube search) and the sheet lists its demo videos.
  * Voice: when window.VoiceLog exists, the live workout header shows a mic that opens VoiceLog's sheet and logs the
  *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
@@ -43,6 +41,24 @@ Cable Crossover|Chest|Cable|
 Low-to-High Cable Fly|Chest|Cable|
 Push Up|Chest|Bodyweight|
 Chest Dip|Chest|Bodyweight|c
+Decline Bench Press (Dumbbell)|Chest|Dumbbell|c
+Incline Chest Fly (Dumbbell)|Chest|Dumbbell|
+Chest Fly (Cable)|Chest|Cable|
+Incline Cable Fly|Chest|Cable|
+Chest Press (Plate-loaded)|Chest|Plate-loaded|c
+Pullover (Dumbbell)|Chest|Dumbbell|
+Weighted Dip|Chest|Bodyweight|c
+Decline Bench Press (Smith Machine)|Chest|Smith machine|c
+Chest Press (Cable)|Chest|Cable|c
+Floor Press (Barbell)|Chest|Barbell|c
+Incline Chest Press (Plate-loaded)|Chest|Plate-loaded|c
+Decline Chest Press (Machine)|Chest|Machine|c
+Incline Push Up|Chest|Bodyweight|
+Decline Push Up|Chest|Bodyweight|
+Diamond Push Up|Chest|Bodyweight|
+Landmine Press|Chest|Barbell|c
+Svend Press (Plate)|Chest|Plate-loaded|c
+Wide Push Up|Chest|Bodyweight|
 Lat Pulldown - Wide Grip (Cable)|Back|Cable|c
 Lat Pulldown - Close Grip (Cable)|Back|Cable|c
 Lat Pulldown - Single Arm (Cable)|Back|Cable|
@@ -67,6 +83,43 @@ Deadlift (Barbell)|Back|Barbell|cx
 Romanian Deadlift (Barbell)|Hamstrings|Barbell|cx
 Romanian Deadlift (Dumbbell)|Hamstrings|Dumbbell|cx
 Back Extension|Back|Bodyweight|x
+Lat Pulldown (Reverse Grip)|Back|Cable|c
+Lat Pulldown (V-Bar)|Back|Cable|c
+Lat Pulldown (Neutral Grip)|Back|Cable|c
+Pull Up (Wide Grip)|Back|Bodyweight|c
+Pull Up (Neutral Grip)|Back|Bodyweight|c
+Pull Up (Weighted)|Back|Bodyweight|c
+Seated Row (Wide Grip, Cable)|Back|Cable|c
+Seated Row (Single Arm, Cable)|Back|Cable|c
+Seated Row (Neutral Grip, Cable)|Back|Cable|c
+Bent Over Row (Dumbbell)|Back|Dumbbell|c
+Chest-Supported Row (Dumbbell)|Back|Dumbbell|c
+Chest-Supported T-Bar Row (Machine)|Back|Plate-loaded|c
+High Row (Machine)|Back|Machine|c
+Low Row (Machine)|Back|Machine|c
+Sumo Deadlift (Barbell)|Back|Barbell|cx
+Trap Bar Deadlift|Back|Barbell|cx
+Lat Pulldown (Plate-loaded)|Back|Plate-loaded|c
+Chin Up (Weighted)|Back|Bodyweight|
+Inverted Row|Back|Bodyweight|c
+Bent Over Row (Reverse Grip, Barbell)|Back|Barbell|c
+Pendlay Row (Barbell)|Back|Barbell|c
+Chest-Supported Row (Plate-loaded)|Back|Plate-loaded|c
+Row (Smith Machine)|Back|Smith machine|c
+Rear Delt Row (Dumbbell)|Back|Dumbbell|c
+Pullover (Cable)|Back|Cable|
+Straight-Arm Pulldown (Rope)|Back|Cable|c
+Rack Pull (Barbell)|Back|Barbell|cx
+Hyperextension (Weighted)|Back|Bodyweight|
+Shrug (Smith Machine)|Back|Smith machine|
+Standing Row (Cable)|Back|Cable|c
+Landmine Row|Back|Barbell|c
+Meadows Row|Back|Barbell|c
+Deficit Deadlift (Barbell)|Back|Barbell|cx
+Deadlift (Smith Machine)|Back|Smith machine|cx
+Deadlift (Dumbbell)|Back|Dumbbell|cx
+Shrug (Cable)|Back|Cable|
+Farmer's Walk|Back|Dumbbell|
 Overhead Press (Barbell)|Shoulders|Barbell|c
 Seated Overhead Press (Dumbbell)|Shoulders|Dumbbell|c
 Shoulder Press (Machine)|Shoulders|Machine|c
@@ -81,6 +134,26 @@ Reverse Fly (Machine)|Shoulders|Machine|
 Reverse Fly (Dumbbell)|Shoulders|Dumbbell|
 Face Pull (Cable)|Shoulders|Cable|
 Upright Row (Cable)|Shoulders|Cable|
+Overhead Press (Dumbbell)|Shoulders|Dumbbell|c
+Seated Overhead Press (Barbell)|Shoulders|Barbell|c
+Overhead Press (Smith Machine)|Shoulders|Smith machine|c
+Shoulder Press (Plate-loaded)|Shoulders|Plate-loaded|c
+Lateral Raise (Single Arm, Cable)|Shoulders|Cable|
+Reverse Fly (Cable)|Shoulders|Cable|
+Seated Overhead Press (Smith Machine)|Shoulders|Smith machine|c
+Push Press (Barbell)|Shoulders|Barbell|c
+Lateral Raise (Seated, Dumbbell)|Shoulders|Dumbbell|
+Lateral Raise (Plate-loaded)|Shoulders|Plate-loaded|
+Front Raise (Barbell)|Shoulders|Barbell|
+Front Raise (Rope, Cable)|Shoulders|Cable|
+Reverse Fly (Seated, Dumbbell)|Shoulders|Dumbbell|
+Reverse Fly (Incline, Dumbbell)|Shoulders|Dumbbell|
+Upright Row (Barbell)|Shoulders|Barbell|c
+Upright Row (Dumbbell)|Shoulders|Dumbbell|c
+Rotator Cuff External Rotation (Cable)|Shoulders|Cable|
+Landmine Shoulder Press|Shoulders|Barbell|c
+Front Raise (Plate)|Shoulders|Plate-loaded|
+Y Raise (Cable)|Shoulders|Cable|
 Bicep Curl (Barbell)|Biceps|Barbell|
 Bicep Curl (Dumbbell)|Biceps|Dumbbell|
 Hammer Curl (Dumbbell)|Biceps|Dumbbell|
@@ -91,6 +164,22 @@ Seated Bicep Curl (Machine)|Biceps|Machine|
 Standing Bicep Curl (Cable)|Biceps|Cable|
 Bayesian Curl (Cable)|Biceps|Cable|
 Concentration Curl (Dumbbell)|Biceps|Dumbbell|
+Bicep Curl (EZ Bar)|Biceps|Barbell|
+Bicep Curl (Cable)|Biceps|Cable|
+Bicep Curl (Single Arm, Cable)|Biceps|Cable|
+Bicep Curl (Seated, Dumbbell)|Biceps|Dumbbell|
+Hammer Curl (Cable Rope)|Biceps|Cable|
+Preacher Curl (Dumbbell)|Biceps|Dumbbell|
+Bicep Curl (Rope, Cable)|Biceps|Cable|
+Hammer Curl (Cross Body, Dumbbell)|Biceps|Dumbbell|
+Incline Hammer Curl (Dumbbell)|Biceps|Dumbbell|
+Preacher Curl (Cable)|Biceps|Cable|
+Preacher Curl (Barbell)|Biceps|Barbell|
+Spider Curl (Dumbbell)|Biceps|Dumbbell|
+Overhead Cable Curl|Biceps|Cable|
+Zottman Curl (Dumbbell)|Biceps|Dumbbell|
+Drag Curl (Barbell)|Biceps|Barbell|
+Curl (Smith Machine)|Biceps|Smith machine|
 Triceps Pushdown (Straight Bar)|Triceps|Cable|
 Triceps Rope Pushdown (Cable)|Triceps|Cable|
 Triceps Extension (Cable)|Triceps|Cable|
@@ -98,8 +187,30 @@ Single-Arm Pushdown (Cable)|Triceps|Cable|
 Skull Crusher (EZ Bar)|Triceps|Barbell|
 Overhead Triceps Extension (Dumbbell)|Triceps|Dumbbell|
 Triceps Dip (Machine)|Triceps|Machine|
+Bench Dip|Triceps|Bodyweight|c
+Triceps Dip|Triceps|Bodyweight|c
+Triceps Extension (Machine)|Triceps|Machine|
+Triceps Kickback (Dumbbell)|Triceps|Dumbbell|
+Triceps Pushdown (V-Bar)|Triceps|Cable|
+Triceps Kickback (Cable)|Triceps|Cable|
+Triceps Pushdown (Reverse Grip)|Triceps|Cable|
+Lying Triceps Extension (Dumbbell)|Triceps|Dumbbell|
+Skull Crusher (Dumbbell)|Triceps|Dumbbell|
+Skull Crusher (Cable)|Triceps|Cable|
+Overhead Triceps Extension (EZ Bar)|Triceps|Barbell|
+Overhead Triceps Extension (Single Arm, Dumbbell)|Triceps|Dumbbell|
+Close-Grip Bench Press (Smith Machine)|Triceps|Smith machine|c
+Close-Grip Push Up|Triceps|Bodyweight|
+JM Press (Barbell)|Triceps|Barbell|c
+Triceps Dip (Plate-loaded Machine)|Triceps|Plate-loaded|c
 Wrist Curl (Dumbbell)|Forearms|Dumbbell|
 Reverse Curl (EZ Bar)|Forearms|Barbell|
+Wrist Curl (Barbell)|Forearms|Barbell|
+Reverse Wrist Curl (Dumbbell)|Forearms|Dumbbell|
+Reverse Wrist Curl (Barbell)|Forearms|Barbell|
+Reverse Curl (Barbell)|Forearms|Barbell|
+Reverse Curl (Cable)|Forearms|Cable|
+Dead Hang|Forearms|Bodyweight|
 Squat (Barbell)|Quads|Barbell|c
 Front Squat (Barbell)|Quads|Barbell|c
 Squat (Smith Machine)|Quads|Smith machine|c
@@ -110,11 +221,45 @@ Leg Extension (Machine)|Quads|Machine|
 Bulgarian Split Squat (Dumbbell)|Quads|Dumbbell|c
 Walking Lunge (Dumbbell)|Quads|Dumbbell|c
 Goblet Squat (Dumbbell)|Quads|Dumbbell|c
+Squat (Dumbbell)|Quads|Dumbbell|c
+Squat (Machine)|Quads|Machine|c
+Lunge (Dumbbell)|Quads|Dumbbell|c
+Lunge (Barbell)|Quads|Barbell|c
+Reverse Lunge (Dumbbell)|Quads|Dumbbell|c
+Split Squat (Dumbbell)|Quads|Dumbbell|c
+Step Up (Dumbbell)|Quads|Dumbbell|c
+Bodyweight Squat|Quads|Bodyweight|
+Sumo Squat (Dumbbell)|Quads|Dumbbell|c
+Front Squat (Smith Machine)|Quads|Smith machine|c
+Belt Squat (Machine)|Quads|Machine|c
+Leg Press (Single Leg)|Quads|Machine|c
+Leg Press (Horizontal)|Quads|Machine|c
+Reverse Lunge (Barbell)|Quads|Barbell|c
+Split Squat (Smith Machine)|Quads|Smith machine|c
+Bulgarian Split Squat (Smith Machine)|Quads|Smith machine|c
+Bulgarian Split Squat (Barbell)|Quads|Barbell|c
+Step Up (Barbell)|Quads|Barbell|c
+Single Leg Extension (Machine)|Quads|Machine|
+Box Squat (Barbell)|Quads|Barbell|c
+Overhead Squat (Barbell)|Quads|Barbell|c
+Zercher Squat (Barbell)|Quads|Barbell|c
+Hack Squat (Barbell)|Quads|Barbell|c
+Reverse Lunge (Smith Machine)|Quads|Smith machine|c
+Sissy Squat|Quads|Bodyweight|
+Wall Sit|Quads|Duration|
 Lying Leg Curl (Machine)|Hamstrings|Machine|
 Seated Leg Curl (Machine)|Hamstrings|Machine|
 Standing Leg Curl (Machine)|Hamstrings|Machine|
 Nordic Curl|Hamstrings|Reps only|
 Glute-Ham Raise|Hamstrings|Bodyweight|x
+Stiff-Leg Deadlift (Barbell)|Hamstrings|Barbell|cx
+Good Morning (Barbell)|Hamstrings|Barbell|cx
+Single-Leg Romanian Deadlift (Dumbbell)|Hamstrings|Dumbbell|cx
+Romanian Deadlift (Smith Machine)|Hamstrings|Smith machine|cx
+Lying Leg Curl (Single Leg)|Hamstrings|Machine|
+Seated Leg Curl (Single Leg)|Hamstrings|Machine|
+Leg Curl (Cable)|Hamstrings|Cable|
+Leg Curl (Plate-loaded)|Hamstrings|Plate-loaded|
 Hip Thrust (Barbell)|Glutes|Barbell|cx
 Hip Thrust (Machine)|Glutes|Machine|cx
 Reverse Hyper (Machine)|Glutes|Machine|x
@@ -122,10 +267,28 @@ Cable Pull-Through|Glutes|Cable|x
 Glute Kickback (Cable)|Glutes|Cable|
 Glute Kickback (Machine)|Glutes|Machine|
 Hip Abductor (Machine)|Glutes|Machine|
+Hip Thrust (Smith Machine)|Glutes|Smith machine|cx
+Hip Thrust (Dumbbell)|Glutes|Dumbbell|cx
+Single Leg Hip Thrust|Glutes|Bodyweight|cx
+Glute Bridge (Barbell)|Glutes|Barbell|
+Glute Bridge|Glutes|Bodyweight|
+Hip Abduction (Cable)|Glutes|Cable|
+Hip Adduction (Cable)|Glutes|Cable|
+Donkey Kick (Cable)|Glutes|Cable|
+Glute Kickback (Smith Machine)|Glutes|Smith machine|
+Frog Pump|Glutes|Bodyweight|
+Step Up (Weighted Glute Focus)|Glutes|Dumbbell|c
 Hip Adductor (Machine)|Adductors|Machine|
+Copenhagen Plank|Adductors|Duration|
 Standing Calf Raise (Machine)|Calves|Machine|
 Seated Calf Raise (Machine)|Calves|Machine|
 Calf Press (Leg Press)|Calves|Machine|
+Calf Raise (Smith Machine)|Calves|Smith machine|
+Donkey Calf Raise (Machine)|Calves|Machine|
+Calf Raise (Dumbbell, Single Leg)|Calves|Dumbbell|
+Calf Raise (Bodyweight)|Calves|Bodyweight|
+Calf Raise (Hack Squat)|Calves|Machine|
+Calf Raise (Barbell)|Calves|Barbell|
 Seated Abs (Machine)|Core|Machine|
 Cable Crunch|Core|Cable|
 Decline Crunch|Core|Reps only|
@@ -133,15 +296,55 @@ Hanging Leg Raise|Core|Reps only|
 Ab Wheel Rollout|Core|Reps only|
 Russian Twist|Core|Reps only|
 Plank|Core|Duration|
+Crunch|Core|Reps only|
+Sit Up|Core|Reps only|
+Lying Leg Raise|Core|Reps only|
+Hanging Knee Raise|Core|Reps only|
+Captain's Chair Leg Raise|Core|Reps only|
+Side Plank|Core|Duration|
+Pallof Press (Cable)|Core|Cable|c
+Cable Woodchop|Core|Cable|
+Decline Sit Up|Core|Reps only|
+Reverse Crunch|Core|Reps only|
+Bicycle Crunch|Core|Reps only|
+V Up|Core|Reps only|
+Dead Bug|Core|Reps only|
+Bird Dog|Core|Reps only|
+Hollow Hold|Core|Duration|
+Mountain Climber|Core|Reps only|
+Side Bend (Dumbbell)|Core|Dumbbell|
+Oblique Crunch (Machine)|Core|Machine|
+Torso Rotation (Machine)|Core|Machine|
+Back Extension (Machine)|Core|Machine|
+Toes to Bar|Core|Reps only|
+Cable Crunch (Standing)|Core|Cable|
+Flutter Kick|Core|Reps only|
+Dragon Flag|Core|Reps only|
+Russian Twist (Weighted)|Core|Dumbbell|
+Ab Wheel Rollout (Standing)|Core|Reps only|
 Treadmill (Incline Walk)|Cardio|Cardio|
 Treadmill Run|Cardio|Cardio|
 Stationary Bike|Cardio|Cardio|
 Elliptical|Cardio|Cardio|
 Rowing Machine|Cardio|Cardio|
-Stair Climber|Cardio|Cardio|`;
+Stair Climber|Cardio|Cardio|
+Walking (Outdoor)|Cardio|Cardio|
+Running (Outdoor)|Cardio|Cardio|
+Cycling (Outdoor)|Cardio|Cardio|
+Swimming|Cardio|Cardio|
+Jump Rope|Cardio|Cardio|
+Air Bike|Cardio|Cardio|
+Ski Erg|Cardio|Cardio|
+Stair Climber (Stepmill)|Cardio|Cardio|
+Kettlebell Swing|Other|Kettlebell|
+Goblet Squat (Kettlebell)|Other|Kettlebell|c
+Turkish Get-Up (Kettlebell)|Other|Kettlebell|
+Burpee|Other|Reps only|
+Thruster (Barbell)|Other|Barbell|c
+Power Clean (Barbell)|Other|Barbell|`;
 
   const PARTS = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms', 'Quads', 'Hamstrings', 'Glutes', 'Adductors', 'Calves', 'Core', 'Cardio', 'Other'];
-  const CATS = ['Barbell', 'Dumbbell', 'Machine', 'Plate-loaded', 'Smith machine', 'Cable', 'Bodyweight', 'Assisted', 'Reps only', 'Duration', 'Cardio'];
+  const CATS = ['Barbell', 'Dumbbell', 'Kettlebell', 'Machine', 'Plate-loaded', 'Smith machine', 'Cable', 'Bodyweight', 'Assisted', 'Reps only', 'Duration', 'Cardio'];
   const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const LIB = {};
   LIB_SRC.split('\n').forEach(line => {
@@ -248,7 +451,7 @@ Stair Climber|Cardio|Cardio|`;
   const goalKg = () => { const t = S.opts && S.opts.targets; return t ? (t.goalKg != null ? +t.goalKg : null) : 80; };
 
   const DEFAULT_SETTINGS = {
-    unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: true,
+    unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: false,
     bar: 20, barLb: 45, platesKg: [25, 20, 15, 10, 5, 2.5, 1.25], platesLb: [45, 35, 25, 10, 5, 2.5],
     rotOverride: null, seeded: false
   };
@@ -396,6 +599,13 @@ Stair Climber|Cardio|Cardio|`;
     }
     return out;
   }
+  // PR celebration (modules/pr-celebrate): what was beaten and the old best, for the toast and the gym banner.
+  const PRC = typeof PRCelebrate !== 'undefined' ? PRCelebrate : (typeof globalThis !== 'undefined' && globalThis.PRCelebrate) || null;
+  function celebration(e, s) {
+    if (!PRC || !s.pr || !s.pr.length) return null;
+    const ex = getEx(e.exId);
+    return PRC.describe(s.pr, records(e.exId, E.doc && E.doc.id), s, { name: ex.name, unit: e.unit, e1rm, fmtDate: at => fmtDate(at, { month: 'short', day: 'numeric' }) });
+  }
   function workoutStats(w) {
     let vol = 0, sets = 0, prs = 0;
     w.exercises.forEach(e => working(e).forEach(s => { sets++; vol += toKg(num(s.w) || 0, e.unit) * (num(s.r) || 0); if (s.pr && s.pr.length) prs++; }));
@@ -439,12 +649,24 @@ Stair Climber|Cardio|Cardio|`;
     const atTop = ws.filter(s => (num(s.w) || 0) === top);
     const minR = Math.min(...atTop.map(s => num(s.r)));
     const step = weightStep(ex, unit);
-    if (minR >= 12) return 'All sets hit 12 last time. Try ' + fmtN(top + step, 2) + ' ' + unit + '.';
+    if (minR >= 12) return 'All sets hit 12 last time. Try ' + fmtN(stepWeight(top, 1, step), 2) + ' ' + unit + '.';
     return 'Beat last time: aim for ' + fmtN(top, 2) + ' ' + unit + ' × ' + (minR + 1) + ' on one set.';
   }
 
   // ---------- Gym mode helpers ----------
-  const weightStep = (ex, unit) => unit === 'lb' ? 5 : (ex.cat === 'Dumbbell' ? 2 : 2.5);
+  // Weight increment per exercise. Default by equipment; an exercise can save its machine's real step (ex.step,
+  // in ex.stepUnit) so steppers, progression hints and warm-ups land on weights the stack actually has.
+  const defaultStep = (ex, unit) => unit === 'lb' ? 5 : (ex.cat === 'Dumbbell' ? 2 : 2.5);
+  const weightStep = (ex, unit) => {
+    const st = num(ex.step);
+    if (!st || st <= 0) return defaultStep(ex, unit);
+    const su = ex.stepUnit || ex.unit || S.settings.unit;
+    if (su === unit) return st;
+    return Math.max(0.25, Math.round((unit === 'lb' ? st / LB : st * LB) * 4) / 4);
+  };
+  const snapStep = (v, step) => step > 0 ? Math.round(Math.round(v / step) * step * 100) / 100 : Math.round(v * 100) / 100;
+  // One click on a weight stepper: move by the step and land on the step grid (61 kg + 2.5 -> 62.5, not 63.5).
+  const stepWeight = (v, d, step) => Math.max(0, snapStep((num(v) || 0) + d * step, step));
   const FIELD_STEP = { r: 1, km: 0.1, min: 1, sec: 5 };
   const stepFor = (ex, unit, k) => k === 'w' ? weightStep(ex, unit) : FIELD_STEP[k];
   const bumpVal = (v, d) => Math.max(0, Math.round(((num(v) || 0) + d) * 100) / 100);
@@ -534,14 +756,17 @@ Stair Climber|Cardio|Cardio|`;
 
   // ---------- Audio / wake lock ----------
   let audio = null, wakeLock = null;
+  // GymSounds (modules/gym-sounds) gives the Strong-style cues; the three plain tones stay as a fallback.
+  const GS = () => (typeof window !== 'undefined' && window.GymSounds) || null;
   function beep() {
     if (!S.settings.sound) return;
+    if (GS() && GS().play('restDone')) return;
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
       [0, 0.22, 0.44].forEach((d, i) => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = i === 2 ? 1320 : 880; g.gain.setValueAtTime(0.0001, audio.currentTime + d); g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + d + 0.18); o.connect(g).connect(audio.destination); o.start(audio.currentTime + d); o.stop(audio.currentTime + d + 0.2); });
     } catch (e) { }
   }
-  function primeAudio() { try { if (S.settings.sound && !audio) audio = new (window.AudioContext || window.webkitAudioContext)(); if (audio && audio.state === 'suspended') audio.resume(); } catch (e) { } }
+  function primeAudio() { if (S.settings.sound && GS()) { GS().prime(); return; } try { if (S.settings.sound && !audio) audio = new (window.AudioContext || window.webkitAudioContext)(); if (audio && audio.state === 'suspended') audio.resume(); } catch (e) { } }
   async function keepAwake(onState) {
     try {
       if (onState && S.settings.wake && navigator.wakeLock && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
@@ -752,6 +977,7 @@ Stair Climber|Cardio|Cardio|`;
       title: id ? 'Edit exercise' : 'New exercise',
       body: () => '<label class="lb-field">Name<input id="lb-exname" class="lb-input" value="' + esc(ex.name) + '"' + (id && LIB[id] ? ' disabled' : '') + '></label><label class="lb-field">Body part<select id="lb-expart" class="lb-input"' + (id && LIB[id] ? ' disabled' : '') + '>' + PARTS.map(p => '<option' + (p === ex.part ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label><label class="lb-field">Equipment<select id="lb-excat" class="lb-input"' + (id && LIB[id] ? ' disabled' : '') + '>' + CATS.map(c => '<option' + (c === ex.cat ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label>' +
         '<label class="lb-field">Default unit<select id="lb-exunit" class="lb-input"><option value="">App default (' + S.settings.unit + ')</option><option value="kg"' + (ex.unit === 'kg' ? ' selected' : '') + '>kg</option><option value="lb"' + (ex.unit === 'lb' ? ' selected' : '') + '>lb</option></select></label><label class="lb-field">Rest timer (seconds)<input id="lb-exrest" class="lb-input" inputmode="numeric" placeholder="' + (ex.compound ? S.settings.restCompound : S.settings.restIso) + '" value="' + esc(ex.rest || '') + '"></label><label class="lb-field">Machine settings and notes<textarea id="lb-exmemo" class="lb-input" rows="3" placeholder="Seat height 4, pad on notch 6…">' + esc(ex.memo || '') + '</textarea></label>' +
+        stepFieldHtml(ex) +
         '<label class="lb-check"><input type="checkbox" id="lb-excomp"' + (ex.compound ? ' checked' : '') + '> Big compound lift (uses the longer rest)</label>' +
         '<div class="lb-row"><button class="lb-btn primary wide" data-a="saveEx" data-id="' + (id || '') + '">Save</button></div>',
       onSave: after
@@ -764,7 +990,8 @@ Stair Climber|Cardio|Cardio|`;
     const name = v('#lb-exname');
     if (!isLib && !name) { toast('Give the exercise a name'); return; }
     const newId = id || ('c-' + slug(name) + '-' + uid().slice(-4));
-    const doc = Object.assign({}, S.data.exercises[newId] || {}, { id: newId, unit: v('#lb-exunit') || undefined, rest: num(v('#lb-exrest')) || undefined, memo: v('#lb-exmemo'), compound: el.querySelector('#lb-excomp').checked });
+    const unit = v('#lb-exunit') || undefined, step = num(v('#lb-exstep'));
+    const doc = Object.assign({}, S.data.exercises[newId] || {}, { id: newId, unit, rest: num(v('#lb-exrest')) || undefined, memo: v('#lb-exmemo'), compound: el.querySelector('#lb-excomp').checked, step: step > 0 ? step : undefined, stepUnit: step > 0 ? (unit || S.settings.unit) : undefined });
     if (!isLib) Object.assign(doc, { name, part: v('#lb-expart'), cat: v('#lb-excat'), custom: true });
     put('exercises', JSON.parse(JSON.stringify(doc)));
     const after = topSheet().o.onSave;
@@ -772,16 +999,44 @@ Stair Climber|Cardio|Cardio|`;
     if (after) after(newId);
     const sh = topSheet(); if (sh) sh.render();
   });
+  // Weight increment input with the common stack steps as chips. Saved in the exercise's logging unit.
+  function stepFieldHtml(ex) {
+    const unit = ex.unit || S.settings.unit, cur = num(ex.step) && (ex.stepUnit || unit) === unit ? +ex.step : '';
+    const chips = unit === 'lb' ? [2.5, 5, 10] : [1, 1.25, 2, 2.5, 5];
+    return '<label class="lb-field">Weight step (' + unit + ')<input id="lb-exstep" class="lb-input num" inputmode="decimal" placeholder="' + fmtN(defaultStep(ex, unit), 2) + ' (' + esc(ex.cat || 'Machine') + ' default)" value="' + cur + '"></label>' +
+      '<div class="lb-row tight lb-chips">' + chips.map(c => '<button type="button" class="lb-btn small' + (cur === c ? ' primary' : ' ghost') + '" data-a="stepChip" data-v="' + c + '">' + fmtN(c, 2) + '</button>').join('') + '</div>' +
+      '<p class="lb-muted small">The smallest jump this machine or dumbbell rack allows. Steppers, "try X next" hints and warm-ups round to it.</p>';
+  }
+  on('stepChip', t => { const el = topSheet().el, inp = el.querySelector('#lb-exstep'); if (inp) inp.value = t.dataset.v; el.querySelectorAll('[data-a="stepChip"]').forEach(b => { b.classList.toggle('primary', b === t); b.classList.toggle('ghost', b !== t); }); });
+  // Quick machine setup while logging: seat / pin notes and the weight step, without leaving the workout.
+  function memoHtml(ex, editable) {
+    const txt = ex.memo ? esc(ex.memo).replace(/\n+/g, ' · ') : '';
+    if (!editable) return txt ? '<p class="lb-memo small">' + txt + '</p>' : '';
+    return '<button class="lb-memo-btn' + (txt ? '' : ' empty') + '" data-a="exSetup" data-id="' + esc(ex.id) + '" aria-label="Machine settings">' + (txt ? '⚙ ' + txt : '⚙ Add seat, pin or weight step') + '</button>';
+  }
+  on('exSetup', t => {
+    const id = t.dataset.id;
+    openSheet({
+      title: () => 'Machine settings · ' + getEx(id).name,
+      body: () => { const ex = getEx(id); return '<label class="lb-field">Seat, pins, grips, notes<textarea id="lb-exmemo" class="lb-input" rows="3" placeholder="Seat 4, chest pad 6, handles wide…">' + esc(ex.memo || '') + '</textarea></label>' + stepFieldHtml(ex) + '<div class="lb-row"><button class="lb-btn primary wide" data-a="saveSetup" data-id="' + esc(id) + '">Save</button></div>'; }
+    });
+  });
+  on('saveSetup', t => {
+    const el = topSheet().el, id = t.dataset.id, ex = getEx(id), unit = ex.unit || S.settings.unit, step = num(el.querySelector('#lb-exstep').value);
+    const doc = Object.assign({}, S.data.exercises[id] || {}, { id, memo: el.querySelector('#lb-exmemo').value.trim(), step: step > 0 ? step : undefined, stepUnit: step > 0 ? unit : undefined });
+    put('exercises', JSON.parse(JSON.stringify(doc)));
+    closeSheet(); toast('Saved');
+    if (E) renderEditor(); else renderMain();
+    const sh = topSheet(); if (sh) sh.render();
+  });
 
   let exTab = 'about';
   // Form cues (optional FormCues instance passed as opts.formCues).
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
-  // Demo button: ExerciseDemos (opts.demos) when given, else the form cues link for exercises in the guide.
-  function demoBtn(id, entry) {
-    const dm = S.opts && S.opts.demos, fc = S.opts && S.opts.formCues, an = S.opts && S.opts.anim;
-    if (an && an.has(id)) return '<button type="button" class="lb-btn small ghost" data-ea-open="' + esc(id) + '">Demo</button>';
-    const l = dm ? dm.link(id, getEx(id).name) : (fc && entry ? { href: fc.demoUrl(entry), label: 'Demo ↗' } : null);
-    return l ? '<a class="lb-btn small ghost" href="' + esc(l.href) + '" target="_blank" rel="noopener noreferrer">' + esc(l.label) + '</a>' : '';
+  // Demo button: opens the built-in animation (opts.anim). No external video or search links.
+  function demoBtn(id) {
+    const an = S.opts && S.opts.anim;
+    return an && an.has(id) ? '<button type="button" class="lb-btn small ghost" data-ea-open="' + esc(id) + '">Demo</button>' : '';
   }
   on('exOpen', t => {
     const id = t.dataset.id; exTab = 'about';
@@ -796,13 +1051,12 @@ Stair Climber|Cardio|Cardio|`;
   function exDetail(id) {
     const ex = getEx(id), ss = sessions(id), R = records(id), weighted = isWeighted(ex);
     if (exTab === 'about') {
-      return (S.opts.anim ? S.opts.anim.cardHtml(id) : '') + '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div></div>' +
+      return (S.opts.anim ? S.opts.anim.cardHtml(id) : '') + '<div class="lb-tiles"><div><b>' + esc(ex.part) + '</b><span>Body part</span></div><div><b>' + esc(ex.cat) + '</b><span>Equipment</span></div><div><b>' + ss.length + '</b><span>Sessions</span></div><div><b>' + mmss(restFor(id)) + '</b><span>Rest timer</span></div>' + (weighted ? '<div><b>' + fmtN(weightStep(ex, ex.unit || S.settings.unit), 2) + ' ' + (ex.unit || S.settings.unit) + '</b><span>Weight step' + (num(ex.step) ? '' : ' (default)') + '</span></div>' : '') + '</div>' +
         (ex.avoided ? '<p class="lb-warnbox">Your plan avoids this lift (no deadlifts, RDLs, hip thrusts, back extensions, glute-ham raises, reverse hypers or cable pull-throughs). Pick a machine-based option instead.</p>' : '') +
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
         (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '') +
-        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '') +
-        (S.opts.demos ? S.opts.demos.sheetHtml(id, ex.name) : '');
+        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '');
     }
     if (!ss.length) return '<div class="lb-empty">No sets logged for this exercise yet.</div>';
     if (exTab === 'history') {
@@ -946,6 +1200,11 @@ Stair Climber|Cardio|Cardio|`;
     list.forEach(p => { while (rem >= p - 1e-9) { out.push(p); rem = Math.round((rem - p) * 100) / 100; } });
     return { plates: out, rem };
   }
+  // Smallest total you can actually load at or above this per-side weight.
+  function loadableUp(perSide, unit) {
+    const list = unit === 'lb' ? S.settings.platesLb : S.settings.platesKg, small = Math.min(...list), r = platesFor(Math.max(0, perSide), unit);
+    return r.rem > 0 ? Math.round((perSide - r.rem + small) * 100) / 100 : Math.round(perSide * 100) / 100;
+  }
   const PLATE_COLORS = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'];
   function plateSvg(plates, unit) {
     const list = unit === 'lb' ? S.settings.platesLb : S.settings.platesKg;
@@ -961,7 +1220,7 @@ Stair Climber|Cardio|Cardio|`;
     const r = platesFor(Math.max(0, per), plate.unit);
     return '<div class="lb-row tight"><div class="lb-seg"><button data-a="plateMode" data-k="total" class="' + (plate.mode === 'total' ? 'on' : '') + '">Total weight</button><button data-a="plateMode" data-k="side" class="' + (plate.mode === 'side' ? 'on' : '') + '">Per side</button></div><div class="lb-seg"><button data-a="plateUnit" data-k="kg" class="' + (plate.unit === 'kg' ? 'on' : '') + '">kg</button><button data-a="plateUnit" data-k="lb" class="' + (plate.unit === 'lb' ? 'on' : '') + '">lb</button></div></div>' +
       '<div class="lb-row tight"><label class="lb-field inline">' + (plate.mode === 'total' ? 'Total' : 'Per side') + '<input class="lb-input num" id="lb-plateval" inputmode="decimal" value="' + plate.val + '" data-in="plateVal"></label><label class="lb-field inline">Bar<input class="lb-input num" inputmode="decimal" value="' + bar + '" data-in="barVal"></label></div>' +
-      '<div id="lb-plateout">' + (per < 0 ? '<p class="lb-muted">That is lighter than the bar.</p>' : plateSvg(r.plates, plate.unit) + '<p><b>Each side:</b> ' + (r.plates.length ? r.plates.join(' + ') + ' ' + plate.unit : 'empty bar') + (r.rem > 0 ? ' <span class="lb-warn">(' + fmtN(r.rem, 2) + ' ' + plate.unit + ' left over)</span>' : '') + '</p><p class="lb-muted small">Total on the bar: ' + fmtN(total - r.rem * 2, 2) + ' ' + plate.unit + ' · ' + fmtN(Math.max(0, per), 2) + ' per side</p>') + '</div>';
+      '<div id="lb-plateout">' + (per < 0 ? '<p class="lb-muted">That is lighter than the bar.</p>' : plateSvg(r.plates, plate.unit) + '<p><b>Each side:</b> ' + (r.plates.length ? r.plates.join(' + ') + ' ' + plate.unit : 'empty bar') + (r.rem > 0 ? ' <span class="lb-warn">(' + fmtN(r.rem, 2) + ' ' + plate.unit + ' left over)</span>' : '') + '</p>' + (r.rem > 0 ? '<p class="lb-hint small">Load ' + fmtN(total - r.rem * 2, 2) + ' or ' + fmtN(loadableUp(per, plate.unit) * 2 + bar, 2) + ' ' + plate.unit + ' instead.</p>' : '') + '<p class="lb-muted small">Total on the bar: ' + fmtN(total - r.rem * 2, 2) + ' ' + plate.unit + ' · ' + fmtN(Math.max(0, per), 2) + ' per side</p>') + '</div>';
   }
   function refreshTool(id, html) { const el = root.querySelector(id) || (topSheet() && topSheet().el.querySelector(id)); if (el) el.innerHTML = html; }
   on('plateMode', t => { const bar = plate.unit === 'lb' ? S.settings.barLb : S.settings.bar; if (t.dataset.k !== plate.mode) plate.val = t.dataset.k === 'side' ? Math.max(0, (plate.val - bar) / 2) : plate.val * 2 + bar; plate.mode = t.dataset.k; rerenderTools(); });
@@ -971,8 +1230,8 @@ Stair Climber|Cardio|Cardio|`;
   function partialPlate() { const tmp = document.createElement('div'); tmp.innerHTML = plateTool(); refreshTool('#lb-plateout', tmp.querySelector('#lb-plateout').innerHTML); }
   function rerenderTools() { const sh = topSheet(); if (sh && sh.o.tool) sh.render(); else renderMain(); }
   let settingsT; function saveSettingsSoon() { clearTimeout(settingsT); settingsT = setTimeout(saveSettings, 600); }
-  function warmSets(w, unit, bar) {
-    const step = unit === 'lb' ? 5 : 2.5, rd = v => Math.max(bar, Math.round(v / step) * step);
+  function warmSets(w, unit, bar, step) {
+    step = step || (unit === 'lb' ? 5 : 2.5); const rd = v => Math.max(bar, snapStep(v, step));
     const plan = [[0, 10], [0.5, 8], [0.7, 5], [0.85, 3]];
     const out = []; plan.forEach(([p, r]) => { const v = p ? rd(w * p) : bar; if (v < w && !out.some(o => o.w === v)) out.push({ w: v, r }); });
     return out;
@@ -1204,7 +1463,7 @@ Stair Climber|Cardio|Cardio|`;
         (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') +
         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
-        (ex.memo ? '<p class="lb-memo small">' + esc(ex.memo) + '</p>' : '') +
+        memoHtml(ex, live) +
         (hint ? '<p class="lb-hint small">' + esc(hint) + '</p>' : '') +
         (e.showNote || e.notes ? '<textarea class="lb-input lb-notes" rows="1" placeholder="Note for this exercise" data-in="eNote" data-ei="' + i + '">' + esc(e.notes || '') + '</textarea>' : '') +
         '<div class="lb-sets" style="--cols:' + cols + '"><div class="lb-setrow head"><span>Set</span><span>Previous</span>' + f.map(k => '<span>' + ({ w: e.unit.toUpperCase(), r: 'Reps', km: 'Km', min: 'Min', sec: 'Sec' }[k]) + '</span>').join('') + xc.map(k => '<span>' + k.toUpperCase() + '</span>').join('') + '<span>' + (live ? '✓' : '') + '</span></div>';
@@ -1251,6 +1510,10 @@ Stair Climber|Cardio|Cardio|`;
       const pTxt = fmtSet(p, { unit: pUnit, exId: e.exId }, ex) + (num(p.rir) != null ? ' · RIR ' + p.rir : p.rpe ? ' · @' + p.rpe : '');
       out += '<div class="lb-gym-last"><span>' + (p._base ? 'Plan target' : 'Last time') + '</span><b>' + esc(pTxt) + '</b></div>';
     } else out += '<div class="lb-gym-last"><span>Last time</span><b class="lb-muted">First time logging this set</b></div>';
+    // Back after 7+ days off this lift: the host's BreakRamp suggests 90% / 95% of the pre-break weights.
+    if (S.opts.breakRamp && isWeighted(ex) && s.t !== 'w') {
+      try { out += S.opts.breakRamp.noteHtml(S.opts.breakRamp.plan(S.opts.breakRamp.fromLogger(workouts(), e.exId, { excludeId: E.doc.id }), { today: Date.now(), step: weightStep(ex, e.unit) }), e.unit); } catch (err) {}
+    }
     if (p && isWeighted(ex)) {
       const d = compareSets(vals, p, e.unit, pUnit), chips = [];
       if (d && d.dw != null) chips.push('<span class="lb-delta ' + (d.dw > 0 ? 'up' : d.dw < 0 ? 'down' : '') + '">' + signed(d.dw, 2) + ' ' + e.unit + '</span>');
@@ -1277,7 +1540,7 @@ Stair Climber|Cardio|Cardio|`;
     const stepTxt = k => fmtN(stepFor(ex, e.unit, k), 2);
     let n = 0;
     let html = '<div class="lb-gym">' +
-      (E.flash ? '<div class="lb-gym-pr" role="status">New record · ' + esc(E.flash) + '</div>' : '') +
+      (E.flash ? (typeof E.flash === 'object' && PRC ? PRC.bannerHtml(E.flash, esc) : '<div class="lb-gym-pr" role="status">New record · ' + esc(E.flash) + '</div>') : '') +
       '<div class="lb-gym-top"><span>Exercise ' + (ei + 1) + ' of ' + d.exercises.length + '</span>' +
       (e.ss ? '<span class="lb-gym-ss ss' + (ssIds.indexOf(e.ss) % 4) + '">Superset ' + String.fromCharCode(65 + ssIds.indexOf(e.ss)) + ' · ' + (partners.findIndex(o => o.k === ei) + 1) + '/' + partners.length + '</span>' : '') + '</div>' +
       '<div class="lb-gym-headrow"><button class="lb-gym-name" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + ei + '" aria-label="Exercise options">•••</button></div>' +
@@ -1288,7 +1551,7 @@ Stair Climber|Cardio|Cardio|`;
       (isWeighted(ex) ? '<button class="lb-btn small ghost" data-a="exPlates" data-ei="' + ei + '">Plates</button>' : '') + '</div>' +
       (fc && entry ? fc.inlineHtml(entry, e.exId) : '') +
       (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
-      (ex.memo ? '<p class="lb-memo small">' + esc(ex.memo) + '</p>' : '') +
+      memoHtml(ex, true) +
       '<div class="lb-gym-dots" role="group" aria-label="Sets">' + e.sets.map((x, j) => '<button class="lb-gym-dot ' + x.t + (x.done ? ' done' : '') + (j === si ? ' cur' : '') + '" data-a="gGo" data-ei="' + ei + '" data-si="' + j + '" aria-label="' + esc(setLabel(e, j)) + (x.done ? ', done' : '') + '">' + (x.t === 'n' ? ++n : x.t.toUpperCase()) + '</button>').join('') + '<button class="lb-gym-dot add" data-a="gAdd" aria-label="Add a set">+</button></div>' +
       '<section class="lb-gym-card' + (s.done ? ' done' : '') + '">' +
       '<div class="lb-gym-setlabel">' + esc(setLabel(e, si)) + (s.done ? ' <span class="lb-gym-ok">✓ done</span>' : '') + '</div>' +
@@ -1331,7 +1594,7 @@ Stair Climber|Cardio|Cardio|`;
   on('gNext', () => { const nx = nextPending(E.doc.exercises, E.cur); if (nx) gymGo(nx[0], nx[1]); });
   on('gStep', t => {
     const c = gymCtx(), k = t.dataset.k, start = c.vals[k] === '' || c.vals[k] == null ? 0 : String(c.vals[k]).replace(/,/g, '');
-    c.s[k] = String(bumpVal(start, +t.dataset.d * stepFor(c.ex, c.e.unit, k)));
+    c.s[k] = String(k === 'w' ? stepWeight(start, +t.dataset.d, weightStep(c.ex, c.e.unit)) : bumpVal(start, +t.dataset.d * stepFor(c.ex, c.e.unit, k)));
     if (c.s.done) c.s.pr = setPRs(c.e.exId, c.e.unit, c.s, E.doc.id);
     touch();
     const inp = liveEl.querySelector('.lb-gym-num[data-k="' + k + '"]'); if (inp) inp.value = c.s[k];
@@ -1347,7 +1610,7 @@ Stair Climber|Cardio|Cardio|`;
   on('gDone', () => {
     const [ei, si] = E.cur, s = E.doc.exercises[ei].sets[si];
     if (!completeSet(ei, si, true)) return; // the gym screen shows its own record banner
-    E.flash = s.pr && s.pr.length ? getEx(E.doc.exercises[ei].exId).name + ': ' + s.pr.join(', ') : null;
+    E.flash = s.pr && s.pr.length ? (celebration(E.doc.exercises[ei], s) || getEx(E.doc.exercises[ei].exId).name + ': ' + s.pr.join(', ')) : null;
     const nx = nextPending(E.doc.exercises, [ei, si]); if (nx) E.cur = nx;
     touch(); renderEditor(); renderRest(); liveEl.querySelector('.lb-live-body').scrollTop = 0;
   });
@@ -1378,9 +1641,10 @@ Stair Climber|Cardio|Cardio|`;
     f.forEach(k => { const ph = phFor(prev, p, e, k); if ((s[k] === '' || s[k] == null) && ph !== '') s[k] = String(ph).replace(/,/g, ''); });
     if (f.every(k => s[k] === '' || s[k] == null)) { toast('Enter ' + (f[0] === 'w' ? 'weight and reps' : 'a value') + ' first'); return false; }
     s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id);
-    if (s.pr.length && !quiet) toast('New record: ' + ex.name + ' · ' + s.pr.join(', '));
+    const cel = celebration(e, s);
+    if (s.pr.length && !quiet) { if (cel) PRC.fire(cel, { toast, vibrate: !!S.settings.vibrate }); else toast('New record: ' + ex.name + ' · ' + s.pr.join(', ')); }
     if (ex.cat !== 'Cardio' && restAfter(E.doc.exercises, i, j)) startRest(restOf(e));
-    if (S.settings.vibrate && navigator.vibrate) try { navigator.vibrate(15); } catch (er) { }
+    if (S.settings.vibrate && navigator.vibrate && !(cel && !quiet)) try { navigator.vibrate(15); } catch (er) { }
     return true;
   }
   on('check', t => {
@@ -1530,6 +1794,7 @@ Stair Climber|Cardio|Cardio|`;
     }
     put('workouts', w);
     S.active = null; saveActive(true); stopRest(); keepAwake(false); closeEditor();
+    if (S.settings.sound && GS()) GS().play('finish');
     if (S.settings.rotOverride) { S.settings.rotOverride = null; saveSettings(); }
     const shell = toShellRecord(w);
     if (S.opts.onFinish) { try { S.opts.onFinish(clone(w), shell); } catch (e) { } }
@@ -1717,7 +1982,7 @@ textarea.lb-input{resize:vertical;min-height:42px;line-height:1.4}
 .lb-tbl td,.lb-tbl th{padding:6px 4px;border-bottom:1px solid var(--lb-line);text-align:left}
 .lb-tbl th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--lb-muted)}
 .lb-tbl .r{text-align:right}
-.lb-settag{display:inline-flex;align-items:center;justify-content:center;min-width:1.8rem;height:1.8rem;border-radius:7px;font-weight:700;font-size:.85rem;background:var(--lb-sunk);font-variant-numeric:tabular-nums}
+.lb-settag{display:inline-flex;align-items:center;justify-content:center;min-width:1.8rem;height:1.8rem;border-radius:7px;font-weight:700;font-size:1.05rem;background:none;font-variant-numeric:tabular-nums}
 td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-settag.w{color:var(--lb-warn)} .lb-settag.d{color:#7a4fd0} .lb-settag.f{color:var(--lb-bad)}
 .lb-note{background:var(--lb-sunk);border-radius:10px;padding:8px 12px;font-size:.9rem}
@@ -1746,32 +2011,40 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-live-head{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--lb-line);background:var(--lb-surface)}
 .lb-live-head > b,.lb-elapsed{text-align:center;font-weight:700}
 .lb-elapsed{font-size:1.1rem}
-.lb-live-body{flex:1;overflow-y:auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(safe-area-inset-left,0px));-webkit-overflow-scrolling:touch}
+.lb-live-body{flex:1;overflow-y:auto;background:var(--lb-surface);padding:12px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(safe-area-inset-left,0px));-webkit-overflow-scrolling:touch}
 .lb-live-body > *{max-width:720px;margin-left:auto;margin-right:auto}
 .lb-title-in{width:100%;border:0;background:transparent;font-family:var(--lb-display);font-size:1.9rem;font-weight:700;padding:2px 0;color:var(--lb-ink)}
 .lb-notes{margin-top:6px}
-.lb-exblock{margin-top:14px;padding:12px;background:var(--lb-surface);border:1px solid var(--lb-line);border-radius:var(--lb-r)}
+.lb-exblock{margin-top:28px;padding:0 2px;background:transparent;border:0;border-radius:0}
+.lb-exblock.ss{padding-left:10px}
 .lb-exblock.ss{border-left:4px solid var(--lb-accent)}
 .lb-exblock.ss1{border-left-color:#1f5fbf}.lb-exblock.ss2{border-left-color:#1f8a4c}.lb-exblock.ss3{border-left-color:#e3b300}
 .lb-sslabel{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--lb-muted)}
 .lb-exhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lb-exhead h3{color:var(--lb-accent);font-size:1.3rem;font-weight:600;font-family:var(--lb-body)}
+.lb-exhead .lb-link.strong{color:var(--lb-accent);font-size:1.3rem;font-weight:600;font-family:var(--lb-body)}
 .lb-memo{color:var(--lb-muted);font-style:italic}
+.lb-memo-btn{display:block;width:100%;text-align:left;background:none;border:1px dashed var(--lb-line);color:var(--lb-muted);border-radius:10px;padding:6px 10px;font:inherit;font-size:.85rem;font-style:italic;cursor:pointer;margin:4px 0}
+.lb-memo-btn:not(.empty){border-style:solid;color:inherit;font-style:normal}
+.lb-chips{margin:-4px 0 6px}
 .lb-hint{color:var(--lb-good);font-weight:600}
-.lb-sets{margin-top:8px}
-.lb-setrow{display:grid;grid-template-columns:var(--cols);gap:6px;align-items:center;padding:4px 2px;border-radius:8px}
-.lb-setrow.head{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--lb-muted);font-weight:700}
+.lb-sets{margin-top:12px}
+.lb-setrow{display:grid;grid-template-columns:var(--cols);gap:10px;align-items:center;padding:8px 2px;border-radius:12px;min-height:60px}
+.lb-setrow.head{min-height:0;padding:0 2px;font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--lb-ink);font-weight:700}
 .lb-setrow.head span{text-align:center} .lb-setrow.head span:nth-child(2){text-align:left}
 .lb-setrow.done{background:color-mix(in srgb,var(--lb-good) 16%,transparent)}
-.lb-prev{font-size:.82rem;color:var(--lb-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums;text-align:left}
+.lb-prev{font-size:1rem;color:var(--lb-muted);opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums;text-align:left}
 .lb-prev.base{font-style:italic}
-.lb-cell{width:100%;min-width:0;height:2.3rem;text-align:center;border-radius:8px;border:1px solid transparent;background:var(--lb-sunk);color:var(--lb-ink);font-weight:600;font-variant-numeric:tabular-nums;padding:0 4px}
+.lb-cell{width:100%;min-width:0;height:2.9rem;font-size:1.3rem;text-align:center;border-radius:10px;border:1px solid transparent;background:var(--lb-sunk);color:var(--lb-ink);font-weight:600;font-variant-numeric:tabular-nums;padding:0 4px}
 .lb-cell::placeholder{color:var(--lb-muted);opacity:.75;font-weight:500}
 .lb-cell:focus{border-color:var(--lb-accent);outline:none;background:var(--lb-surface)}
 .lb-setrow.done .lb-cell{background:transparent}
-.lb-chk{height:2.3rem;border-radius:8px;background:var(--lb-sunk);color:var(--lb-muted);font-weight:800;font-size:1rem;display:flex;align-items:center;justify-content:center}
+.lb-chk{height:2.9rem;border-radius:10px;background:var(--lb-sunk);color:var(--lb-muted);font-weight:800;font-size:1rem;display:flex;align-items:center;justify-content:center}
 .lb-setrow.done .lb-chk{background:var(--lb-good);color:#fff}
 .lb-prrow{grid-column:2/-1;font-size:.72rem;font-weight:700;color:var(--lb-good);letter-spacing:.03em}
-.lb-exfoot{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.lb-exfoot{display:flex;justify-content:center;align-items:center;margin-top:12px;gap:14px;position:relative}
+.lb-exfoot .lb-btn{flex:1;background:none;border:0;color:var(--lb-accent);text-transform:uppercase;letter-spacing:.08em;font-weight:700;font-size:.95rem;min-height:44px}
+.lb-exfoot .lb-link{position:absolute;right:0}
 .lb-rest{position:absolute;left:0;right:0;bottom:0;background:var(--lb-surface);border-top:1px solid var(--lb-line);padding:8px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));box-shadow:0 -6px 20px rgba(0,0,0,.12)}
 .lb-rest.floating{position:fixed;z-index:15;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));border-radius:14px;border:1px solid var(--lb-line);max-width:480px;margin:0 auto}
 .lb-rest-bar{height:5px;background:var(--lb-sunk);border-radius:3px;overflow:hidden} .lb-rest-bar i{display:block;height:100%;background:var(--lb-accent);transition:width .5s linear}
@@ -1825,7 +2098,7 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-gym-pair{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:stretch} .lb-gym-pair .lb-btn{min-height:76px;padding:0 18px}
 .lb-gym-nav{display:grid;grid-template-columns:1fr auto 1fr;gap:8px} .lb-gym-nav .lb-btn{min-height:52px;padding:6px 10px;font-size:.9rem}
 .lb-gym-nav .lb-btn:disabled{opacity:.4}
-.lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}
+.lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}.pr-celebrate b{display:block;font-size:1rem}.pr-celebrate-lines{display:block;margin-top:4px;font-weight:600;font-size:.88rem;opacity:.95}.pr-celebrate-lines>span{display:block}.pr-celebrate small{opacity:.8;font-weight:500}
 @keyframes lb-pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
 .lb-live.gym .lb-rest{padding-top:12px}
 .lb-live.gym .lb-rest-bar{height:8px;border-radius:4px}
@@ -1852,12 +2125,10 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     if (opts.anim) {
       opts.anim.info = id => {
         const g = opts.formCues ? opts.formCues.find(id) || opts.formCues.find(getEx(id).name) : null;
-        const l = opts.demos ? opts.demos.link(id, getEx(id).name) : null;
-        return { title: getEx(id).name, cues: g ? g.cues : [], steps: g ? g.steps : [], video: l ? { href: l.href, label: l.verified ? 'Watch a video ↗' : 'Search videos ↗' } : null };
+        return { title: getEx(id).name, cues: g ? g.cues : [], steps: g ? g.steps : [] };
       };
       opts.anim.attach(document);
     }
-    if (opts.demos && !document.getElementById('ed-style')) { const st = document.createElement('style'); st.id = 'ed-style'; st.textContent = opts.demos.css; document.head.appendChild(st); }
     if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
     root = el; root.classList.add('lb');
     overlay = document.querySelector('.lb-overlay') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'lb-overlay' }));
@@ -1873,8 +2144,11 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   }
   // Called by a host when its storage changed underneath (another device): reload and redraw.
   async function refresh() { await loadAll(); if (!E && !sheets.length) renderMain(); }
-  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
-    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal } };
+  // Host settings screen: read the logger's settings and change some of them (gym, unit, rest) without opening its Tools tab.
+  function settings() { return clone(S.settings); }
+  function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
+  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, settings, setSettings, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 

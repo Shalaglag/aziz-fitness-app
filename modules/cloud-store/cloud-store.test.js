@@ -67,3 +67,25 @@ test("auth errors become plain sentences", () => {
 test("loadConfig resolves false when the config file can't be loaded", async () => {
   assert.strictEqual(await C.loadConfig(), false);
 });
+
+test("loadSdk tries the bundled copy first and falls back to the CDN", async () => {
+  const seen = [];
+  delete globalThis.firebase;
+  await C.loadSdk(async src => { seen.push(src); if (src.startsWith(C.LOCAL_SDK)) throw new Error("404"); if (src.endsWith("firestore-compat.js")) globalThis.firebase = { firestore() {} }; });
+  assert.ok(seen[0].startsWith("vendor/firebase-10.14.1/"), "bundled copy first");
+  assert.ok(seen.slice(1).every(s => s.startsWith(C.SDK)), "then the CDN");
+  assert.ok(globalThis.firebase);
+  delete globalThis.firebase;
+  const local = [];
+  await C.loadSdk(async src => { local.push(src); globalThis.firebase = { firestore() {} }; });
+  assert.ok(local.length >= 1 && local.every(s => s.startsWith(C.LOCAL_SDK)), "no CDN request when the bundled copy loads");
+  delete globalThis.firebase;
+});
+
+test("the bundled Firebase files exist next to the app", () => {
+  const fs = require("fs"), path = require("path");
+  for (const p of ["app", "auth", "firestore"]) {
+    const f = path.join(__dirname, "../../app", C.LOCAL_SDK, "firebase-" + p + "-compat.js");
+    assert.ok(fs.statSync(f).size > 10000, f);
+  }
+});

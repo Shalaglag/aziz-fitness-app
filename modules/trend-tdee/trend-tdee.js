@@ -14,7 +14,11 @@
  * half-logged today never counts. Only food marked eaten is counted.
  */
 const TrendTDEE = (() => {
-  const START = "2026-10-25", REVIEW = "2026-11-07", KCAL = 2000, FLOOR = 1700;
+  const START = "2026-10-25", REVIEW = "2026-11-07";
+  // Plan defaults; opts.kcal (the cut target), opts.floor (lowest calories ever suggested) and opts.review override them.
+  const KCAL_DEFAULT = 2000, FLOOR_DEFAULT = 1800;
+  let KCAL = KCAL_DEFAULT, FLOOR = FLOOR_DEFAULT, REVIEW_AT = REVIEW;
+  const posNum = v => typeof v === "number" && isFinite(v) && v > 0 ? v : null;
   const ALPHA = 0.1, KCAL_PER_KG = 7700, MIN_DAYS = 14, MAX_DAYS = 28, MIN_FOOD = 10, MIN_WEIGH = 8;
   const PACE_LO = 0.5, PACE_HI = 0.8; // kg per week, the plan band
   const DAY = 864e5, MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -83,6 +87,7 @@ const TrendTDEE = (() => {
    * } */
   function estimate(docs, opts = {}) {
     docs = docs || {};
+    KCAL = posNum(opts.kcal) || KCAL_DEFAULT; FLOOR = posNum(opts.floor) || FLOOR_DEFAULT; REVIEW_AT = isDate(opts.review) ? opts.review : REVIEW;
     const today = isDate(opts.today) ? opts.today : localToday();
     const ser = series(docs.weights, { today });
     const at = d => { const r = ser.find(x => x.date === d); return r ? r.trend : null; };
@@ -94,7 +99,7 @@ const TrendTDEE = (() => {
     const R = {
       today, from, to, days, trendNow, trendDelta7: trendNow != null && wk != null ? trendNow - wk : null,
       weighIns: 0, foodDays: 0, estDays: 0, intakeAvg: null, rateKgWk: null, tdee: null, tdeeLo: null, tdeeHi: null,
-      suggest: null, readyOn: add(START, MIN_DAYS), reviewOpen: today > REVIEW, notes: [], ready: false, status: "empty",
+      suggest: null, readyOn: add(START, MIN_DAYS), reviewOpen: today > REVIEW_AT, notes: [], ready: false, status: "empty",
     };
     if (!ser.length) return R;
     R.status = "building";
@@ -158,10 +163,10 @@ const TrendTDEE = (() => {
   function verdict(E) {
     if (!E.ready) return "";
     const s = E.suggest;
-    if (!E.reviewOpen) return "Hold 2,000 until the Nov 7 review. If it were today: " + (s.keep ? "keep 2,000." : "aim for " + fint(s.lo) + "–" + fint(s.hi) + " kcal.");
-    if (s.keep) return "2,000 kcal sits inside the " + fint(s.lo) + "–" + fint(s.hi) + " range for 0.5–0.8 kg a week. Keep it.";
-    if (KCAL > s.hi) return "At 2,000 you're losing slower than 0.5 kg a week. Move to " + fint(s.hi) + " kcal (range " + fint(s.lo) + "–" + fint(s.hi) + ").";
-    return "At 2,000 you're losing faster than 0.8 kg a week. You can eat up to " + fint(s.lo) + "–" + fint(s.hi) + " kcal and protect strength.";
+    if (!E.reviewOpen) return "Hold " + fint(KCAL) + " until the " + short(REVIEW_AT) + " review. If it were today: " + (s.keep ? "keep " + fint(KCAL) + "." : "aim for " + fint(s.lo) + "–" + fint(s.hi) + " kcal.");
+    if (s.keep) return fint(KCAL) + " kcal sits inside the " + fint(s.lo) + "–" + fint(s.hi) + " range for 0.5–0.8 kg a week. Keep it.";
+    if (KCAL > s.hi) return "At " + fint(KCAL) + " you're losing slower than 0.5 kg a week. Move to " + fint(s.hi) + " kcal (range " + fint(s.lo) + "–" + fint(s.hi) + ").";
+    return "At " + fint(KCAL) + " you're losing faster than 0.8 kg a week. You can eat up to " + fint(s.lo) + "–" + fint(s.hi) + " kcal and protect strength.";
   }
 
   function html(docs, opts) {

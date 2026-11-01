@@ -63,9 +63,13 @@ Changing the key means the next APK cannot install over the old one (export data
 - Hardware back button: closes an open sheet, else returns to Today, else minimises the app (a running workout
   is kept).
 - Status bar colour follows the app theme (light/dark/system).
-- Rest timer: a local notification fires when the rest ends while the app is in the background.
+- Rest timer: a local notification fires when the rest ends while the app is in the background. It rings the same ding as the app (channel "Rest timer", `res/raw/rest_done.wav`); its sound and volume can be changed in Android Settings, Apps, Aziz Fitness, Notifications.
 - Permissions declared: internet, vibrate, wake lock (keep screen on during a workout), notifications, exact
-  alarms, camera (food and progress photos through the normal file picker).
+  alarms, camera (food and progress photos through the normal file picker), location (GPS run tracker; asked
+  the first time a run starts).
+- Offline from the first launch: Firebase ships inside the app (`app/vendor/firebase-10.14.1`, loaded before the
+  CDN), so sign-in is remembered and logging syncs later with no signal. Entries saved on the phone without an
+  account are added to the account once after signing in; anything already in the account is left as it is.
 - The service worker is not registered inside the app (the APK already contains the app; a cache would show the
   previous version after an update).
 

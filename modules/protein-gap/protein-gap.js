@@ -85,6 +85,7 @@
     return {
       basis: o.basis,
       totals: { kcal: Math.round(t.kcal), p: r1(t.p), c: r1(t.c), f: r1(t.f) },
+      kcalTarget: Math.round(o.targets.kcal),
       kcalLeft: Math.round(o.targets.kcal - t.kcal),
       proteinLeft: r1(Math.max(0, o.targets.proteinMin - t.p)),
       proteinToMax: r1(o.targets.proteinMax - t.p),
@@ -172,12 +173,13 @@
   // One-line summary for a card or the copyable day text.
   function summary(res) {
     const head = `${res.proteinLeft} g protein and ${res.kcalLeft} kcal left`;
+    const cap = (res.kcalTarget || TARGETS.kcal).toLocaleString('en-US');
     if (res.status === 'met') return `Protein is covered (${res.totals.p} g). ${res.kcalLeft} kcal left.`;
-    if (res.status === 'no-room') return `${head}. No add fits without going over 2,000 kcal.`;
+    if (res.status === 'no-room') return `${head}. No add fits without going over ${cap} kcal.`;
     const b = res.best;
     const what = b.items.map(label).join(' + ');
     if (res.status === 'closable') return `${head}. Add ${what}: +${b.add.p} g protein, +${b.add.kcal} kcal (ends at ${b.after.p} g, ${b.after.kcal} kcal).`;
-    return `${head}. Nothing closes it under 2,000 kcal; ${what} gets closest (+${b.add.p} g, still ${b.short} g short).`;
+    return `${head}. Nothing closes it under ${cap} kcal; ${what} gets closest (+${b.add.p} g, still ${b.short} g short).`;
   }
 
   // Map a suggestion into days/{date}.food items (planned, slot "add").

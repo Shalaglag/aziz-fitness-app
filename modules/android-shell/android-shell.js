@@ -64,13 +64,23 @@ const AndroidShell = (function () {
     try { const bg = rgbToHex(getComputedStyle(doc.body).backgroundColor); if (bg) sb.setBackgroundColor({ color: bg }); } catch (e) { }
   }
 
-  async function notifyAt(id, when, title, body) {
+  // The rest notification has its own channel that plays the GymSounds "rest over" ding
+  // (android/app/src/main/res/raw/rest_done.wav, written by modules/gym-sounds/make-wav.js).
+  // A channel's sound is fixed once created, so a new sound needs a new channel id.
+  const REST_CHANNEL = { id: "rest_v1", name: "Rest timer", description: "Rings when your rest is over", importance: 5, visibility: 1, sound: "rest_done.wav", vibration: true };
+  let channelReady = null;
+  function restChannel(ln) {
+    if (!channelReady) channelReady = Promise.resolve(ln.createChannel ? ln.createChannel(REST_CHANNEL) : null).then(() => true, () => false);
+    return channelReady;
+  }
+
+  async function notifyAt(id, when, title, body, extra) {
     const ln = plugin("LocalNotifications"); if (!ln) return false;
     try {
       let p = await ln.checkPermissions();
       if (p.display !== "granted") p = await ln.requestPermissions();
       if (p.display !== "granted") return false;
-      await ln.schedule({ notifications: [{ id, title, body, schedule: { at: new Date(when), allowWhileIdle: true }, smallIcon: "ic_stat_notify" }] });
+      await ln.schedule({ notifications: [Object.assign({ id, title, body, schedule: { at: new Date(when), allowWhileIdle: true }, smallIcon: "ic_stat_notify" }, extra || {})] });
       return true;
     } catch (e) { return false; }
   }
@@ -85,11 +95,11 @@ const AndroidShell = (function () {
     syncStatusBar(document);
     try { new MutationObserver(() => syncStatusBar(document)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) { }
     if (window.matchMedia) { try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => syncStatusBar(document)); } catch (e) { } }
-    window.addEventListener("lb:rest", e => { const d = (e && e.detail) || {}; if (d.end) notifyAt(REST_ID, d.end + 1000, "Rest is over", "Back to the next set."); });
+    window.addEventListener("lb:rest", e => { const d = (e && e.detail) || {}; if (d.end) restChannel(plugin("LocalNotifications") || {}).then(ok => notifyAt(REST_ID, d.end + 1000, "Rest is over", "Back to the next set.", ok ? { channelId: REST_CHANNEL.id, sound: REST_CHANNEL.sound } : null)); });
     window.addEventListener("lb:rest-stop", () => cancel(REST_ID));
     return true;
   }
 
-  return { isNative, init, onBack, backPress, notifyAt, cancel, syncStatusBar, _handlers: handlers };
+  return { isNative, init, onBack, backPress, notifyAt, cancel, syncStatusBar, REST_CHANNEL, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;

@@ -29,8 +29,8 @@ test('animations are keyed by real logger ids with matching equipment', () => {
 });
 
 test('no guessing: unknown and similar names get nothing', () => {
-  assert.strictEqual(A.has('seated-row-machine'), false);
-  assert.strictEqual(A.has('lateral-raise-machine'), false);
+  assert.strictEqual(A.has('bench-press'), false);
+  assert.strictEqual(A.has('row-machine'), false);
   assert.strictEqual(A.has('Seated Row (Cable)'), false, 'names are not ids');
   assert.strictEqual(A.frame('nope', 0), null);
 });
@@ -67,8 +67,12 @@ test('feet stay above the floor and nothing is NaN', () => {
 
 test('each rep actually moves', () => {
   A.ids().forEach(id => {
-    const a = A.frame(id, 0).sk, b = A.frame(id, 0.5).sk;
-    const moved = ['L', 'R'].some(k => dist(a.wr[k], b.wr[k]) > 0.05 || dist(a.an[k], b.an[k]) > 0.05 || dist(a.toe[k], b.toe[k]) > 0.05) || dist(a.P, b.P) > 0.05 || dist(a.sh.L, b.sh.L) > 0.04;
+    if (A.defs[id].still) return;
+    const a = A.frame(id, 0).sk;
+    const moved = [0.25, 0.5, 0.75].some(t => {
+      const b = A.frame(id, t).sk;
+      return ['L', 'R'].some(k => dist(a.wr[k], b.wr[k]) > 0.05 || dist(a.hand[k], b.hand[k]) > 0.05 || dist(a.an[k], b.an[k]) > 0.05 || dist(a.toe[k], b.toe[k]) > 0.05) || dist(a.P, b.P) > 0.05 || dist(a.sh.L, b.sh.L) > 0.04;
+    });
     assert.ok(moved, id + ' does not move');
   });
 });
