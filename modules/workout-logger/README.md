@@ -58,3 +58,6 @@ Data shape is unchanged apart from the optional `rir` on sets and the optional `
 
 ## Collapsed demos and List view default (v48)
 Exercise demos (ExerciseAnim) no longer auto-play: the live list, the Gym card and the About sheet show a small "▶ Demo" toggle (`demoSlot(id)`); tapping it mounts the player, "Hide" removes it. Open state lives in the `demoOpen` set for the session only. The first time the logger loads after this version it switches to the Strong-style List view once (`settings.listOnce`); the Gym/List switch stays the user's afterwards.
+
+## Exercise list rows (Nov 1)
+Exercises tab and the add-exercise picker use Strong-style rows: a picture from `opts.anim.thumb(id)` (letter circle when it returns null or the file fails to load), the name, the body part, and the number of finished workouts that include it. A Sort select switches A–Z (letter headings) and Most done (bands 50+, 20–49, 10–19, 1–9, not done yet).
