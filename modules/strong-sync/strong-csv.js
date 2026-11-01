@@ -170,6 +170,12 @@ const StrongCSV = (() => {
     "iso lateral low row plate": "Iso-Lateral Low Row",
     "bicep seated curl": "Seated Bicep Curl",
     "seated bicep curl": "Seated Bicep Curl",
+    // Confirmed by Aziz (Nov 1 2026): which machine each Strong name means.
+    "chest fly": "Pec Deck (Machine)",
+    "seated rear shoulder": "Reverse Fly (Machine)",
+    "flat bench neutral grip": "Flat Chest Press (Plate-loaded)",
+    "underarm curl cable": "Bayesian Curl (Cable)",
+    "vertical chest press": "Gundam (Chest Machine)",
   };
 
   function matchName(strongName, names) {

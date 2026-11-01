@@ -1,0 +1,234 @@
+{
+ "note": "Batch 3 = three more exercises Aziz logs in Strong (confirmed names) plus 13 staples from the library. Same format and rules as batches 1 and 2 (primary red #d9392c, secondary amber #f0a030).",
+ "exercises": [
+  {
+   "id": "pec-deck-machine",
+   "equipment": "Seated pec deck: back pad, two vertical lever arms with elbow/forearm pads or handles at chest height, pivot above the head",
+   "primary": [
+    "chest"
+   ],
+   "secondary": [
+    "front delts"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Back flat on the pad; forearms/handles at chest height; arms sweep together in front of the chest, then open until a stretch without the shoulders rolling forward.",
+   "source": "Strong: Chest Fly, 97 workouts (Aziz confirmed: pec deck machine)"
+  },
+  {
+   "id": "bayesian-curl-cable",
+   "equipment": "Single-arm cable curl facing away from a low pulley, one D-handle, cable behind the body",
+   "primary": [
+    "biceps"
+   ],
+   "secondary": [
+    "forearm flexors"
+   ],
+   "camera": "side three-quarter view, from the working-arm side",
+   "technique": "Stand facing away from the low pulley, arm behind the body; curl the D-handle forward and up without swinging the torso; lower under control to a full stretch behind you.",
+   "source": "Strong: underarm curl (cable), 50 workouts (Aziz confirmed: single-arm Bayesian cable curl)"
+  },
+  {
+   "id": "flat-chest-press-plate-loaded",
+   "equipment": "Flat plate-loaded chest press: lying on a flat bench, two lever arms with vertical (neutral) handles, plates on the lever ends",
+   "primary": [
+    "chest"
+   ],
+   "secondary": [
+    "front delts",
+    "triceps"
+   ],
+   "camera": "high three-quarter side view",
+   "technique": "Lie flat; grip the vertical handles at chest level; press up and slightly inward so the handles move toward the centre of the chest; lower with control.",
+   "source": "Strong: Flat Bench Neutral Grip, 38 workouts (Aziz confirmed)"
+  },
+  {
+   "id": "deadlift-barbell",
+   "equipment": "Barbell on the floor with plates, flat shoes",
+   "primary": [
+    "glutes",
+    "hamstrings",
+    "lower back"
+   ],
+   "secondary": [
+    "quads",
+    "traps",
+    "forearms"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Bar over mid-foot, flat back, hips and knees extend together, bar stays against the legs, lock out standing tall and lower the same path.",
+   "source": "Library staple"
+  },
+  {
+   "id": "romanian-deadlift-barbell",
+   "equipment": "Standing with a barbell held at the thighs",
+   "primary": [
+    "hamstrings",
+    "glutes"
+   ],
+   "secondary": [
+    "lower back"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Soft knees, hips push back, back stays flat, bar slides down the thighs to just below the knee, squeeze the glutes to stand.",
+   "source": "Library staple"
+  },
+  {
+   "id": "bent-over-row-barbell",
+   "equipment": "Barbell held with an overhand grip, torso hinged forward about 45 degrees",
+   "primary": [
+    "lats",
+    "mid back"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts",
+    "lower back"
+   ],
+   "camera": "rear three-quarter view",
+   "technique": "Hinged torso stays still; pull the bar to the lower ribs; elbows close to the body; lower to straight arms.",
+   "source": "Library staple"
+  },
+  {
+   "id": "pull-up",
+   "equipment": "Overhead fixed bar, bodyweight",
+   "primary": [
+    "lats"
+   ],
+   "secondary": [
+    "biceps",
+    "mid back",
+    "rear delts"
+   ],
+   "camera": "rear three-quarter view",
+   "technique": "Full hang with straight arms; pull until the chin passes the bar without swinging; lower to a full hang.",
+   "source": "Library staple"
+  },
+  {
+   "id": "chest-dip",
+   "equipment": "Parallel dip bars, bodyweight, torso leaning forward",
+   "primary": [
+    "chest"
+   ],
+   "secondary": [
+    "triceps",
+    "front delts"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Lean forward, lower until the upper arms are about parallel to the floor, press back up without locking out hard.",
+   "source": "Library staple"
+  },
+  {
+   "id": "overhead-press-barbell",
+   "equipment": "Standing with a barbell racked at the shoulders",
+   "primary": [
+    "front delts",
+    "side delts"
+   ],
+   "secondary": [
+    "triceps",
+    "upper chest"
+   ],
+   "camera": "front three-quarter view",
+   "technique": "Bar from the collarbone to above the head with the ribs down and the glutes tight; the bar passes close to the face.",
+   "source": "Library staple"
+  },
+  {
+   "id": "bicep-curl-barbell",
+   "equipment": "Standing with a straight barbell, underhand grip",
+   "primary": [
+    "biceps"
+   ],
+   "secondary": [
+    "forearm flexors"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Elbows pinned at the sides, curl the bar to the chest, lower fully without swinging.",
+   "source": "Library staple"
+  },
+  {
+   "id": "hammer-curl-dumbbell",
+   "equipment": "Standing with a dumbbell in each hand, palms facing each other",
+   "primary": [
+    "biceps",
+    "forearm flexors"
+   ],
+   "secondary": [],
+   "camera": "front three-quarter view",
+   "technique": "Elbows at the sides, palms face each other throughout, curl up and lower with control.",
+   "source": "Library staple"
+  },
+  {
+   "id": "goblet-squat-dumbbell",
+   "equipment": "Standing holding one dumbbell vertically at the chest",
+   "primary": [
+    "quads",
+    "glutes"
+   ],
+   "secondary": [
+    "hamstrings",
+    "abs"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Dumbbell at the chest, elbows inside the knees, squat to at least parallel with the chest tall, stand up.",
+   "source": "Library staple"
+  },
+  {
+   "id": "walking-lunge-dumbbell",
+   "equipment": "Walking forward with a dumbbell in each hand",
+   "primary": [
+    "quads",
+    "glutes"
+   ],
+   "secondary": [
+    "hamstrings",
+    "calves"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Long step, rear knee drops toward the floor, front shin vertical, push through the front foot into the next step.",
+   "source": "Library staple"
+  },
+  {
+   "id": "hip-thrust-barbell",
+   "equipment": "Upper back on a bench, barbell across the hips with a pad",
+   "primary": [
+    "glutes"
+   ],
+   "secondary": [
+    "hamstrings",
+    "quads"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Shoulder blades on the bench, feet flat; drive the hips up until the torso is level with the thighs, chin tucked, lower under control.",
+   "source": "Library staple"
+  },
+  {
+   "id": "incline-bench-press-barbell",
+   "equipment": "Incline bench about 30 degrees with a barbell and plates",
+   "primary": [
+    "upper chest"
+   ],
+   "secondary": [
+    "front delts",
+    "triceps"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Bar to the upper chest, forearms vertical at the bottom, press up and slightly back over the shoulders.",
+   "source": "Library staple"
+  },
+  {
+   "id": "one-arm-row-dumbbell",
+   "equipment": "One hand and one knee on a flat bench, dumbbell in the other hand",
+   "primary": [
+    "lats",
+    "mid back"
+   ],
+   "secondary": [
+    "biceps",
+    "rear delts"
+   ],
+   "camera": "side three-quarter view",
+   "technique": "Flat back; pull the dumbbell to the hip with the elbow close to the body; lower to a full stretch.",
+   "source": "Library staple"
+  }
+ ]
+}

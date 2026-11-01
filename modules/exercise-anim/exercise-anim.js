@@ -1168,6 +1168,12 @@
       keys: rep(onFloor({ hands: one([0.3, 0.4, -0.4]), elbows: one([1, -1, 0]) }), onFloor({ hands: one([0.28, 0.68, -0.4]), elbows: one([1, -1, 0]) }), { c: 0.4 }),
       props: sk => mat().concat(E.barbell(sk.grip.L, sk.grip.R), E.upright(0.55, -0.9, 0.5), E.upright(-0.55, -0.9, 0.5)) },
 
+    'flat-chest-press-plate-loaded': { name: 'Flat Chest Press (Plate-loaded)', eq: 'Plate-loaded', hi: ['torso'], sec: ['delts', 'arms'], cam: { yaw: 0.95, pitch: 0.3 },
+      note: 'Lying flat, vertical (neutral) handles that travel inward as you press. Your machine may differ.',
+      keys: rep(lying({ hands: one([0.3, 0.84, -0.33]), elbows: one([0.6, -0.8, 0.2]) }), lying({ hands: one([0.13, 1.13, -0.37]), elbows: one([0.6, -0.8, 0.2]) }), { c: 0.45 }),
+      props: sk => E.bench(-0.9, 0.45).concat(E.upright(0.55, -1.0, 1.4), E.upright(-0.55, -1.0, 1.4),
+        ['L', 'R'].flatMap(k => { const s = k === 'L' ? 1 : -1, pv = [s * 0.55, 1.2, -1.0]; return E.handle(sk.grip[k], [0, 1, 0]).concat([cap(pv, sk.grip[k], 0.02, 0.02, 'metal'), sph(pv, 0.05, 'frame'), disc(add(pv, [s * 0.1, 0, -0.1]), [1, 0, 0], 0.17, 'plate')]); })) },
+
     'incline-chest-press-plate-loaded': { name: 'Incline Chest Press (Plate-loaded)', eq: 'Plate-loaded', hi: ['torso', 'delts'],
       keys: like('incline-chest-press-machine'),
       props: sk => E.seat(0.5, 0).concat(E.back([0, 0.98, -0.17], 0.7), E.upright(0.42, -0.25, 1.8), E.upright(-0.42, -0.25, 1.8),
