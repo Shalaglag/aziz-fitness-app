@@ -52,6 +52,9 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Health Connect (WaterH water sync, modules/health-connect). connect-client needs minSdk 26.
+    implementation "androidx.health.connect:connect-client:1.1.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

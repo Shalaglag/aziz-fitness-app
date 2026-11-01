@@ -6,6 +6,7 @@
     { "file": "modules/weekly-report/weekly-report.js", "expose": ["WeeklyReport"] },
     { "file": "modules/strong-sync/strong-csv.js", "expose": ["StrongCSV"] },
     { "file": "modules/waterh-sync/waterh-import.js", "esm": "WaterH" },
+    { "file": "modules/health-connect/health-connect.js", "expose": ["HealthConnectSync"] },
     { "file": "modules/voice-log/voice-log.js", "expose": ["VoiceLog"] },
     { "file": "modules/workout-share/workout-share.js", "expose": ["WorkoutShare"] },
     { "file": "modules/break-ramp/break-ramp.js", "expose": ["BreakRamp"] },
