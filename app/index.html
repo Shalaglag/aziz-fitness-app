@@ -33840,6 +33840,7 @@ if (typeof module !== "undefined") module.exports = ReverseDiet;
 .gs-kv li{display:flex;justify-content:space-between;gap:12px;font-size:.95rem;padding:8px 0;border-bottom:1px solid var(--line)}
 .gs-kv li:last-child{border-bottom:0}
 .gs-kv li span:last-child{font-weight:600;text-align:right}
+.gs-check{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--card-line,transparent);border-radius:12px;padding:10px 12px;cursor:pointer}.gs-check input{margin-top:3px;width:18px;height:18px;flex:none;accent-color:var(--accent)}.gs-check small{display:block;color:var(--muted);font-size:.82rem;line-height:1.35;margin-top:2px}
 .gs-ms{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .gs-ms::-webkit-scrollbar{display:none}
 .gs-ms div{flex:none;background:var(--surface);border-radius:12px;padding:8px 12px;text-align:center;border:1px solid var(--card-line,transparent)}
@@ -33948,6 +33949,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
     const today = realDate(opts.today) ? opts.today : todayIso();
     const existing = opts.existing || null;                       // {profile, targets} of the current plan, if any
     const a = Object.assign({ mode: 'pace' }, opts.answers || {});
+    if (opts.cycling && opts.cycling.available && a.cycling === undefined) a.cycling = !!opts.cycling.on;
     let step = 0, errs = [], result = null;
     const el = doc.createElement('div'); el.className = 'gs-wrap'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Goal setup');
     let unBack = null;
@@ -33959,6 +33961,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
     const errFor = k => { const e = errs.find(x => x.field === k); return e ? '<p class="gs-err">' + esc(e.msg) + '</p>' : ''; };
 
     function readInputs() { el.querySelectorAll('[data-gs-f]').forEach(i => { const k = i.dataset.gsF, v = i.value.trim(); a[k] = v === '' ? undefined : (k === 'endDate' ? v : +v); }); }
+    function readChecks() { el.querySelectorAll('[data-gs-c]').forEach(i => { a[i.dataset.gsC] = !!i.checked; }); }
 
     function body() {
       const s = steps()[step];
@@ -33996,6 +33999,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
           + (r.milestones.length > 1 ? '<div class="gs-ms">' + r.milestones.map(m => '<div class="' + (m.final ? 'final' : '') + '"><b class="num">' + m.kg + ' kg</b><span>' + fmtDate(m.date, today) + '</span></div>').join('') + '</div>' : '') + '</div>' : '')
         + r.warnings.map(w => '<p class="note">' + esc(w) + '</p>').join('') + r.notes.map(n => '<p class="note info">' + esc(n) + '</p>').join('')
         + (cur ? '<div><span class="label">' + (changed ? 'Compared with your current numbers' : 'Same as your current numbers') + '</span><table class="gs-cmp"><tr><th></th><th>Now</th><th>New</th></tr>' + cmpRow('Calories', cur.kcal, r.kcal, '') + cmpRow('Protein', cur.proteinMin, r.protein, ' g') + cmpRow('Fat', cur.fatLo != null && cur.fatHi != null ? (cur.fatLo + cur.fatHi) / 2 : null, r.fat, ' g') + cmpRow('Goal weight', cur.goalKg, r.profile.goalKg, ' kg') + '</table><p class="gs-line muted" style="margin-top:6px">Nothing changes until you tap "Use these numbers". Your history is never touched.</p></div>' : '')
+        + (opts.cycling && opts.cycling.available ? '<label class="gs-check"><input type="checkbox" data-gs-c="cycling"' + (a.cycling ? ' checked' : '') + '><span><b>Shift calories to lift days</b> (optional)<small>Same calories for the week: about 150 more on days you lift, a little less on rest days. Protein and fat stay the same. Exercise calories are never added on top.</small></span></label>' : '')
         + '<details><summary>How this is worked out</summary><ul>' + SOURCES.map(s => '<li><b>' + esc(s.t) + '</b>: ' + esc(s.s) + '</li>').join('') + '<li>The weekly pace is set from your weight today; re-run this when your weight has moved a kilo or more and the app offers it after a weigh-in.</li></ul></details>';
     }
 
@@ -34042,7 +34046,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
       if (act === 'back') { readInputs(); errs = []; step = Math.max(0, step - 1); dirCls = 'gs-in-l'; paint(); return; }
       if (act === 'skip') { close('skip'); return; }
       if (act === 'close') { close('close'); return; }
-      if (act === 'apply') { if (result && result.ok) { if (opts.onApply) opts.onApply(result, Object.assign({}, a)); close('apply'); } return; }
+      if (act === 'apply') { readChecks(); if (result && result.ok) { if (opts.onApply) opts.onApply(result, Object.assign({}, a)); close('apply'); } return; }
     });
     el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); const n = el.querySelector('[data-gs="next"]'); if (n) n.click(); } });
 
@@ -34073,6 +34077,8 @@ window.GoalSetup=GoalSetup;
  *   PlanCheck.html(R, {canApply})            -> card HTML with data-pc="apply|keep|later" buttons
  *   PlanCheck.decide(plan, R, decision, today) -> the new plan object to save (and profile fields when applied)
  *   PlanCheck.weekLine(docs, {today, plan, trend}) -> [cls, label, text] for the weekly report, or null
+ *   PlanCheck.phases(plan, {today, breaks, maintenanceKcal, reverse, kg}) / phasesHtml(P) -> the plan as a timeline of
+ *     phases: start, optional maintenance weeks (from DietBreak), goal, optional return to maintenance (ReverseDiet)
  *
  * Rules
  *   - A check is offered 14+ days after the plan (or the last decision), only when the trend estimate is
@@ -34235,9 +34241,47 @@ window.GoalSetup=GoalSetup;
     return ['warn', 'Plan', vs + ' Slower than planned.' + noise];
   }
 
-  const css = '.pc-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pc-stats>div{background:var(--sunk);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.pc-stats b{font-size:1.35rem}.pc-stats small{color:var(--muted);font-size:.78rem;line-height:1.3}@media (max-width:380px){.pc-stats{grid-template-columns:1fr}}';
+  // The plan as phases: start → optional maintenance weeks (diet breaks) → goal → what comes after.
+  // breaks = planned breaks [{start, end}] from DietBreak.build().plannedBreaks (future, not yet taken);
+  // maintenanceKcal = the number a break or the after-goal hold would eat; reverse = ReverseDiet preview/plan {weeks, to}.
+  // Every phase other than the cut/gain itself is optional and only ever started by the person.
+  function phases(plan, opts) {
+    const o = opts || {}, today = isDate(o.today) ? o.today : todayIso();
+    if (!planOk(plan)) return null;
+    const r = plan.result, dir = r.direction, start = isDate(r.today) ? r.today : sinceDate(plan);
+    const maint = isNum(o.maintenanceKcal) && o.maintenanceKcal > 0 ? Math.round(o.maintenanceKcal) : (isNum(r.tdee) ? r.tdee : null);
+    const kgNow = isNum(o.kg) ? o.kg : null;
+    const items = [];
+    items.push({ kind: 'start', date: start, title: 'Start', text: (isNum(r.answers && r.answers.kg) ? r.answers.kg + ' kg, ' : '') + fk(r.kcal) + ' kcal a day' + (dir === 0 ? ' (maintenance)' : dir < 0 ? ' (deficit)' : ' (surplus)') + '.', optional: false });
+    const whatIsMaint = 'Maintenance means eating about what you burn, so your weight holds' + (maint ? ': about ' + fk(maint) + ' kcal for you' : '') + '.';
+    if (dir < 0) {
+      const breaks = (Array.isArray(o.breaks) ? o.breaks : []).filter(b => b && isDate(b.start) && b.start >= today).slice(0, 3);
+      breaks.forEach(b => {
+        const weeks = isDate(b.end) ? Math.max(1, Math.round((daysBetween(b.start, b.end) + 1) / 7)) : 1;
+        items.push({ kind: 'break', date: b.start, title: 'Optional maintenance ' + (weeks === 1 ? 'week' : weeks + ' weeks'), text: 'Around ' + fmt(b.start) + ', if you want one: eat at maintenance' + (maint ? ' (about ' + fk(maint) + ' kcal)' : '') + ' for ' + weeks + ' week' + (weeks === 1 ? '' : 's') + '. The scale pauses on purpose; that is the point, not a failure. You start it from the Diet break card; nothing starts by itself.', optional: true });
+      });
+      if (r.endDate) items.push({ kind: 'goal', date: r.endDate, title: 'Goal', text: r.profile.goalKg + ' kg around ' + fmt(r.endDate) + (kgNow != null && r.profile.goalKg ? ' (' + r1(Math.max(0, kgNow - r.profile.goalKg)) + ' kg to go)' : '') + '.', optional: false });
+      const rv = o.reverse && isNum(o.reverse.weeks) && o.reverse.weeks > 0 ? o.reverse : null;
+      items.push({ kind: 'after', date: r.endDate || null, title: 'After the goal (optional)', text: 'Climb back to maintenance' + (rv ? ' over about ' + rv.weeks + ' weeks, adding ' + fk(Math.max(50, Math.round(((isNum(rv.to) ? rv.to : maint || 0) - r.kcal) / rv.weeks / 50) * 50)) + ' kcal a week' : ' a step at a time') + ', or go straight to it. ' + whatIsMaint + ' The Reverse diet card offers this when the trend reaches the goal; you choose.', optional: true });
+    } else if (dir > 0) {
+      if (r.endDate) items.push({ kind: 'goal', date: r.endDate, title: 'Goal', text: r.profile.goalKg + ' kg around ' + fmt(r.endDate) + '.', optional: false });
+      items.push({ kind: 'after', date: r.endDate || null, title: 'After the goal (optional)', text: 'Hold the new weight at its maintenance, a little above today\'s ' + (maint ? fk(maint) + ' kcal' : 'number') + ', or re-run the questionnaire for the next goal. ' + whatIsMaint, optional: true });
+    } else {
+      items.push({ kind: 'after', date: null, title: 'Holding', text: whatIsMaint + ' Re-run the questionnaire when you want to cut or gain.', optional: false });
+    }
+    return { direction: dir, today, items, note: 'Only the ' + (dir === 0 ? 'hold' : dir < 0 ? 'cut' : 'gain') + ' itself is the plan. Breaks and the return to maintenance are options you start yourself; the app never switches your calories on its own.' };
+  }
 
-  return { recheck, decide, html, weekLine, css, INTERVAL, LATER, NOISE_KCAL, MAX_BAND, MIN_FOOD_SHARE };
+  function phasesHtml(P) {
+    if (!P || !P.items || !P.items.length) return '';
+    const li = it => '<li class="' + it.kind + (it.optional ? ' opt' : '') + (it.date && it.date < P.today ? ' past' : '') + '"><i></i><div><b>' + esc(it.title) + (it.date && it.kind !== 'after' ? ' <small>' + esc(fmt(it.date)) + '</small>' : '') + '</b><p>' + esc(it.text) + '</p></div></li>';
+    return '<div class="card pc-phases"><div class="spread"><h3>Your plan, in phases</h3><span class="muted" style="font-size:.85rem">options, not orders</span></div><ol class="pc-tl">' + P.items.map(li).join('') + '</ol><p class="muted" style="font-size:.85rem">' + esc(P.note) + '</p></div>';
+  }
+
+  const css = '.pc-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pc-stats>div{background:var(--sunk);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.pc-stats b{font-size:1.35rem}.pc-stats small{color:var(--muted);font-size:.78rem;line-height:1.3}@media (max-width:380px){.pc-stats{grid-template-columns:1fr}}' +
+    '.pc-tl{list-style:none;margin:8px 0 10px;padding:0 0 0 18px;border-left:2px solid var(--card-line,#ccc)}.pc-tl li{position:relative;padding:0 0 12px 12px}.pc-tl li:last-child{padding-bottom:0}.pc-tl li>i{position:absolute;left:-24px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--accent,#2d7);border:2px solid var(--card,#fff)}.pc-tl li.opt>i{background:var(--card,#fff);border:2px dashed var(--muted,#888)}.pc-tl li.past>i{opacity:.5}.pc-tl b{font-size:.95rem}.pc-tl b small{color:var(--muted);font-weight:400;margin-left:4px}.pc-tl p{margin:2px 0 0;font-size:.88rem;color:var(--muted);line-height:1.4}';
+
+  return { recheck, decide, html, weekLine, phases, phasesHtml, css, INTERVAL, LATER, NOISE_KCAL, MAX_BAND, MIN_FOOD_SHARE };
 });
 
 window.PlanCheck=PlanCheck;
@@ -43516,9 +43560,9 @@ function openGoalSetup(over){
   const answers={...(gs.answers||{})}; const kg=(over&&over.kg)||latestKg()||prof.startKg; if(kg) answers.kg=kg;
   if(answers.targetKg==null && prof.goalKg) answers.targetKg=prof.goalKg;
   const existing = (prof.cutKcal||prof.goalKg||gs.result||hasRealEntries()) ? {profile:prof, targets:APPT} : null;
-  gsOpen = GoalSetup.open({ answers, today:TODAY, existing, firstRun:!!(over&&over.firstRun),
+  gsOpen = GoalSetup.open({ answers, today:TODAY, existing, firstRun:!!(over&&over.firstRun), cycling:{available:!!window.CalorieCycling, on:!!ccState().on},
     onBack: window.AndroidShell ? fn=>AndroidShell.onBack(fn) : null,
-    onApply:(r,a)=>{ const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), ...r.profile}; p.goalSetup={answers:a, result:r, at:new Date().toISOString()}; put("prefs","main",p); toast(`Plan set: ${fkc(r.kcal)} kcal, ${r.protein} g protein${r.endDate?", goal around "+fmt(r.endDate,{month:"short",day:"numeric",year:"numeric"}):""}.`); },
+    onApply:(r,a)=>{ const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), ...r.profile}; p.goalSetup={answers:a, result:r, at:new Date().toISOString()}; if(window.CalorieCycling && typeof a.cycling==="boolean" && !!(p.cycling||{}).on!==a.cycling) p.cycling={...(p.cycling||{}), on:a.cycling}; put("prefs","main",p); toast(`Plan set: ${fkc(r.kcal)} kcal, ${r.protein} g protein${r.endDate?", goal around "+fmt(r.endDate,{month:"short",day:"numeric",year:"numeric"}):""}.`); },
     onSkip:()=>{ const p=clone(S.docs.prefs.main||{}); p.goalSetup={skipped:true, at:new Date().toISOString()}; put("prefs","main",p,{quiet:true}); toast("You can set your goal any time in Settings → Your numbers."); },
     onClose:()=>{ gsOpen=null; } });
 }
@@ -43546,6 +43590,9 @@ function offerGoalSetup(kg, fromSettings){
 function planCheck(){ if(!window.PlanCheck) return null; const gs=S.docs.prefs.main?.goalSetup; if(!gs||!gs.result) return null; let E=null; try{ E=window.TrendTDEE?TrendTDEE.estimate(S.docs,tdeeOpts()):null; }catch(e){} try{ return PlanCheck.recheck(S.docs,{today:TODAY, plan:gs, targets:APPT, tdee:E, compute:window.GoalSetup?GoalSetup.compute:null}); }catch(e){ console.error("[plan check]",e); return null; } }
 function planWeekLine(){ if(!window.PlanCheck) return null; const gs=S.docs.prefs.main?.goalSetup; if(!gs||!gs.result) return null; try{ return PlanCheck.weekLine(S.docs,{today:TODAY, plan:gs, trend:trendSeries()}); }catch(e){ return null; } }
 function planCheckNudge(){ const R=planCheck(); if(!R||R.status!=="ready") return ""; return `<p class="note info" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Your two-week plan check is ready: estimated maintenance ${fkc(R.estimate.kcal)} kcal.</span><button class="btn small" type="button" data-act="pcgo">See it</button></p>`; }
+function planPhases(){ if(!window.PlanCheck) return ""; const gs=S.docs.prefs.main?.goalSetup; if(!gs||!gs.result) return ""; try{ let breaks=[], maint=null, reverse=null; if(gs.result.direction<0){ if(window.DietBreak){ const B=DietBreak.build(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}); breaks=(B.plannedBreaks||[]).filter(b=>!b.taken); maint=B.tdee&&B.tdee.kcal||null; } if(window.ReverseDiet){ const R=ReverseDiet.plan(dbDocs(), rdState(), rdOpts()); const pv=R.preview||(R.weeks?{weeks:R.weeks,to:R.to}:null); if(pv) reverse={weeks:pv.weeks,to:pv.to}; if(!maint&&R.to) maint=R.to; } } return PlanCheck.phasesHtml(PlanCheck.phases(gs,{today:TODAY, kg:latestKg(), breaks, maintenanceKcal:maint, reverse})); }catch(e){ console.error("[plan phases]",e); return ""; } }
+// Diet break and reverse diet are cut tools: hidden while the saved plan is a gain or a hold.
+function cutTools(){ const gs=S.docs.prefs.main?.goalSetup; return !(gs&&gs.result&&gs.result.ok) || gs.result.direction<0; }
 function planDecide(decision){ const R=planCheck(); const gs=S.docs.prefs.main?.goalSetup; if(!R||!gs) return; const out=PlanCheck.decide(gs,R,decision,TODAY); const p=clone(S.docs.prefs.main||{}); p.goalSetup=out.plan; if(out.profile) p.profile={...(p.profile||{}),...out.profile}; put("prefs","main",p);
   toast(decision==="apply"?`Calories are now ${fkc(out.profile.cutKcal)} kcal, protein ${out.profile.protein} g. Next check in two weeks.`:decision==="keep"?"Kept your numbers. Next check in two weeks.":"OK, asking again in a week."); }
 // Weight units per exercise (prefs/main.exUnits) on top of the plan's unit. Quick-log sets record the unit they were typed in,
@@ -44127,8 +44174,8 @@ function vProgress(){
   let body="";
   if(pt==="weight") body = weightHero()
     + fold("trend","Trend weight and burn","", safeMod("TrendTDEE", ()=>TrendTDEE.html(S.docs, tdeeOpts())))
-    + fold("db","Diet break","", safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()})))
-    + fold("rd","Reverse diet","After the goal", safeMod("ReverseDiet",()=>ReverseDiet.html(dbDocs(), rdState(), rdOpts())))
+    + (cutTools() ? fold("db","Diet break","", safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()})))
+    + fold("rd","Reverse diet","After the goal", safeMod("ReverseDiet",()=>ReverseDiet.html(dbDocs(), rdState(), rdOpts()))) : "")
     + fold("hm","Health markers","", safeMod("HealthMarkers",()=>HealthMarkers.html(S.docs, Object.assign({today:TODAY, date:view.date}, hmOpts))));
   else if(pt==="lifts") body = safeMod("StrengthAnalytics",()=>StrengthAnalytics.html(S.docs, strengthOpts()))
     + (window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
@@ -44146,6 +44193,7 @@ function vProgress(){
     + fold("rfp","Recovery and fatigue","", rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts())));
   else if(pt==="food") body = caloriesEatenCard();
   else body = safeMod("PlanCheck",()=>PlanCheck.html(planCheck()))
+    + planPhases()
     + coachSafe(()=>Coach.insightsHtml(S.docs, {...co, seen:S.docs.prefs.main?.coachSeen||{}}))
     + coachSafe(()=>Coach.reviewHtml(S.docs, co))
     + fold("wr","Weekly report","Weight, food, lifts", safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, Object.assign({planLine:planWeekLine()}, view.wrWeek==null?{}:{week:view.wrWeek}))))

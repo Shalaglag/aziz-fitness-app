@@ -13,6 +13,8 @@
  *   PlanCheck.html(R, {canApply})            -> card HTML with data-pc="apply|keep|later" buttons
  *   PlanCheck.decide(plan, R, decision, today) -> the new plan object to save (and profile fields when applied)
  *   PlanCheck.weekLine(docs, {today, plan, trend}) -> [cls, label, text] for the weekly report, or null
+ *   PlanCheck.phases(plan, {today, breaks, maintenanceKcal, reverse, kg}) / phasesHtml(P) -> the plan as a timeline of
+ *     phases: start, optional maintenance weeks (from DietBreak), goal, optional return to maintenance (ReverseDiet)
  *
  * Rules
  *   - A check is offered 14+ days after the plan (or the last decision), only when the trend estimate is
@@ -175,7 +177,45 @@
     return ['warn', 'Plan', vs + ' Slower than planned.' + noise];
   }
 
-  const css = '.pc-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pc-stats>div{background:var(--sunk);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.pc-stats b{font-size:1.35rem}.pc-stats small{color:var(--muted);font-size:.78rem;line-height:1.3}@media (max-width:380px){.pc-stats{grid-template-columns:1fr}}';
+  // The plan as phases: start → optional maintenance weeks (diet breaks) → goal → what comes after.
+  // breaks = planned breaks [{start, end}] from DietBreak.build().plannedBreaks (future, not yet taken);
+  // maintenanceKcal = the number a break or the after-goal hold would eat; reverse = ReverseDiet preview/plan {weeks, to}.
+  // Every phase other than the cut/gain itself is optional and only ever started by the person.
+  function phases(plan, opts) {
+    const o = opts || {}, today = isDate(o.today) ? o.today : todayIso();
+    if (!planOk(plan)) return null;
+    const r = plan.result, dir = r.direction, start = isDate(r.today) ? r.today : sinceDate(plan);
+    const maint = isNum(o.maintenanceKcal) && o.maintenanceKcal > 0 ? Math.round(o.maintenanceKcal) : (isNum(r.tdee) ? r.tdee : null);
+    const kgNow = isNum(o.kg) ? o.kg : null;
+    const items = [];
+    items.push({ kind: 'start', date: start, title: 'Start', text: (isNum(r.answers && r.answers.kg) ? r.answers.kg + ' kg, ' : '') + fk(r.kcal) + ' kcal a day' + (dir === 0 ? ' (maintenance)' : dir < 0 ? ' (deficit)' : ' (surplus)') + '.', optional: false });
+    const whatIsMaint = 'Maintenance means eating about what you burn, so your weight holds' + (maint ? ': about ' + fk(maint) + ' kcal for you' : '') + '.';
+    if (dir < 0) {
+      const breaks = (Array.isArray(o.breaks) ? o.breaks : []).filter(b => b && isDate(b.start) && b.start >= today).slice(0, 3);
+      breaks.forEach(b => {
+        const weeks = isDate(b.end) ? Math.max(1, Math.round((daysBetween(b.start, b.end) + 1) / 7)) : 1;
+        items.push({ kind: 'break', date: b.start, title: 'Optional maintenance ' + (weeks === 1 ? 'week' : weeks + ' weeks'), text: 'Around ' + fmt(b.start) + ', if you want one: eat at maintenance' + (maint ? ' (about ' + fk(maint) + ' kcal)' : '') + ' for ' + weeks + ' week' + (weeks === 1 ? '' : 's') + '. The scale pauses on purpose; that is the point, not a failure. You start it from the Diet break card; nothing starts by itself.', optional: true });
+      });
+      if (r.endDate) items.push({ kind: 'goal', date: r.endDate, title: 'Goal', text: r.profile.goalKg + ' kg around ' + fmt(r.endDate) + (kgNow != null && r.profile.goalKg ? ' (' + r1(Math.max(0, kgNow - r.profile.goalKg)) + ' kg to go)' : '') + '.', optional: false });
+      const rv = o.reverse && isNum(o.reverse.weeks) && o.reverse.weeks > 0 ? o.reverse : null;
+      items.push({ kind: 'after', date: r.endDate || null, title: 'After the goal (optional)', text: 'Climb back to maintenance' + (rv ? ' over about ' + rv.weeks + ' weeks, adding ' + fk(Math.max(50, Math.round(((isNum(rv.to) ? rv.to : maint || 0) - r.kcal) / rv.weeks / 50) * 50)) + ' kcal a week' : ' a step at a time') + ', or go straight to it. ' + whatIsMaint + ' The Reverse diet card offers this when the trend reaches the goal; you choose.', optional: true });
+    } else if (dir > 0) {
+      if (r.endDate) items.push({ kind: 'goal', date: r.endDate, title: 'Goal', text: r.profile.goalKg + ' kg around ' + fmt(r.endDate) + '.', optional: false });
+      items.push({ kind: 'after', date: r.endDate || null, title: 'After the goal (optional)', text: 'Hold the new weight at its maintenance, a little above today\'s ' + (maint ? fk(maint) + ' kcal' : 'number') + ', or re-run the questionnaire for the next goal. ' + whatIsMaint, optional: true });
+    } else {
+      items.push({ kind: 'after', date: null, title: 'Holding', text: whatIsMaint + ' Re-run the questionnaire when you want to cut or gain.', optional: false });
+    }
+    return { direction: dir, today, items, note: 'Only the ' + (dir === 0 ? 'hold' : dir < 0 ? 'cut' : 'gain') + ' itself is the plan. Breaks and the return to maintenance are options you start yourself; the app never switches your calories on its own.' };
+  }
 
-  return { recheck, decide, html, weekLine, css, INTERVAL, LATER, NOISE_KCAL, MAX_BAND, MIN_FOOD_SHARE };
+  function phasesHtml(P) {
+    if (!P || !P.items || !P.items.length) return '';
+    const li = it => '<li class="' + it.kind + (it.optional ? ' opt' : '') + (it.date && it.date < P.today ? ' past' : '') + '"><i></i><div><b>' + esc(it.title) + (it.date && it.kind !== 'after' ? ' <small>' + esc(fmt(it.date)) + '</small>' : '') + '</b><p>' + esc(it.text) + '</p></div></li>';
+    return '<div class="card pc-phases"><div class="spread"><h3>Your plan, in phases</h3><span class="muted" style="font-size:.85rem">options, not orders</span></div><ol class="pc-tl">' + P.items.map(li).join('') + '</ol><p class="muted" style="font-size:.85rem">' + esc(P.note) + '</p></div>';
+  }
+
+  const css = '.pc-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pc-stats>div{background:var(--sunk);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.pc-stats b{font-size:1.35rem}.pc-stats small{color:var(--muted);font-size:.78rem;line-height:1.3}@media (max-width:380px){.pc-stats{grid-template-columns:1fr}}' +
+    '.pc-tl{list-style:none;margin:8px 0 10px;padding:0 0 0 18px;border-left:2px solid var(--card-line,#ccc)}.pc-tl li{position:relative;padding:0 0 12px 12px}.pc-tl li:last-child{padding-bottom:0}.pc-tl li>i{position:absolute;left:-24px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--accent,#2d7);border:2px solid var(--card,#fff)}.pc-tl li.opt>i{background:var(--card,#fff);border:2px dashed var(--muted,#888)}.pc-tl li.past>i{opacity:.5}.pc-tl b{font-size:.95rem}.pc-tl b small{color:var(--muted);font-weight:400;margin-left:4px}.pc-tl p{margin:2px 0 0;font-size:.88rem;color:var(--muted);line-height:1.4}';
+
+  return { recheck, decide, html, weekLine, phases, phasesHtml, css, INTERVAL, LATER, NOISE_KCAL, MAX_BAND, MIN_FOOD_SHARE };
 });

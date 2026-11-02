@@ -1149,9 +1149,9 @@ function openGoalSetup(over){
   const answers={...(gs.answers||{})}; const kg=(over&&over.kg)||latestKg()||prof.startKg; if(kg) answers.kg=kg;
   if(answers.targetKg==null && prof.goalKg) answers.targetKg=prof.goalKg;
   const existing = (prof.cutKcal||prof.goalKg||gs.result||hasRealEntries()) ? {profile:prof, targets:APPT} : null;
-  gsOpen = GoalSetup.open({ answers, today:TODAY, existing, firstRun:!!(over&&over.firstRun),
+  gsOpen = GoalSetup.open({ answers, today:TODAY, existing, firstRun:!!(over&&over.firstRun), cycling:{available:!!window.CalorieCycling, on:!!ccState().on},
     onBack: window.AndroidShell ? fn=>AndroidShell.onBack(fn) : null,
-    onApply:(r,a)=>{ const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), ...r.profile}; p.goalSetup={answers:a, result:r, at:new Date().toISOString()}; put("prefs","main",p); toast(`Plan set: ${fkc(r.kcal)} kcal, ${r.protein} g protein${r.endDate?", goal around "+fmt(r.endDate,{month:"short",day:"numeric",year:"numeric"}):""}.`); },
+    onApply:(r,a)=>{ const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), ...r.profile}; p.goalSetup={answers:a, result:r, at:new Date().toISOString()}; if(window.CalorieCycling && typeof a.cycling==="boolean" && !!(p.cycling||{}).on!==a.cycling) p.cycling={...(p.cycling||{}), on:a.cycling}; put("prefs","main",p); toast(`Plan set: ${fkc(r.kcal)} kcal, ${r.protein} g protein${r.endDate?", goal around "+fmt(r.endDate,{month:"short",day:"numeric",year:"numeric"}):""}.`); },
     onSkip:()=>{ const p=clone(S.docs.prefs.main||{}); p.goalSetup={skipped:true, at:new Date().toISOString()}; put("prefs","main",p,{quiet:true}); toast("You can set your goal any time in Settings → Your numbers."); },
     onClose:()=>{ gsOpen=null; } });
 }
@@ -1179,6 +1179,9 @@ function offerGoalSetup(kg, fromSettings){
 function planCheck(){ if(!window.PlanCheck) return null; const gs=S.docs.prefs.main?.goalSetup; if(!gs||!gs.result) return null; let E=null; try{ E=window.TrendTDEE?TrendTDEE.estimate(S.docs,tdeeOpts()):null; }catch(e){} try{ return PlanCheck.recheck(S.docs,{today:TODAY, plan:gs, targets:APPT, tdee:E, compute:window.GoalSetup?GoalSetup.compute:null}); }catch(e){ console.error("[plan check]",e); return null; } }
 function planWeekLine(){ if(!window.PlanCheck) return null; const gs=S.docs.prefs.main?.goalSetup; if(!gs||!gs.result) return null; try{ return PlanCheck.weekLine(S.docs,{today:TODAY, plan:gs, trend:trendSeries()}); }catch(e){ return null; } }
 function planCheckNudge(){ const R=planCheck(); if(!R||R.status!=="ready") return ""; return `<p class="note info" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Your two-week plan check is ready: estimated maintenance ${fkc(R.estimate.kcal)} kcal.</span><button class="btn small" type="button" data-act="pcgo">See it</button></p>`; }
+function planPhases(){ if(!window.PlanCheck) return ""; const gs=S.docs.prefs.main?.goalSetup; if(!gs||!gs.result) return ""; try{ let breaks=[], maint=null, reverse=null; if(gs.result.direction<0){ if(window.DietBreak){ const B=DietBreak.build(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()}); breaks=(B.plannedBreaks||[]).filter(b=>!b.taken); maint=B.tdee&&B.tdee.kcal||null; } if(window.ReverseDiet){ const R=ReverseDiet.plan(dbDocs(), rdState(), rdOpts()); const pv=R.preview||(R.weeks?{weeks:R.weeks,to:R.to}:null); if(pv) reverse={weeks:pv.weeks,to:pv.to}; if(!maint&&R.to) maint=R.to; } } return PlanCheck.phasesHtml(PlanCheck.phases(gs,{today:TODAY, kg:latestKg(), breaks, maintenanceKcal:maint, reverse})); }catch(e){ console.error("[plan phases]",e); return ""; } }
+// Diet break and reverse diet are cut tools: hidden while the saved plan is a gain or a hold.
+function cutTools(){ const gs=S.docs.prefs.main?.goalSetup; return !(gs&&gs.result&&gs.result.ok) || gs.result.direction<0; }
 function planDecide(decision){ const R=planCheck(); const gs=S.docs.prefs.main?.goalSetup; if(!R||!gs) return; const out=PlanCheck.decide(gs,R,decision,TODAY); const p=clone(S.docs.prefs.main||{}); p.goalSetup=out.plan; if(out.profile) p.profile={...(p.profile||{}),...out.profile}; put("prefs","main",p);
   toast(decision==="apply"?`Calories are now ${fkc(out.profile.cutKcal)} kcal, protein ${out.profile.protein} g. Next check in two weeks.`:decision==="keep"?"Kept your numbers. Next check in two weeks.":"OK, asking again in a week."); }
 // Weight units per exercise (prefs/main.exUnits) on top of the plan's unit. Quick-log sets record the unit they were typed in,
@@ -1760,8 +1763,8 @@ function vProgress(){
   let body="";
   if(pt==="weight") body = weightHero()
     + fold("trend","Trend weight and burn","", safeMod("TrendTDEE", ()=>TrendTDEE.html(S.docs, tdeeOpts())))
-    + fold("db","Diet break","", safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()})))
-    + fold("rd","Reverse diet","After the goal", safeMod("ReverseDiet",()=>ReverseDiet.html(dbDocs(), rdState(), rdOpts())))
+    + (cutTools() ? fold("db","Diet break","", safeMod("DietBreak",()=>DietBreak.html(dbDocs(), dbState(), {today:TODAY, profile:dbProfile()})))
+    + fold("rd","Reverse diet","After the goal", safeMod("ReverseDiet",()=>ReverseDiet.html(dbDocs(), rdState(), rdOpts()))) : "")
     + fold("hm","Health markers","", safeMod("HealthMarkers",()=>HealthMarkers.html(S.docs, Object.assign({today:TODAY, date:view.date}, hmOpts))));
   else if(pt==="lifts") body = safeMod("StrengthAnalytics",()=>StrengthAnalytics.html(S.docs, strengthOpts()))
     + (window.StrengthAnalytics?"":`<div class="card"><h3>Main lifts</h3>
@@ -1779,6 +1782,7 @@ function vProgress(){
     + fold("rfp","Recovery and fatigue","", rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts())));
   else if(pt==="food") body = caloriesEatenCard();
   else body = safeMod("PlanCheck",()=>PlanCheck.html(planCheck()))
+    + planPhases()
     + coachSafe(()=>Coach.insightsHtml(S.docs, {...co, seen:S.docs.prefs.main?.coachSeen||{}}))
     + coachSafe(()=>Coach.reviewHtml(S.docs, co))
     + fold("wr","Weekly report","Weight, food, lifts", safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, Object.assign({planLine:planWeekLine()}, view.wrWeek==null?{}:{week:view.wrWeek}))))

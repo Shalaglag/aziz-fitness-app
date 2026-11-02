@@ -475,14 +475,25 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await p2.click('.gs-wrap [data-gs="pick"][data-v="regular"]'); await p2.fill('.gs-wrap [data-gs-f="targetKg"]', "80"); await p2.click('.gs-wrap [data-gs="next"]');
       await p2.waitForSelector(".gs-wrap .gs-hero");
       assert.ok((await wide()) <= 1, "result step fits the phone");
-      const r = await p2.evaluate(() => ({ hero: document.querySelector(".gs-hero").textContent, ms: document.querySelectorAll(".gs-ms div").length, cmp: !!document.querySelector(".gs-cmp"), kcal: kcalTarget(TODAY) }));
+      const r = await p2.evaluate(() => ({ hero: document.querySelector(".gs-hero").textContent, ms: document.querySelectorAll(".gs-ms div").length, cmp: !!document.querySelector(".gs-cmp"), kcal: kcalTarget(TODAY), cyc: document.querySelector('.gs-wrap [data-gs-c="cycling"]') ? document.querySelector('.gs-wrap [data-gs-c="cycling"]').checked : null }));
       assert.match(r.hero, /Maintenance about/); assert.ok(r.ms >= 2, "milestones with dates"); assert.ok(r.cmp, "existing numbers are compared, not overwritten");
       assert.strictEqual(r.kcal, before, "nothing changes before confirm");
+      assert.strictEqual(r.cyc, false, "lift-day calorie shift is offered, off by default");
+      await p2.click('.gs-wrap [data-gs-c="cycling"]');
       await p2.click('.gs-wrap [data-gs="apply"]');
       await p2.waitForFunction(() => !document.querySelector(".gs-wrap"));
-      const after = await p2.evaluate(() => ({ kcal: kcalTarget(TODAY), prof: S.docs.prefs.main.profile, gs: S.docs.prefs.main.goalSetup, floor: KCAL_FLOOR }));
-      assert.ok(after.kcal !== before && after.kcal === after.prof.cutKcal, "confirm applies the calories everywhere");
+      const after = await p2.evaluate(() => ({ kcal: kcalTarget(TODAY), prof: S.docs.prefs.main.profile, gs: S.docs.prefs.main.goalSetup, floor: KCAL_FLOOR, cyc: S.docs.prefs.main.cycling, base: APPT.kcal }));
+      assert.ok(after.base !== before && after.base === after.prof.cutKcal, "confirm applies the calories everywhere");
       assert.strictEqual(after.prof.goalKg, 80); assert.strictEqual(after.gs.answers.goal, "cut"); assert.strictEqual(after.floor, after.prof.kcalFloor);
+      assert.strictEqual(after.cyc && after.cyc.on, true, "ticking the box turns calorie cycling on");
+      assert.ok(Math.abs(after.kcal - after.base) <= 400 && after.kcal !== after.base, "today's target is the cycled one, lift or rest day");
+      // Reviews shows the plan as phases: start, goal, and an optional return to maintenance; nothing mandatory
+      await go(p2, "progress"); await p2.click('#main [data-act="ptab"][data-k="reviews"]');
+      await p2.waitForSelector("#main .pc-phases");
+      const ph = await p2.evaluate(() => ({ kinds: [...document.querySelectorAll("#main .pc-tl li")].map(l => l.className.split(" ")[0]), text: document.querySelector("#main .pc-phases").textContent, wide: document.documentElement.scrollWidth - window.innerWidth }));
+      assert.ok(ph.kinds[0] === "start" && ph.kinds.includes("goal") && ph.kinds[ph.kinds.length - 1] === "after", JSON.stringify(ph.kinds));
+      assert.match(ph.text, /Maintenance means eating about what you burn/); assert.match(ph.text, /never switches your calories on its own/); assert.doesNotMatch(ph.text, /mandatory/);
+      assert.ok(ph.wide <= 1, "phases card fits the phone");
       // Logging a weight a kilo away from the plan's weight offers an update; closer does not.
       await go(p2, "today");
       await p2.fill("#wkg", "90.6"); await p2.click('form[data-form="weight"] button[type=submit]');

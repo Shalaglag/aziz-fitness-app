@@ -36,3 +36,6 @@ Saved as `prefs/main.goalSetup = {answers, result, at}` (or `{skipped:true, at}`
 
 ## Tests
 `node --test modules/goal-setup/goal-setup.test.js` (maths, floors, date mode, validation, rerun). The walk-through on a 360 px phone is in `tests/app-phone.test.js` ("goal setup").
+
+## Optional lift-day calorie shift
+`open({cycling:{available, on}})` adds a checkbox to the result step (off by default, or the current setting when re-running): "Shift calories to lift days". It is passed back as `answers.cycling` (boolean) on apply; the host turns `prefs/main.cycling.on` on or off (the CalorieCycling module keeps the weekly total and protein/fat unchanged, so exercise calories are never added on top).
