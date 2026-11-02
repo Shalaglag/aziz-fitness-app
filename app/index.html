@@ -33651,7 +33651,19 @@ if (typeof module !== "undefined") module.exports = ReverseDiet;
     heightCm: [120, 230, 'Height should be between 120 and 230 cm'],
     kg: [30, 300, 'Weight should be between 30 and 300 kg'],
     targetKg: [30, 300, 'Target weight should be between 30 and 300 kg'],
+    bodyFatPct: [3, 60, 'Body fat should be between 3 and 60 %'],
+    waistCm: [40, 200, 'Waist should be between 40 and 200 cm'],
   };
+  const OPTIONAL = ['targetKg', 'bodyFatPct', 'waistCm'];
+  // How far a body-fat estimate can be off, in percentage points, by method (BIA scales and eyeballing swing the most).
+  const BF_METHODS = [
+    { id: 'scale', label: 'Smart scale (BIA)', pm: 6 },
+    { id: 'calipers', label: 'Calipers', pm: 4 },
+    { id: 'dexa', label: 'DEXA or Bod Pod scan', pm: 3 },
+    { id: 'visual', label: 'Visual estimate', pm: 6 },
+  ];
+  const bfMethod = id => BF_METHODS.find(m => m.id === id) || BF_METHODS[0];
+  const TEXT_KEYS = ['endDate', 'bodyFatMethod'];
   const SOURCES = [
     { t: 'Mifflin MD et al. 1990, Am J Clin Nutr', s: 'resting energy: 10·kg + 6.25·cm − 5·age (+5 men, −161 women)' },
     { t: 'Activity factors 1.2–1.9', s: 'the WHO/FAO style multipliers used by most calculators' },
@@ -33660,6 +33672,8 @@ if (typeof module !== "undefined") module.exports = ReverseDiet;
     { t: 'Morton RW et al. 2018, BJSM', s: 'protein benefits plateau around 1.6 g/kg, upper range 2.2 g/kg' },
     { t: 'Iraki J et al. 2019, Sports', s: 'gain 0.25–0.5 % of body weight a week when building muscle' },
     { t: '7,700 kcal per kg', s: 'the usual energy value of a kilogram of body weight change' },
+    { t: 'Katch-McArdle', s: 'resting energy from lean mass: 370 + 21.6 × lean kg; averaged with Mifflin when you give a body-fat estimate' },
+    { t: 'Ashwell M et al. 2012, Obes Rev', s: 'a waist under half your height is the simple health marker; waist is not a body-fat measurement' },
   ];
 
   const isNum = v => v !== null && v !== '' && v !== undefined && isFinite(+v);
@@ -33684,10 +33698,12 @@ if (typeof module !== "undefined") module.exports = ReverseDiet;
     const A = a || {}, clean = {}, errors = [];
     if (A.sex === 'male' || A.sex === 'female') clean.sex = A.sex; else errors.push({ field: 'sex', msg: 'Pick male or female (it sets the calorie formula)' });
     Object.keys(LIMITS).forEach(k => {
-      if (!isNum(A[k])) { if (k !== 'targetKg') errors.push({ field: k, msg: ({ age: 'Enter your age', heightCm: 'Enter your height in cm', kg: 'Enter your weight in kg' })[k] }); return; }
+      if (!isNum(A[k])) { if (!OPTIONAL.includes(k)) errors.push({ field: k, msg: ({ age: 'Enter your age', heightCm: 'Enter your height in cm', kg: 'Enter your weight in kg' })[k] }); return; }
       const v = +A[k], [lo, hi, msg] = LIMITS[k];
       if (v < lo || v > hi) errors.push({ field: k, msg }); else clean[k] = k === 'age' ? Math.round(v) : r1(v);
     });
+    if (clean.bodyFatPct != null) { clean.bodyFatMethod = bfMethod(A.bodyFatMethod).id; if (realDate(A.bodyFatAt)) clean.bodyFatAt = A.bodyFatAt; }
+    if (clean.waistCm != null && realDate(A.waistAt)) clean.waistAt = A.waistAt;
     if (ACTIVITY.some(x => x.id === A.activity)) clean.activity = A.activity; else errors.push({ field: 'activity', msg: 'Pick an activity level' });
     if (GOALS.some(g => g.id === A.goal)) clean.goal = A.goal; else errors.push({ field: 'goal', msg: 'Pick a goal' });
     clean.mode = A.mode === 'date' ? 'date' : 'pace';
@@ -33714,7 +33730,22 @@ if (typeof module !== "undefined") module.exports = ReverseDiet;
     if (v.errors.length) return { ok: false, errors: v.errors };
     const a = v.clean, warnings = [], notes = [];
     // opts.maintenance: a measured estimate (Plan check) replaces the formula's maintenance; the formula stays visible as bmr × factor.
-    const bmr = Math.round(bmrOf(a)), act = activityOf(a.activity), tdee = isNum(opts && opts.maintenance) ? Math.round(+opts.maintenance) : Math.round(bmr * act.f);
+    const bmr = Math.round(bmrOf(a)), act = activityOf(a.activity);
+    // Optional body composition. A body-fat estimate is never exact: the range follows the method's usual error,
+    // and the maintenance averages the weight formula (Mifflin) with the lean-mass one (Katch-McArdle).
+    let body = null;
+    if (a.bodyFatPct != null) {
+      const m = bfMethod(a.bodyFatMethod), lean = r1(a.kg * (1 - a.bodyFatPct / 100));
+      const leanLo = a.kg * (1 - Math.min(70, a.bodyFatPct + m.pm) / 100), leanHi = a.kg * (1 - Math.max(2, a.bodyFatPct - m.pm) / 100);
+      const katch = Math.round(370 + 21.6 * lean);
+      body = { pct: a.bodyFatPct, method: m.id, methodLabel: m.label, pm: m.pm, at: a.bodyFatAt || null, leanKg: lean, fatKg: r1(a.kg - lean), bmrKatch: katch, bmrMifflin: bmr,
+        tdeeLo: r10(Math.min(Math.round(370 + 21.6 * leanLo), bmr) * act.f), tdeeHi: r10(Math.max(Math.round(370 + 21.6 * leanHi), bmr) * act.f) };
+    }
+    if (a.waistCm != null) { body = body || {}; body.waistCm = a.waistCm; body.waistAt = a.waistAt || null; body.whtr = r2(a.waistCm / a.heightCm); }
+    const tdee = isNum(opts && opts.maintenance) ? Math.round(+opts.maintenance) : body && body.bmrKatch ? Math.round((bmr + body.bmrKatch) / 2 * act.f) : Math.round(bmr * act.f);
+    const tdeeSource = isNum(opts && opts.maintenance) ? 'measured' : body && body.bmrKatch ? 'bodyfat' : 'formula';
+    if (body && body.bmrKatch) notes.push('Body fat ' + body.pct + ' % by ' + body.methodLabel.toLowerCase() + ' (usually within ±' + body.pm + ' points' + (body.at ? ', measured ' + fmtDate(body.at, today) : '') + '): lean mass about ' + body.leanKg + ' kg, fat about ' + body.fatKg + ' kg. Maintenance averages the weight formula and the lean-mass formula; with that error band it sits between ' + fk(body.tdeeLo) + ' and ' + fk(body.tdeeHi) + ' kcal, so treat it as a range, not a reading.');
+    if (body && body.waistCm != null) notes.push('Waist ' + body.waistCm + ' cm is ' + body.whtr.toFixed(2) + ' of your height' + (body.whtr < 0.5 ? ' (under 0.5, the usual healthy marker)' : ' (over 0.5; under is the usual health target)') + '. Waist alone is not a body-fat measurement; it is saved as a health marker so you can watch the trend.');
     const dir = a.goal === 'cut' ? -1 : a.goal === 'maintain' ? 0 : 1;
     const floor = Math.max(FLOOR[a.sex], Math.round(tdee * (1 - MAX_DEFICIT)));
     const diffKg = a.targetKg != null ? Math.abs(a.targetKg - a.kg) : null;
@@ -33752,6 +33783,8 @@ if (typeof module !== "undefined") module.exports = ReverseDiet;
     if (bmi > 30) notes.push('Protein is set from ' + proteinKg + ' kg (your weight at a BMI of 30) so the number stays realistic.');
     const proteinPerKg = PROTEIN_PER_KG[a.goal];
     let protein = r5(proteinKg * proteinPerKg);
+    // With a body-fat estimate, lean mass sets protein for a cut or a muscle goal (Helms 2014: 2.3–3.1 g per kg of lean mass), inside the 1.6–2.4 g/kg body-weight band.
+    if (body && body.leanKg && (a.goal === 'cut' || a.goal === 'muscle')) { const fromLean = r5(Math.max(proteinKg * 1.6, Math.min(proteinKg * 2.4, body.leanKg * 2.6))); if (fromLean !== protein) { notes.push('Protein ' + fromLean + ' g comes from your lean mass (2.6 g per kg of ' + body.leanKg + ' kg) instead of ' + protein + ' g from body weight.'); protein = fromLean; } }
     let fat = r5(Math.max(kcal * FAT_SHARE / 9, a.kg * FAT_MIN_PER_KG));
     let carbs = r5((kcal - protein * 4 - fat * 9) / 4);
     if (carbs < MIN_CARBS) { fat = r5(Math.max(kcal * 0.2 / 9, a.kg * FAT_MIN_PER_KG)); carbs = Math.max(0, r5((kcal - protein * 4 - fat * 9) / 4)); }
@@ -33776,7 +33809,7 @@ if (typeof module !== "undefined") module.exports = ReverseDiet;
     if (dir === 0) notes.push('Maintenance is an estimate. After two weeks of logging, the Trend weight card shows your real burn; adjust by 100 kcal if the trend drifts.');
 
     const profile = { start: today, startKg: a.kg, goalKg: a.targetKg != null ? a.targetKg : a.kg, cutKcal: kcal, maintenance: tdee, protein, fat, kcalFloor: floor };
-    return { ok: true, errors: [], today, bmr, tdee, tdeeSource: isNum(opts && opts.maintenance) ? 'measured' : 'formula', activity: act.id, activityFactor: act.f, goal: a.goal, direction: dir, pace: paceId, mode: a.mode,
+    return { ok: true, errors: [], today, bmr, tdee, tdeeSource, body, activity: act.id, activityFactor: act.f, goal: a.goal, direction: dir, pace: paceId, mode: a.mode,
       ratePct: r2(ratePct), rateKgWk: r2(rateKgWk), kcal, floor, floored, deficit, protein, fat, carbs, proteinPerKg, proteinKg, bmi: r1(bmi),
       weeks, endDate, milestones, warnings, notes, profile, answers: a };
   }
@@ -33853,6 +33886,7 @@ if (typeof module !== "undefined") module.exports = ReverseDiet;
 .gs-cmp td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
 .gs-cmp td.new{font-weight:700}
 .gs-body details{border:1px solid var(--line);border-radius:12px;padding:0 12px}
+.gs-body details.gs-more .gs-grid{margin:4px 0 12px}.gs-body details.gs-more .gs-line{margin:0 0 8px}
 .gs-body details summary{padding:10px 0;cursor:pointer;font-weight:600;font-size:.95rem}
 .gs-body details ul{margin:0 0 12px;padding-left:18px;font-size:.88rem;color:var(--muted)}
 .gs-body details li{margin:4px 0}
@@ -33960,7 +33994,13 @@ body:has(.gs-wrap) .bottombar{display:none!important}
     const field = (key, label, unit, attrs, cls) => '<label class="field ' + (cls || '') + '"><span class="label">' + label + '</span><span class="gs-unit"><input data-gs-f="' + key + '" ' + attrs + ' value="' + esc(a[key] == null ? '' : a[key]) + '">' + (unit ? '<span class="u">' + unit + '</span>' : '') + '</span></label>';
     const errFor = k => { const e = errs.find(x => x.field === k); return e ? '<p class="gs-err">' + esc(e.msg) + '</p>' : ''; };
 
-    function readInputs() { el.querySelectorAll('[data-gs-f]').forEach(i => { const k = i.dataset.gsF, v = i.value.trim(); a[k] = v === '' ? undefined : (k === 'endDate' ? v : +v); }); }
+    function readInputs() { el.querySelectorAll('[data-gs-f]').forEach(i => { const k = i.dataset.gsF, v = i.value.trim(); a[k] = v === '' ? undefined : (TEXT_KEYS.includes(k) ? v : +v); }); }
+    function stampDates() {
+      const prev = opts.answers || {};
+      if (a.bodyFatPct == null) { a.bodyFatAt = undefined; a.bodyFatMethod = undefined; } else if (!realDate(a.bodyFatAt) || +a.bodyFatPct !== +prev.bodyFatPct || a.bodyFatMethod !== prev.bodyFatMethod) a.bodyFatAt = today;
+      if (a.waistCm == null) a.waistAt = undefined; else if (!realDate(a.waistAt) || +a.waistCm !== +prev.waistCm) a.waistAt = today;
+      result = compute(a, { today });
+    }
     function readChecks() { el.querySelectorAll('[data-gs-c]').forEach(i => { a[i.dataset.gsC] = !!i.checked; }); }
 
     function body() {
@@ -33968,7 +34008,11 @@ body:has(.gs-wrap) .bottombar{display:none!important}
       if (s === 'about') return '<h2>' + (opts.firstRun ? 'Let’s set your targets' : 'About you') + '</h2><p class="gs-sub">' + (opts.firstRun ? 'A minute of questions, then the app works out your calories, protein and a realistic timeline. Nothing is shared.' : 'The calorie formula needs these four.') + '</p>'
         + '<div class="gs-seg">' + opt('sex', 'male', 'Male') + opt('sex', 'female', 'Female') + '</div>' + errFor('sex')
         + '<div class="gs-grid">' + field('age', 'Age', 'years', 'type="number" inputmode="numeric" min="13" max="100" step="1" placeholder="30"') + field('heightCm', 'Height', 'cm', 'type="number" inputmode="decimal" min="120" max="230" step="0.5" placeholder="170"')
-        + field('kg', 'Weight today', 'kg', 'type="number" inputmode="decimal" min="30" max="300" step="0.1" placeholder="75.0"', 'wide') + '</div>' + errFor('age') + errFor('heightCm') + errFor('kg');
+        + field('kg', 'Weight today', 'kg', 'type="number" inputmode="decimal" min="30" max="300" step="0.1" placeholder="75.0"', 'wide') + '</div>' + errFor('age') + errFor('heightCm') + errFor('kg')
+        + '<details class="gs-more"' + (a.bodyFatPct != null || a.waistCm != null || errs.some(e => e.field === 'bodyFatPct' || e.field === 'waistCm') ? ' open' : '') + '><summary>Body fat or waist (optional)</summary><p class="gs-line muted">A body-fat estimate refines the calorie formula and is shown with its error band. A waist measurement is saved as a health marker. Both can be changed any time.</p><div class="gs-grid">'
+        + field('bodyFatPct', 'Body fat', '%', 'type="number" inputmode="decimal" min="3" max="60" step="0.5" placeholder="20"')
+        + '<label class="field"><span class="label">Measured with</span><select data-gs-f="bodyFatMethod">' + BF_METHODS.map(m => '<option value="' + m.id + '"' + ((a.bodyFatMethod || 'scale') === m.id ? ' selected' : '') + '>' + esc(m.label) + '</option>').join('') + '</select></label>'
+        + field('waistCm', 'Waist (at the navel)', 'cm', 'type="number" inputmode="decimal" min="40" max="200" step="0.5" placeholder="90"', 'wide') + '</div>' + errFor('bodyFatPct') + errFor('waistCm') + '</details>';
       if (s === 'activity') return '<h2>How active are you?</h2><p class="gs-sub">Count your job and your training together. Most people who lift 4–5 days and sit the rest of the day are "Active".</p><div class="gs-opts">' + ACTIVITY.map(x => opt('activity', x.id, x.label, x.sub)).join('') + '</div>' + errFor('activity');
       if (s === 'goal') return '<h2>What do you want?</h2><div class="gs-opts">' + GOALS.map(g => opt('goal', g.id, g.label, g.sub)).join('') + '</div>' + errFor('goal');
       if (s === 'plan') {
@@ -33997,6 +34041,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
         + '<div class="gs-macros"><div><b class="num">' + r.protein + ' g</b><span>Protein</span><em>' + r.proteinPerKg + ' g/kg · ' + pct(r.protein * 4) + ' %</em></div><div><b class="num">' + r.fat + ' g</b><span>Fat</span><em>' + pct(r.fat * 9) + ' %</em></div><div><b class="num">' + r.carbs + ' g</b><span>Carbs</span><em>' + pct(r.carbs * 4) + ' %</em></div></div>'
         + (r.endDate ? '<div><span class="label">Projected</span><p class="gs-line" style="margin-top:4px">Reach <b>' + r.profile.goalKg + ' kg</b> around <b>' + fmtDate(r.endDate, today) + '</b>, about ' + Math.round(r.weeks) + ' weeks' + (r.weeks >= 9 ? ' (' + r1(r.weeks / 4.345).toFixed(1).replace(/\.0$/, '') + ' months)' : '') + '.</p>'
           + (r.milestones.length > 1 ? '<div class="gs-ms">' + r.milestones.map(m => '<div class="' + (m.final ? 'final' : '') + '"><b class="num">' + m.kg + ' kg</b><span>' + fmtDate(m.date, today) + '</span></div>').join('') + '</div>' : '') + '</div>' : '')
+        + (r.body && (r.body.leanKg || r.body.waistCm != null) ? '<div><span class="label">Body composition (estimate)</span><p class="gs-line" style="margin-top:4px">' + (r.body.leanKg ? 'Lean mass about <b class="num">' + r.body.leanKg + ' kg</b>, fat about <b class="num">' + r.body.fatKg + ' kg</b> (body fat ' + r.body.pct + ' %, ±' + r.body.pm + ' points by ' + esc(r.body.methodLabel.toLowerCase()) + ')' : '') + (r.body.leanKg && r.body.waistCm != null ? ' · ' : '') + (r.body.waistCm != null ? 'Waist <b class="num">' + r.body.waistCm + ' cm</b>, ' + r.body.whtr.toFixed(2) + ' of height' : '') + '.</p></div>' : '')
         + r.warnings.map(w => '<p class="note">' + esc(w) + '</p>').join('') + r.notes.map(n => '<p class="note info">' + esc(n) + '</p>').join('')
         + (cur ? '<div><span class="label">' + (changed ? 'Compared with your current numbers' : 'Same as your current numbers') + '</span><table class="gs-cmp"><tr><th></th><th>Now</th><th>New</th></tr>' + cmpRow('Calories', cur.kcal, r.kcal, '') + cmpRow('Protein', cur.proteinMin, r.protein, ' g') + cmpRow('Fat', cur.fatLo != null && cur.fatHi != null ? (cur.fatLo + cur.fatHi) / 2 : null, r.fat, ' g') + cmpRow('Goal weight', cur.goalKg, r.profile.goalKg, ' kg') + '</table><p class="gs-line muted" style="margin-top:6px">Nothing changes until you tap "Use these numbers". Your history is never touched.</p></div>' : '')
         + (opts.cycling && opts.cycling.available ? '<label class="gs-check"><input type="checkbox" data-gs-c="cycling"' + (a.cycling ? ' checked' : '') + '><span><b>Shift calories to lift days</b> (optional)<small>Same calories for the week: about 150 more on days you lift, a little less on rest days. Protein and fat stay the same. Exercise calories are never added on top.</small></span></label>' : '')
@@ -34027,7 +34072,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
 
     function stepErrors() {
       const s = steps()[step], all = validate(a).errors;
-      const keys = { about: ['sex', 'age', 'heightCm', 'kg'], activity: ['activity'], goal: ['goal'], plan: ['pace', 'targetKg', 'endDate'] }[s] || [];
+      const keys = { about: ['sex', 'age', 'heightCm', 'kg', 'bodyFatPct', 'waistCm'], activity: ['activity'], goal: ['goal'], plan: ['pace', 'targetKg', 'endDate'] }[s] || [];
       return all.filter(e => keys.includes(e.field));
     }
 
@@ -34046,7 +34091,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
       if (act === 'back') { readInputs(); errs = []; step = Math.max(0, step - 1); dirCls = 'gs-in-l'; paint(); return; }
       if (act === 'skip') { close('skip'); return; }
       if (act === 'close') { close('close'); return; }
-      if (act === 'apply') { readChecks(); if (result && result.ok) { if (opts.onApply) opts.onApply(result, Object.assign({}, a)); close('apply'); } return; }
+      if (act === 'apply') { readChecks(); stampDates(); if (result && result.ok) { if (opts.onApply) opts.onApply(result, Object.assign({}, a)); close('apply'); } return; }
     });
     el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); const n = el.querySelector('[data-gs="next"]'); if (n) n.click(); } });
 
@@ -34056,7 +34101,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
     return { el, close: () => close('close'), state: () => Object.assign({ step }, a) };
   }
 
-  return { compute, validate, needsRerun, compactHtml, open, css, ACTIVITY, GOALS, PACES, SOURCES, PROTEIN_PER_KG, FLOOR };
+  return { compute, validate, needsRerun, compactHtml, open, css, ACTIVITY, GOALS, PACES, SOURCES, PROTEIN_PER_KG, FLOOR, BF_METHODS };
 });
 
 window.GoalSetup=GoalSetup;
@@ -43562,10 +43607,12 @@ function openGoalSetup(over){
   const existing = (prof.cutKcal||prof.goalKg||gs.result||hasRealEntries()) ? {profile:prof, targets:APPT} : null;
   gsOpen = GoalSetup.open({ answers, today:TODAY, existing, firstRun:!!(over&&over.firstRun), cycling:{available:!!window.CalorieCycling, on:!!ccState().on},
     onBack: window.AndroidShell ? fn=>AndroidShell.onBack(fn) : null,
-    onApply:(r,a)=>{ const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), ...r.profile}; p.goalSetup={answers:a, result:r, at:new Date().toISOString()}; if(window.CalorieCycling && typeof a.cycling==="boolean" && !!(p.cycling||{}).on!==a.cycling) p.cycling={...(p.cycling||{}), on:a.cycling}; put("prefs","main",p); toast(`Plan set: ${fkc(r.kcal)} kcal, ${r.protein} g protein${r.endDate?", goal around "+fmt(r.endDate,{month:"short",day:"numeric",year:"numeric"}):""}.`); },
+    onApply:(r,a)=>{ const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), ...r.profile}; p.goalSetup={answers:a, result:r, at:new Date().toISOString()}; if(window.CalorieCycling && typeof a.cycling==="boolean" && !!(p.cycling||{}).on!==a.cycling) p.cycling={...(p.cycling||{}), on:a.cycling}; put("prefs","main",p); logPlanMarkers(a); toast(`Plan set: ${fkc(r.kcal)} kcal, ${r.protein} g protein${r.endDate?", goal around "+fmt(r.endDate,{month:"short",day:"numeric",year:"numeric"}):""}.`); },
     onSkip:()=>{ const p=clone(S.docs.prefs.main||{}); p.goalSetup={skipped:true, at:new Date().toISOString()}; put("prefs","main",p,{quiet:true}); toast("You can set your goal any time in Settings → Your numbers."); },
     onClose:()=>{ gsOpen=null; } });
 }
+// Body fat and waist typed in the questionnaire become Health markers entries (editable there), one per measured date.
+function logPlanMarkers(a){ if(!window.HealthMarkers || !a) return; [["bodyfat", a.bodyFatPct, a.bodyFatAt],["waist", a.waistCm, a.waistAt]].forEach(([preset,v,date])=>{ try{ if(v==null||!date) return; let doc=Object.values(S.docs.markers||{}).find(m=>m&&m.preset===preset); if(!doc){ const n=HealthMarkers.newMarker({preset},{uid}); if(!n.ok) return; doc=n.doc; } if((doc.entries||[]).some(e=>e.date===date && +e.v===+v)) return; const r=HealthMarkers.addEntry(doc,{date, value:String(v), note:"from goal setup"},{uid}); if(r.ok) put("markers", r.doc.id, r.doc, {quiet:true}); }catch(e){ console.error("[plan markers]",e); } }); }
 // New user: no entries and no plan yet → the questionnaire opens first. Once per install; Skip is remembered.
 function maybeFirstRunSetup(){
   if(gsFirstRunChecked || gsOpen || !window.GoalSetup || S.mode==="loading") return;

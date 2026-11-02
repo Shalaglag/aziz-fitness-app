@@ -469,6 +469,10 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await p2.click('.gs-wrap [data-gs="pick"][data-v="male"]');
       await p2.fill('.gs-wrap [data-gs-f="age"]', "29"); await p2.fill('.gs-wrap [data-gs-f="heightCm"]', "172");
       assert.strictEqual(await p2.$eval('.gs-wrap [data-gs-f="kg"]', i => i.value), "90.1", "weight is prefilled from the latest weigh-in");
+      // Optional body fat + waist: method and date are stored, both become Health markers entries
+      await p2.evaluate(() => { document.querySelector(".gs-wrap details.gs-more").open = true; });
+      await p2.fill('.gs-wrap [data-gs-f="bodyFatPct"]', "22"); await p2.selectOption('.gs-wrap [data-gs-f="bodyFatMethod"]', "calipers"); await p2.fill('.gs-wrap [data-gs-f="waistCm"]', "95");
+      assert.ok((await wide()) <= 1, "about step with the optional block fits the phone");
       await p2.click('.gs-wrap [data-gs="next"]'); assert.ok((await wide()) <= 1, "activity step fits the phone");
       await p2.click('.gs-wrap [data-gs="pick"][data-v="moderate"]'); await p2.click('.gs-wrap [data-gs="next"]');
       await p2.click('.gs-wrap [data-gs="pick"][data-v="cut"]'); await p2.click('.gs-wrap [data-gs="next"]');
@@ -478,6 +482,8 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       const r = await p2.evaluate(() => ({ hero: document.querySelector(".gs-hero").textContent, ms: document.querySelectorAll(".gs-ms div").length, cmp: !!document.querySelector(".gs-cmp"), kcal: kcalTarget(TODAY), cyc: document.querySelector('.gs-wrap [data-gs-c="cycling"]') ? document.querySelector('.gs-wrap [data-gs-c="cycling"]').checked : null }));
       assert.match(r.hero, /Maintenance about/); assert.ok(r.ms >= 2, "milestones with dates"); assert.ok(r.cmp, "existing numbers are compared, not overwritten");
       assert.strictEqual(r.kcal, before, "nothing changes before confirm");
+      const bodyTxt = await p2.evaluate(() => document.querySelector(".gs-wrap .gs-body").textContent);
+      assert.match(bodyTxt, /Lean mass about [\d.]+ kg/); assert.match(bodyTxt, /±4 points by calipers/); assert.match(bodyTxt, /not a body-fat measurement/); assert.match(bodyTxt, /treat it as a range/);
       assert.strictEqual(r.cyc, false, "lift-day calorie shift is offered, off by default");
       await p2.click('.gs-wrap [data-gs-c="cycling"]');
       await p2.click('.gs-wrap [data-gs="apply"]');
@@ -486,6 +492,9 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.ok(after.base !== before && after.base === after.prof.cutKcal, "confirm applies the calories everywhere");
       assert.strictEqual(after.prof.goalKg, 80); assert.strictEqual(after.gs.answers.goal, "cut"); assert.strictEqual(after.floor, after.prof.kcalFloor);
       assert.strictEqual(after.cyc && after.cyc.on, true, "ticking the box turns calorie cycling on");
+      assert.strictEqual(after.gs.answers.bodyFatPct, 22); assert.strictEqual(after.gs.answers.bodyFatMethod, "calipers"); assert.strictEqual(after.gs.answers.bodyFatAt, await p2.evaluate(() => TODAY)); assert.strictEqual(after.gs.result.tdeeSource, "bodyfat");
+      const mk = await p2.evaluate(() => Object.values(S.docs.markers || {}).map(m => [m.preset, (m.entries || []).map(e => e.v)]).sort());
+      assert.deepStrictEqual(mk, [["bodyfat", [22]], ["waist", [95]]], "both measurements are logged as health markers once");
       assert.ok(Math.abs(after.kcal - after.base) <= 400 && after.kcal !== after.base, "today's target is the cycled one, lift or rest day");
       // Reviews shows the plan as phases: start, goal, and an optional return to maintenance; nothing mandatory
       await go(p2, "progress"); await p2.click('#main [data-act="ptab"][data-k="reviews"]');
