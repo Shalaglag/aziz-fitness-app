@@ -468,3 +468,26 @@ test("AI settings: spending meter shows used vs cap, the 80 % warning, lost answ
   assert.match(Coach.panelHtml(), /Cap reached: new questions are stopped/);
   Coach._state.settings = false;
 });
+
+test("service address: the health-check or endpoint link is cut back to the base address, never …/v1/health/v1/chat", async () => {
+  const N = Coach.normalizeService, base = "https://mizan-coach.a47alshaheen.workers.dev";
+  for (const u of [base, base + "/", base + "/v1/health", base + "/v1/health/", base + "/v1/chat", base + "/v1/usage", base + "/v1/cap", base + "/v1", " " + base + "/v1/health?x=1 ", base + "/V1/Health"]) assert.equal(N(u), base, u);
+  assert.equal(N("https://my.example.com/coach/v1/health"), "https://my.example.com/coach", "a custom path is kept");
+  assert.equal(N(""), ""); assert.equal(N(null), "");
+  // A pasted health link stored earlier still produces the right request URLs.
+  const calls = [];
+  const listeners = {}, root = { addEventListener: (k, fn) => { listeners[k] = fn; } };
+  global.fetch = async (url) => { calls.push(url); return { ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ capUsd: 100, usedUsd: 0, pendingUsd: 0, unsettledUsd: 0, allTimeUsd: 0, requests: 0 }) }; };
+  Coach.bind(root, { getDocs: () => ({}), render: () => {}, endpoint: () => base + "/v1/health", getToken: async () => "t", consent: () => true });
+  Coach._state.monthAt = 0; Coach.open(true); await new Promise(r => setTimeout(r, 20)); Coach.open(false);
+  assert.deepEqual(calls, [base + "/v1/usage"]);
+  // Saving the health link from AI settings stores the base address.
+  let saved = "unset";
+  Coach.bind(root, { setService: v => { saved = v; } });
+  listeners.submit({ preventDefault() {}, target: { matches: s => s === "[data-coach-svcform]", querySelector: () => ({ value: base + "/v1/health" }) } });
+  assert.equal(saved, base);
+  assert.match(Coach._state.capMsg, /base address/);
+  listeners.submit({ preventDefault() {}, target: { matches: s => s === "[data-coach-svcform]", querySelector: () => ({ value: "http://insecure.example.com" }) } });
+  assert.equal(saved, base, "a non-https address is refused and the saved one kept");
+  assert.match(Coach._state.capMsg, /must start with https/);
+});

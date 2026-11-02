@@ -971,7 +971,7 @@ const Coach = (() => {
         caps.map(c => '<option value="' + c + '"' + (mo && mo.capUsd === c ? " selected" : "") + ">$" + c + "</option>").join("") + '</select></label><button class="co-btn co-ghost" style="margin:0" data-coach-capsave>Save cap</button><button class="co-btn co-ghost" style="margin:0" data-coach-refresh>Refresh</button></div>' +
         (S.capMsg ? '<p class="co-src">' + esc(S.capMsg) + "</p>" : "") : "") +
       '<form data-coach-svcform class="co-ask" style="margin-top:8px"><input data-coach-svc placeholder="https://mizan-coach.….workers.dev" value="' + esc(url) + '" inputmode="url" autocomplete="off"><button class="co-btn co-ghost" style="margin:0">Save address</button></form>' +
-      '<p class="co-src">Coach service address (from the setup steps). It is not a secret; the API key stays in the service.</p>' +
+      '<p class="co-src">Coach service base address, without /v1/…. Leave it as it is unless you run your own service. It is not a secret; the API key stays in the service.</p>' +
       (consented() ? '<button class="co-btn co-ghost" style="margin:6px 0 0" data-coach-consent="off">Turn off the AI chat</button>' : "") + "</div>";
   }
   function panelHtml() {
@@ -1034,7 +1034,15 @@ const Coach = (() => {
   const rerender = () => { renderPanel(); if (O.render && !host) O.render(); };
 
   // Transport 2: the app's own server endpoint (website build). Streams the model text back.
-  const serviceUrl = () => { if (!O) return null; const u = typeof O.endpoint === "function" ? O.endpoint() : O.endpoint; return u ? String(u).replace(/\/+$/, "") : null; };
+  // The service's BASE address. People often paste the health-check link (…/v1/health) or an endpoint link;
+  // those suffixes are dropped so the app never calls …/v1/health/v1/chat.
+  function normalizeService(u) {
+    let v = String(u == null ? "" : u).trim().replace(/[?#].*$/, "").replace(/\/+$/, "");
+    v = v.replace(/\/v1(\/(health|chat|usage|cap))?$/i, "").replace(/\/+$/, "");
+    return v;
+  }
+  const serviceOk = v => /^https:\/\/[a-z0-9.-]+(:\d+)?(\/[\w\-./]*)?$/i.test(v);
+  const serviceUrl = () => { if (!O) return null; const u = normalizeService(typeof O.endpoint === "function" ? O.endpoint() : O.endpoint); return u && serviceOk(u) ? u : null; };
   const consented = () => !!(O && O.consent && O.consent());
   const errOf = code => { const x = new Error(code); x.code = code; return x; };
   async function service(path, init) {
@@ -1168,9 +1176,11 @@ const Coach = (() => {
     root.addEventListener("submit", e => {
       if (e.target.matches && e.target.matches("[data-coach-svcform]")) {
         e.preventDefault();
-        const v = String((e.target.querySelector("[data-coach-svc]") || {}).value || "").trim().replace(/\/+$/, "");
-        if (v && !/^https:\/\/[a-z0-9.-]+(:\d+)?(\/[\w\-./]*)?$/i.test(v)) { S.capMsg = "The address must start with https://"; renderPanel(); return; }
-        if (O.setService) O.setService(v || null); S.month = null; S.monthAt = 0; S.noClaude = false; S.error = ""; S.capMsg = v ? "Address saved." : "Address removed."; renderPanel(); refreshMonth(true); return;
+        const raw = String((e.target.querySelector("[data-coach-svc]") || {}).value || "").trim(), v = normalizeService(raw);
+        if (v && !serviceOk(v)) { S.capMsg = "The address must start with https:// (for example https://mizan-coach.<name>.workers.dev)."; renderPanel(); return; }
+        if (O.setService) O.setService(v || null); S.month = null; S.monthAt = 0; S.noClaude = false; S.error = "";
+        S.capMsg = !v ? "Custom address removed; the app's built-in address is used." : v !== raw.replace(/\/+$/, "") ? "Saved as " + v + " (the base address; the /v1/… part isn't needed)." : "Address saved.";
+        renderPanel(); refreshMonth(true); return;
       }
       if (!e.target.matches || !e.target.matches("[data-coach-form]")) return;
       e.preventDefault();
@@ -1180,6 +1190,6 @@ const Coach = (() => {
     root.addEventListener("keydown", e => { if (e.key === "Escape" && S.open) openPanel(false); });
   }
 
-  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, insights, insightsHtml, ACTIONS, cleanActions, trimContext, langOf, effortFor, bind, errorText, TOPICS, _state: S };
+  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, insights, insightsHtml, ACTIONS, cleanActions, trimContext, langOf, effortFor, normalizeService, bind, errorText, TOPICS, _state: S };
 })();
 if (typeof module !== "undefined") module.exports = Coach;
