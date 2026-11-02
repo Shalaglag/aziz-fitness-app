@@ -118,4 +118,42 @@ t('plate rounding finds the next loadable per-side weight', () => {
   assert.strictEqual(loadableUp(0.6, 'kg'), 1.25);
 });
 
+t('−15 keeps the rest length so the ring drops with the number; +15 only grows it past full', () => {
+  const { adjustRest } = globalThis.WorkoutLogger.gym;
+  const now = 1e6, r = { end: now + 60000, total: 90, buzz: 3, alerted: false };
+  const less = adjustRest(r, -15, now);
+  assert.strictEqual(less.end, now + 45000); assert.strictEqual(less.total, 90);
+  assert.strictEqual((less.end - now) / (less.total * 1000), 0.5, 'ring at half, not 45/75');
+  assert.strictEqual(less.buzz, undefined, '3-2-1 buzz re-arms');
+  const more = adjustRest(r, 15, now); assert.strictEqual(more.total, 90); assert.strictEqual(more.end, now + 75000);
+  const over = adjustRest({ end: now + 85000, total: 90 }, 15, now); assert.strictEqual(over.total, 100, 'past full: length grows');
+  const gone = adjustRest({ end: now + 10000, total: 90 }, -15, now); assert.strictEqual(gone.end, now, 'never below now');
+});
+
+t('typed rest times: m:ss, seconds, minutes, off, bad input', () => {
+  const { parseRest } = globalThis.WorkoutLogger;
+  assert.strictEqual(parseRest('1:45'), 105);
+  assert.strictEqual(parseRest(' 2:05 '), 125);
+  assert.strictEqual(parseRest('105'), 105, 'plain 10+ = seconds');
+  assert.strictEqual(parseRest('2'), 120, 'plain under 10 = minutes');
+  assert.strictEqual(parseRest('2.5'), 150);
+  assert.strictEqual(parseRest('2m'), 120);
+  assert.strictEqual(parseRest('1m30s'), 90);
+  assert.strictEqual(parseRest('95s'), 95);
+  assert.strictEqual(parseRest('0'), 0);
+  assert.strictEqual(parseRest('off'), 0);
+  assert.strictEqual(parseRest('1:75'), null);
+  assert.strictEqual(parseRest('abc'), null);
+  assert.strictEqual(parseRest(''), null);
+  assert.strictEqual(parseRest('120:00'), 3600, 'capped at an hour');
+});
+
+t('a set\'s own rest wins over the exercise rest', () => {
+  const { setRestOf } = globalThis.WorkoutLogger;
+  const e = { exId: 'x-none', rest: 100, sets: [{ rest: 75 }, {}] };
+  assert.strictEqual(setRestOf(e, e.sets[0]), 75);
+  assert.strictEqual(setRestOf(e, e.sets[1]), 100);
+  assert.strictEqual(setRestOf(e, { rest: -1 }), -1, 'off for one set');
+});
+
 console.log('\n' + n + ' tests passed');

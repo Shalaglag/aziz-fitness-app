@@ -247,3 +247,17 @@ test("status shows what the last sync saw (count, source app, days) and Re-read 
   assert.equal(r.mode, "full"); assert.equal(r.imported, 0);
   assert.equal(A.getDay("2026-10-26").waterh.ml, 452, "re-reading never doubles");
 });
+
+test("yieldTo: while Fitbit owns the water, Health Connect never overwrites its records", async () => {
+  const P = fakePlugin(); P.add(rec("a", 250, 8));
+  let fitbit = true;
+  const A = fakeApp(P, { yieldTo: () => fitbit });
+  A.days["2026-10-26"] = { date: "2026-10-26", food: [], water: 0, supps: {}, waterh: { ml: 780, at: NOW.toISOString(), source: "google-health", records: { "gh:x": { ml: 780 } } } };
+  await A.sync.syncNow();
+  assert.equal(A.getDay("2026-10-26").waterh.ml, 780);
+  assert.equal(A.getDay("2026-10-26").waterh.source, "google-health");
+  assert.match(A.sync.html(A.getDay("2026-10-26")), /paused while Fitbit is connected/);
+  fitbit = false;
+  await A.sync.reread();
+  assert.equal(A.getDay("2026-10-26").waterh.source, "health-connect", "takes over again once Fitbit is disconnected");
+});

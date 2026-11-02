@@ -21,6 +21,9 @@
  *   Coach.ACTIONS / Coach.cleanActions(list)   -> the only actions Claude may propose; opts.actionHost
  *        {check(a) -> {ok, change|error}, apply(a) -> Promise<{ok, message}>} shows the exact change and
  *        applies it after a Confirm tap (show_exercise opens without changing data)
+ *   Coach.trimContext(ctx, q) / langOf(q) / effortFor(q, history) -> what the coach service receives: only the data
+ *        sections a question needs, "ar"/"en", and low or medium effort. opts.endpoint (URL or getter) = the
+ *        Mizan coach service (worker/); opts.consent()/setConsent(bool), opts.setService(url) from the host
  *   Coach.insightsHtml(docs, opts)              -> "Patterns in your logs" card; opts.onDismiss(id) via bind
  *   Coach.exerciseIn(question, names)           -> the exercise name a question mentions, or null
  *   Coach.prompt(question, ctx, history)        -> the instruction sent to Claude
@@ -162,6 +165,16 @@ const Coach = (() => {
     const T = Object.assign({}, RULES);
     T.kcal = pos(A.kcal); T.proteinMin = pos(A.proteinMin); T.proteinMax = pos(A.proteinMax) || T.proteinMin;
     if (pos(A.kcalLo) && pos(A.kcalHi) && A.kcalHi > A.kcalLo) T.band = Math.round((A.kcalHi - A.kcalLo) / 2);
+    // The goal plan (prefs/main.goalSetup, from GoalSetup): direction and chosen pace set the band the review judges against.
+    const gp = opts.plan && opts.plan.result && opts.plan.result.ok ? opts.plan : null;
+    T.plan = null;
+    if (gp) {
+      const r = gp.result, a = gp.answers || {}, pct = pos(r.ratePct) || 0;
+      T.plan = { goals: Array.isArray(r.goals) && r.goals.length ? r.goals.slice(0, 4) : Array.isArray(a.goals) && a.goals.length ? a.goals.slice(0, 4) : [r.goal || a.goal].filter(Boolean), label: typeof r.label === "string" ? r.label.slice(0, 60) : null, goal: r.goal, direction: r.direction, ratePct: pct, rateKgWk: pos(r.rateKgWk) || 0, pace: r.pace || null, activity: r.activity || a.activity || null,
+        sex: a.sex || null, age: pos(a.age), heightCm: pos(a.heightCm), kg: pos(a.kg), targetKg: pos(r.profile && r.profile.goalKg), endDate: isDate(r.endDate) ? r.endDate : null, kcal: pos(r.kcal), since: isDate(r.today) ? r.today : null };
+      if (r.direction === 0) { T.paceLo = 0; T.paceHi = 0; }
+      else if (pct) { T.paceLo = Math.round(Math.max(0.2, pct * 0.6) * 100) / 100; T.paceHi = Math.round(Math.min(1.2, pct * 1.5) * 100) / 100; }
+    }
     ["paceLo", "paceHi", "floor", "step", "band"].forEach(k => { if (pos((opts.rules || {})[k])) T[k] = pos(opts.rules[k]); });
     const firstW = weighIns(docs && docs.weights)[0];
     const firstFood = Object.keys((docs && docs.days) || {}).filter(d => isDate(d) && eaten(docs.days[d])).sort()[0];
@@ -203,6 +216,8 @@ const Coach = (() => {
     N.rateKgWk = f ? f.slope * 7 : (N.avgEarly != null && N.avgLate != null ? N.avgLate - N.avgEarly : null);
     N.avgKg = mean(ws.map(w => w.kg));
     N.lossPctWk = N.rateKgWk != null && N.avgKg ? -N.rateKgWk / N.avgKg * 100 : null;
+    const dir = T.plan ? T.plan.direction : -1;                     // -1 cut (default), +1 gain, 0 maintain
+    N.progressPctWk = N.lossPctWk == null ? null : dir >= 0 ? -N.lossPctWk : N.lossPctWk;   // % a week in the planned direction
     const weightOk = ws.length >= 6 && early.length >= 2 && late.length >= 2;
 
     // food
@@ -255,10 +270,10 @@ const Coach = (() => {
     if (!ws.length) chk("weight", "Weight", "none", "No weigh-ins", "Weigh in each morning after the bathroom, before food.");
     else if (N.rateKgWk == null) chk("weight", "Weight", "none", plural(ws.length, "weigh-in"), "Not enough spread to measure a pace yet.");
     else {
-      const lp = N.lossPctWk;
-      const st = lp > T.paceHi ? "warn" : lp >= T.paceLo ? "good" : lp >= T.paceLo / 2 ? "warn" : "bad";
+      const lp = N.progressPctWk, pw = dir === 0 ? Math.abs(N.rateKgWk) : null;
+      const st = dir === 0 ? (pw <= 0.3 ? "good" : pw <= 0.6 ? "warn" : "bad") : lp > T.paceHi ? "warn" : lp >= T.paceLo ? "good" : lp >= T.paceLo / 2 ? "warn" : "bad";
       chk("weight", "Weight", st, sgn(N.rateKgWk) + " kg/week",
-        (lp >= 0 ? f1(lp) + "% of body weight a week" : "gaining") + " · " + (N.avgEarly != null && N.avgLate != null ? "week avg " + f1(N.avgEarly) + " → " + f1(N.avgLate) + " kg" : plural(ws.length, "weigh-in")) + " · plan " + T.paceLo + "–" + T.paceHi + "%");
+        (dir === 0 ? (pw <= 0.3 ? "steady" : "drifting " + (N.rateKgWk > 0 ? "up" : "down")) : lp >= 0 ? f1(lp) + "% of body weight a week" : (dir < 0 ? "gaining" : "losing")) + " · " + (N.avgEarly != null && N.avgLate != null ? "week avg " + f1(N.avgEarly) + " → " + f1(N.avgLate) + " kg" : plural(ws.length, "weigh-in")) + " · plan " + (dir === 0 ? "hold steady" : T.paceLo + "–" + T.paceHi + "%"));
     }
     if (!logged.length) chk("kcal", "Calories", "none", "No food logged", "Only food marked eaten counts.");
     else if (!hasK) chk("kcal", "Calories", "none", fint(N.kcalAvg) + " kcal avg", "No calorie target set. Add one in Your numbers to check adherence.");
@@ -280,45 +295,59 @@ const Coach = (() => {
 
     // ---- verdict ----
     const rec = (id, kind, title, why, evidence, change) => R.recs.push({ id, kind, title, why, evidence: evidence.filter(Boolean), change: change || null });
-    const evW = N.rateKgWk != null ? "Weight " + sgn(N.rateKgWk) + " kg/week (" + (N.lossPctWk >= 0 ? f1(N.lossPctWk) + "% a week" : "gaining") + ") from " + plural(ws.length, "weigh-in") : null;
+    const evW = N.rateKgWk != null ? "Weight " + sgn(N.rateKgWk) + " kg/week (" + (dir === 0 ? "plan: hold steady" : N.progressPctWk >= 0 ? f1(N.progressPctWk) + "% a week " + (dir < 0 ? "down" : "up") : (dir < 0 ? "gaining" : "losing")) + ") from " + plural(ws.length, "weigh-in") : null;
     const evA = N.adherence != null ? N.onTarget + " of " + N.coreDays + " non-Friday days within ±" + T.band + " kcal of target, avg " + fint(N.kcalAvg) + " kcal" : null;
     const evS = N.lifts.length ? N.liftsUp + " lifts up, " + down + " down of " + N.lifts.length + " compared" : null;
     const firstWeeks = T.start && diff(T.start, from) < 14;
     const goodAdh = N.adherence != null && N.adherence >= 0.7 && N.foodDays >= N.days * 0.7;
-    const lp = N.lossPctWk;
+    const lp = N.progressPctWk;
     const lower = hasK ? Math.max(T.floor, r50(T.kcal - T.step)) : null, higher = hasK ? r50(T.kcal + T.step) : null;
     const kT = hasK ? fint(T.kcal) + " kcal" : "your current intake";
+    const gaining = dir > 0, verb = gaining ? "Gaining" : "Losing", noun = gaining ? "gain" : "cut";
+    const small = hasK ? Math.round(Math.max(50, Math.min(T.step, 100)) / 50) * 50 : 100;
+    const paceWord = T.plan && T.plan.pace ? T.plan.pace : null;
+
+    // What this verdict rests on: the plan, the targets and how much was logged.
+    R.basis = "Based on " + (T.plan ? "your plan (" + ({ cut: "lose fat", maintain: "maintain", muscle: "build muscle", bulk: "gain weight" })[T.plan.goal] + (dir ? ", " + f1(T.plan.ratePct) + " % of body weight a week" + (paceWord ? ", " + paceWord : "") : "") + (T.plan.activity ? ", " + T.plan.activity : "") + ")" : "your targets") + (hasK ? ", " + fint(T.kcal) + " kcal" : "") + " and " + N.days + " days of logs: " + plural(N.weighIns, "weigh-in") + ", " + plural(N.foodDays, "food day") + ", " + plural(N.sessions, "session") + (N.sleepNights ? ", " + plural(N.sleepNights, "night") + " of sleep" : "") + ".";
 
     if (!weightOk || !foodOk) {
       R.verdict = "not-enough-data";
       R.headline = P.partial ? "Review in progress: day " + (diff(from, to) + 1) + " of 14." : "Not enough logged to judge this period.";
+    } else if (dir === 0) {
+      const drift = N.rateKgWk;
+      if (Math.abs(drift) <= 0.3) { R.verdict = "on-track"; R.headline = "Weight is steady. Maintenance is working."; rec("keep", "keep", "Keep " + kT, "The two-week trend moved " + sgn(drift) + " kg a week, inside the ±0.3 kg band for holding steady.", [evW, evA]); }
+      else if (goodAdh && hasK) { R.verdict = "drift"; R.headline = "Weight is drifting " + (drift > 0 ? "up" : "down") + " on a maintenance plan."; const to2 = drift > 0 ? Math.max(T.floor, r50(T.kcal - small)) : r50(T.kcal + small); rec("nudge", "change", "Consider " + fint(to2) + " kcal (" + (to2 > T.kcal ? "+" : "−") + Math.abs(to2 - T.kcal) + ")", "Two weeks of on-target eating while the trend moved " + sgn(drift) + " kg a week means your maintenance is a little " + (drift > 0 ? "lower" : "higher") + " than the plan assumes. A small nudge keeps the weight steady.", [evW, evA], { key: "profile.cutKcal", from: T.kcal, to: to2 }); }
+      else { R.verdict = "adherence"; R.headline = "Weight is drifting " + (drift > 0 ? "up" : "down") + ", and the logs don't show a steady " + kT + " yet."; rec("adhere", "keep", "Hit the target on more days before changing it", "A drift with uneven eating is an adherence signal first.", [evW, evA, N.unlogged.length ? plural(N.unlogged.length, "day") + " not logged" : null]); }
     } else if (!hasK && lp < T.paceLo) {
       R.verdict = lp >= T.paceLo / 2 ? "slow" : "stalled";
-      R.headline = "Losing slower than planned, and there's no calorie target to compare your eating against.";
+      R.headline = verb + " slower than planned, and there's no calorie target to compare your eating against.";
       rec("target", "keep", "Set a calorie target in Your numbers", "Without one the coach can't tell whether the pace is a target problem or an adherence problem.", [evW, N.kcalAvg != null ? "You ate " + fint(N.kcalAvg) + " kcal a day on average" : null]);
     } else if (N.breakDays >= 4) {
       R.verdict = "diet-break";
-      R.headline = "This period includes " + plural(N.breakDays, "diet-break day") + ", so the pace isn't a fair read of the cut.";
+      R.headline = "This period includes " + plural(N.breakDays, "diet-break day") + ", so the pace isn't a fair read of the " + noun + ".";
       rec("break", "keep", "Judge the cut on the next full period", "Eating at maintenance on break days stalls the scale on purpose (water and glycogen come back).", [evW, N.breakDays + " break days in this period"]);
     } else if (lp > T.paceHi) {
       R.verdict = "too-fast";
-      R.headline = "Losing faster than planned.";
-      if (firstWeeks) rec("water", "keep", "Keep " + kT + " for now", "The first two weeks of a cut drop water and glycogen, so the pace reads high. Recheck at the next review before changing anything.", [evW, "Period starts " + short(from) + ", within 2 weeks of the cut start (" + short(T.start) + ")"]);
+      R.headline = verb + " faster than planned.";
+      if (firstWeeks) rec("water", "keep", "Keep " + kT + " for now", "The first two weeks of a " + noun + " move water and glycogen, so the pace reads high. Recheck at the next review before changing anything.", [evW, "Period starts " + short(from) + ", within 2 weeks of the plan start (" + short(T.start) + ")"]);
+      else if (gaining) { if (!hasK) rec("trim", "keep", "Eat about " + T.step + " kcal less a day", "Gaining more than " + T.paceHi + "% a week past the first weeks adds mostly fat.", [evW, evS]); else rec("trim", "change", "Consider " + fint(lower) + " kcal (−" + (T.kcal - lower) + ")", "Gaining more than " + T.paceHi + "% a week past the first weeks adds mostly fat, not muscle.", [evW, evS, evA], { key: "profile.cutKcal", from: T.kcal, to: lower }); }
       else if (!hasK) rec("raise", "keep", "Eat about " + T.step + " kcal more a day", "Losing more than " + T.paceHi + "% a week past the first weeks raises the chance of losing muscle.", [evW, evS]);
       else rec("raise", "change", "Consider " + fint(higher) + " kcal (+" + T.step + ")", "Losing more than " + T.paceHi + "% a week past the first weeks raises the chance of losing muscle" + (down ? ", and some lifts are already dropping" : "") + ".", [evW, evS, evA], { key: "profile.cutKcal", from: T.kcal, to: higher });
     } else if (lp >= T.paceLo) {
       R.verdict = "on-track";
-      R.headline = "Your fat-loss strategy is working. Keep going.";
+      R.headline = gaining ? "Your gain is on plan. Keep going." : "Your fat-loss strategy is working. Keep going.";
       rec("keep", "keep", "Keep " + kT, "The pace is inside the plan band of " + T.paceLo + "–" + T.paceHi + "% of body weight a week.", [evW, evA]);
     } else if (lp >= T.paceLo / 2) {
       R.verdict = "slow";
-      R.headline = "Losing, but slower than planned.";
+      R.headline = verb + ", but slower than planned.";
       rec("hold", "keep", "Hold " + kT + " for one more period", "A slow two weeks is often water or a few unlogged meals. One more period tells a real slowdown from noise.", [evW, evA, N.unlogged.length ? plural(N.unlogged.length, "day") + " without food logged" : null]);
     } else if (goodAdh) {
       R.verdict = "stalled";
       R.headline = "Weight has stalled even with good adherence.";
       const viaSteps = N.stepDays >= 5 ? "Or keep calories and add about 2,000 steps a day (now " + fint(N.stepsAvg) + ")." : "";
-      if (lower < T.kcal) rec("lower", "change", "Consider " + fint(lower) + " kcal (−" + (T.kcal - lower) + ")", "Two weeks of on-target eating without loss means your calorie burn is lower than the target assumes. " + viaSteps, [evW, evA, opts.tdee && opts.tdee.ready ? "Estimated burn ~" + fint(opts.tdee.tdee) + " kcal (" + fint(opts.tdee.tdeeLo) + "–" + fint(opts.tdee.tdeeHi) + ")" : null], { key: "profile.cutKcal", from: T.kcal, to: lower });
+      const evT = opts.tdee && opts.tdee.ready ? "Estimated burn ~" + fint(opts.tdee.tdee) + " kcal (" + fint(opts.tdee.tdeeLo) + "–" + fint(opts.tdee.tdeeHi) + ")" : null;
+      if (gaining) rec("more", "change", "Consider " + fint(higher) + " kcal (+" + T.step + ")", "Two weeks of on-target eating without gain means your calorie burn is higher than the target assumes.", [evW, evA, evT], { key: "profile.cutKcal", from: T.kcal, to: higher });
+      else if (lower < T.kcal) rec("lower", "change", "Consider " + fint(lower) + " kcal (−" + (T.kcal - lower) + ")", "Two weeks of on-target eating without loss means your calorie burn is lower than the target assumes. " + viaSteps, [evW, evA, evT], { key: "profile.cutKcal", from: T.kcal, to: lower });
       else rec("steps", "keep", "Add movement instead of cutting food", "Calories are already at the floor of " + fint(T.floor) + ". " + (viaSteps || "Add about 2,000 steps a day."), [evW, evA]);
     } else {
       R.verdict = "adherence";
@@ -328,7 +357,7 @@ const Coach = (() => {
 
     // ---- extra tips, each from data in this period ----
     if (hasP && N.proteinAvg != null && N.proteinAvg < T.proteinMin && foodOk)
-      rec("protein", "tip", "Protein is " + Math.round(T.proteinMin - N.proteinAvg) + " g short on average", "Hitting " + T.proteinMin + " g+ helps keep muscle while cutting.", [Math.round(N.proteinAvg) + " g a day on average", N.proteinHit + " of " + N.foodDays + " days reached " + T.proteinMin + " g"]);
+      rec("protein", "tip", "Protein is " + Math.round(T.proteinMin - N.proteinAvg) + " g short on average", "Hitting " + T.proteinMin + " g+ helps " + (gaining ? "turn the surplus into muscle." : "keep muscle while cutting."), [Math.round(N.proteinAvg) + " g a day on average", N.proteinHit + " of " + N.foodDays + " days reached " + T.proteinMin + " g"]);
     if (down >= 2 && down * 2 >= N.lifts.length && R.verdict !== "too-fast")
       rec("strength", "tip", "Protect strength", "Several lifts dropped. Keep the weights heavy, cut a set before cutting load, and check protein and sleep.", [evS, "Biggest drops: " + N.lifts.filter(l => l.status === "down").slice(0, 3).map(l => l.name + " " + Math.round(l.change * 100) + "%").join(", ")]);
     if (opts.effort && opts.effort.nudge)
@@ -389,6 +418,8 @@ const Coach = (() => {
     const ctx = {
       today, weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow(today)],
       targets: { kcal: T.kcal, proteinMin: T.proteinMin, proteinMax: T.proteinMax, pacePctPerWeek: [T.paceLo, T.paceHi], cutStart: T.start },
+      plan: T.plan ? { goals: T.plan.goals, label: T.plan.label, goal: T.plan.goal, direction: T.plan.direction, pace: T.plan.pace, ratePctPerWeek: T.plan.ratePct, rateKgPerWeek: T.plan.rateKgWk, activity: T.plan.activity, sex: T.plan.sex, age: T.plan.age, heightCm: T.plan.heightCm, startKg: T.plan.kg, targetKg: T.plan.targetKg, projectedEnd: T.plan.endDate, since: T.plan.since, note: "From the goal questionnaire. Judge pace against this plan, not a generic cut." } : null,
+      basis: rv.basis || null,
       weight: { latest: ws.length ? ws[ws.length - 1] : null, avg7: avgOf(7), avg14: avgOf(14), avg30: avgOf(30), last30: ws.filter(w => w.date > add(today, -30)).map(w => [w.date, w.kg]) },
       todaySoFar: e0 ? { eatenKcal: Math.round(e0.kcal), eatenProtein: Math.round(e0.p), plannedNotEaten: e0.planned, kcalLeft: T.kcal != null ? Math.round(T.kcal - e0.kcal) : null, proteinLeft: T.proteinMin != null ? Math.max(0, Math.round(T.proteinMin - e0.p)) : null } : { logged: false },
       food14,
@@ -453,7 +484,7 @@ const Coach = (() => {
   function prompt(question, ctx, history) {
     const past = (history || []).slice(-4).map(h => "Q: " + h.q + "\nA: " + h.a).join("\n");
     return [
-      "You are the personal fitness coach inside the user's own tracking app. The user is cutting (losing fat while keeping muscle).",
+      "You are the personal fitness coach inside the user's own tracking app. DATA.plan.goals lists every goal from the user's goal questionnaire (for example cut + muscle = lose fat while building muscle); judge advice against those goals. With no plan, assume a fat-loss cut.",
       "Answer the question using ONLY the DATA below, which is everything the app has logged.",
       "Rules:",
       "- Never invent numbers, foods, nutrition values, workouts or dates. If something you need isn't in DATA, say it isn't logged and what to log.",
@@ -466,6 +497,8 @@ const Coach = (() => {
       "- Food advice: pick only from plannedToday, savedMeals, menuToday or foods already in the logs, and respect dislikes; say what fits kcalLeft and proteinLeft.",
       "- Exercise technique: use exerciseAsked only. Say the app has a verified demo when demoVideo says so; never give a video link.",
       "- You may propose at most 2 actions in \"actions\", only from this list and only when the user asks for a change or it clearly helps: set_calorie_target {kcal} (at most 150 kcal from the current target per step), add_saved_meal {name} (a name from savedMeals), add_menu_item {name} (a name from menuToday), swap_exercise {from, to} (from = an exercise in planToday, to = a similar exercise not in exercisesThatHurt), show_exercise {name}. Give each a short \"why\". The app shows the exact change and the user must confirm it, so never say a change is done; otherwise use [].",
+      "- If something you need is missing, ask one short clarifying question in answer instead of guessing.",
+      "- Reply in the language of the question; for Arabic use simple Modern Standard Arabic with numbers as digits.",
       "- Plain, friendly language, under 120 words in answer. No markdown headings.",
       past ? "Earlier in this chat:\n" + past : "",
       "DATA:\n" + JSON.stringify(ctx),
@@ -561,10 +594,10 @@ const Coach = (() => {
     const per = short(rv.period.from) + "–" + short(rv.period.to);
     switch (topic) {
       case "progress":
-        return out(rv.headline + " (" + per + ")", rv.checks.filter(c => c.status !== "none").map(c => c.label + ": " + c.value), rv.missing, head(rv.recs[0]));
+        return out(rv.headline + " (" + per + ")", rv.checks.filter(c => c.status !== "none").map(c => c.label + ": " + c.value).concat(rv.basis ? [rv.basis] : []), rv.missing, head(rv.recs[0]));
       case "plateau": {
         if (N.rateKgWk == null) return out("There aren't enough weigh-ins in " + per + " to measure a pace yet.", [], rv.missing);
-        if (N.lossPctWk >= T.paceLo) return out("It is moving: " + sgn(N.rateKgWk) + " kg a week on the trend, inside your plan. Day-to-day jumps are water, salt and food weight.", [rv.checks[0] && rv.checks[0].detail]);
+        if (N.progressPctWk != null && N.progressPctWk >= T.paceLo) return out("It is moving: " + sgn(N.rateKgWk) + " kg a week on the trend, inside your plan. Day-to-day jumps are water, salt and food weight.", [rv.checks[0] && rv.checks[0].detail]);
         const why = [];
         if (N.adherence != null && N.adherence < 0.7) why.push("only " + N.onTarget + " of " + N.coreDays + " days were within ±" + T.band + " kcal of target");
         if (N.unlogged.length) why.push(plural(N.unlogged.length, "day") + " have no food logged, so intake may be higher than it looks");
@@ -598,7 +631,7 @@ const Coach = (() => {
   /* ---------- rendering ---------- */
   const VERDICT = {
     "on-track": ["good", "Working"], "slow": ["warn", "Slow"], "stalled": ["bad", "Stalled"], "too-fast": ["warn", "Too fast"],
-    "adherence": ["warn", "Check adherence"], "diet-break": ["muted", "Diet break"], "not-enough-data": ["muted", "Building"], "empty": ["muted", "No data"],
+    "adherence": ["warn", "Check adherence"], "drift": ["warn", "Drifting"], "diet-break": ["muted", "Diet break"], "not-enough-data": ["muted", "Building"], "empty": ["muted", "No data"],
   };
   const css = `
 .co-head{display:flex;align-items:center;gap:8px;justify-content:space-between}
@@ -636,6 +669,12 @@ const Coach = (() => {
 .co-act-why{margin:4px 0 0;font-size:.8rem;color:var(--muted)}
 .co-act-res{margin:6px 0 0;font-size:.85rem;font-weight:600}
 .co-act-btns{display:flex;gap:8px;margin-top:8px}
+.co-list{margin:6px 0 0;padding-left:18px;font-size:.85rem;color:var(--ink)}
+.co-month{margin-top:6px}
+.co-bar{height:6px;border-radius:999px;background:var(--line);overflow:hidden}
+.co-bar i{display:block;height:100%;background:var(--good)}
+.co-bar i.co-warn{background:var(--warn)}.co-bar i.co-bad{background:var(--bad)}
+.co-settings select{margin-left:6px;font:inherit;padding:4px 6px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 .co-x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:.9rem;padding:0 2px}
 .co-chip{margin-top:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.85rem;cursor:pointer}
 .co-chips button{border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.85rem;cursor:pointer}
@@ -670,7 +709,7 @@ const Coach = (() => {
 @keyframes co-blink{to{opacity:0}}
 @media (prefers-reduced-motion:reduce){.co-panel{transition:none}.co-cursor{animation:none}}
 `;
-  const S = { from: null, msgs: [], busy: false, error: "", ctl: null, draft: "", hidden: false, noClaude: false, noClaudeWhy: "", open: false, stream: "", loaded: false };
+  const S = { from: null, msgs: [], busy: false, error: "", ctl: null, draft: "", hidden: false, noClaude: false, noClaudeWhy: "", open: false, stream: "", loaded: false, consentQ: null, month: null, monthErr: "", monthAt: 0, settings: false, capMsg: "" };
   let O = null;
 
   // ---------- Insights: patterns in the logs, worked out locally (no Claude, no cost) ----------
@@ -792,7 +831,8 @@ const Coach = (() => {
     const checks = '<ul class="co-checks">' + R.checks.map(c => '<li><span class="co-dot co-' + c.status + '"></span><span>' + esc(c.label) + '</span><span><b>' + esc(c.value) + "</b><small>" + esc(c.detail) + "</small></span></li>").join("") + "</ul>";
     const miss = R.missing.length ? '<p class="co-src">Still needed for a verdict:</p><ul class="co-miss">' + R.missing.map(m => "<li>" + esc(m) + "</li>").join("") + "</ul>" : "";
     const partial = R.period.partial ? '<p class="co-src">In progress, through ' + short(R.period.to) + ". Today is left out until it's fully logged.</p>" : "";
-    return '<div class="card co-review"><div class="co-head"><h3>14-day review</h3>' + nav + '</div><p class="co-headline"><span class="co-pill co-' + cls + '">' + label + "</span> " + esc(R.headline) + "</p>" + partial + checks + miss + R.recs.map(r => recHtml(r, !!(opts.onApply || (O && O.onApply)))).join("") + "</div>";
+    const basis = R.basis ? '<p class="co-src">' + esc(R.basis) + "</p>" : "";
+    return '<div class="card co-review"><div class="co-head"><h3>14-day review</h3>' + nav + '</div><p class="co-headline"><span class="co-pill co-' + cls + '">' + label + "</span> " + esc(R.headline) + "</p>" + partial + checks + miss + basis + R.recs.map(r => recHtml(r, !!(opts.onApply || (O && O.onApply)))).join("") + "</div>";
   }
 
   function summary(R) {
@@ -811,7 +851,29 @@ const Coach = (() => {
     const ms_ = m.missing && m.missing.length ? "<details><summary>Not logged yet</summary><ul>" + m.missing.map(e => "<li>" + esc(e) + "</li>").join("") + "</ul></details>" : "";
     const sg = m.suggestion ? '<p style="margin:8px 0 0"><b>Suggestion:</b> ' + esc(m.suggestion.title) + (m.suggestion.why ? " — " + esc(m.suggestion.why) : "") + "</p>" : "";
     const acts = (m.actions || []).length && mi != null ? m.actions.map((a, ai) => actionHtml(a, mi, ai)).join("") : "";
-    return '<div class="co-a' + nw + '">' + esc(m.answer) + sg + acts + ev + ms_ + '<div class="co-src">' + (m.local ? "Worked out from your logs" : "Claude, from your logs only") + "</div></div>";
+    return '<div class="co-a' + nw + '" dir="auto">' + esc(m.answer) + sg + acts + ev + ms_ + '<div class="co-src">' + (m.local ? "Worked out from your logs" : "Claude, from your logs only" + (m.costUsd != null ? " · " + money(m.costUsd) : "")) + "</div></div>";
+  }
+
+  // ---------- What gets sent to the coach service ----------
+  const langOf = q => /[\u0600-\u06FF]/.test(String(q || "")) ? "ar" : "en";
+  // Harder, personal "why / should I / plan" questions get medium effort; everything else low (cheaper, faster).
+  const DEEP = /\b(why|should i|should we|plan|compare|explain|how come|what if|adjust|change my)\b|لماذا|ليش|ليه|هل يجب|هل لازم|خطة|خطتي|قارن|اشرح|وش اسوي|ماذا أفعل/i;
+  const effortFor = (q, history) => DEEP.test(String(q || "")) || (history || []).length >= 3 ? "medium" : "low";
+  // Only the parts of the data pack a question needs. Unclear questions keep everything.
+  const SECTIONS = {
+    weight: { re: /weigh|scale|kg\b|trend|plateau|stall|pace|loss|losing|gain|body|fat|وزن|الميزان|كيلو|نزول|ثبات|دهون|جسم/i, keys: ["weight", "review", "calorieBurn", "dietBreak", "food14"] },
+    food: { re: /eat|food|meal|protein|calor|kcal|carb|fat\b|snack|menu|dinner|lunch|breakfast|hungry|diet|اكل|أكل|وجبة|بروتين|سعرات|كارب|دهون|عشاء|غداء|فطور|جوع|سناك|منيو/i, keys: ["todaySoFar", "food14", "plannedToday", "eatenToday", "savedMeals", "menuToday", "dislikes", "calorieCycling", "dietBreak", "review"] },
+    training: { re: /train|lift|bench|squat|deadlift|press|row|curl|set|rep|gym|workout|exercise|muscle|strong|deload|swap|form|تمرين|تمارين|جيم|عضل|قوة|بنش|سكوات|ديدلفت|مجموعة|عدات|تبديل/i, keys: ["lifts", "planToday", "strength", "workouts14", "exercisesThatHurt", "recentSwaps", "exerciseAsked", "deloadCheck", "readiness7"] },
+    recovery: { re: /sleep|tired|sore|rest|recover|fatigue|energy|steps|cardio|walk|run|نوم|تعب|إرهاق|ارهاق|راحة|استشفاء|طاقة|خطوات|كارديو|مشي|جري/i, keys: ["sleepLast7", "readiness7", "recovery", "steps7", "stepGoal", "cardio", "cardio14", "deloadCheck", "workouts14"] },
+  };
+  const CORE = ["today", "weekday", "targets", "plan", "basis", "todaySoFar"];
+  function trimContext(ctx, question) {
+    const hits = Object.values(SECTIONS).filter(sec => sec.re.test(String(question || "")));
+    if (!hits.length || hits.length === Object.keys(SECTIONS).length) return ctx;
+    const keep = new Set(CORE.concat(...hits.map(h => h.keys)));
+    const out = {}; Object.keys(ctx).forEach(k => { if (keep.has(k)) out[k] = ctx[k]; });
+    if (ctx.weight && !keep.has("weight")) out.weight = { latest: ctx.weight.latest, avg7: ctx.weight.avg7 };
+    return out;
   }
 
   function errorText(code) {
@@ -825,9 +887,20 @@ const Coach = (() => {
       case "prompt_too_large": return "Too much data to send at once. Try a shorter question.";
       case "not_signed_in": return "Sign in to ask Claude. The quick questions still work.";
       case "daily_cap": return "You've reached today's question limit. It resets at midnight; the quick questions still work.";
-      case "no_key": return "Claude isn't connected to this website yet. The quick questions still work.";
-      case "no_endpoint": return "The coach service isn't connected to this app yet. The quick questions still work.";
+      case "no_key": return "The coach service is running but has no API key yet. The quick questions still work.";
+      case "no_endpoint": return "The coach service isn't set up yet. Add its address in AI settings. The quick questions still work.";
       case "offline": return "You're offline. Logging works; Claude needs a connection.";
+      case "not_allowed": return "This account isn't allowed to use the AI chat. Only the owner's account can spend the API credit.";
+      case "cap_reached": return "This month's AI spending cap is reached, so no new questions are sent. Raise the cap in AI settings, or use the quick questions.";
+      case "out_of_credit": return "The Anthropic API credit has run out. Add credit in the Claude Console to keep using the AI chat.";
+      case "daily_limit": return "You've asked a lot today, so the AI chat is paused until tomorrow. The quick questions still work.";
+      case "busy": return "One answer is still on its way. Wait for it, then ask again.";
+      case "upstream_busy": return "Claude is busy right now. Try again in a minute.";
+      case "upstream_unreachable": case "stream_broken": return "The answer was cut off. Try again; only what was used is counted.";
+      case "timeout": return "Claude took too long to answer. Try again or ask something shorter.";
+      case "bad_key": return "The API key in the coach service isn't valid. Check it in Cloudflare (see the setup steps).";
+      case "too_large": return "Too much data to send at once. Try a shorter question.";
+      case "no_consent": return "Turn on the AI chat first. The quick questions work without it.";
       default: return "Something went wrong reaching Claude. Try again.";
     }
   }
@@ -838,7 +911,7 @@ const Coach = (() => {
     today: [{ q: "What's left today?", topic: "today" }, { q: "Should I take a rest day?" }, { q: "How am I doing this week?" }],
     train: [{ q: "What should I train today?" }, { q: "Did I get stronger this week?" }, { q: "Which lifts are stalling?", topic: "lifts" }, { q: "Should I increase my bench press weight?" }],
     food: [{ q: "Am I eating enough protein?", topic: "protein" }, { q: "What should I eat today?" }, { q: "How many calories have I eaten today?" }],
-    progress: [{ q: "Is my cut working?", topic: "progress" }, { q: "Why isn't my weight moving?", topic: "plateau" }, { q: "Am I losing weight fast enough?" }],
+    progress: [{ q: "Is my plan working?", topic: "progress" }, { q: "Why isn't my weight moving?", topic: "plateau" }, { q: "Is my pace right for my goal?" }],
     guide: [{ q: "Explain my calorie target" }, { q: "What's left today?", topic: "today" }],
   };
   function suggestions(tab) { return SUGGEST[tab] || SUGGEST.today; }
@@ -870,22 +943,54 @@ const Coach = (() => {
     return "";
   }
 
+  const money = usd => usd == null ? "" : usd < 0.01 ? "under $0.01" : "$" + (usd < 10 ? usd.toFixed(2) : usd.toFixed(0));
+  const SENT = ["your question and the last few questions and answers in this chat",
+    "the goal questionnaire answers (goals, pace, sex, age, height, weights) and your targets",
+    "summaries the question needs: weight averages, food totals and today's food, workouts and lifts, sleep, readiness, steps and cardio"];
+  const NOT_SENT = "Not sent: your name, email, password, photos, friends, notes from other screens or the full log history.";
+  function consentHtml() {
+    return '<div class="co-act co-consent"><b>Turn on the AI chat?</b><p class="co-act-change">To answer, Mizan sends this to Anthropic (the company behind Claude) through your own coach service:</p><ul class="co-list">' +
+      SENT.map(x => "<li>" + esc(x) + "</li>").join("") + '</ul><p class="co-act-why">' + esc(NOT_SENT) + " Each answer costs a fraction of a cent from your API credit; the spending cap stops it at your limit. You can turn it off any time in AI settings.</p>" +
+      '<div class="co-act-btns"><button class="co-btn" style="margin:0" data-coach-consent="yes">Turn on and ask</button><button class="co-btn co-ghost" style="margin:0" data-coach-consent="no">Not now</button></div></div>';
+  }
+  function monthHtml() {
+    const mo = S.month;
+    if (!mo) return S.monthErr ? '<p class="co-src co-warn">' + esc(S.monthErr) + "</p>" : '<p class="co-src">Spending: loading…</p>';
+    const spent = mo.usedUsd + mo.pendingUsd, pct = mo.capUsd ? Math.min(100, Math.round(spent / mo.capUsd * 100)) : 100;
+    const cls = mo.stopped ? "co-bad" : mo.warn ? "co-warn" : "co-good";
+    return '<div class="co-month"><div class="co-bar"><i class="' + cls + '" style="width:' + Math.max(2, pct) + '%"></i></div>' +
+      '<p class="co-src" style="margin:4px 0 0"><b>' + money(mo.usedUsd) + "</b> of your $" + mo.capUsd + " cap this month (" + mo.requests + " answer" + (mo.requests === 1 ? "" : "s") + ")" +
+      (mo.pendingUsd ? " · " + money(mo.pendingUsd) + " on its way" : "") + (mo.unsettledUsd ? " · " + money(mo.unsettledUsd) + " counted at its estimate (answer lost)" : "") + "</p>" +
+      (mo.stopped ? '<p class="co-src co-bad">Cap reached: new questions are stopped until next month or until you raise the cap.</p>' : mo.warn ? '<p class="co-src co-warn">Over 80 % of the cap is used.</p>' : "") +
+      '<p class="co-src" style="margin:2px 0 0">Counted from the tokens Anthropic reports, at Claude Haiku 5.5 list prices. Since setup: ' + money(mo.allTimeUsd) + ". Your Claude Console shows the actual bill.</p></div>";
+  }
+  function settingsHtml() {
+    const url = serviceUrl() || "", mo = S.month, caps = [5, 10, 20, 50, 100];
+    return '<div class="co-act co-settings"><b>AI settings</b>' +
+      (url && consented() ? monthHtml() + '<div class="co-act-btns" style="flex-wrap:wrap;align-items:center"><label class="co-src" style="margin:0">Monthly cap <select data-coach-capsel>' +
+        caps.map(c => '<option value="' + c + '"' + (mo && mo.capUsd === c ? " selected" : "") + ">$" + c + "</option>").join("") + '</select></label><button class="co-btn co-ghost" style="margin:0" data-coach-capsave>Save cap</button><button class="co-btn co-ghost" style="margin:0" data-coach-refresh>Refresh</button></div>' +
+        (S.capMsg ? '<p class="co-src">' + esc(S.capMsg) + "</p>" : "") : "") +
+      '<form data-coach-svcform class="co-ask" style="margin-top:8px"><input data-coach-svc placeholder="https://mizan-coach.….workers.dev" value="' + esc(url) + '" inputmode="url" autocomplete="off"><button class="co-btn co-ghost" style="margin:0">Save address</button></form>' +
+      '<p class="co-src">Coach service base address, without /v1/…. Leave it as it is unless you run your own service. It is not a secret; the API key stays in the service.</p>' +
+      (consented() ? '<button class="co-btn co-ghost" style="margin:6px 0 0" data-coach-consent="off">Turn off the AI chat</button>' : "") + "</div>";
+  }
   function panelHtml() {
     const tab = O && O.tab ? O.tab() : "today";
     const sugg = suggestions(tab);
     const chips = '<div class="co-chips">' + sugg.map(s => '<button data-coach-ask="' + esc(s.q) + '"' + (s.topic ? ' data-coach-topic="' + s.topic + '"' : "") + ">" + esc(s.q) + "</button>").join("") + "</div>";
     const note = transportNote();
-    const live = S.busy && S.stream ? '<div class="co-q">' + esc(S.msgs[S.msgs.length - 1].q) + '</div><div class="co-a co-live">' + esc(S.stream) + '<span class="co-cursor"></span></div>' : "";
-    const msgs = S.msgs.map((m, i) => (m.pending && live) ? "" : (m.q ? '<div class="co-q">' + esc(m.q) + "</div>" : "") + answerHtml(m, i)).join("") + live;
+    const live = S.busy && S.stream ? '<div class="co-q" dir="auto">' + esc(S.msgs[S.msgs.length - 1].q) + '</div><div class="co-a co-live" dir="auto">' + esc(S.stream) + '<span class="co-cursor"></span></div>' : "";
+    const msgs = S.msgs.map((m, i) => (m.pending && live) ? "" : (m.q ? '<div class="co-q" dir="auto">' + esc(m.q) + "</div>" : "") + answerHtml(m, i)).join("") + live;
     S.msgs.forEach(m => { m.seen = true; });
-    const form = '<form class="co-ask" data-coach-form><input data-coach-input placeholder="Ask about your training, food or weight" value="' + esc(S.draft) + '" maxlength="600"' + (S.busy ? " disabled" : "") + ' autocomplete="off"><button class="co-btn" style="margin:0"' + (S.busy ? " disabled" : "") + ">Ask</button>" + (S.busy ? '<button type="button" class="co-btn co-ghost" style="margin:0" data-coach-stop>Stop</button>' : "") + "</form>";
+    const form = '<form class="co-ask" data-coach-form><input data-coach-input dir="auto" placeholder="Ask about training, food or weight · اسأل بالعربي" value="' + esc(S.draft) + '" maxlength="600"' + (S.busy ? " disabled" : "") + ' autocomplete="off"><button class="co-btn" style="margin:0"' + (S.busy ? " disabled" : "") + ">Ask</button>" + (S.busy ? '<button type="button" class="co-btn co-ghost" style="margin:0" data-coach-stop>Stop</button>' : "") + "</form>";
     return '<button class="co-fab" data-coach-open aria-label="Ask the coach" title="Ask the coach"><span class="co-fab-i">✦</span><span class="co-fab-t">Coach</span></button>' +
       '<div class="co-scrim" data-coach-close' + (S.open ? "" : " hidden") + '></div>' +
       '<section class="co-panel' + (S.open ? " co-open" : "") + '" role="dialog" aria-label="Ask Claude" aria-hidden="' + (S.open ? "false" : "true") + '">' +
-      '<header class="co-ph"><div><b>Ask Claude</b><div class="co-src" style="margin:0">Answers use only what you\'ve logged</div></div><div class="co-nav">' +
+      '<header class="co-ph"><div><b>Ask Claude</b><div class="co-src" style="margin:0">' + (serviceUrl() ? "Claude Haiku 5.5 · answers use only what you\'ve logged" : "Answers use only what you\'ve logged") + '</div></div><div class="co-nav">' +
+      '<button data-coach-settings title="AI settings" aria-label="AI settings"' + (S.settings ? ' aria-pressed="true"' : "") + ">⚙</button>" +
       (S.msgs.length ? '<button data-coach-clear title="Clear chat">⌫</button>' : "") + '<button data-coach-close aria-label="Close">✕</button></div></header>' +
-      '<div class="co-body" data-coach-body>' + (S.msgs.length ? "" : '<p class="co-src">Try one of these, or type your own question.</p>') + chips +
-      (S.msgs.length ? '<div class="co-msgs">' + msgs + "</div>" : "") + (S.error && !S.noClaude ? '<p class="co-err">' + esc(S.error) + "</p>" : "") + "</div>" +
+      '<div class="co-body" data-coach-body>' + (S.settings ? settingsHtml() : "") + (S.msgs.length ? "" : '<p class="co-src">Try one of these, or type your own question.</p>') + chips +
+      (S.msgs.length ? '<div class="co-msgs">' + msgs + "</div>" : "") + (S.consentQ ? consentHtml() : "") + (S.error && !S.noClaude ? '<p class="co-err">' + esc(S.error) + "</p>" : "") + "</div>" +
       '<footer class="co-pf">' + (note ? '<p class="co-src co-note">' + esc(note) + "</p>" : "") + form + "</footer></section>";
   }
 
@@ -906,12 +1011,13 @@ const Coach = (() => {
   }
   function saveHistory() {
     if (!O || !O.chats) return;
-    try { O.chats.save(S.msgs.filter(m => m.q && m.answer).slice(-40).map(m => ({ q: m.q, answer: m.answer, evidence: m.evidence || [], missing: m.missing || [], suggestion: m.suggestion || null, local: !!m.local, at: m.at || Date.now(), actions: (m.actions || []).map(a => Object.assign({}, a)) }))); } catch (e) {}
+    try { O.chats.save(S.msgs.filter(m => m.q && m.answer).slice(-40).map(m => ({ q: m.q, answer: m.answer, evidence: m.evidence || [], missing: m.missing || [], suggestion: m.suggestion || null, local: !!m.local, at: m.at || Date.now(), costUsd: m.costUsd != null ? m.costUsd : undefined, actions: (m.actions || []).map(a => Object.assign({}, a)) }))); } catch (e) {}
   }
   function openPanel(on) {
     loadHistory();
     S.open = on !== false;
     renderPanel();
+    if (S.open) refreshMonth(false);
     if (S.open) { const inp = host && host.querySelector("[data-coach-input]"); if (inp && window.matchMedia && !window.matchMedia("(max-width:720px)").matches) inp.focus(); }
   }
   // Mount once, outside the host's re-rendered area. The panel keeps its own DOM.
@@ -923,55 +1029,99 @@ const Coach = (() => {
   }
 
   const call = k => { try { return O[k] ? O[k]() : undefined; } catch (e) { return undefined; } };
-  const oo = () => ({ today: call("today"), effort: call("effort"), tdee: call("tdee"), targets: call("targets"), rules: call("rules"), kcalTarget: O.kcalTarget,
+  const oo = () => ({ today: call("today"), effort: call("effort"), tdee: call("tdee"), targets: call("targets"), rules: call("rules"), plan: call("plan"), kcalTarget: O.kcalTarget,
     strength: call("strength"), recoveryText: call("recoveryText"), cardioText: call("cardioText"), planToday: call("planToday"), exerciseNames: call("exerciseNames"), exercise: O.exercise });
   const rerender = () => { renderPanel(); if (O.render && !host) O.render(); };
 
   // Transport 2: the app's own server endpoint (website build). Streams the model text back.
-  async function askEndpoint(question, ctx, history, signal, onDelta) {
+  // The service's BASE address. People often paste the health-check link (…/v1/health) or an endpoint link;
+  // those suffixes are dropped so the app never calls …/v1/health/v1/chat.
+  function normalizeService(u) {
+    let v = String(u == null ? "" : u).trim().replace(/[?#].*$/, "").replace(/\/+$/, "");
+    v = v.replace(/\/v1(\/(health|chat|usage|cap))?$/i, "").replace(/\/+$/, "");
+    return v;
+  }
+  const serviceOk = v => /^https:\/\/[a-z0-9.-]+(:\d+)?(\/[\w\-./]*)?$/i.test(v);
+  const serviceUrl = () => { if (!O) return null; const u = normalizeService(typeof O.endpoint === "function" ? O.endpoint() : O.endpoint); return u && serviceOk(u) ? u : null; };
+  const consented = () => !!(O && O.consent && O.consent());
+  const errOf = code => { const x = new Error(code); x.code = code; return x; };
+  async function service(path, init) {
     const token = O.getToken ? await O.getToken().catch(() => null) : null;
-    const e = code => { const x = new Error(code); x.code = code; return x; };
-    if (!token) throw e("not_signed_in");
-    const res = await fetch(O.endpoint, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + token }, body: JSON.stringify({ question, ctx, history }), signal });
+    if (!token) throw errOf("not_signed_in");
+    if (typeof navigator !== "undefined" && navigator.onLine === false) throw errOf("offline");
+    let res;
+    try { res = await fetch(serviceUrl() + path, Object.assign({}, init, { headers: Object.assign({ authorization: "Bearer " + token }, init && init.body ? { "content-type": "application/json" } : {}) })); }
+    catch (e) { if (e && e.name === "AbortError") throw e; throw errOf(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "upstream_unreachable"); }
+    if ((res.headers.get("content-type") || "").toLowerCase().includes("text/html")) throw errOf("no_endpoint");
     if (!res.ok) {
-      let code = "http_" + res.status;
-      try { const j = await res.json(); if (j && j.error) code = j.error; } catch (_) {}
-      if (res.status === 401) code = "not_signed_in"; else if (res.status === 429) code = code === "daily_cap" ? "daily_cap" : "rate_limited"; else if (res.status === 503) code = "no_key";
-      throw e(code);
+      let j = {}; try { j = await res.json(); } catch (_) {}
+      const x = errOf(j.error || (res.status === 401 ? "not_signed_in" : "http_" + res.status));
+      if (j.month) S.month = j.month;
+      if (j.uid) x.uid = j.uid;
+      throw x;
     }
-    // A page instead of the coach function (an app build with no coach service, a host that serves index.html for every path):
-    // never show that HTML as an answer.
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    if (ct.includes("text/html")) throw e("no_endpoint");
-    let text = "";
+    return res;
+  }
+  async function askEndpoint(question, ctx, history, signal, onDelta) {
+    const body = JSON.stringify({ question, ctx, history: history.slice(-4).map(h => ({ q: String(h.q).slice(0, 600), a: String(h.a).slice(0, 1200) })), effort: effortFor(question, history), lang: langOf(question) });
+    const res = await service("/v1/chat", { method: "POST", body, signal });
+    let text = "", done = null, buf = "";
+    const take = line => { if (!line.trim()) return; let o; try { o = JSON.parse(line); } catch (e) { return; }
+      if (o.t === "d") { text += o.text; onDelta(text); } else if (o.t === "done") done = o; else if (o.t === "error") { if (o.month) S.month = o.month; const x = errOf(o.error); x.costUsd = o.costUsd; throw x; } };
     if (res.body && res.body.getReader) {
       const rd = res.body.getReader(), dec = new TextDecoder();
-      for (;;) { const { value, done } = await rd.read(); if (done) break; text += dec.decode(value, { stream: true }); onDelta(text); }
-    } else text = await res.text();
-    return text;
+      for (;;) { const { value, done: end } = await rd.read(); if (end) break; buf += dec.decode(value, { stream: true }); let k; while ((k = buf.indexOf("\n")) >= 0) { take(buf.slice(0, k)); buf = buf.slice(k + 1); } }
+    } else (await res.text()).split("\n").forEach(take);
+    take(buf);
+    if (!done) throw errOf("stream_broken");
+    if (done.month) { S.month = done.month; S.monthAt = Date.now(); }
+    if (done.stop === "refusal") throw errOf("refused");
+    return { text, costUsd: done.costUsd, usage: done.usage };
+  }
+  // One read of this month's spending when the panel opens (never polled).
+  async function refreshMonth(force) {
+    if (!serviceUrl() || !consented() || (!force && Date.now() - S.monthAt < 60e3)) return;
+    S.monthAt = Date.now();
+    try { const r = await service("/v1/usage", { method: "GET" }); S.month = await r.json(); S.monthErr = ""; }
+    catch (e) { S.monthErr = errorText(e && e.code) + (e && e.uid ? " Account id: " + e.uid : ""); }
+    renderPanel();
+  }
+  async function setCap(usd) {
+    S.capMsg = "Saving…"; renderPanel();
+    try { const r = await service("/v1/cap", { method: "POST", body: JSON.stringify({ capUsd: usd }) }); S.month = await r.json(); S.capMsg = "Cap saved: $" + S.month.capUsd + " a month."; }
+    catch (e) { S.capMsg = "Couldn't save the cap: " + errorText(e && e.code); }
+    renderPanel();
   }
 
   async function ask(q) {
     q = String(q || "").trim();
     if (!q || S.busy) return;
     loadHistory();
-    const sample = O.getSample ? await O.getSample() : null;
-    if (!sample && !O.endpoint) { S.noClaude = true; S.error = errorText("not_granted"); rerender(); return; }
-    const history = S.msgs.filter(m => m.q && m.answer && !m.local).map(m => ({ q: m.q, a: m.answer }));
+    const useService = !!serviceUrl();
+    if (useService && !consented()) { S.consentQ = q; S.draft = q; renderPanel(); return; }
+    const sample = useService ? null : O.getSample ? await O.getSample() : null;
+    if (!sample && !useService) { S.noClaude = true; S.error = errorText("no_endpoint"); rerender(); return; }
+    const history = S.msgs.filter(m => m.q && m.answer && !m.local).slice(-4).map(m => ({ q: m.q, a: m.answer }));
     const m = { q, pending: true, at: Date.now() };
     S.msgs.push(m); S.busy = true; S.error = ""; S.draft = ""; S.stream = ""; S.ctl = typeof AbortController === "function" ? new AbortController() : null; rerender();
     try {
-      const ctx = context(O.getDocs(), Object.assign(oo(), { question: q }));
+      const full = context(O.getDocs(), Object.assign(oo(), { question: q }));
+      const ctx = useService ? trimContext(full, q) : full;
       let v;
       if (sample) v = await sample.json(prompt(q, ctx, history), { signal: S.ctl && S.ctl.signal, modelTier: "default" });
-      else v = await askEndpoint(q, ctx, history, S.ctl && S.ctl.signal, t => { S.stream = partialAnswer(t); renderPanel(); });
+      else {
+        const timer = setTimeout(() => { if (S.ctl) { S.ctl.timedOut = true; S.ctl.abort(); } }, 75000);
+        try { const r = await askEndpoint(q, ctx, history, S.ctl && S.ctl.signal, t => { S.stream = partialAnswer(t); renderPanel(); }); v = r.text; m.costUsd = r.costUsd; }
+        finally { clearTimeout(timer); }
+      }
       const a = parseAnswer(v);
       if (a.error) { S.msgs.pop(); S.error = a.error; } else { Object.assign(m, a, { pending: false }); prepareActions(m); saveHistory(); }
     } catch (e) {
       S.msgs.pop();
       const code = e && e.code;
-      if (code !== "cancelled" && !(e && e.name === "AbortError")) {
-        S.error = errorText(code);
+      if (S.ctl && S.ctl.timedOut) S.error = errorText("timeout");
+      else if (code !== "cancelled" && !(e && e.name === "AbortError")) {
+        S.error = errorText(code) + (e && e.uid ? " Account id: " + e.uid : "");
         if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed", "no_key", "no_endpoint"].includes(code)) { S.noClaude = true; S.noClaudeWhy = code === "no_key" ? "Claude isn't connected to this website yet (no API key configured). The quick questions still work." : ""; }
       }
     }
@@ -990,7 +1140,7 @@ const Coach = (() => {
   function bind(root, opts) {
     O = Object.assign(O || {}, opts);
     root.addEventListener("click", e => {
-      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask],[data-coach-dismiss],[data-coach-act],[data-coach-skip]");
+      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask],[data-coach-dismiss],[data-coach-act],[data-coach-skip],[data-coach-consent],[data-coach-settings],[data-coach-refresh],[data-coach-capsave]");
       if (!t) return;
       if (t.dataset.coachAct || t.dataset.coachSkip) {
         const [mi, ai] = String(t.dataset.coachAct || t.dataset.coachSkip).split(":").map(Number), msg = S.msgs[mi], a = msg && msg.actions && msg.actions[ai];
@@ -999,6 +1149,15 @@ const Coach = (() => {
         runAction(a).then(() => { saveHistory(); renderPanel(); if (O.render) O.render(); });
         return;
       }
+      if (t.dataset.coachConsent) {
+        const v = t.dataset.coachConsent, q = S.consentQ; S.consentQ = null;
+        if (v === "yes") { if (O.setConsent) O.setConsent(true); S.monthAt = 0; refreshMonth(true); if (q) { S.draft = ""; ask(q); return; } }
+        else if (v === "off") { if (O.setConsent) O.setConsent(false); S.month = null; }
+        renderPanel(); return;
+      }
+      if (t.hasAttribute("data-coach-settings")) { S.settings = !S.settings; S.capMsg = ""; renderPanel(); if (S.settings) refreshMonth(true); return; }
+      if (t.hasAttribute("data-coach-refresh")) { refreshMonth(true); return; }
+      if (t.hasAttribute("data-coach-capsave")) { const sel = host && host.querySelector("[data-coach-capsel]"); if (sel) setCap(+sel.value); return; }
       if (t.dataset.coachDismiss) { if (O.onDismiss) O.onDismiss(t.dataset.coachDismiss); const box = t.closest("[data-coach-insight]"); if (box) box.remove(); return; }
       if (t.hasAttribute("data-coach-open")) openPanel(true);
       else if (t.hasAttribute("data-coach-close")) openPanel(false);
@@ -1015,6 +1174,14 @@ const Coach = (() => {
     });
     root.addEventListener("input", e => { if (e.target.matches && e.target.matches("[data-coach-input]")) S.draft = e.target.value; });
     root.addEventListener("submit", e => {
+      if (e.target.matches && e.target.matches("[data-coach-svcform]")) {
+        e.preventDefault();
+        const raw = String((e.target.querySelector("[data-coach-svc]") || {}).value || "").trim(), v = normalizeService(raw);
+        if (v && !serviceOk(v)) { S.capMsg = "The address must start with https:// (for example https://mizan-coach.<name>.workers.dev)."; renderPanel(); return; }
+        if (O.setService) O.setService(v || null); S.month = null; S.monthAt = 0; S.noClaude = false; S.error = "";
+        S.capMsg = !v ? "Custom address removed; the app's built-in address is used." : v !== raw.replace(/\/+$/, "") ? "Saved as " + v + " (the base address; the /v1/… part isn't needed)." : "Address saved.";
+        renderPanel(); refreshMonth(true); return;
+      }
       if (!e.target.matches || !e.target.matches("[data-coach-form]")) return;
       e.preventDefault();
       const inp = e.target.querySelector("[data-coach-input]");
@@ -1023,6 +1190,6 @@ const Coach = (() => {
     root.addEventListener("keydown", e => { if (e.key === "Escape" && S.open) openPanel(false); });
   }
 
-  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, insights, insightsHtml, ACTIONS, cleanActions, bind, errorText, TOPICS, _state: S };
+  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, insights, insightsHtml, ACTIONS, cleanActions, trimContext, langOf, effortFor, normalizeService, bind, errorText, TOPICS, _state: S };
 })();
 if (typeof module !== "undefined") module.exports = Coach;

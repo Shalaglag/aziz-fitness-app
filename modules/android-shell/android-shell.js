@@ -7,15 +7,39 @@
  *   AndroidShell.onBack(fn)              -> fn() returns true when it handled the back press
  *                                           (a module with an open sheet calls this); returns an unregister fn
  *   AndroidShell.backPress()             -> what the hardware back button does (exposed for tests)
+ *   AndroidShell.visit(tab, scrollY)     -> the host calls this on every render; a tab change records the tab
+ *                                           being left (and its scroll) so back returns to it
  *   AndroidShell.notifyAt(id, when, title, body) / AndroidShell.cancel(id)
  *
- * Back button order: a registered handler → a visible sheet/dialog's close button → the Today tab → minimise the app.
+ * Back button order: a registered handler → a visible sheet/dialog's close button → the previously visited tab
+ * (opts.setTab(tab, scrollY), a history stack) → the Today tab → minimise the app.
  * Rest timer: the workout logger fires "lb:rest" {end,total,sound} and "lb:rest-stop" on window; a local
  * notification is scheduled 1 s after the end so the in-app beep (which cancels it) wins while the app is open.
  */
 const AndroidShell = (function () {
   const handlers = [];
   let opts = {};
+  // Tab history: tabs visited before the current one, newest last.
+  const TAB_MAX = 30;
+  let tabStack = [], curTab = null;
+  function visit(tab, scrollY) {
+    if (!tab || tab === curTab) return;
+    if (curTab) {
+      tabStack.push({ tab: curTab, y: +scrollY || 0 });
+      if (tabStack.length > TAB_MAX) tabStack.shift();
+    }
+    curTab = tab;
+  }
+  function tabBack() {
+    while (tabStack.length) {
+      const prev = tabStack.pop();
+      if (prev.tab === curTab) continue;
+      curTab = prev.tab; // set before setTab so the render's visit() does not push it again
+      if (opts.setTab) opts.setTab(prev.tab, prev.y);
+      return true;
+    }
+    return false;
+  }
   const REST_ID = 7001;
 
   function cap() { return (typeof window !== "undefined" && window.Capacitor) || null; }
@@ -24,7 +48,19 @@ const AndroidShell = (function () {
 
   function onBack(fn) { handlers.push(fn); return function () { const i = handlers.indexOf(fn); if (i >= 0) handlers.splice(i, 1); }; }
 
-  function visible(el) { return !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length)); }
+  // A closed sheet can still have a size (the coach panel slides off-screen with visibility:hidden), so check
+  // hidden/aria-hidden/visibility/display too, or back would "close" it forever and never change tab.
+  function visible(el) {
+    if (!el || !(el.offsetWidth || el.offsetHeight || (el.getClientRects && el.getClientRects().length))) return false;
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      if (n.hidden || (n.getAttribute && n.getAttribute("aria-hidden") === "true")) return false;
+    }
+    try {
+      const cs = typeof getComputedStyle === "function" ? getComputedStyle(el) : null;
+      if (cs && (cs.visibility === "hidden" || cs.display === "none" || cs.opacity === "0")) return false;
+    } catch (e) { }
+    return true;
+  }
   function closeTopSheet(doc) {
     const dialogs = Array.from(doc.querySelectorAll('[role="dialog"], dialog[open]')).filter(visible);
     const top = dialogs[dialogs.length - 1];
@@ -40,7 +76,8 @@ const AndroidShell = (function () {
     doc = doc || document;
     for (let i = handlers.length - 1; i >= 0; i--) { try { if (handlers[i]()) return "handler"; } catch (e) { } }
     if (closeTopSheet(doc)) return "sheet";
-    if (opts.isHome && !opts.isHome()) { opts.goHome && opts.goHome(); return "home"; }
+    if (opts.setTab && tabBack()) return "tab";
+    if (opts.isHome && !opts.isHome()) { tabStack = []; curTab = null; opts.goHome && opts.goHome(); return "home"; }
     const app = plugin("App");
     if (app) { if (app.minimizeApp) app.minimizeApp(); else if (app.exitApp) app.exitApp(); }
     return "exit";
@@ -100,6 +137,7 @@ const AndroidShell = (function () {
 
   function init(o) {
     opts = o || {};
+    tabStack = []; curTab = null;
     if (!isNative()) return false;
     document.documentElement.classList.add("android-app");
     const app = plugin("App");
@@ -112,6 +150,6 @@ const AndroidShell = (function () {
     return true;
   }
 
-  return { isNative, init, onBack, backPress, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, _handlers: handlers };
+  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;

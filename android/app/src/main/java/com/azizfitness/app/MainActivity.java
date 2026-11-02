@@ -10,6 +10,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(HealthConnectPlugin.class);
         registerPlugin(GoogleHealthPlugin.class);
         registerPlugin(AppUpdatePlugin.class);
+        registerPlugin(GoogleSignInPlugin.class);
+        registerPlugin(SpeechPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

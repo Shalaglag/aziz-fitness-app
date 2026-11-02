@@ -74,28 +74,30 @@
     for (let j = 0; j < n; j++) if (k[j].at <= t) i = j;
     const a = k[i], b = k[(i + 1) % n], end = i + 1 < n ? b.at : 1;
     const u = end > a.at ? (t - a.at) / (end - a.at) : 0;
-    return mix(a.full, b.full, def.ease === 'linear' ? u : smooth(u));
+    const e = a.ease || def.ease;   // per-key easing: 'in' / 'out' / 'linear' join segments without a stop (arcs through mid keys)
+    return mix(a.full, b.full, e === 'linear' ? u : e === 'in' ? u * u : e === 'out' ? 1 - (1 - u) * (1 - u) : smooth(u));
   }
 
-  function skeleton(p) {
+  function skeleton(p, Bx) {
+    Bx = Bx || B; // Bx: other body proportions (the shared 3D body, modules/exercise-3d)
     const up = norm(p.up);
     const f = norm(sub(p.fwd, mul(up, dot(p.fwd, up))));
     const side = cross(up, f), P = p.pelvis;
     const at = v => Array.isArray(v) ? v : add(add(add(P, mul(side, v.t[0])), mul(up, v.t[1])), mul(f, v.t[2]));
-    const neckB = add(P, mul(up, B.spine));
-    const sk = { P, up, f, side, neckB, chest: add(P, mul(up, B.spine * 0.55)), head: add(neckB, mul(up, 0.17)), err: 0,
+    const neckB = add(P, mul(up, Bx.spine));
+    const sk = { P, up, f, side, neckB, chest: add(P, mul(up, Bx.spine * 0.55)), head: add(neckB, mul(up, 0.17)), err: 0,
       sh: {}, el: {}, wr: {}, hand: {}, grip: {}, hip: {}, kn: {}, an: {}, toe: {}, fd: {} };
     const flat = norm([f[0], 0, f[2]].every(x => Math.abs(x) < 1e-6) ? [0, 0, 1] : [f[0], 0, f[2]]);
     [['L', 1], ['R', -1]].forEach(([k, s]) => {
-      const sh = add(add(neckB, mul(side, s * B.shW)), mul(up, -0.035 + (p.shrug || 0)));
-      const arm = ik(sh, at(p.hands[k]), B.upper, B.fore, p.elbows[k]);
+      const sh = add(add(neckB, mul(side, s * Bx.shW)), mul(up, -0.035 + (p.shrug || 0)));
+      const arm = ik(sh, at(p.hands[k]), Bx.upper, Bx.fore, p.elbows[k]);
       const fdir = norm(sub(arm.end, arm.mid)), hdir = p.handDir && p.handDir[k] ? norm(p.handDir[k]) : fdir;
       sk.sh[k] = sh; sk.el[k] = arm.mid; sk.wr[k] = arm.end;
-      sk.hand[k] = add(arm.end, mul(hdir, B.hand)); sk.grip[k] = add(arm.end, mul(hdir, 0.055));
-      const hip = add(add(P, mul(side, s * B.hipW)), mul(up, -0.05));
-      const leg = ik(hip, at(p.feet[k]), B.thigh, B.shin, p.knees[k]);
+      sk.hand[k] = add(arm.end, mul(hdir, Bx.hand)); sk.grip[k] = add(arm.end, mul(hdir, 0.055));
+      const hip = add(add(P, mul(side, s * Bx.hipW)), mul(up, -0.05));
+      const leg = ik(hip, at(p.feet[k]), Bx.thigh, Bx.shin, p.knees[k]);
       const fd = norm(p.footDir && p.footDir[k] ? p.footDir[k] : flat);
-      sk.hip[k] = hip; sk.kn[k] = leg.mid; sk.an[k] = leg.end; sk.fd[k] = fd; sk.toe[k] = add(leg.end, mul(fd, B.foot));
+      sk.hip[k] = hip; sk.kn[k] = leg.mid; sk.an[k] = leg.end; sk.fd[k] = fd; sk.toe[k] = add(leg.end, mul(fd, Bx.foot));
       sk.err = Math.max(sk.err, arm.err, leg.err);
     });
     return sk;
@@ -433,7 +435,7 @@
 
     'chest-press-machine': { name: 'Chest Press (Machine)', eq: 'Machine', hi: ['torso'],
       keys: like('gundam-chest-press-machine'),
-      props: sk => E.seat(0.5, 0).concat(E.back([0, 0.95, -0.17], 0.6), E.upright(0.42, -0.25, 1.5), E.upright(-0.42, -0.25, 1.5), levers(sk, [0.42, 1.1, -0.2])) },
+      props: sk => E.seat(0.5, -0.04).concat(E.back([0, 0.95, -0.17], 0.6), E.upright(0.42, -0.25, 1.5), E.upright(-0.42, -0.25, 1.5), levers(sk, [0.42, 1.1, -0.2])) },
 
     'incline-chest-press-machine': { name: 'Incline Chest Press (Machine)', eq: 'Machine', hi: ['torso', 'delts'],
       keys: rep(seated({ up: [0, 1, -0.06], hands: one([0.25, 1.12, 0.12]), elbows: one([1, -0.5, -0.6]) }), seated({ up: [0, 1, -0.06], hands: one([0.17, 1.33, 0.44]), elbows: one([1, -0.5, -0.6]) })),
@@ -598,9 +600,11 @@
       props: sk => E.seat(0.5, 0).concat([obox(add(mid(sk.el.L, sk.el.R), [0, -0.07, -0.03]), [[0.3, 0, 0], [0, -0.09, 0.13], [0, 0.03, 0.02]], 'pad'), box([0, 0.4, 0.3], [0.08, 0.8, 0.08], 'frame')], ez(sk)) },
 
     'bayesian-curl-cable': { name: 'Bayesian Curl (Cable)', eq: 'Cable', hi: ['arms'], cam: { yaw: 1.4, pitch: 0.12 },
-      keys: (() => { const S = { up: [0, 1, 0.08], elbows: { L: [0, -1, -0.4], R: [0, -0.3, -1] }, feet: { L: [0.14, 0.08, 0.2], R: [-0.14, 0.08, -0.2] }, knees: { L: [0.1, 0, 1], R: [-0.1, 0, 1] } };
-        return rep(Object.assign({}, S, { hands: { L: [0.22, 1.02, -0.23], R: [-0.22, 0.95, 0.05] } }), Object.assign({}, S, { hands: { L: [0.2, 1.35, 0.14], R: [-0.22, 0.95, 0.05] } })); })(),
-      props: sk => E.pulley([0.25, 0.15, -0.8], 0.5).concat(E.handle(sk.grip.L, [1, 0, 0]), [line([0.25, 0.15, -0.8], sk.grip.L)]) },
+      keys: (() => { const S = { up: [0, 1, 0.08], elbows: { L: [0.15, -1, -0.45], R: [0, -0.3, -1] }, feet: { L: [0.14, 0.08, 0.2], R: [-0.14, 0.08, -0.2] }, knees: { L: [0.1, 0, 1], R: [-0.1, 0, 1] } };
+        // the upper arm stays about 25 deg behind the torso; the hand travels on an arc around the elbow
+        const P = h => Object.assign({}, S, { hands: { L: h, R: [-0.22, 0.95, 0.05] } });
+        return [{ at: 0, p: P([0.26, 0.949, -0.154]) }, { at: 0.06, p: P([0.26, 0.949, -0.154]), ease: 'in' }, { at: 0.25, p: P([0.26, 0.989, 0.071]), ease: 'linear' }, { at: 0.326, p: P([0.26, 1.14, 0.177]), ease: 'out' }, { at: 0.46, p: P([0.26, 1.302, 0.17]) }, { at: 0.54, p: P([0.26, 1.302, 0.17]), ease: 'in' }, { at: 0.693, p: P([0.26, 1.14, 0.177]), ease: 'linear' }, { at: 0.781, p: P([0.26, 0.989, 0.071]), ease: 'out' }]; })(),
+      props: sk => E.pulley([0.6, 0.15, -0.8], 0.5).concat(E.handle(sk.grip.L, [1, 0, 0]), [line([0.6, 0.15, -0.8], sk.grip.L)]) },
 
     'concentration-curl-dumbbell': { name: 'Concentration Curl (Dumbbell)', eq: 'Dumbbell', hi: ['arms'], cam: { yaw: 0.5, pitch: 0.25 },
       keys: (() => { const A = { pelvis: [0, 0.5, 0], up: [0, 0.8, 0.6], elbows: { L: [-0.3, -1, 0.3], R: [-0.5, -0.3, -0.5] }, feet: one([0.35, 0.08, 0.45]), knees: one([0.5, 1, 0.5]) };
@@ -634,8 +638,9 @@
 
     // ----- legs -----
     'squat-barbell': { name: 'Squat (Barbell)', eq: 'Barbell', hi: ['thighs', 'pelvis'], cam: { yaw: 1.15, pitch: 0.15 },
-      keys: like('squat-smith-machine'),
-      props: sk => { const c = add(add(sk.P, mul(sk.up, 0.5)), mul(sk.f, -0.07)); return E.barbell(add(c, [-0.3, 0, 0]), add(c, [0.3, 0, 0]), { len: 1.9, plateAt: 0.8, r: 0.2 }); } },
+      // knees track out over a wider, turned-out stance (keeps the thighs beside the belly at the bottom); wider grip, bar a little lower on the back
+      keys: like('squat-smith-machine', p => Object.assign(p, { hands: one({ t: [0.36, 0.48, -0.1] }), elbows: one([0.7, -1, -0.15]), feet: one([0.26, 0.08, 0.12]), knees: one([0.6, 0, 1]), footDir: one([0.45, 0, 1]) })),
+      props: sk => { const c = add(add(sk.P, mul(sk.up, 0.48)), mul(sk.f, -0.09)); return E.barbell(add(c, [-0.3, 0, 0]), add(c, [0.3, 0, 0]), { len: 1.9, plateAt: 0.8, r: 0.2 }); } },
 
     'front-squat-barbell': { name: 'Front Squat (Barbell)', eq: 'Barbell', hi: ['thighs'], cam: { yaw: 1.15, pitch: 0.15 },
       keys: (() => { const S = { hands: one({ t: [0.2, 0.47, 0.2] }), elbows: one([0.2, 0.3, 1]), feet: one([0.2, 0.08, 0.12]), knees: one([0.3, 0, 1]), footDir: one([0.25, 0, 1]) };
@@ -1989,7 +1994,7 @@
     const api = { info: opts.info || null };
     // Blender video clips (clips.json): 'preview' is offered as a Video option, 'approved' is the default view.
     // A clip that is missing from the list, not preview/approved, or fails to load falls back to the 3D demo.
-    // clips.json `defaultMode: "clip"` makes the video the starting view for every listed clip (Aziz chose MP4 demos, Nov 1); 3D stays one tap away (Rotate).
+    // clips.json `defaultMode: "clip"` makes the video the starting view for every listed clip; `"3d"` (current, Nov 1) starts on the 3D demo and keeps clips behind Video.
     const clipData = () => opts.clips || root.EXERCISE_CLIPS || {};
     function clipFor(id) {
       const c = (clipData().clips || {})[id];
@@ -2004,7 +2009,7 @@
     function cardHtml(id, cls) {
       if (!has(id)) return '';
       const st = state(id), d = DEFS[id], c = clipFor(id), live = c && !st.clipFailed, mode = modeOf(id);
-      const tag = mode === 'clip' ? 'Video demo' + (c.status === 'approved' ? '' : ' · preview') : '3D guide · drag to turn';
+      const tag = mode === 'clip' ? 'Video demo' + (c.status === 'approved' ? '' : ' · preview') : (root.Exercise3D && root.Exercise3D.has(id) ? '3D body · preview · drag to turn' : '3D guide · drag to turn');
       return '<div class="ea-card' + (cls ? ' ' + cls : '') + '" data-ea="' + esc(id) + '" data-mode="' + mode + '"' + (live ? ' data-clip="1"' : '') + '>' +
         (live ? '<video muted loop playsinline preload="metadata" src="' + esc((clipData().base || 'clips/') + c.file) + '" aria-label="Video demo: ' + esc(d.name) + '"></video>' : '') +
         '<canvas role="img" aria-label="Animated demo: ' + esc(d.name) + '"></canvas>' +
@@ -2032,10 +2037,20 @@
       if (!w || !h) return;
       if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
       const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      draw(ctx, w, h, el.dataset.ea, state(el.dataset.ea), colorsFor(el));
+      const id = el.dataset.ea, st = state(id), E3 = root.Exercise3D;
+      // Rotate view: the shared 3D body (modules/exercise-3d) when this exercise has one; the line mannequin while it loads or if WebGL fails
+      if (E3 && E3.has(id)) {
+        if (E3.status() === 'idle') E3.load().then(() => cards.forEach(c => { if (c.isConnected && c.dataset.mode !== 'clip') paint(c); })).catch(() => { });
+        if (E3.paint(ctx, w, h, id, st)) { el.setAttribute('data-body', '1'); return; }
+      }
+      draw(ctx, w, h, id, st, colorsFor(el));
     }
+    let lastFrame = 0;
     function tick(now) {
       raf = 0;
+      // the 3D body is capped at 60 fps (a 120 Hz phone would otherwise draw twice as often for no visible gain)
+      if (root.Exercise3D && root.Exercise3D.status() === 'ready' && lastFrame && now - lastFrame < 15) { raf = root.requestAnimationFrame(tick); return; }
+      lastFrame = now;
       const dt = last ? Math.min(0.05, (now - last) / 1000) : 0; last = now;
       const seen = new Set(); let moving = false;
       cards.forEach(el => {
@@ -2046,7 +2061,7 @@
         if (el._eaVis !== false) paint(el);
         if (st.playing && el._eaVis !== false) moving = true;
       });
-      if (moving) raf = root.requestAnimationFrame(tick); else last = 0;
+      if (moving) raf = root.requestAnimationFrame(tick); else { last = 0; lastFrame = 0; }
     }
     const kick = () => { if (!raf && root.requestAnimationFrame) raf = root.requestAnimationFrame(tick); };
     let io = null;
@@ -2091,7 +2106,7 @@
         const st = state(id), mode = modeOf(id);
         el.dataset.mode = mode;
         const tg = el.querySelector('.ea-tag'), c = clipFor(id);
-        if (tg) tg.textContent = mode === 'clip' ? 'Video demo' + (c && c.status === 'approved' ? '' : ' · preview') : '3D guide · drag to turn';
+        if (tg) tg.textContent = mode === 'clip' ? 'Video demo' + (c && c.status === 'approved' ? '' : ' · preview') : (root.Exercise3D && root.Exercise3D.has(id) ? '3D body · preview · drag to turn' : '3D guide · drag to turn');
         el.querySelectorAll('[data-ea-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.eaMode === mode)));
         syncVideo(el);
         el.querySelectorAll('[data-ea-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.eaView === st.view)));
@@ -2158,7 +2173,11 @@
     }
     function close() { if (typeof document === 'undefined') return; document.querySelectorAll('.ea-full').forEach(n => n.remove()); }
 
-    return Object.assign(api, { has, cardHtml, attach, open, close, ids: () => Object.keys(DEFS), css });
+    // List picture (Nov 2, Aziz's pick): a still of the shared 3D body (Studio A look, Extreme build) for every exercise
+    // (tools/clip-thumbs/make-3d-thumbs.js -> <base>thumbs3d/<id>.webp), else null and the logger shows a letter circle.
+    // The old clip stills (<base>thumbs/) stay on disk but are no longer shown.
+    const thumb = id => DEFS[id] ? (clipData().base || 'clips/') + 'thumbs3d/' + id + '.webp' : null;
+    return Object.assign(api, { has, cardHtml, attach, open, close, thumb, ids: () => Object.keys(DEFS), css });
   }
 
   const css = [
@@ -2189,7 +2208,7 @@
     '@media (prefers-reduced-motion: reduce){.ea-ctl button{transition:none}}'
   ].join('\n');
 
-  const api = { create, has: id => !!DEFS[id], ids: () => Object.keys(DEFS), frame, sample, skeleton, ik, defs: DEFS, B, draw, css };
+  const api = { create, has: id => !!DEFS[id], ids: () => Object.keys(DEFS), frame, sample, skeleton, ik, defs: DEFS, B, draw, css, palette: PALETTE, views: VIEWS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ExerciseAnim = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -110,3 +110,44 @@ test("the food card and sheet HTML render without a DOM", () => {
   assert.equal(VoiceLog.speech.supported(), false);
   assert.ok(VoiceLog.css.includes(".vl-mic"));
 });
+
+test("inside the Android app the native Speech plugin listens, streams partial text and maps errors", async () => {
+  const fs = require("fs"), path = require("path"), root = path.join(__dirname, "..", "..");
+  const listeners = {}; let removed = 0, starts = [], stops = 0, finish;
+  const Speech = {
+    addListener: (ev, fn) => { listeners[ev] = fn; return Promise.resolve({ remove() { removed++; } }); },
+    start: o => { starts.push(o); return new Promise((res, rej) => { finish = { res, rej }; }); },
+    stop: () => { stops++; return Promise.resolve(); }
+  };
+  global.window = { Capacitor: { isNativePlatform: () => true, Plugins: { Speech } } };
+  try {
+    assert.equal(VoiceLog.speech.supported(), true);
+    assert.equal(VoiceLog.speech.native(), true);
+    const seen = []; let ended = 0;
+    const ctl = VoiceLog.speech.start({ onText: (t, f) => seen.push([t, f]), onEnd: () => ended++ });
+    await new Promise(r => setTimeout(r, 0));
+    assert.deepEqual(starts, [{ lang: "en-US" }]);
+    listeners.partial({ text: "bench 60" });
+    ctl.stop(); assert.equal(stops, 1);
+    finish.res({ text: "bench 60 for 10 10 8" });
+    await new Promise(r => setTimeout(r, 0));
+    assert.deepEqual(seen, [["bench 60", false], ["bench 60 for 10 10 8", true]]);
+    assert.equal(ended, 1); assert.equal(removed, 1);
+
+    let code = null;
+    VoiceLog.speech.start({ onError: c => { code = c; } });
+    await new Promise(r => setTimeout(r, 0));
+    finish.rej({ code: "not-allowed" });
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(code, "not-allowed");
+    assert.match(VoiceLog.errorText("not-allowed"), /Settings/);
+  } finally { delete global.window; }
+
+  const src = fs.readFileSync(path.join(__dirname, "android/SpeechPlugin.kt"), "utf8");
+  const built = fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/SpeechPlugin.kt"), "utf8");
+  assert.equal(built, src, "copy modules/voice-log/android/SpeechPlugin.kt into android/app/src/main/java/com/azizfitness/app/");
+  assert.match(fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/MainActivity.java"), "utf8"), /registerPlugin\(SpeechPlugin\.class\)/);
+  const manifest = fs.readFileSync(path.join(root, "android/app/src/main/AndroidManifest.xml"), "utf8");
+  assert.match(manifest, /android\.permission\.RECORD_AUDIO/);
+  assert.match(manifest, /android\.speech\.RecognitionService/);
+});

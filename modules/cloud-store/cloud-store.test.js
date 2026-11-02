@@ -89,3 +89,64 @@ test("the bundled Firebase files exist next to the app", () => {
     assert.ok(fs.statSync(f).size > 10000, f);
   }
 });
+
+// Google sign-in: native goes through the GoogleSignIn plugin and signs Firebase in with the ID token;
+// the website uses Firebase's own pop-up. Both end in the same Firebase account (one uid per person).
+function fakeFb(log) {
+  function GoogleAuthProvider() { this.setCustomParameters = p => log.push(["params", p]); }
+  GoogleAuthProvider.credential = tok => ({ providerId: "google.com", idToken: tok });
+  const auth = {
+    signInWithPopup: p => (log.push(["popup", p.constructor === GoogleAuthProvider]), Promise.resolve({ user: { uid: "web1", email: "w@x.com" } })),
+    signInWithCredential: c => (log.push(["credential", c]), Promise.resolve({ user: { uid: "nat1", email: "n@x.com" } }))
+  };
+  return { fb: { auth: Object.assign(() => auth, { GoogleAuthProvider }) }, auth };
+}
+
+test("Google on Android: plugin idToken → signInWithCredential", async () => {
+  const log = []; const { fb, auth } = fakeFb(log);
+  const plugin = { signIn: o => (log.push(["plugin", o]), Promise.resolve({ idToken: "tok123", email: "n@x.com" })) };
+  const u = await C.signInWithGoogle({ fb, auth, native: true, plugin, clientId: " 123-abc.apps.googleusercontent.com " });
+  assert.strictEqual(u.uid, "nat1");
+  assert.deepStrictEqual(log, [["plugin", { clientId: "123-abc.apps.googleusercontent.com" }], ["credential", { providerId: "google.com", idToken: "tok123" }]]);
+});
+
+test("Google on Android without the client id or plugin says it isn't set up", async () => {
+  const { fb, auth } = fakeFb([]);
+  for (const deps of [{ plugin: { signIn: () => Promise.resolve({ idToken: "t" }) }, clientId: "" }, { plugin: null, clientId: "x" }]) {
+    await assert.rejects(C.signInWithGoogle({ fb, auth, native: true, ...deps }), e => e.code === "google/not-set-up");
+  }
+  assert.match(C.authMessage("google/not-set-up"), /Use your email/);
+});
+
+test("Google on Android: plugin errors keep their code, cancel is silent", async () => {
+  const { fb, auth } = fakeFb([]);
+  const rej = code => ({ signIn: () => Promise.reject(Object.assign(new Error("x"), { code })) });
+  for (const [code, want] of [["cancelled", "google/cancelled"], ["no-account", "google/no-account"], ["16: developer error", "google/failed"]]) {
+    await assert.rejects(C.signInWithGoogle({ fb, auth, native: true, plugin: rej(code), clientId: "id" }), e => e.code === want);
+  }
+  assert.strictEqual(C.cancelled("google/cancelled"), true);
+  assert.strictEqual(C.cancelled("auth/popup-closed-by-user"), true);
+  assert.strictEqual(C.cancelled("google/failed"), false);
+  assert.match(C.authMessage("google/no-account"), /Google account/);
+});
+
+test("Google on the website: Firebase pop-up", async () => {
+  const log = []; const { fb, auth } = fakeFb(log);
+  const u = await C.signInWithGoogle({ fb, auth, native: false });
+  assert.strictEqual(u.uid, "web1");
+  assert.deepStrictEqual(log, [["params", { prompt: "select_account" }], ["popup", true]]);
+});
+
+test("the native plugin source is the one compiled into the Android app", () => {
+  const fs = require("fs"), path = require("path");
+  const root = path.join(__dirname, "../..");
+  const src = fs.readFileSync(path.join(__dirname, "android/GoogleSignInPlugin.kt"), "utf8");
+  assert.equal(fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/GoogleSignInPlugin.kt"), "utf8"), src);
+  assert.match(fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/MainActivity.java"), "utf8"), /registerPlugin\(GoogleSignInPlugin\.class\)/);
+  assert.match(src, new RegExp(`@CapacitorPlugin\\(name = "${C.GOOGLE_PLUGIN}"\\)`));
+  assert.match(src, /@PluginMethod\s+fun signIn\(/);
+  for (const code of ["cancelled", "no-account", "not-set-up"]) assert.ok(src.includes(`"${code}"`), code);
+  const gradle = fs.readFileSync(path.join(root, "android/app/build.gradle"), "utf8");
+  assert.match(gradle, /androidx\.credentials:credentials-play-services-auth/);
+  assert.match(gradle, /com\.google\.android\.libraries\.identity\.googleid:googleid/);
+});

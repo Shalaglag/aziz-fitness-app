@@ -14,7 +14,9 @@ the app's WebView. The web/Claude versions still work from the same file.
 
 ## Update it
 
-**From inside the app (build 72 and later):** open Settings, then App updates. The first time, paste a read-only GitHub key; the card has the steps and a link to GitHub's key page. Choose only this repository and Contents: Read-only. From then on, the app checks for a newer build at start-up. When there is one, a banner on Today and **Update now** in Settings download it. Android then asks you to confirm. The app only installs a newer build signed with your key (see `modules/app-update/README.md`).
+**From inside the app:** nothing to set up. The app checks the public releases repo (`Shalaglag/mizan-releases`, APK and `latest.json` only, no code) at start-up and on resume. When there is a newer build, a banner on Today and **Update now** in Settings → App updates download it; Android then asks you to confirm. The app only installs a newer build signed with the same key (see `modules/app-update/README.md`). Anyone you give the APK to gets updates the same way, with their own account and their own data (Firestore rules allow each signed-in person to read and write only `users/{their uid}`; the APK carries no account). If they tapped "Use without an account" at first start, Settings → Account and sync has **Sign in or create account**. The sign-in sheet also offers **Continue with Google** once the Firebase steps in `docs/GOOGLE-SIGN-IN.md` are done.
+
+Advanced: if the public repo has no build yet, a read-only GitHub key for the private repo (Contents: Read-only) still works, behind "Advanced: use a GitHub key" on the card.
 
 **By hand:**
 
@@ -85,5 +87,5 @@ Changing the key means the next APK cannot install over the old one (export data
   (`READ_HYDRATION`, `READ_STEPS`); both refresh when the app is opened or resumed. Background reads would need
   `READ_HEALTH_DATA_IN_BACKGROUND` plus a WorkManager job and are not started.
 - Home-screen widgets and biometric lock are not started.
-- Claude AI coach needs its backend (see `netlify/functions/coach.mjs`); the app shows the offline/unavailable state
-  until that is live.
+- Ask Claude calls the Mizan coach service (`worker/`, Cloudflare Workers, HTTPS) whose address is set in Ask Claude → ⚙
+  AI settings; until it is set up the app answers the quick questions only. Setup steps: `worker/README.md`.

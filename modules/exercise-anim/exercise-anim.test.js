@@ -138,5 +138,31 @@ test('defaultMode clip makes a preview clip the starting view', () => {
   const an = A.create({ clips });
   assert.ok(an.cardHtml('bench-press-barbell').includes('data-mode="clip"'));
   assert.ok(an.cardHtml('squat-barbell').includes('data-mode="3d"'), 'ignored statuses stay 3D');
-  assert.strictEqual(CLIPS.defaultMode, 'clip');
+});
+
+test('shipped clips.json starts every card on 3D, clips stay behind Video', () => {
+  assert.strictEqual(CLIPS.defaultMode, '3d');
+  const an = A.create({ clips: CLIPS });
+  Object.keys(CLIPS.clips).filter(id => CLIPS.clips[id].status === 'preview').forEach(id => {
+    const h = an.cardHtml(id);
+    assert.ok(h.includes('data-mode="3d"') && h.includes('<video') && h.includes('data-ea-mode="clip"'), id + ' starts on 3D with a Video switch');
+  });
+});
+
+test('list pictures: 3D body still for every exercise, else null', () => {
+  Object.keys(CLIPS.clips).forEach(id => {
+    const f = path.join(CLIP_DIR, 'thumbs', id + '.webp');
+    assert.ok(fs.existsSync(f), id + ' has no list picture: run node tools/clip-thumbs/make-thumbs.js');
+    assert.ok(fs.statSync(f).size < 12000, id + ' thumb stays small');
+  });
+  A.ids().forEach(id => {
+    const f = path.join(CLIP_DIR, 'thumbs3d', id + '.webp');
+    assert.ok(fs.existsSync(f), id + ' has no 3D list picture: run node tools/clip-thumbs/make-3d-thumbs.js');
+    assert.ok(fs.statSync(f).size > 400 && fs.statSync(f).size < 16000, id + ' 3D picture is not blank and stays small');
+  });
+  const an = A.create({ clips: { base: 'clips/', clips: { 'bench-press-barbell': { file: 'b.mp4', status: 'preview' }, 'squat-barbell': { file: 's.mp4', status: 'approved' } } } });
+  assert.strictEqual(an.thumb('bench-press-barbell'), 'clips/thumbs3d/bench-press-barbell.webp', 'a clip no longer changes the list picture');
+  assert.strictEqual(an.thumb('squat-barbell'), 'clips/thumbs3d/squat-barbell.webp');
+  assert.strictEqual(an.thumb('push-up'), 'clips/thumbs3d/push-up.webp', 'no clip, 3D still');
+  assert.strictEqual(an.thumb('my-custom-lift'), null, 'unknown exercise: letter circle');
 });

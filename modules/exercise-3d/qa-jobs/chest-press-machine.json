@@ -1,0 +1,59 @@
+{
+ "id": "chest-press-machine",
+ "check": {
+  "contacts": [
+   {
+    "body": "grip.L",
+    "target": "gripL.grip",
+    "grip": "neutral",
+    "tolMm": 10
+   },
+   {
+    "body": "grip.R",
+    "target": "gripR.grip",
+    "grip": "neutral",
+    "tolMm": 10
+   },
+   {
+    "body": "sole.L",
+    "target": "floor",
+    "tolMm": 8
+   },
+   {
+    "body": "sole.R",
+    "target": "floor",
+    "tolMm": 8
+   },
+   {
+    "body": "seat",
+    "target": "pad0.surface",
+    "tolMm": 10
+   },
+   {
+    "body": "upperBack",
+    "target": "pad2.surface",
+    "tolMm": 10
+   }
+  ],
+  "allowTouch": [
+   {
+    "body": [
+     "spine",
+     "seat",
+     "legs",
+     "head"
+    ],
+    "equipment": "pad0",
+    "maxMm": 20
+   },
+   {
+    "body": [
+     "spine",
+     "head"
+    ],
+    "equipment": "pad2",
+    "maxMm": 20
+   }
+  ]
+ }
+}

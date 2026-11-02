@@ -9,7 +9,7 @@ let chromium;
 try { ({ chromium } = require("playwright")); } catch (e) { /* skipped below when not installed */ }
 const APP = "file://" + path.join(__dirname, "../app/index.html");
 const PHONES = [{ name: "Android 360×800", width: 360, height: 800 }, { name: "iPhone 390×844", width: 390, height: 844 }];
-const TABS = ["today", "train", "food", "progress", "guide"];
+const TABS = ["today", "train", "food", "progress", "friends", "guide"];
 
 const addDays = (d, n) => new Date(Date.parse(d + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 
@@ -30,7 +30,7 @@ function seed(today) {
 // The bottom bar is the default since Nov 1; its More button opens the same drawer when ☰ is hidden.
 async function go(page, tab) { await page.evaluate(() => { const m = document.getElementById("menuBtn"); (getComputedStyle(m).display === "none" ? document.querySelector("#bottomNav button[data-more]") : m).click(); }); await page.click(tab === "settings" ? "#openSettings" : `#tabs button[data-tab="${tab}"]`); await page.waitForTimeout(150); }
 
-async function openApp(browser, phone, data) {
+async function openApp(browser, phone, data, opts = {}) {
   const page = await browser.newPage({ viewport: { width: phone.width, height: phone.height }, isMobile: true, hasTouch: true });
   const errors = [];
   page.on("pageerror", e => errors.push(e.message));
@@ -44,6 +44,8 @@ async function openApp(browser, phone, data) {
     await page.reload();
   }
   await page.waitForFunction(() => document.querySelector("#main").children.length > 0);
+  // A brand-new install opens the goal questionnaire first; most checks here want the plain app.
+  if (!opts.keepSetup) await page.evaluate(() => { const b = document.querySelector('.gs-wrap [data-gs="skip"]'); if (b) b.click(); });
   return { page, errors };
 }
 
@@ -230,9 +232,18 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ sound: true }); });
       await finishOne();
       assert.ok(await page.evaluate(() => played.includes("finish")), "Finish plays the finish chime");
+      assert.strictEqual(await page.evaluate(() => played[0]), "check", "ticking a set plays Aziz's Check sound by default");
       await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ sound: false }); });
       await finishOne();
-      assert.deepStrictEqual(await page.evaluate(() => played), [], "Beep setting off: no finish sound");
+      assert.deepStrictEqual(await page.evaluate(() => played), ["check"], "Beep setting off: no finish sound (the set tick has its own setting)");
+      await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ setSound: "off" }); });
+      await finishOne();
+      assert.deepStrictEqual(await page.evaluate(() => played), [], "set sound Off: ticking is silent");
+      await page.evaluate(() => WorkoutLogger.setSettings({ setSound: "check", sound: true }));
+      // Quick log tick plays it too
+      await page.evaluate(() => { played.length = 0; });
+      const quick = await page.evaluate(() => { const c = document.querySelector('[data-act="setdone"]'); if (c) c.click(); return !!c; });
+      if (quick) assert.ok(await page.evaluate(() => played.includes("check")), "quick log tick plays Check");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });
@@ -275,7 +286,24 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
-    await t.test("guide: search filters sections and jump chips exist; progress has four sections", async () => {
+    await t.test("settings and friends: the sign-in button opens the sign-in sheet (build 119-137 shipped it dead)", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      // Device-only mode with a cloud config present: Settings and Friends offer "Sign in or create account".
+      await page.evaluate(() => { window.connectCalls = 0; CloudStore.connect = () => { connectCalls++; return Promise.resolve(null); }; });
+      for (const tab of ["settings", "friends"]) {
+        await go(page, tab);
+        const btn = await page.$('#main [data-act="cloudsignin"]');
+        assert.ok(btn, tab + " shows the sign-in button");
+        await btn.click();
+        await page.waitForTimeout(100);
+      }
+      assert.strictEqual(await page.evaluate(() => connectCalls), 2, "each tap opens the sign-in flow");
+      assert.strictEqual(await page.$eval('#main [data-act="cloudsignin"]', b => b.disabled), false, "button is usable again after 'Use without an account'");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("guide: search filters sections and jump chips exist; progress has five sections", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "guide");
       assert.ok((await page.$$('.jump .chip')).length >= 7, "jump chips");
@@ -284,7 +312,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.deepStrictEqual(cards, ["Supplements"]);
       await go(page, "progress");
       const tabs = await page.$$eval('.subnav [data-act="ptab"]', els => els.map(e => e.textContent));
-      assert.deepStrictEqual(tabs, ["Weight", "Lifts", "Food", "Reviews"]);
+      assert.deepStrictEqual(tabs, ["Your day", "Weight", "Lifts", "Food", "Reviews"]);
       await page.click('[data-act="ptab"][data-k="reviews"]'); await page.waitForTimeout(100);
       assert.ok(await page.$('details.fold[data-keep="f:wr"]'), "weekly report folded under Reviews");
       assert.deepStrictEqual(errors, []);
@@ -305,7 +333,75 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.ok((await read()).rise > 0, "cards get the rise animation after a tab change");
       await go(page, "settings");
       const chips = await page.$$eval('[data-act="accent"]', els => els.map(e => e.dataset.k));
-      assert.deepStrictEqual(chips, ["coral", "red", "white", "green", "yellow", "blue"]);
+      assert.deepStrictEqual(chips, ["coral", "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "white"]);
+      const labels = await page.$$eval('[data-act="accent"]', els => els.map(e => e.textContent.trim()));
+      assert.strictEqual(labels[0], "Default", "the warm brown stays the default choice");
+      assert.ok(labels.every(l => !/kg/.test(l)), "colour names, not plate weights: " + labels.join(", "));
+      await page.click('[data-act="accent"][data-k="blue"]');
+      await page.waitForTimeout(300);
+      const blue = await page.evaluate(() => ({ a: document.documentElement.dataset.accent, v: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(), on: document.querySelector('[data-act="accent"][data-k="blue"]').getAttribute("aria-pressed") }));
+      assert.strictEqual(blue.a, "blue");
+      assert.ok(["#1F5FD1", "#6B9BF5"].includes(blue.v.toUpperCase()), "accent recolours the app: " + blue.v);
+      assert.strictEqual(blue.on, "true");
+      await page.click('[data-act="accent"][data-k="coral"]');
+      await page.waitForTimeout(300);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("ticking sets never hides a row: every template, every set (Aziz's bench warm-ups vanished after the 4th tick)", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "train");
+      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      const tap = (a, id) => page.evaluate(([a, id]) => { const b = [...document.querySelectorAll(`[data-a="${a}"]` + (id ? `[data-id="${id}"]` : ""))].filter(e => e.offsetParent).pop(); if (b) b.click(); return !!b; }, [a, id]);
+      const tpls = await page.$$eval('[data-a="tplPreview"]', b => [...new Set(b.map(e => e.dataset.id))]);
+      assert.ok(tpls.length >= 6, "all program templates listed (" + tpls.length + ")");
+      let checked = 0;
+      for (const id of tpls) {
+        await tap("tplPreview", id); await page.waitForTimeout(80);
+        await tap("startTpl"); await page.waitForSelector('[data-a="check"]');
+        const rows = () => page.$$eval('.lb-setrow[data-si]', r => r.filter(e => e.offsetParent).map(e => e.dataset.ei + ":" + e.dataset.si));
+        const all = await rows();
+        assert.ok(all.length > 0, id + " has sets");
+        for (const key of all) {
+          const [ei, si] = key.split(":");
+          await page.evaluate(([ei, si]) => {
+            const row = document.querySelector(`.lb-setrow[data-ei="${ei}"][data-si="${si}"]`);
+            row.querySelectorAll("input.lb-cell").forEach(c => { if (!c.value && !c.placeholder) { c.value = "1"; c.dispatchEvent(new Event("input", { bubbles: true })); } });
+            row.querySelector('[data-a="check"]').click();
+          }, [ei, si]);
+          await page.waitForTimeout(20);
+          const now = await rows();
+          assert.deepStrictEqual(now, all, `${id}: ticking set ${key} changed the visible rows`);
+          assert.ok(await page.evaluate(([ei, si]) => document.querySelector(`.lb-setrow[data-ei="${ei}"][data-si="${si}"]`).classList.contains("done"), [ei, si]), `${id}: set ${key} shows as done`);
+          checked++;
+        }
+        await page.evaluate(() => [...document.querySelectorAll('[data-a="restSkip"]')].forEach(b => b.offsetParent && b.click()));
+        await page.evaluate(() => WorkoutLogger && document.querySelector('[data-a="askCancel"]').click());
+        await tap("cancelLive"); await page.waitForTimeout(100);
+        await page.waitForSelector('[data-a="tplPreview"]');
+      }
+      assert.ok(checked > 50, "ticked " + checked + " sets");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("Today tiles take you to their section: Water tile scrolls to the Water card, its chips still add water", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      const visible = sel => page.evaluate(s => { const r = document.querySelector(s).getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight - 100; }, sel);
+      assert.ok(!(await visible("#waterCard")), "Water card starts below the fold");
+      await page.click(".dd-water .dd-cap1");
+      await page.waitForTimeout(900);
+      assert.ok(await visible("#waterCard"), "tapping the Water tile scrolls to the Water card");
+      const before = await page.evaluate(() => getDay(TODAY).water);
+      await page.click('.dd-water [data-act="water"][data-ml="250"]');
+      assert.strictEqual(await page.evaluate(() => getDay(TODAY).water), before + 250, "the cell's + button still adds water");
+      for (const [tile, target] of [[".dd-weight", "#wkg"], ['[data-act="dd-focus"][data-target="sleepH"]', "#sleepH"]]) {
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.click(tile);
+        await page.waitForTimeout(900);
+        assert.ok(await visible(target), `${tile} scrolls to ${target}`);
+      }
       assert.deepStrictEqual(errors, []);
       await page.close();
     });
@@ -333,12 +429,166 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.strictEqual(both.nav, "both"); assert.notStrictEqual(both.menu, "none", "menu button stays in Both mode"); assert.notStrictEqual(both.guide, "none"); assert.strictEqual(both.more, "none");
       await page.click('[data-act="navset"][data-k="drawer"]'); await page.waitForTimeout(100);
       assert.strictEqual(await page.evaluate(() => document.documentElement.dataset.nav), undefined);
+      // Text size slider scales every rem-sized thing from the 15px base and is saved in prefs.
+      const fs = () => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+      assert.strictEqual(await fs(), 15, "default text size is the compact 15px base");
+      await page.evaluate(() => { const r = document.getElementById("uiScale"); r.value = "0.85"; r.dispatchEvent(new Event("input", { bubbles: true })); r.dispatchEvent(new Event("change", { bubbles: true })); });
+      await page.waitForTimeout(100);
+      assert.ok(Math.abs(await fs() - 12.75) < 0.01, "slider shrinks the text");
+      assert.strictEqual(await page.evaluate(() => S.docs.prefs.main.uiScale), 0.85, "text size is saved");
+      await page.click('[data-act="scalereset"]'); await page.waitForTimeout(100);
+      assert.strictEqual(await fs(), 15, "Reset goes back to the default size");
       await go(page, "train");
       await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
       const lg = await page.evaluate(async () => { const s = WorkoutLogger.settings(); const btn = [...document.querySelectorAll('#lbHost [data-a="startTplName"],#lbHost [data-a="startTpl"]')][0]; btn.click(); await new Promise(r => setTimeout(r, 400)); const tog = document.querySelectorAll(".lb-live-body .lb-demo-toggle").length, before = document.querySelectorAll(".lb-live-body .ea-card").length; const t = document.querySelector(".lb-live-body .lb-demo-toggle"); if (t) t.click(); await new Promise(r => setTimeout(r, 200)); return { gym: s.gym, listOnce: s.listOnce, tog, before, after: document.querySelectorAll(".lb-live-body .ea-card").length }; });
       assert.strictEqual(lg.gym, false, "live workouts open in List view");
       assert.strictEqual(lg.listOnce, true);
       assert.ok(lg.tog > 0 && lg.before === 0 && lg.after === 1, "demos start collapsed and one opens on tap: " + JSON.stringify(lg));
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("goal setup: opens first for a new install, Skip is remembered, Settings reruns it, the result applies only on confirm", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], null, { keepSetup: true });
+      assert.ok(await page.$('.gs-wrap[role="dialog"]'), "a fresh install starts on the questionnaire");
+      // Regression (Aziz, Nov 2): on a signed-in phone the local cache is empty until the cloud answers, and the
+      // questionnaire opened on every launch. Before the store has decided, an empty cache must not count as "new user".
+      const early = await page.evaluate(() => { document.querySelector(".gs-wrap").remove(); gsOpen = null; gsFirstRunChecked = false; storeReady = false; render(); const opened = !!document.querySelector(".gs-wrap"); storeReady = true; render(); return { opened, later: !!document.querySelector(".gs-wrap") }; });
+      assert.strictEqual(early.opened, false, "nothing opens while the store is still deciding");
+      assert.strictEqual(early.later, true, "and it opens once the store has settled with no data");
+      assert.ok(await page.$('.gs-wrap [data-gs="skip"]'), "a new user can skip it");
+      await page.click('.gs-wrap [data-gs="skip"]');
+      await page.waitForFunction(() => !document.querySelector(".gs-wrap"));
+      await page.reload(); await page.waitForFunction(() => document.querySelector("#main").children.length > 0); await page.waitForTimeout(200);
+      assert.strictEqual(await page.$(".gs-wrap"), null, "Skip is remembered across opens");
+      const seeded = await openApp(browser, PHONES[0], seed, { keepSetup: true });
+      assert.strictEqual(await seeded.page.$(".gs-wrap"), null, "someone with entries (Aziz) is never interrupted");
+      await go(seeded.page, "settings");
+      await seeded.page.click('#main [data-act="goalsetup"]');
+      const p2 = seeded.page, before = await p2.evaluate(() => kcalTarget(TODAY));
+      const wide = async () => p2.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(await p2.$(".gs-wrap"), "Settings → Your numbers → Start opens it");
+      assert.ok(await p2.$(".gs-wrap svg.gs-art"), "each step has an illustration");
+      await p2.click('.gs-wrap [data-gs="next"]');
+      assert.ok(await p2.$(".gs-wrap .gs-err"), "empty answers show what is missing");
+      await p2.click('.gs-wrap [data-gs="pick"][data-v="male"]');
+      await p2.fill('.gs-wrap [data-gs-f="age"]', "29"); await p2.fill('.gs-wrap [data-gs-f="heightCm"]', "172");
+      assert.strictEqual(await p2.$eval('.gs-wrap [data-gs-f="kg"]', i => i.value), "90.1", "weight is prefilled from the latest weigh-in");
+      // Optional body fat + waist: method and date are stored, both become Health markers entries
+      await p2.evaluate(() => { document.querySelector(".gs-wrap details.gs-more").open = true; });
+      await p2.fill('.gs-wrap [data-gs-f="bodyFatPct"]', "22"); await p2.selectOption('.gs-wrap [data-gs-f="bodyFatMethod"]', "calipers"); await p2.fill('.gs-wrap [data-gs-f="waistCm"]', "95");
+      assert.ok((await wide()) <= 1, "about step with the optional block fits the phone");
+      await p2.click('.gs-wrap [data-gs="next"]'); assert.ok((await wide()) <= 1, "activity step fits the phone");
+      await p2.click('.gs-wrap [data-gs="pick"][data-v="moderate"]'); await p2.click('.gs-wrap [data-gs="next"]');
+      // Goals are multi-select: lose fat + build muscle is a recomp (no aggressive/extreme pace, protein 2.2 g/kg)
+      await p2.click('.gs-wrap [data-gs="goal"][data-v="cut"]'); await p2.click('.gs-wrap [data-gs="goal"][data-v="muscle"]');
+      const pressed = await p2.$$eval('.gs-wrap [data-gs="goal"][aria-pressed="true"]', els => els.map(e => e.dataset.v));
+      assert.deepStrictEqual(pressed, ["cut", "muscle"], "both goals stay selected");
+      await p2.click('.gs-wrap [data-gs="goal"][data-v="maintain"]');
+      assert.deepStrictEqual(await p2.$$eval('.gs-wrap [data-gs="goal"][aria-pressed="true"]', els => els.map(e => e.dataset.v)), ["maintain", "muscle"], "a second direction replaces the first");
+      await p2.click('.gs-wrap [data-gs="goal"][data-v="cut"]'); await p2.click('.gs-wrap [data-gs="next"]');
+      assert.deepStrictEqual(await p2.$$eval('.gs-wrap [data-gs="pick"][data-k="pace"]', els => els.map(e => e.dataset.v)), ["easy", "regular"], "recomp offers only the gentle paces");
+      await p2.click('.gs-wrap [data-gs="pick"][data-v="regular"]'); await p2.fill('.gs-wrap [data-gs-f="targetKg"]', "80"); await p2.click('.gs-wrap [data-gs="next"]');
+      await p2.waitForSelector(".gs-wrap .gs-hero");
+      assert.match(await p2.evaluate(() => document.querySelector(".gs-wrap .gs-sub").textContent), /Lose fat \+ Build muscle/);
+      assert.ok((await wide()) <= 1, "result step fits the phone");
+      const r = await p2.evaluate(() => ({ hero: document.querySelector(".gs-hero").textContent, ms: document.querySelectorAll(".gs-ms div").length, cmp: !!document.querySelector(".gs-cmp"), kcal: kcalTarget(TODAY), cyc: document.querySelector('.gs-wrap [data-gs-c="cycling"]') ? document.querySelector('.gs-wrap [data-gs-c="cycling"]').checked : null }));
+      assert.match(r.hero, /Maintenance about/); assert.ok(r.ms >= 2, "milestones with dates"); assert.ok(r.cmp, "existing numbers are compared, not overwritten");
+      assert.strictEqual(r.kcal, before, "nothing changes before confirm");
+      const bodyTxt = await p2.evaluate(() => document.querySelector(".gs-wrap .gs-body").textContent);
+      assert.match(bodyTxt, /Lean mass about [\d.]+ kg/); assert.match(bodyTxt, /±4 points by calipers/); assert.match(bodyTxt, /not a body-fat measurement/); assert.match(bodyTxt, /treat it as a range/);
+      assert.strictEqual(r.cyc, false, "lift-day calorie shift is offered, off by default");
+      await p2.click('.gs-wrap [data-gs-c="cycling"]');
+      await p2.click('.gs-wrap [data-gs="apply"]');
+      await p2.waitForFunction(() => !document.querySelector(".gs-wrap"));
+      const after = await p2.evaluate(() => ({ kcal: kcalTarget(TODAY), prof: S.docs.prefs.main.profile, gs: S.docs.prefs.main.goalSetup, floor: KCAL_FLOOR, cyc: S.docs.prefs.main.cycling, base: APPT.kcal }));
+      assert.ok(after.base !== before && after.base === after.prof.cutKcal, "confirm applies the calories everywhere");
+      assert.strictEqual(after.prof.goalKg, 80); assert.strictEqual(after.gs.answers.goal, "cut"); assert.deepStrictEqual(after.gs.answers.goals, ["cut", "muscle"]); assert.strictEqual(after.gs.result.proteinPerKg, 2.2); assert.strictEqual(after.floor, after.prof.kcalFloor);
+      assert.strictEqual(after.cyc && after.cyc.on, true, "ticking the box turns calorie cycling on");
+      assert.strictEqual(after.gs.answers.bodyFatPct, 22); assert.strictEqual(after.gs.answers.bodyFatMethod, "calipers"); assert.strictEqual(after.gs.answers.bodyFatAt, await p2.evaluate(() => TODAY)); assert.strictEqual(after.gs.result.tdeeSource, "bodyfat");
+      const mk = await p2.evaluate(() => Object.values(S.docs.markers || {}).map(m => [m.preset, (m.entries || []).map(e => e.v)]).sort());
+      assert.deepStrictEqual(mk, [["bodyfat", [22]], ["waist", [95]]], "both measurements are logged as health markers once");
+      assert.ok(Math.abs(after.kcal - after.base) <= 400 && after.kcal !== after.base, "today's target is the cycled one, lift or rest day");
+      // Reviews shows the plan as phases: start, goal, and an optional return to maintenance; nothing mandatory
+      await go(p2, "progress"); await p2.click('#main [data-act="ptab"][data-k="reviews"]');
+      await p2.waitForSelector("#main .pc-phases");
+      const ph = await p2.evaluate(() => ({ kinds: [...document.querySelectorAll("#main .pc-tl li")].map(l => l.className.split(" ")[0]), text: document.querySelector("#main .pc-phases").textContent, wide: document.documentElement.scrollWidth - window.innerWidth }));
+      assert.ok(ph.kinds[0] === "start" && ph.kinds.includes("goal") && ph.kinds[ph.kinds.length - 1] === "after", JSON.stringify(ph.kinds));
+      assert.match(ph.text, /Maintenance means eating about what you burn/); assert.match(ph.text, /never switches your calories on its own/); assert.doesNotMatch(ph.text, /mandatory/);
+      assert.ok(ph.wide <= 1, "phases card fits the phone");
+      // Logging a weight a kilo away from the plan's weight offers an update; closer does not.
+      await go(p2, "today");
+      await p2.fill("#wkg", "90.6"); await p2.click('form[data-form="weight"] button[type=submit]');
+      assert.strictEqual(await p2.$(".toast .undo"), null, "0.5 kg moves nothing");
+      await p2.fill("#wkg", "89.0"); await p2.click('form[data-form="weight"] button[type=submit]'); await p2.waitForTimeout(100);
+      await p2.fill("#wkg", "89.0"); await p2.click('form[data-form="weight"] button[type=submit]');     // outlier guard asks for a second tap
+      await p2.waitForSelector(".toast .undo");
+      assert.match(await p2.$eval(".toast:has(.undo)", t => t.textContent), /Update your plan/);
+      await p2.click(".toast .undo");
+      assert.ok(await p2.$(".gs-wrap"), "Update reopens the questionnaire");
+      assert.strictEqual(await p2.$eval('.gs-wrap [data-gs-f="kg"]', i => i.value), "89", "with the new weight");
+      assert.deepStrictEqual(errors, []); assert.deepStrictEqual(seeded.errors, []);
+      await page.close(); await p2.close();
+    });
+
+    await t.test("milestones: trend-based weight numbers and workout counts, celebrated once, old ones recorded quietly", async () => {
+      // 61 days losing 0.5 kg/wk from 91.9 (the trend passed 90 kg weeks ago) and 10 workouts, the tenth yesterday.
+      const seedMs = today => {
+        const d = { weights: {}, days: {}, workouts: {}, prefs: {} };
+        for (let i = 0; i < 61; i++) { const date = addDays(today, -(60 - i)); d.weights[date] = { date, kg: Math.round((91.9 - 0.5 * i / 7) * 10) / 10 }; }
+        for (let i = 0; i < 10; i++) { const date = addDays(today, -(1 + i * 3)); d.workouts[date] = { date, session: "Push A", sets: { "Bench Press": [{ w: 80, r: 8 }] } }; }
+        return d;
+      };
+      const { page, errors } = await openApp(browser, PHONES[0], seedMs);
+      await page.evaluate(() => { const a = { sex: "male", age: 29, heightCm: 172, kg: 91.9, activity: "moderate", goal: "cut", pace: "regular", targetKg: 80 }; const start = addDays(TODAY, -60); const r = GoalSetup.compute(a, { today: start }); const p = clone(S.docs.prefs.main || {}); p.profile = { ...(p.profile || {}), ...r.profile }; p.goalSetup = { answers: a, result: r, at: start + "T07:00:00Z" }; put("prefs", "main", p); });
+      await page.waitForTimeout(150);
+      const st = await page.evaluate(() => ({ toast: [...document.querySelectorAll(".toast")].map(t => t.textContent), seen: Object.keys(S.docs.prefs.main.milestones || {}).sort(), card: document.querySelector('#main details[data-keep="f:ms"]') ? document.querySelector('#main details[data-keep="f:ms"]').textContent : "" }));
+      assert.ok(st.seen.includes("kg:90") && st.seen.includes("workouts:10"), JSON.stringify(st.seen));
+      assert.ok(st.toast.some(t => /10 workouts logged/.test(t)), "the fresh one (yesterday) is celebrated: " + JSON.stringify(st.toast));
+      assert.ok(!st.toast.some(t => /90 kg/.test(t)), "the weeks-old weight milestone is recorded without a toast");
+      assert.match(st.card, /90 kg on the trend/); assert.match(st.card, /10 workouts logged/); assert.match(st.card, /Next up:/);
+      await page.reload(); await page.waitForFunction(() => document.querySelector("#main").children.length > 0); await page.waitForTimeout(150);
+      assert.deepStrictEqual(await page.evaluate(() => [...document.querySelectorAll(".toast")].map(t => t.textContent).filter(t => /logged|on the trend|est\. 1RM|steady/.test(t))), [], "nothing fires twice");
+      assert.ok((await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("plan check: two weeks of logs → estimate card with a range, weekly report plan line, apply only on tap", async () => {
+      // 28 days of weigh-ins losing 0.15 kg/wk while eating 2,370: slower than the plan's 0.46, so the estimate is lower and a change is offered.
+      const seedPlan = today => {
+        const d = { weights: {}, days: {}, workouts: {}, prefs: {} };
+        for (let i = 0; i < 28; i++) { const date = addDays(today, -(27 - i)); d.weights[date] = { date, kg: Math.round((91.9 - 0.15 * i / 7) * 10) / 10 }; d.days[date] = { date, food: [{ id: "a", name: "Food", kcal: 2370, p: 180, c: 250, f: 65, eaten: true }], water: 0, supps: {}, treadmill: false }; }
+        return d;
+      };
+      const { page, errors } = await openApp(browser, PHONES[0], seedPlan);
+      await page.evaluate(() => { const a = { sex: "male", age: 29, heightCm: 172, kg: 91.9, activity: "moderate", goal: "cut", pace: "regular", targetKg: 80 }; const start = addDays(TODAY, -27); const r = GoalSetup.compute(a, { today: start }); const p = clone(S.docs.prefs.main || {}); p.profile = { ...(p.profile || {}), ...r.profile }; p.goalSetup = { answers: a, result: r, at: start + "T07:00:00Z" }; put("prefs", "main", p); });
+      await page.waitForTimeout(200);
+      const before = await page.evaluate(() => ({ kcal: kcalTarget(TODAY), nudge: !!document.querySelector('#main [data-act="pcgo"]'), R: planCheck() }));
+      assert.strictEqual(before.R.status, "ready", JSON.stringify(before.R.reasons));
+      assert.strictEqual(before.R.verdict, "offer"); assert.ok(before.nudge, "Today shows the plan-check nudge");
+      await page.click('#main [data-act="pcgo"]');
+      await page.waitForSelector("#main .pc-card [data-pc=\"apply\"]");
+      const card = await page.evaluate(() => ({ text: document.querySelector("#main .pc-card").textContent, wide: document.documentElement.scrollWidth - window.innerWidth, wr: document.querySelector("#main .wr-verdict") ? document.querySelector("#main .wr-verdict").textContent : "" }));
+      assert.match(card.text, /Estimated maintenance/); assert.match(card.text, /about [\d,]+–[\d,]+ kcal/); assert.match(card.text, /Nothing changes unless you tap/);
+      assert.ok(card.wide <= 1, "plan check card fits the phone");
+      await page.evaluate(() => { const f = document.querySelector('#main details[data-keep="f:wr"]'); if (f) f.open = true; });
+      const wr = await page.evaluate(() => document.querySelector("#main .wr-verdict") ? document.querySelector("#main .wr-verdict").textContent : "");
+      assert.match(wr, /Plan: lose about 0.46 kg a week/); assert.match(wr, /Slower than planned|On plan|Faster/); assert.doesNotMatch(wr, /water likely/);
+      // "Ask again in a week" changes nothing; "Use N kcal" applies and keeps the start date
+      await page.click('#main .pc-card [data-pc="later"]');
+      await page.waitForTimeout(150);
+      const later = await page.evaluate(() => ({ kcal: kcalTarget(TODAY), rc: S.docs.prefs.main.goalSetup.recheck.decision, card: document.querySelector("#main .pc-card").textContent }));
+      assert.strictEqual(later.kcal, before.kcal); assert.strictEqual(later.rc, "later"); assert.match(later.card, /reminded on/);
+      await page.evaluate(() => { const p = clone(S.docs.prefs.main); delete p.goalSetup.recheck; put("prefs", "main", p); });
+      await page.waitForSelector('#main .pc-card [data-pc="apply"]');
+      await page.click('#main .pc-card [data-pc="apply"]');
+      await page.waitForTimeout(150);
+      const after = await page.evaluate(() => ({ kcal: kcalTarget(TODAY), prof: S.docs.prefs.main.profile, gs: S.docs.prefs.main.goalSetup, card: document.querySelector("#main .pc-card").textContent }));
+      assert.ok(after.kcal < before.kcal && after.kcal === after.prof.cutKcal, "applied calories drive the day target: " + after.kcal);
+      assert.strictEqual(after.prof.start, addDays(await page.evaluate(() => TODAY), -27), "plan start date is kept");
+      assert.strictEqual(after.gs.result.profile.goalKg, 80); assert.strictEqual(after.gs.recheck.decision, "apply");
+      assert.match(after.card, /changed to [\d,]+ kcal/);
       assert.deepStrictEqual(errors, []);
       await page.close();
     });

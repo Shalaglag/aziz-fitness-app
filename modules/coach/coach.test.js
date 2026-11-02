@@ -308,3 +308,186 @@ test("actions: only the fixed menu survives parsing, and nothing applies without
   assert.equal(applied.length, 1);
   Coach._state.msgs = [];
 });
+
+// --- Goal plan (prefs/main.goalSetup) steers the review ---
+const G = require("../goal-setup/goal-setup.js");
+const planOf = (goal, extra) => { const a = Object.assign({ sex: "male", age: 29, heightCm: 172, kg: 92, activity: "moderate", goal }, extra); return { answers: a, result: G.compute(a, { today: START }), at: START }; };
+
+test("gain plan: the pace band follows the chosen pace, and gaining too fast past week two suggests fewer calories (confirm only)", () => {
+  const plan = planOf("bulk", { pace: "lean", targetKg: 100 });
+  const T = Coach.targets(make(), { targets: TARGETS, plan });
+  assert.equal(T.plan.direction, 1); assert.ok(T.paceLo < T.paceHi && T.paceHi <= 0.5, JSON.stringify([T.paceLo, T.paceHi]));
+  const R = Coach.review(make({ kgWk: 0.6 }), opts("2026-11-23", { plan }));
+  assert.equal(R.verdict, "too-fast");
+  assert.match(R.headline, /^Gaining faster/);
+  assert.equal(R.recs[0].id, "trim"); assert.deepEqual(R.recs[0].change, { key: "profile.cutKcal", from: 2000, to: 1850 });
+  assert.match(R.basis, /your plan \(gain weight, 0\.3 % of body weight a week, lean, moderate\), 2,000 kcal and 14 days of logs: \d+ weigh-ins/);
+  const ok = Coach.review(make({ kgWk: 0.25 }), opts("2026-11-23", { plan }));
+  assert.equal(ok.verdict, "on-track"); assert.match(ok.headline, /gain is on plan/); assert.ok(ok.recs.every(r => !r.change));
+  const stuck = Coach.review(make({ kgWk: 0 }), opts("2026-11-23", { plan }));
+  assert.equal(stuck.verdict, "stalled"); assert.equal(stuck.recs[0].change.to, 2150, "a stalled gain suggests more, not less");
+});
+
+test("maintain plan: steady is on-track; a drift with on-target eating offers a small nudge, never a silent change", () => {
+  const plan = planOf("maintain", {});
+  const steady = Coach.review(make({ kgWk: 0.1 }), opts("2026-11-23", { plan }));
+  assert.equal(steady.verdict, "on-track"); assert.match(steady.headline, /steady/);
+  const R = Coach.review(make({ kgWk: -0.6 }), opts("2026-11-23", { plan }));
+  assert.equal(R.verdict, "drift"); assert.match(R.headline, /drifting down on a maintenance plan/);
+  assert.equal(R.recs[0].id, "nudge"); assert.deepEqual(R.recs[0].change, { key: "profile.cutKcal", from: 2000, to: 2100 });
+  assert.doesNotMatch(Coach.reviewHtml(make({ kgWk: -0.6 }), opts("2026-11-23", { plan })), /Use 2,100/, "no apply button without onApply");
+  const uneven = Coach.review(make({ kgWk: -0.6, kcal: i => (i % 3 ? 2600 : 2000) }), opts("2026-11-23", { plan }));
+  assert.equal(uneven.verdict, "adherence"); assert.ok(uneven.recs.every(r => !r.change));
+});
+
+test("the basis line and the plan reach the card and the Claude context; without a plan the review still runs", () => {
+  const plan = planOf("cut", { pace: "regular", targetKg: 80 });
+  const h = Coach.reviewHtml(make(), opts("2026-11-23", { plan }));
+  assert.match(h, /co-src">Based on your plan \(lose fat, 0\.5 % of body weight a week, regular, moderate\)/);
+  const ctx = Coach.context(make(), opts("2026-11-23", { plan }));
+  assert.equal(ctx.plan.goal, "cut"); assert.equal(ctx.plan.targetKg, 80); assert.equal(ctx.plan.ratePctPerWeek, 0.5); assert.match(ctx.plan.note, /not a generic cut/);
+  assert.match(ctx.basis, /^Based on your plan/);
+  const none = Coach.review(make(), opts("2026-11-23"));
+  assert.equal(none.verdict, "on-track"); assert.match(none.basis, /^Based on your targets, 2,000 kcal/);
+  assert.equal(Coach.context(make(), opts("2026-11-23")).plan, null);
+  const skipped = Coach.review(make(), opts("2026-11-23", { plan: { skipped: true } }));
+  assert.equal(skipped.verdict, "on-track");
+});
+
+// --- The Mizan coach service (Claude Haiku 5.5 through worker/) ---
+function ndjsonResponse(lines, status = 200, ctype = "application/x-ndjson") {
+  const enc = new TextEncoder(), chunks = lines.map(l => enc.encode(JSON.stringify(l) + "\n"));
+  let i = 0;
+  return { ok: status < 400, status, headers: { get: k => k.toLowerCase() === "content-type" ? ctype : null },
+    body: { getReader: () => ({ read: async () => i < chunks.length ? { value: chunks[i++], done: false } : { done: true } }) },
+    json: async () => lines[0], text: async () => lines.map(l => JSON.stringify(l)).join("\n") };
+}
+function serviceSetup({ consent = true, reply, calls }) {
+  const listeners = {}, prefs = { consent };
+  const root = { addEventListener: (k, fn) => { listeners[k] = fn; } };
+  global.fetch = async (url, init) => { calls.push({ url, init, body: init && init.body ? JSON.parse(init.body) : null }); return reply(url, init); };
+  Coach.bind(root, { getDocs: () => make({ days: 14 }), render: () => {}, today: () => add(START, 13), targets: () => TARGETS,
+    endpoint: () => "https://mizan-coach.example.workers.dev/", getToken: async () => "token-abc",
+    consent: () => prefs.consent, setConsent: on => { prefs.consent = on; },
+    plan: () => ({ answers: { goals: ["cut", "muscle"], goal: "cut", sex: "male", age: 30, heightCm: 180, kg: 92 }, result: { ok: true, goals: ["cut", "muscle"], label: "Lose fat + Build muscle", goal: "cut", direction: -1, ratePct: 0.5, pace: "regular", kcal: 2100, today: START } }),
+    getSample: () => { throw new Error("the paid service is set up, so the free in-Claude path must not be used"); } });
+  Coach._state.msgs = []; Coach._state.busy = false; Coach._state.error = ""; Coach._state.consentQ = null; Coach._state.month = null; Coach._state.noClaude = false;
+  const submit = q => listeners.submit({ preventDefault() {}, target: { matches: s => s === "[data-coach-form]", querySelector: () => ({ value: q }) } });
+  const tap = attrs => listeners.click({ target: { closest: () => ({ dataset: attrs, hasAttribute: k => k.replace("data-coach-", "") in attrs }) } });
+  return { submit, tap, prefs };
+}
+const tick = () => new Promise(r => setTimeout(r, 30));
+const MONTH = { month: "2026-11", model: "claude-haiku-5-5", capUsd: 100, confirmedUsd: 0.0021, unsettledUsd: 0, pendingUsd: 0, usedUsd: 0.0021, allTimeUsd: 0.0021, requests: 2, warn: false, stopped: false };
+
+test("service: nothing is sent before the AI chat is turned on; the consent card lists what goes to Anthropic", async () => {
+  const calls = [];
+  const { submit, tap, prefs } = serviceSetup({ consent: false, calls, reply: () => ndjsonResponse([{ t: "d", text: '{"answer":"Yes."}' }, { t: "done", stop: "end_turn", costUsd: 0.0009, month: MONTH }]) });
+  submit("Is my recomp working?");
+  await tick();
+  assert.equal(calls.length, 0, "no request before consent");
+  const html = Coach.panelHtml();
+  assert.match(html, /Turn on the AI chat\?/); assert.match(html, /Not sent: your name, email, password/);
+  tap({ coachConsent: "yes" });
+  await tick(); await tick();
+  assert.equal(prefs.consent, true);
+  const chat = calls.find(c => c.url.endsWith("/v1/chat"));
+  assert.ok(chat, "the question goes out after consent");
+  assert.equal(chat.url, "https://mizan-coach.example.workers.dev/v1/chat");
+  assert.equal(chat.init.headers.authorization, "Bearer token-abc");
+  assert.deepEqual(chat.body.ctx.plan.goals, ["cut", "muscle"], "every questionnaire goal reaches the coach");
+  assert.equal(chat.body.ctx.plan.label, "Lose fat + Build muscle");
+  const m = Coach._state.msgs[Coach._state.msgs.length - 1];
+  assert.equal(m.answer, "Yes."); assert.equal(m.costUsd, 0.0009);
+  assert.match(Coach.panelHtml(), /Claude, from your logs only · under \$0\.01/);
+  tap({ coachConsent: "off" }); assert.equal(prefs.consent, false);
+});
+
+test("service: multi-turn history (last 4), Arabic detected, effort low for simple and medium for 'why' questions", async () => {
+  const calls = [];
+  const { submit } = serviceSetup({ calls, reply: (url) => url.endsWith("/v1/usage") ? ndjsonResponse([MONTH], 200, "application/json") : ndjsonResponse([{ t: "d", text: '{"answer":"' }, { t: "d", text: 'OK"}' }, { t: "done", stop: "end_turn", costUsd: 0.001, month: MONTH }]) });
+  for (const q of ["What's left today?", "How much protein?", "And carbs?", "And fat?", "Why is my weight stuck?"]) { submit(q); await tick(); }
+  const chats = calls.filter(c => c.url.endsWith("/v1/chat"));
+  assert.equal(chats.length, 5);
+  assert.equal(chats[0].body.effort, "low");
+  assert.equal(chats[4].body.effort, "medium");
+  assert.equal(chats[4].body.history.length, 4, "bounded history");
+  assert.equal(chats[4].body.history[3].q, "And fat?");
+  submit("كم بروتين باقي لي اليوم؟"); await tick();
+  const ar = calls.filter(c => c.url.endsWith("/v1/chat")).pop();
+  assert.equal(ar.body.lang, "ar");
+  assert.match(Coach.panelHtml(), /dir="auto"/);
+});
+
+test("trimContext sends only the sections a question needs; unclear questions keep everything", () => {
+  const ctx = Coach.context(make({ days: 14 }), { today: add(START, 13), targets: TARGETS });
+  const food = Coach.trimContext(ctx, "How much protein is left today?");
+  assert.ok(food.todaySoFar && food.food14 && food.targets);
+  assert.equal(food.lifts, undefined); assert.equal(food.sleepLast7, undefined);
+  const lift = Coach.trimContext(ctx, "Should I go heavier on bench press?");
+  assert.ok(lift.lifts); assert.equal(lift.food14, undefined);
+  assert.ok(lift.weight && lift.weight.avg7 !== undefined && lift.weight.last30 === undefined, "only the weight headline");
+  assert.equal(Coach.trimContext(ctx, "hello"), ctx);
+  assert.ok(Coach.trimContext(ctx, "كم بروتين باقي؟").food14, "Arabic keywords work too");
+  assert.ok(JSON.stringify(food).length < JSON.stringify(ctx).length);
+  assert.equal(Coach.langOf("كم وزني"), "ar"); assert.equal(Coach.langOf("weight"), "en");
+  assert.equal(Coach.effortFor("لماذا توقف وزني؟", []), "medium");
+});
+
+test("service errors: cap reached, not allowed, out of credit, broken stream, offline; quick questions keep working", async () => {
+  const cases = [
+    [() => ndjsonResponse([{ error: "cap_reached", month: Object.assign({}, MONTH, { usedUsd: 100, capUsd: 100, stopped: true }) }], 402, "application/json"), /spending cap is reached/],
+    [() => ndjsonResponse([{ error: "not_allowed", uid: "uid123" }], 403, "application/json"), /isn't allowed.*Account id: uid123/],
+    [() => ndjsonResponse([{ error: "out_of_credit" }], 402, "application/json"), /credit has run out/],
+    [() => ndjsonResponse([{ t: "d", text: '{"answer":"half' }]), /cut off/],
+    [() => ndjsonResponse([{ t: "d", text: "x" }, { t: "error", error: "timeout", costUsd: 0.0005 }]), /took too long/],
+    [() => { throw new TypeError("Failed to fetch"); }, /cut off|offline/],
+    [() => ndjsonResponse(["<html>"], 200, "text/html"), /isn't set up yet/],
+  ];
+  for (const [reply, re] of cases) {
+    const calls = [];
+    const { submit } = serviceSetup({ calls, reply: (url) => url.endsWith("/v1/usage") ? ndjsonResponse([MONTH], 200, "application/json") : reply() });
+    const before = Coach._state.msgs.length;
+    submit("Is my plan working?"); await tick();
+    assert.match(Coach._state.error, re);
+    assert.equal(Coach._state.msgs.length, before, "no half answer is kept");
+    assert.equal(Coach._state.busy, false);
+  }
+  assert.ok(Coach.TOPICS.length > 0, "the rule-based quick questions are separate and need no service");
+});
+
+test("AI settings: spending meter shows used vs cap, the 80 % warning, lost answers and the stop", async () => {
+  const calls = [];
+  const warn = Object.assign({}, MONTH, { usedUsd: 82, confirmedUsd: 81.5, unsettledUsd: 0.5, pendingUsd: 0.01, capUsd: 100, warn: true, requests: 9000 });
+  const { tap } = serviceSetup({ calls, reply: (url, init) => url.endsWith("/v1/cap") ? ndjsonResponse([Object.assign({}, warn, { capUsd: JSON.parse(init.body).capUsd })], 200, "application/json") : ndjsonResponse([warn], 200, "application/json") });
+  tap({ settings: "" }); await tick();
+  let html = Coach.panelHtml();
+  assert.match(html, /\$82<\/b> of your \$100 cap/); assert.match(html, /Over 80 % of the cap is used/); assert.match(html, /counted at its estimate/);
+  assert.match(html, /Claude Console shows the actual bill/);
+  assert.ok(calls.some(c => c.url.endsWith("/v1/usage")), "read once on open");
+  Coach._state.month = Object.assign({}, warn, { usedUsd: 100, stopped: true });
+  assert.match(Coach.panelHtml(), /Cap reached: new questions are stopped/);
+  Coach._state.settings = false;
+});
+
+test("service address: the health-check or endpoint link is cut back to the base address, never …/v1/health/v1/chat", async () => {
+  const N = Coach.normalizeService, base = "https://mizan-coach.a47alshaheen.workers.dev";
+  for (const u of [base, base + "/", base + "/v1/health", base + "/v1/health/", base + "/v1/chat", base + "/v1/usage", base + "/v1/cap", base + "/v1", " " + base + "/v1/health?x=1 ", base + "/V1/Health"]) assert.equal(N(u), base, u);
+  assert.equal(N("https://my.example.com/coach/v1/health"), "https://my.example.com/coach", "a custom path is kept");
+  assert.equal(N(""), ""); assert.equal(N(null), "");
+  // A pasted health link stored earlier still produces the right request URLs.
+  const calls = [];
+  const listeners = {}, root = { addEventListener: (k, fn) => { listeners[k] = fn; } };
+  global.fetch = async (url) => { calls.push(url); return { ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ capUsd: 100, usedUsd: 0, pendingUsd: 0, unsettledUsd: 0, allTimeUsd: 0, requests: 0 }) }; };
+  Coach.bind(root, { getDocs: () => ({}), render: () => {}, endpoint: () => base + "/v1/health", getToken: async () => "t", consent: () => true });
+  Coach._state.monthAt = 0; Coach.open(true); await new Promise(r => setTimeout(r, 20)); Coach.open(false);
+  assert.deepEqual(calls, [base + "/v1/usage"]);
+  // Saving the health link from AI settings stores the base address.
+  let saved = "unset";
+  Coach.bind(root, { setService: v => { saved = v; } });
+  listeners.submit({ preventDefault() {}, target: { matches: s => s === "[data-coach-svcform]", querySelector: () => ({ value: base + "/v1/health" }) } });
+  assert.equal(saved, base);
+  assert.match(Coach._state.capMsg, /base address/);
+  listeners.submit({ preventDefault() {}, target: { matches: s => s === "[data-coach-svcform]", querySelector: () => ({ value: "http://insecure.example.com" }) } });
+  assert.equal(saved, base, "a non-https address is refused and the saved one kept");
+  assert.match(Coach._state.capMsg, /must start with https/);
+});
