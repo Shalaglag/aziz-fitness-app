@@ -1633,6 +1633,7 @@ function vFood(){
     ${macroBars(day.food)}
     ${verdict(day.food)}
   </div>
+  ${window.MenuImport ? safeMod("MenuImport",()=>MenuImport.html(d)) : ""}
   ${day.food.length?fold("fcheck","Food check","Grades, protein gap, tips", `${safe("Protein gap",()=>proteinGapHtml(day))}
     ${meals.length&&mealP<135?`<p class="note" style="font-size:.9rem">The 2 meals carry <b class="num">${r0(mealP)} g</b> protein. They need ~135–145 g combined, because snacks add 6 g or less.</p>`:""}
     ${!day.food.some(i=>/Adonis/.test(i.name))?`<p class="note">No Adonis yet. It's every day unless you skip it on purpose, and it doesn't count as one of the 2 snacks.</p>`:""}
@@ -1647,7 +1648,8 @@ function vFood(){
 // One add-food sheet: Add (type it in, or edit an item), Quick (plan foods, snack menu), Saved (combos, copy a day), Menu (Nutreeze menu), Scan (barcode, label, photo, voice)
 function foodSheet(d, day, training){
   const fs=view.foodSheet, tab=fs.tab||"add", slot=fs.slot||"Meal 1", edit = fs.edit ? day.food.find(i=>i.id===fs.edit) : null;
-  const tabs=[["add",edit?"Edit":"Add"],["quick","Quick"],["saved","Saved"],["menu","Menu"],["scan","Scan"]];
+  // The menu picker sits on the Food page itself (above Food check) when MenuImport is inlined; the sheet keeps the old paste picker only as a fallback.
+  const tabs=[["add",edit?"Edit":"Add"],["quick","Quick"],["saved","Saved"]].concat(window.MenuImport?[]:[["menu","Menu"]]).concat([["scan","Scan"]]);
   const num=(id,l,v,st)=>`<label class="field"><span class="label">${l}</span><input type="number" id="${id}" step="${st}" value="${v??""}" ${id==="fk"?"required":""}></label>`;
   let body="";
   if(tab==="add") body = `<form data-form="food" class="card" style="gap:10px">
@@ -1665,7 +1667,7 @@ function foodSheet(d, day, training){
       <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[0]==="Banned"?"":mgBadge({kcal:s[2],p:s[3],c:s[4],f:s[5]},"snack")+" "}${s[1]}<br><small class="muted">${s[0]==="Banned"?"Never pick":s[0]}</small></td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody></table></div>
       <p class="muted" style="font-size:.85rem">With Meal 1 (pre-workout) prefer fruit or a light sweet. Nuts and Pro Mud Cake fit better with Meal 2.</p></div>`;
   else if(tab==="saved") body = safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day})) + safeMod("CopyMeals",()=>CopyMeals.cardHTML(day,{today:TODAY,days:S.docs.days,open:view.open.cm}));
-  else if(tab==="menu") body = window.MenuImport ? MenuImport.html(d) : pickerCard(d, training);
+  else if(tab==="menu" && !window.MenuImport) body = pickerCard(d, training);
   else body = `<div id="bcHost"></div><div id="lsHost"></div>${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}${window.VoiceLog && typeof PhotoFood !== "undefined" ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : ""}`;
   return `<div class="sheet-wrap" role="dialog" aria-modal="true" aria-label="Add food" id="foodSheet"><div class="fsheet">
     <div class="sheet-head"><button class="iconbtn" data-act="foodclose" data-close aria-label="Close">✕</button><h2>${edit?"Edit food":"Add to "+esc(slotLabel(slot))}</h2><span></span></div>
@@ -2432,6 +2434,20 @@ try{
     }
     return k?{kcal:k}:null;
   };
+  const blobB64=b=>new Promise((ok,bad)=>{ const r=new FileReader(); r.onload=()=>ok(String(r.result).replace(/^data:[^,]*,/,"")); r.onerror=bad; r.readAsDataURL(b); });
+  const menuReadService=async(blobs)=>{
+    const fail=code=>{ throw Object.assign(new Error(code),{code}); };
+    let base=String(S.docs.prefs.main?.coachService || (window.FITNESS_CLOUD_CONFIG||{}).coachEndpoint || "").trim().replace(/\/+$/,"").replace(/\/v1\/(health|chat|usage|cap|read)$/,"");
+    if(!/^https:\/\//i.test(base)) fail("no_endpoint");
+    if(navigator.onLine===false) fail("offline");
+    const token = window.CloudStore && CloudStore.idToken ? await CloudStore.idToken().catch(()=>null) : null;
+    if(!token) fail("not_signed_in");
+    const images = await Promise.all(blobs.map(async b=>({media_type:/png|webp|gif/.test(b.type)?b.type:"image/jpeg", data:await blobB64(b)})));
+    let res; try{ res=await fetch(base+"/v1/read",{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({kind:"menu",images})}); }catch(e){ fail("offline"); }
+    const j=await res.json().catch(()=>null);
+    if(!res.ok || !j) fail((j&&j.error)||"server_error");
+    return j.text;
+  };
   MenuImport.bind(document, {
     engine: NutreezePicker,
     getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
@@ -2441,6 +2457,11 @@ try{
     dayType: pickerDayType,
     dislikes: () => (S.docs.prefs.main && S.docs.prefs.main.dislikes) || [],
     targets: menuTargets,
+    // What to pick for + words to leave out, remembered across menus (prefs/main.menuPick, synced).
+    pickPrefs: () => (S.docs.prefs.main||{}).menuPick || null,
+    setPickPrefs: v => { const m=clone(S.docs.prefs.main||{}); m.menuPick=v; put("prefs","main",m,{quiet:true}); },
+    // Outside Claude (the Android app): screenshots go to the Mizan coach service's /v1/read (Claude Haiku, same cap as Ask Claude).
+    readService: window.claude ? null : menuReadService,
     date: () => view.date, render, toast,
     onUsePlan(d, plan, fixed){
       const unsure=new Set([plan.meal1,plan.meal2,...plan.snacks].filter(x=>x.needsCheck).map(x=>x.name));

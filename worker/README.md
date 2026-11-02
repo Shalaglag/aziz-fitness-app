@@ -36,6 +36,7 @@ and keeps a monthly spending ledger so a question that would pass the cap is nev
 | `GET /v1/usage` | owner | this month: `capUsd, usedUsd (confirmed + unsettled), pendingUsd, allTimeUsd, requests, tokens, warn, stopped` |
 | `POST /v1/cap` | owner | `{capUsd}` 1-100 |
 | `POST /v1/chat` | owner | `{question, ctx, history, effort, lang}` → NDJSON: `{"t":"d","text"}` … `{"t":"done","costUsd","usage","month"}` or `{"t":"error","error"}` |
+| `POST /v1/read` | owner | `{kind:"menu", images:[{media_type, data(base64)}]}` (up to 4, 2.5 MB each) → `{text, stop, costUsd, month}`. The menu-reading instructions are fixed on the server; each image is reserved as 6,000 tokens, so a menu costs well under a cent. Same ledger, cap and per-account limits as chat. |
 
 Errors: `not_signed_in` 401, `not_allowed` 403, `cap_reached` / `out_of_credit` 402, `busy` / `rate_limited` /
 `daily_limit` 429, `no_key` / `upstream_busy` / `bad_key` 503, `timeout` 504.
