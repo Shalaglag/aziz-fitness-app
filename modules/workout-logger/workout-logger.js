@@ -524,6 +524,8 @@ Power Clean (Barbell)|Other|Barbell|`;
   let activeTimer = null;
   function saveActive(now) {
     try { localStorage.setItem('lb_active', JSON.stringify(S.active)); } catch (e) { }
+    // Friends: a "working out now" badge for connected people (modules/friends); name + start only.
+    try { window.dispatchEvent(new CustomEvent('lb:active', { detail: { workout: S.active ? { id: S.active.id, name: S.active.name, start: S.active.start } : null } })); } catch (e) { }
     clearTimeout(activeTimer);
     const go = () => queue('meta/active', () => S.storage.put('lb_meta', 'active', { id: 'active', workout: S.active ? clone(S.active) : null, at: Date.now() }));
     if (now) go(); else activeTimer = setTimeout(go, 1200);

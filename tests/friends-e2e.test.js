@@ -23,6 +23,9 @@ async function phone(browser, email, name) {
   await page.click('.cs-card button[data-m="up"]');
   await page.waitForFunction(() => !document.querySelector(".cs-card") && S.mode === "sync");
   await page.waitForFunction(() => window.CloudStore && CloudStore.raw() && frInst && frInst.state.me && frInst.state.code);
+  // a fresh install opens the goal questionnaire; a new person may skip it
+  await page.evaluate(() => { const b = document.querySelector('.gs-wrap [data-gs="skip"]'); if (b) b.click(); });
+  await page.waitForFunction(() => !document.querySelector(".gs-wrap"));
   const go = async tab => { await page.evaluate(() => { const m = document.getElementById("menuBtn"); (getComputedStyle(m).display === "none" ? document.querySelector("#bottomNav button[data-more]") : m).click(); }); await page.click(`#tabs button[data-tab="${tab}"]`); await page.waitForTimeout(150); };
   const sub = async k => { await page.click(`[data-fr="sub"][data-k="${k}"]`); await page.waitForTimeout(100); };
   await go("friends"); await sub("friends");
@@ -61,6 +64,12 @@ test("two accounts: invite, share steps, leaderboard, challenge, privacy, remove
     await A.sub("leaderboard"); await A.wait(/9,100[\s\S]*900 to go/); await A.wait(/\+1,700 vs you/);
     assert.match(await A.text(), /7,400/);
     await A.page.click('[data-fr="period"][data-k="week"]'); await A.wait(/goal day/);
+    // 4b. working out now: A starts a workout in the logger -> B sees the live badge; A finishes -> it goes
+    await A.page.evaluate(() => window.dispatchEvent(new CustomEvent("lb:active", { detail: { workout: { id: "w1", name: "Push A", start: Date.now() - 120000 } } })));
+    await B.wait(/Aziz<\/b> is working out now|Aziz is working out now \(Push A, 2 min\)/);
+    await B.sub("leaderboard"); await B.wait(/Working out now · 2 min/);
+    await A.page.evaluate(() => window.dispatchEvent(new CustomEvent("lb:active", { detail: { workout: null } })));
+    await B.page.waitForFunction(() => !/working out now/i.test(document.querySelector("#main").innerText));
     // 5. compare sheet (steps shared, workouts not)
     await A.page.click('.fr-row[data-fr="compare"]'); await A.wait(/Compare[\s\S]*Steps today[\s\S]*7,400 \/ 10,000[\s\S]*9,100 \/ 10,000/);
     assert.match(await A.text(), /Workouts this week[\s\S]*Not shared/i);
