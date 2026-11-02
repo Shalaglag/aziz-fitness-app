@@ -49,6 +49,7 @@ Incline Chest Fly (Dumbbell)|Chest|Dumbbell|
 Chest Fly (Cable)|Chest|Cable|
 Incline Cable Fly|Chest|Cable|
 Chest Press (Plate-loaded)|Chest|Plate-loaded|c
+Flat Chest Press (Plate-loaded)|Chest|Plate-loaded|c
 Pullover (Dumbbell)|Chest|Dumbbell|
 Weighted Dip|Chest|Bodyweight|c
 Decline Bench Press (Smith Machine)|Chest|Smith machine|c
