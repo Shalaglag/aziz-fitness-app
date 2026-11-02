@@ -149,16 +149,20 @@ test('shipped clips.json starts every card on 3D, clips stay behind Video', () =
   });
 });
 
-test('list pictures: clip still, else 3D still, else null', () => {
+test('list pictures: 3D body still for every exercise, else null', () => {
   Object.keys(CLIPS.clips).forEach(id => {
     const f = path.join(CLIP_DIR, 'thumbs', id + '.webp');
     assert.ok(fs.existsSync(f), id + ' has no list picture: run node tools/clip-thumbs/make-thumbs.js');
     assert.ok(fs.statSync(f).size < 12000, id + ' thumb stays small');
   });
-  A.ids().forEach(id => assert.ok(fs.existsSync(path.join(CLIP_DIR, 'thumbs3d', id + '.webp')), id + ' has no 3D list picture: run node tools/clip-thumbs/make-3d-thumbs.js'));
-  const an = A.create({ clips: { base: 'clips/', clips: { 'bench-press-barbell': { file: 'b.mp4', status: 'preview' }, 'squat-barbell': { file: 's.mp4', status: 'pending' } } } });
-  assert.strictEqual(an.thumb('bench-press-barbell'), 'clips/thumbs/bench-press-barbell.webp');
-  assert.strictEqual(an.thumb('squat-barbell'), 'clips/thumbs3d/squat-barbell.webp', 'ignored clip status falls back to the 3D still');
+  A.ids().forEach(id => {
+    const f = path.join(CLIP_DIR, 'thumbs3d', id + '.webp');
+    assert.ok(fs.existsSync(f), id + ' has no 3D list picture: run node tools/clip-thumbs/make-3d-thumbs.js');
+    assert.ok(fs.statSync(f).size > 400 && fs.statSync(f).size < 16000, id + ' 3D picture is not blank and stays small');
+  });
+  const an = A.create({ clips: { base: 'clips/', clips: { 'bench-press-barbell': { file: 'b.mp4', status: 'preview' }, 'squat-barbell': { file: 's.mp4', status: 'approved' } } } });
+  assert.strictEqual(an.thumb('bench-press-barbell'), 'clips/thumbs3d/bench-press-barbell.webp', 'a clip no longer changes the list picture');
+  assert.strictEqual(an.thumb('squat-barbell'), 'clips/thumbs3d/squat-barbell.webp');
   assert.strictEqual(an.thumb('push-up'), 'clips/thumbs3d/push-up.webp', 'no clip, 3D still');
   assert.strictEqual(an.thumb('my-custom-lift'), null, 'unknown exercise: letter circle');
 });

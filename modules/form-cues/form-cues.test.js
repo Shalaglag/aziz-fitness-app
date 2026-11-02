@@ -5,6 +5,8 @@ const path = require('path');
 const FormCues = require('./form-cues.js');
 const guide = JSON.parse(fs.readFileSync(path.join(__dirname, 'exercise-form-guide.json'), 'utf8'));
 const fc = FormCues.create(guide);
+const core = guide.exercises.filter(e => !e.extra);
+const extra = guide.exercises.filter(e => e.extra);
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log('ok -', name); };
 
@@ -18,7 +20,10 @@ const LOGGER_NAMES = ['Bench Press (Barbell)', 'Incline Bench Press (Dumbbell)',
   'Leg Extension (Machine)', 'Lying Leg Curl (Machine)', 'Hip Adductor (Machine)', 'Hip Abductor (Machine)',
   'Standing Calf Raise (Machine)', 'Calf Press (Leg Press)', 'Seated Abs (Machine)', 'Treadmill (Incline Walk)'];
 
-t('guide has 32 exercises', () => assert.strictEqual(fc.size, 32));
+t('guide has 32 plan exercises plus the extras', () => {
+  assert.strictEqual(core.length, 32);
+  assert.strictEqual(fc.size, core.length + extra.length);
+});
 
 t('every template exercise resolves by logger id and by name', () => {
   LOGGER_NAMES.forEach(name => {
@@ -29,11 +34,11 @@ t('every template exercise resolves by logger id and by name', () => {
 
 t('every guide exercise is reachable from the templates', () => {
   const hit = new Set(LOGGER_NAMES.map(x => fc.find(x).id));
-  guide.exercises.forEach(e => assert.ok(hit.has(e.id), e.id));
+  core.forEach(e => assert.ok(hit.has(e.id), e.id));
 });
 
 t('Strong / shell names resolve', () => {
-  guide.exercises.forEach(e => (e.loggedAs || []).forEach(n => assert.strictEqual(fc.find(n).id, e.id, n)));
+  core.forEach(e => (e.loggedAs || []).forEach(n => assert.strictEqual(fc.find(n).id, e.id, n)));
   ['Incline DB Press', 'Lat Pulldown, Wide', 'Gundam (Chest Machine)', 'Side Delts', 'Traps Machine', 'Seated Bicep Curl',
     'Iso-Lateral Low Row', 'Cable Standing Biceps', 'Triceps Rope'].forEach(n => assert.ok(fc.find(n), n));
 });
@@ -115,3 +120,19 @@ t('demo link only when opted in and the entry has its own url', () => {
 });
 
 console.log(n + ' tests passed');
+
+t('extra exercises have full cards and unique ids', () => {
+  const seen = new Set(core.map(e => e.id));
+  extra.forEach(e => {
+    assert.ok(!seen.has(e.id), 'duplicate id ' + e.id); seen.add(e.id);
+    assert.ok(!e._check, 'unchecked entry ' + e.id);
+    assert.ok(e.primary.length >= 1, 'primary ' + e.id);
+    assert.ok(e.setup.length >= 2 && e.steps.length >= 2, 'setup/steps ' + e.id);
+    assert.ok(e.cues.length >= 3 && e.mistakes.length >= 2, 'cues/mistakes ' + e.id);
+    assert.strictEqual(fc.find(e.id).id, e.id, 'find ' + e.id);
+  });
+});
+
+t('extras never take over a plan exercise name', () => {
+  LOGGER_NAMES.forEach(name => assert.ok(!fc.find(name).extra, name));
+});
