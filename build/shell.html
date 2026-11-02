@@ -963,9 +963,9 @@ let hcSync=null;
 try{
   if(window.HealthConnectSync){
     const plugin=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.HealthConnect)||null;
-    hcSync=HealthConnectSync.create({plugin, getDay, put, storage:window.localStorage, ownPackage:"com.azizfitness.app", onChange:()=>{ renderPending=true; }});
+    hcSync=HealthConnectSync.create({plugin, getDay, put, storage:window.localStorage, ownPackage:"com.azizfitness.app", onChange:()=>{ renderPending=true; }, yieldTo:()=>!!(ghSync && ghSync.status().connected)});
     if(plugin){
-      const hcAuto=()=>{ hcSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)) { render(); toast(`WaterH: ${r.imported} new record${r.imported===1?"":"s"} from Health Connect`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
+      const hcAuto=()=>{ if(ghSync && ghSync.status().connected) return; hcSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)) { render(); toast(`WaterH: ${r.imported} new record${r.imported===1?"":"s"} from Health Connect`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
       document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") hcAuto(); });
       window.addEventListener("focus",hcAuto);
       window.addEventListener("pageshow",hcAuto);
@@ -998,7 +998,12 @@ try{
       const ghAuto=()=>{ ghSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)){ render(); toast(`Fitbit: ${r.imported} new water log${r.imported===1?"":"s"}`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
       document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") ghAuto(); });
       window.addEventListener("online",ghAuto);
+      window.addEventListener("focus",ghAuto);
       setTimeout(ghAuto, 2500);
+      // Live: while the app is on screen, re-read today's Fitbit water every 15 s (the module throttles and backs off on errors).
+      // Only a real change re-renders, so typing elsewhere is never interrupted by a quiet poll.
+      setInterval(()=>{ if(document.visibilityState!=="visible" || !ghSync.status().connected) return;
+        ghSync.autoSync({live:true}).then(r=>{ if(r && (r.imported||r.removed)){ renderPending=false; render(); toast(`Water: ${((r.todayMl||0)/1000).toFixed(2)} L today from Fitbit`); } }).catch(()=>{}); }, 5000);
     }
   }
 }catch(e){ console.warn("GoogleHealthWater", e); }
@@ -1810,7 +1815,7 @@ function vSettings(){
   const who = window.CloudStore && CloudStore.currentEmail ? CloudStore.currentEmail() : null;
   const cloudReady = !window.claude && !!(window.CloudStore && CloudStore.configured && CloudStore.configured());
   const names = [...new Set(Object.values(PROGRAM).flat().map(e=>e[0]))].sort();
-  const restOpts=[[90,"1:30"],[120,"2:00"],[150,"2:30"],[180,"3:00"]];
+  const mmss=x=>Math.floor(x/60)+":"+String(x%60).padStart(2,"0"), restIn=(k,v,label)=>`<input style="width:6.5em;text-align:center;font-variant-numeric:tabular-nums" inputmode="text" enterkeyhint="done" placeholder="m:ss" value="${mmss(+v||0)}" data-rest-k="${k}" aria-label="${label}">`;
   return `
   ${tabHead("Settings", `<button class="btn ghost small" data-act="gotab" data-tab="today">Done</button>`)}
   ${cat("Appearance")}
@@ -1824,8 +1829,8 @@ function vSettings(){
   <div class="card"><h3>Workout</h3><div class="set-list">
     ${row("Train screen", full?"Templates, Start workout, history":"Today's plan with set rows", seg("tmode",[["full","Full logger"],["quick","Quick log"]],view.trainMode).replace(/data-k=/g,'data-m='))}
     ${lb?row("Live workout view","List is the Strong-style table; Gym is one set at a time with big buttons",seg("lbset",[["list","List"],["gym","Gym"]],lb.gym?"gym":"list",'data-s="gym"')):""}
-    ${lb?row("Rest after big lifts","Bench, rows, hack squat",seg("lbset",restOpts,lb.restCompound,'data-s="restCompound"')):row("Rest timer","Starts when you tick a set",seg("rest",restOpts,restSec()))}
-    ${lb?row("Rest after other lifts","",seg("lbset",restOpts,lb.restIso,'data-s="restIso"')):""}
+    ${lb?row("Rest after big lifts","Bench, rows, hack squat. Type any time: 1:45, 105 or 2m",restIn("restCompound",lb.restCompound,"Rest after big lifts")):row("Rest timer","Starts when you tick a set. Type any time: 1:45, 105 or 2m",restIn("restSec",restSec(),"Rest timer"))}
+    ${lb?row("Rest after other lifts","Tap the time between sets in a workout to change one set",restIn("restIso",lb.restIso,"Rest after other lifts")):""}
     ${row("Start the timer after each set","",sw("restauto",m.restAuto!==false,"Start the rest timer after each set"))}
     ${lb&&WorkoutLogger.restStyles?row("Rest timer look",'Full circle and Screen fill take the whole screen, like Strong',`<span class="row" style="gap:6px;justify-content:flex-end">${WorkoutLogger.restStyles.map(([k,l])=>`<button type="button" class="chip" data-act="lbpick" data-s="restStyle" data-k="${k}" aria-pressed="${(lb.restStyle||"bar")===k}">${l}</button>`).join("")}<button type="button" class="btn ghost small" data-act="lbtry">Try it (10 s)</button></span>`):""}
     ${lb&&window.GymSounds&&GymSounds.REST_SOUNDS?(()=>{ const cur=lb.restSound||"restDone", chip=(id,label)=>`<button type="button" class="chip" data-act="lbpick" data-s="restSound" data-k="${id}" aria-pressed="${cur===id}">${esc(label)}</button>`, mine=GymSounds.customInfo&&GymSounds.customInfo();
@@ -2036,6 +2041,11 @@ main.addEventListener("change",e=>{
   const el=e.target, d=view.date;
   if(el.id==="strongFile" && el.files && el.files[0]){ importStrong(el.files[0]); return; }
   if(el.id==="stepsFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyStepsText(String(fr.result)); fr.readAsText(el.files[0]); return; }
+  if(el.dataset.restK){ const k=el.dataset.restK, v=window.WorkoutLogger&&WorkoutLogger.parseRest?WorkoutLogger.parseRest(el.value):(parseFloat(el.value)||null);
+    if(v==null||v<5){ toast("Type a time like 1:45 or 105"); render(); return; }
+    if(k==="restSec"||k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=v; put("prefs","main",p); }
+    if(k!=="restSec" && window.WorkoutLogger&&WorkoutLogger.setSettings) WorkoutLogger.setSettings({[k]:v});
+    el.value=Math.floor(v/60)+":"+String(v%60).padStart(2,"0"); return; }
   if(el.id==="sleepH"){ const day=getDay(d); const v=parseFloat(el.value); if(isFinite(v)&&v>=0&&v<=16) day.sleep=v; else delete day.sleep; saveDay(day,{quiet:true}); renderPending=true; return; }
   if(el.id==="restSoundFile" && el.files && el.files[0]){ if(!window.GymSounds||!GymSounds.setCustom) return; GymSounds.prime(); GymSounds.setCustom(el.files[0]).then(info=>{ if(window.WorkoutLogger&&WorkoutLogger.setSettings) WorkoutLogger.setSettings({restSound:"custom"}); GymSounds.play("custom"); toast("Rest will end with "+info.name); render(); }, err=>toast(err.message||"That sound could not be added")); el.value=""; return; }
     if(el.id==="waterhFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyWaterHText(String(fr.result)); fr.readAsText(el.files[0]); return; }

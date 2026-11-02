@@ -1974,7 +1974,10 @@ window.HealthConnectSync = (() => {
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
   // ---- the live sync object ---------------------------------------------------------------
-  function create({ plugin, getDay, put, storage, now = () => new Date(), lookbackDays = DEFAULT_LOOKBACK_DAYS, ownPackage, onChange } = {}) {
+  // yieldTo(day) → true leaves that day's bottle figure alone (the shell passes "Fitbit is connected",
+  // so two auto sources never overwrite each other's records).
+  function create({ plugin, getDay, put, storage, now = () => new Date(), lookbackDays = DEFAULT_LOOKBACK_DAYS, ownPackage, onChange, yieldTo } = {}) {
+    const yields = d => { try { return !!(yieldTo && yieldTo(d)); } catch (e) { return false; } };
     let st = readState(storage);
     let hc = { status: null, granted: null };   // what the plugin last told us
     let busy = null, lastAuto = 0;
@@ -2034,6 +2037,7 @@ window.HealthConnectSync = (() => {
       let imported = 0, removed = 0, days = 0;
       for (const d of Object.keys(byDay).sort()) {
         const before = getDay(d);
+        if (yields(before)) continue;
         const beforeIds = Object.keys(currentRecords(before));
         let day = applyRecords(before, byDay[d].up, { now: t, ownPackage });
         day = removeRecords(day, byDay[d].del, { now: t });
@@ -2154,6 +2158,7 @@ window.HealthConnectSync = (() => {
       else if (s.state === "not-supported") head = line("warn", "Health Connect is not supported on this phone (needs Android 9 or newer).");
       else if (s.state === "needs-permission") head = line("warn", "Health Connect: hydration access not allowed yet.");
       else if (s.state === "error") head = line("bad", `Health Connect: ${esc(s.lastError)}`);
+      else if (s.state === "ready" && yields(day)) head = line("off", "Health Connect water is paused while Fitbit is connected (Fitbit is used instead).");
       else if (s.state === "ready") head = line("ok", `Health Connect connected${n ? ` · ${n} water record${n === 1 ? "" : "s"} today (${(ml / 1000).toFixed(2)} L)` : " · no water records for today yet"}`);
       else head = line("off", "Checking Health Connect…");
       const lr = s.lastResult;
@@ -2215,7 +2220,9 @@ window.GoogleHealthWater = (() => {
   const SCOPE = "https://www.googleapis.com/auth/googlehealth.nutrition.readonly";
   const PATH = "v4/users/me/dataTypes/hydration-log/dataPoints";
   const FIRST_DAYS = 14, NEXT_DAYS = 3;          // first sync back-fills two weeks; later ones re-check 3 days
-  const AUTO_GAP_MS = 10 * 60 * 1000;            // open / resume sync at most every 10 minutes
+  const AUTO_GAP_MS = 15 * 1000;                 // open / resume / online sync at most every 15 s
+  const LIVE_GAP_MS = 15 * 1000;                 // while the app is on screen: today's log every 15 s
+  const ERROR_GAP_MS = 5 * 60 * 1000;            // after a non-network error, auto and live back off to 5 min
   const TOKEN_MS = 50 * 60 * 1000;               // Google access tokens last ~60 min
 
   const HC = typeof HealthConnectSync !== "undefined" ? HealthConnectSync
@@ -2379,28 +2386,32 @@ window.GoogleHealthWater = (() => {
       return syncNow({ reason: "manual" });
     }
 
-    async function syncNow({ reason = "manual" } = {}) {
+    async function syncNow({ reason = "manual", days } = {}) {
       if (busy) return busy;
       busy = (async () => {
         if (!plugin) return { error: "no-plugin" };
         if (!st.connected) return { error: "not-connected" };
         let r;
-        try { r = await pull(st.synced ? NEXT_DAYS : FIRST_DAYS, reason === "manual"); }
+        try { r = await pull(days || (st.synced ? NEXT_DAYS : FIRST_DAYS), reason === "manual"); }
         catch (e) { r = { error: "Sync failed: " + String(e && e.message || e) }; }
-        if (r.error) { if (r.status !== 0 || !st.lastError) st.lastError = r.error; }
-        else { st.lastError = null; st.synced = true; st.lastSyncAt = now().toISOString(); st.lastResult = { seen: r.seen, imported: r.imported, removed: r.removed, todayMl: r.todayMl }; }
+        if (r.error) { if (r.status !== 0 || !st.lastError) { st.lastError = r.error; st.lastErrorStatus = r.status == null ? -1 : r.status; } }
+        else { st.lastError = null; st.lastErrorStatus = null; st.synced = true; st.lastSyncAt = now().toISOString(); st.lastResult = { seen: r.seen, imported: r.imported, removed: r.removed, todayMl: r.todayMl }; }
         save(); emit();
         return r;
       })();
       try { return await busy; } finally { busy = null; }
     }
 
-    async function autoSync() {
-      if (!plugin || !st.connected) return { skipped: true };
+    // autoSync() on open / resume re-checks 3 days; autoSync({live:true}) is the on-screen poll and reads
+    // today only. Both are silent (never open Google's consent sheet) and back off after a real error.
+    async function autoSync({ live = false } = {}) {
+      if (!plugin || !st.connected || busy) return { skipped: true };
       const t = now().getTime();
-      if (t - lastAuto < AUTO_GAP_MS) return { skipped: true };
+      const failing = st.lastError && st.lastErrorStatus !== 0;
+      const gap = failing ? ERROR_GAP_MS : live ? LIVE_GAP_MS : AUTO_GAP_MS;
+      if (t - lastAuto < gap) return { skipped: true };
       lastAuto = t;
-      return syncNow({ reason: "auto" });
+      return syncNow({ reason: "auto", days: live && st.synced ? 1 : undefined });
     }
 
     function disconnect() { st = {}; tok = null; save(); emit(); }
@@ -3903,6 +3914,18 @@ Power Clean (Barbell)|Other|Barbell|`;
   const fmtDur = ms => { const m = Math.max(0, Math.round(ms / 6e4)); return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; };
   const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0'); };
   const mmss = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  // Typed rest time -> seconds. "1:45", "105", "105s", "2m", "1m30s", "2.5" (under 10 = minutes). 0/off -> 0. Bad -> null.
+  function parseRest(v) {
+    v = String(v == null ? '' : v).trim().toLowerCase().replace(/\s+/g, '').replace(',', '.');
+    if (!v) return null;
+    if (v === 'off' || v === '-') return 0;
+    let sec = null, m;
+    if ((m = v.match(/^(\d{1,3}):(\d{1,2})$/))) { if (+m[2] < 60) sec = +m[1] * 60 + +m[2]; }
+    else if ((m = v.match(/^(?:(\d+(?:\.\d+)?)m(?:in)?)?(?:(\d+)s(?:ec)?)?$/)) && (m[1] || m[2])) sec = Math.round((+m[1] || 0) * 60 + (+m[2] || 0));
+    else if ((m = v.match(/^\d+(?:\.\d+)?$/))) { const n = +v; sec = Math.round(n < 10 ? n * 60 : n); }
+    if (sec == null || !isFinite(sec)) return null;
+    return Math.min(sec, 3600);
+  }
   const startOfDay = ts => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const startOfWeek = ts => { const d = new Date(startOfDay(ts)); d.setDate(d.getDate() - d.getDay()); return d.getTime(); }; // Sunday weeks
   const relDay = ts => { const d = Math.round((startOfDay(Date.now()) - startOfDay(ts)) / DAY); return d === 0 ? 'Today' : d === 1 ? 'Yesterday' : d < 7 ? d + ' days ago' : fmtDate(ts, { month: 'short', day: 'numeric' }); };
@@ -3980,6 +4003,8 @@ Power Clean (Barbell)|Other|Barbell|`;
   const restFor = (exId) => { const ex = getEx(exId); return ex.rest || (ex.compound ? S.settings.restCompound : S.settings.restIso); };
   const restOf = e => e.rest || restFor(e.exId);
   const restLabel = s => s > 0 ? mmss(s) : 'Off';
+  // Rest after one set: its own time (Strong-style, tap the line under the set) or the exercise's.
+  const setRestOf = (e, s) => (s && s.rest) || restOf(e);
   const defUnit = exId => getEx(exId).unit || S.settings.unit;
   const workouts = () => memo('ws', () => Object.values(S.data.workouts).filter(w => w.end).sort((a, b) => b.start - a.start));
   const templatesSorted = () => memo('ts', () => Object.values(S.data.templates).sort((a, b) => (a.folder || '').localeCompare(b.folder || '') || (a.order ?? 99) - (b.order ?? 99) || a.name.localeCompare(b.name)));
@@ -4649,7 +4674,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     return '<section class="lb-card"><h4>Plate calculator</h4>' + plateTool() + '</section>' +
       '<section class="lb-card"><h4>Warm-up calculator</h4>' + warmTool() + '</section>' +
       '<section class="lb-card"><h4>1RM calculator</h4>' + ormTool() + '</section>' +
-      '<section class="lb-card"><h4>Rest timer</h4><p class="lb-muted small">Starts on its own when you check off a set. Start one by hand here.</p><div class="lb-row">' + [60, 90, 120, 150, 180].map(s => '<button class="lb-btn small" data-a="restManual" data-s="' + s + '">' + mmss(s) + '</button>').join('') + '</div></section>' +
+      '<section class="lb-card"><h4>Rest timer</h4><p class="lb-muted small">Starts on its own when you check off a set. Start one by hand here.</p><div class="lb-row">' + [60, 90, 120, 150, 180].map(s => '<button class="lb-btn small" data-a="restManual" data-s="' + s + '">' + mmss(s) + '</button>').join('') + '</div><div class="lb-row tight"><input id="lb-restman" class="lb-input num lb-restin" inputmode="text" placeholder="Any time, e.g. 2:15" aria-label="Rest time"><button class="lb-btn small primary" data-a="restManualTyped">Start</button></div></section>' +
       '<section class="lb-card"><h4>Settings</h4>' + settingsHtml() + '</section>' +
       '<section class="lb-card"><h4>Your data</h4><p class="lb-muted small">Bring your history over from Strong (Settings → Export data in Strong gives a CSV), or back everything up.</p><div class="lb-row"><label class="lb-btn small">Import Strong CSV<input type="file" accept=".csv,text/csv" data-ch="importCsv" hidden></label><button class="lb-btn small ghost" data-a="exportCsv">Export CSV</button><button class="lb-btn small ghost" data-a="exportJson">Back up (JSON)</button><label class="lb-btn small ghost">Restore backup<input type="file" accept=".json,application/json" data-ch="importJson" hidden></label></div><label class="lb-field inline">Weights in the Strong file are in<select id="lb-impunit" class="lb-input"><option>kg</option><option>lb</option></select></label></section>';
   }
@@ -4712,7 +4737,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   function settingsHtml() {
     const st = S.settings, tog = (k, l) => '<label class="lb-check"><input type="checkbox" data-ch="setTog" data-k="' + k + '"' + (st[k] ? ' checked' : '') + '> ' + l + '</label>';
     return '<label class="lb-field inline">Default unit<select class="lb-input" data-ch="setUnit"><option' + (st.unit === 'kg' ? ' selected' : '') + '>kg</option><option' + (st.unit === 'lb' ? ' selected' : '') + '>lb</option></select></label>' +
-      '<label class="lb-field inline">Rest after big compounds (s)<input class="lb-input num" inputmode="numeric" value="' + st.restCompound + '" data-ch="setNum" data-k="restCompound"></label><label class="lb-field inline">Rest after other lifts (s)<input class="lb-input num" inputmode="numeric" value="' + st.restIso + '" data-ch="setNum" data-k="restIso"></label>' +
+      '<label class="lb-field inline">Rest after big compounds (m:ss)<input class="lb-input num lb-restin" inputmode="text" placeholder="2:30" value="' + mmss(st.restCompound) + '" data-ch="setRest" data-k="restCompound"></label><label class="lb-field inline">Rest after other lifts (m:ss)<input class="lb-input num lb-restin" inputmode="text" placeholder="1:30" value="' + mmss(st.restIso) + '" data-ch="setRest" data-k="restIso"></label>' +
       restLookHtml() +
       tog('sound', 'Play a sound when rest ends') + tog('vibrate', 'Vibrate when rest ends') + tog('countBuzz', 'Buzz at 3, 2 and 1 seconds left') + tog('wake', 'Keep the screen on during a workout') + tog('rpe', 'Show an RPE column') + tog('rir', 'Show an RIR column (reps in reserve)') + tog('gym', 'Open workouts in Gym mode (big buttons, one set at a time)');
   }
@@ -4733,6 +4758,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   on('restTry', () => { primeAudio(); previewRest(10); });
   on('setTog', t => { S.settings[t.dataset.k] = t.checked; saveSettings(); });
   on('setUnit', t => { S.settings.unit = t.value; saveSettings(); bump(); });
+  on('setRest', t => { const v = parseRest(t.value); if (v == null || v < 5) { toast('Type a time like 1:45 or 105'); t.value = mmss(S.settings[t.dataset.k]); return; } S.settings[t.dataset.k] = v; t.value = mmss(v); saveSettings(); });
   on('setNum', t => { const v = num(t.value); if (v) { S.settings[t.dataset.k] = v; saveSettings(); } });
 
   // Import / export
@@ -4824,7 +4850,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   function newWorkoutFrom(tpl, from) {
     const w = { id: uid(), name: tpl ? tpl.name : (from ? from.name : workoutNameNow()), templateId: tpl ? tpl.id : from && from.templateId, templateName: tpl ? tpl.name : from && from.templateName, start: Date.now(), notes: '', exercises: [], updated: Date.now() };
     const src = tpl || from;
-    if (src) w.exercises = src.exercises.map(e => ({ exId: e.exId, unit: e.unit || defUnit(e.exId), notes: '', tplNote: e.notes || '', rest: e.rest, ss: e.ss, base: tpl ? e.sets.map(s => clone(s)) : null, sets: e.sets.map(s => ({ t: s.t, w: '', r: '', km: '', min: '', sec: '', done: false })) }));
+    if (src) w.exercises = src.exercises.map(e => ({ exId: e.exId, unit: e.unit || defUnit(e.exId), notes: '', tplNote: e.notes || '', rest: e.rest, ss: e.ss, base: tpl ? e.sets.map(s => clone(s)) : null, sets: e.sets.map(s => Object.assign({ t: s.t, w: '', r: '', km: '', min: '', sec: '', done: false }, s.rest ? { rest: s.rest } : {})) }));
     // Host hook: opts.adaptStart({name, exercises:[{exId, name, sets}]}) may return {exercises:[{from, exId?, name, sets?, note?}], suffix?}
     // (the app uses it for its Travel workout and Short-on-time choices). Unknown names become custom exercises.
     if (tpl && S.opts && S.opts.adaptStart) {
@@ -4980,7 +5006,8 @@ Power Clean (Barbell)|Other|Barbell|`;
           f.map(k => { const ph = phFor(prev, p, e, k); return '<input class="lb-cell" inputmode="' + (k === 'r' || k === 'sec' ? 'numeric' : 'decimal') + '" data-in="cell" data-k="' + k + '" data-ei="' + i + '" data-si="' + j + '" value="' + esc(s[k] ?? '') + '" placeholder="' + esc(ph) + '" aria-label="' + k + '">'; }).join('') +
           xc.map(k => '<input class="lb-cell" inputmode="' + (k === 'rir' ? 'numeric' : 'decimal') + '" data-in="cell" data-k="' + k + '" data-ei="' + i + '" data-si="' + j + '" value="' + esc(s[k] ?? '') + '" aria-label="' + k.toUpperCase() + '">').join('') +
           (live ? '<button class="lb-chk" data-a="check" data-ei="' + i + '" data-si="' + j + '" aria-label="Complete set" aria-pressed="' + !!s.done + '">✓</button>' : '<button class="lb-icon small" data-a="delSet" data-ei="' + i + '" data-si="' + j + '" aria-label="Delete set">×</button>') +
-          (s.pr && s.pr.length ? '<span class="lb-prrow">PR · ' + esc(s.pr.join(', ')) + '</span>' : '') + '</div>';
+          (s.pr && s.pr.length ? '<span class="lb-prrow">PR · ' + esc(s.pr.join(', ')) + '</span>' : '') + '</div>' +
+          (ex.cat !== 'Cardio' ? restLineHtml(e, s, i, j) : '');
       });
       html += '</div><div class="lb-exfoot"><button class="lb-btn small ghost" data-a="addSet" data-ei="' + i + '">Add set</button><button class="lb-link small" data-a="restEdit" data-ei="' + i + '">Rest ' + restLabel(restOf(e)) + '</button></div></article>';
     });
@@ -5147,7 +5174,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id);
     const cel = celebration(e, s);
     if (s.pr.length && !quiet) { if (cel) PRC.fire(cel, { toast, vibrate: !!S.settings.vibrate }); else toast('New record: ' + ex.name + ' · ' + s.pr.join(', ')); }
-    if (ex.cat !== 'Cardio' && restAfter(E.doc.exercises, i, j)) startRest(restOf(e));
+    if (ex.cat !== 'Cardio' && restAfter(E.doc.exercises, i, j)) startRest(setRestOf(e, s), [i, j]);
     if (S.settings.vibrate && navigator.vibrate && !(cel && !quiet)) try { navigator.vibrate(15); } catch (er) { }
     return true;
   }
@@ -5174,15 +5201,41 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (t.dataset.k === 'del') e.sets.splice(si, 1); else { e.sets[si].t = t.dataset.k; if (e.sets[si].done) e.sets[si].pr = setPRs(e.exId, e.unit, e.sets[si], E.doc.id); }
     closeSheet(); touch(); renderEditor();
   });
-  on('restEdit', t => {
-    const e = cellOf(t), ei = +t.dataset.ei;
-    openSheet({ title: 'Rest timer for this exercise', body: () => '<div class="lb-row">' + [0, 45, 60, 90, 120, 150, 180, 240].map(s => '<button class="lb-btn small' + ((restOf(e) > 0 ? restOf(e) : 0) === s ? ' primary' : '') + '" data-a="pickRest" data-ei="' + ei + '" data-s="' + s + '">' + (s ? mmss(s) : 'Off') + '</button>').join('') + '</div><label class="lb-check"><input type="checkbox" id="lb-restdef" checked> Use this every time for ' + esc(getEx(e.exId).name) + '</label>' });
-  });
-  on('pickRest', t => {
-    const e = E.doc.exercises[+t.dataset.ei], s = +t.dataset.s;
-    e.rest = s || -1; // -1 = timer off for this exercise
-    if (topSheet().el.querySelector('#lb-restdef').checked) { const doc = Object.assign({}, S.data.exercises[e.exId] || {}, { id: e.exId, rest: s || -1 }); put('exercises', doc); }
+  // Strong-style rest line between sets: shows that set's rest; counts down while it runs; tap to type any time.
+  function restLineHtml(e, s, i, j) {
+    const sec = setRestOf(e, s), lbl = restLabel(sec);
+    return '<button class="lb-restline' + (sec > 0 ? '' : ' off') + (s.rest ? ' own' : '') + '" data-a="restSet" data-ei="' + i + '" data-si="' + j + '" data-lbl="' + lbl + '" aria-label="Rest after this set: ' + lbl + '. Tap to change"><i></i><span class="lb-mono">' + lbl + '</span><i></i></button>';
+  }
+  // One sheet for "rest after this set" (si given) and "rest for this exercise" (si null): type any time, or tap a quick pick.
+  function restSheet(ei, si) {
+    const e = E.doc.exercises[ei], s = si == null ? null : e.sets[si], cur = s ? setRestOf(e, s) : restOf(e), name = esc(getEx(e.exId).name);
+    const running = s && rest && rest.at && rest.at[0] === ei && rest.at[1] === si;
+    openSheet({
+      title: s ? 'Rest after this set' : 'Rest timer for this exercise',
+      body: () => '<label class="lb-field">Rest time (m:ss)<input id="lb-restin" class="lb-input lb-restin" inputmode="text" enterkeyhint="done" autocomplete="off" placeholder="e.g. 1:45 or 105" value="' + (cur > 0 ? mmss(cur) : '') + '"></label>' +
+        '<p class="lb-muted small">Type any time: 1:45, 105 (seconds), 2m or 2.5 (minutes). Leave empty or type 0 to turn it off.</p>' +
+        '<div class="lb-row tight lb-chips">' + [0, 60, 90, 120, 180].map(v => '<button type="button" class="lb-btn small ghost" data-a="restQuick" data-s="' + v + '">' + (v ? mmss(v) : 'Off') + '</button>').join('') + '</div>' +
+        (s ? '<label class="lb-check"><input type="checkbox" id="lb-restall"> All sets of ' + name + ' in this workout</label>' : '') +
+        '<label class="lb-check"><input type="checkbox" id="lb-restdef"' + (s ? '' : ' checked') + '> Use this every time for ' + name + '</label>' +
+        (running ? '<div class="lb-row tight"><button class="lb-btn small ghost" data-a="restAdj" data-d="-15">−15</button><button class="lb-btn small ghost" data-a="restAdj" data-d="15">+15</button><button class="lb-btn small ghost" data-a="restSkip">Skip rest</button></div>' : '') +
+        '<div class="lb-row"><button class="lb-btn primary wide" data-a="restSave" data-ei="' + ei + '"' + (s ? ' data-si="' + si + '"' : '') + '>' + (running ? 'Save and restart timer' : 'Save') + '</button></div>',
+      mount: el => { const inp = el.querySelector('#lb-restin'); if (!inp) return; inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); const b = el.querySelector('[data-a="restSave"]'); b && b.click(); } }); setTimeout(() => { try { inp.focus(); inp.select(); } catch (er) { } }, 60); }
+    });
+  }
+  on('restEdit', t => restSheet(+t.dataset.ei, null));
+  on('restSet', t => restSheet(+t.dataset.ei, +t.dataset.si));
+  on('restQuick', t => { const inp = topSheet() && topSheet().el.querySelector('#lb-restin'); if (inp) { inp.value = +t.dataset.s ? mmss(+t.dataset.s) : ''; inp.focus(); } });
+  on('restSave', t => {
+    const sh = topSheet(), el = sh.el, ei = +t.dataset.ei, si = t.dataset.si == null ? null : +t.dataset.si, e = E.doc.exercises[ei];
+    const raw = el.querySelector('#lb-restin').value, v = raw.trim() === '' ? 0 : parseRest(raw);
+    if (v == null) { toast('Type a time like 1:45 or 105'); return; }
+    const val = v >= 5 ? v : -1; // -1 = timer off (anything under 5 s counts as off)
+    const all = si == null || (el.querySelector('#lb-restall') || {}).checked, def = (el.querySelector('#lb-restdef') || {}).checked;
+    if (all) { e.rest = val; e.sets.forEach(x => { delete x.rest; }); } else e.sets[si].rest = val;
+    if (def) put('exercises', Object.assign({}, S.data.exercises[e.exId] || {}, { id: e.exId, rest: val }));
+    const restart = si != null && rest && rest.at && rest.at[0] === ei && rest.at[1] === si;
     closeSheet(); touch(); renderEditor();
+    if (restart) { if (val > 0) startRest(val, [ei, si]); else stopRest(); }
   });
   on('exMenu', t => {
     const i = +t.dataset.ei, e = E.doc.exercises[i], ex = getEx(e.exId), weighted = isWeighted(ex);
@@ -5335,10 +5388,11 @@ Power Clean (Barbell)|Other|Barbell|`;
   // Plates per side, inner to outer; they come off outer first as the rest runs down.
   const REST_PLATES = [['20', 'b', 1], ['15', 'y', .86], ['10', 'g', .72], ['5', 'w', .56], ['2.5', 'r', .44]];
   const REST_BLOCKS = 10;
-  function startRest(sec) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec, sound: S.settings.restSound || 'restDone' } })); } catch (e) { } }
+  function startRest(sec, at) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false, at: at || null }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec, sound: S.settings.restSound || 'restDone' } })); } catch (e) { } }
   function previewRest(sec) { startRest(sec); }
   function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
+  on('restManualTyped', () => { const inp = document.getElementById('lb-restman'), v = inp && parseRest(inp.value); if (!v || v < 5) { toast('Type a time like 2:15 or 135'); return; } primeAudio(); startRest(v); toast('Rest timer ' + mmss(v)); });
   on('restManual', t => { primeAudio(); startRest(+t.dataset.s); toast('Rest timer ' + mmss(+t.dataset.s)); renderRest(); });
   // −15/+15 moves the end time but keeps the full length the ring/bar is measured against, so the visual jumps
   // with the number (−15 on a 1:30 rest drops it by a sixth). It only grows when +15 pushes time left past it.
@@ -5372,7 +5426,19 @@ Power Clean (Barbell)|Other|Barbell|`;
     return '<div class="lb-rest-bar"><i></i></div>';
   }
   // Moves the countdown without rebuilding it: --p (rest left, 0-1) drives bars, arcs and the fill level.
+  // The rest line under the set that started this rest counts down in place, like Strong.
+  function paintLines() {
+    if (!liveEl) return;
+    const left = rest ? restLeft() : 0, p = rest ? restFrac() : 0;
+    liveEl.querySelectorAll('.lb-restline').forEach(b => {
+      const on = !!(rest && rest.at && +b.dataset.ei === rest.at[0] && +b.dataset.si === rest.at[1]), sp = b.querySelector('span');
+      b.classList.toggle('on', on);
+      if (on) { b.style.setProperty('--p', p.toFixed(4)); if (sp) sp.textContent = mmss(left); }
+      else if (sp && sp.textContent !== b.dataset.lbl) { sp.textContent = b.dataset.lbl; b.style.removeProperty('--p'); }
+    });
+  }
   function paintRest(h) {
+    paintLines();
     if (!rest || !h) return;
     const p = restFrac(), left = restLeft();
     h.style.setProperty('--p', p.toFixed(4));
@@ -5385,6 +5451,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   function renderRest() {
     const hosts = [liveEl && liveEl.querySelector('.lb-rest'), floatEl].filter(Boolean);
     hosts.forEach(h => { h.hidden = true; h.classList.remove('full'); h.removeAttribute('role'); });
+    paintLines();
     if (!rest) return;
     const h = restHost(); h.hidden = false;
     const left = restLeft(), chosen = restStyle(), full = FULL_STYLES[chosen] && !rest.mini, style = FULL_STYLES[chosen] && rest.mini ? 'bar' : chosen;
@@ -5616,6 +5683,14 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-chk{height:2.15rem;border-radius:8px;background:var(--lb-sunk);color:var(--lb-muted);font-weight:800;font-size:1rem;display:flex;align-items:center;justify-content:center}
 .lb-setrow.done .lb-chk{background:var(--lb-good);color:#fff}
 .lb-prrow{grid-column:2/-1;font-size:.72rem;font-weight:700;color:var(--lb-good);letter-spacing:.03em}
+.lb-restline{display:flex;align-items:center;gap:10px;width:100%;min-height:24px;padding:0 2px;background:none;border:0;color:var(--lb-accent);font-weight:600;font-size:.85rem;font-variant-numeric:tabular-nums;cursor:pointer}
+.lb-restline i{flex:1;height:4px;border-radius:2px;background:color-mix(in srgb,var(--lb-accent) 18%,transparent);position:relative;overflow:hidden}
+.lb-restline.off{color:var(--lb-muted)} .lb-restline.off i{background:color-mix(in srgb,var(--lb-muted) 18%,transparent)}
+.lb-restline.own span{text-decoration:underline dotted;text-underline-offset:3px}
+.lb-restline.on{color:var(--lb-ink);font-weight:800}
+.lb-restline.on i::after{content:"";position:absolute;inset:0;background:var(--lb-accent);transform-origin:left;transform:scaleX(var(--p,1))}
+.lb-restline.on i:last-child::after{transform-origin:right}
+.lb-restin{font-size:1.4rem;font-variant-numeric:tabular-nums;letter-spacing:.04em}
 .lb-exfoot{display:flex;justify-content:center;align-items:center;margin-top:4px;gap:14px;position:relative}
 .lb-exfoot .lb-btn{flex:1;background:none;border:0;color:var(--lb-accent);text-transform:uppercase;letter-spacing:.08em;font-weight:700;font-size:.85rem;min-height:38px}
 .lb-exfoot .lb-link{position:absolute;right:0}
@@ -5751,6 +5826,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
   const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+    parseRest, setRestOf,
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -26977,9 +27053,9 @@ let hcSync=null;
 try{
   if(window.HealthConnectSync){
     const plugin=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.HealthConnect)||null;
-    hcSync=HealthConnectSync.create({plugin, getDay, put, storage:window.localStorage, ownPackage:"com.azizfitness.app", onChange:()=>{ renderPending=true; }});
+    hcSync=HealthConnectSync.create({plugin, getDay, put, storage:window.localStorage, ownPackage:"com.azizfitness.app", onChange:()=>{ renderPending=true; }, yieldTo:()=>!!(ghSync && ghSync.status().connected)});
     if(plugin){
-      const hcAuto=()=>{ hcSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)) { render(); toast(`WaterH: ${r.imported} new record${r.imported===1?"":"s"} from Health Connect`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
+      const hcAuto=()=>{ if(ghSync && ghSync.status().connected) return; hcSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)) { render(); toast(`WaterH: ${r.imported} new record${r.imported===1?"":"s"} from Health Connect`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
       document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") hcAuto(); });
       window.addEventListener("focus",hcAuto);
       window.addEventListener("pageshow",hcAuto);
@@ -27012,7 +27088,12 @@ try{
       const ghAuto=()=>{ ghSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)){ render(); toast(`Fitbit: ${r.imported} new water log${r.imported===1?"":"s"}`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
       document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") ghAuto(); });
       window.addEventListener("online",ghAuto);
+      window.addEventListener("focus",ghAuto);
       setTimeout(ghAuto, 2500);
+      // Live: while the app is on screen, re-read today's Fitbit water every 15 s (the module throttles and backs off on errors).
+      // Only a real change re-renders, so typing elsewhere is never interrupted by a quiet poll.
+      setInterval(()=>{ if(document.visibilityState!=="visible" || !ghSync.status().connected) return;
+        ghSync.autoSync({live:true}).then(r=>{ if(r && (r.imported||r.removed)){ renderPending=false; render(); toast(`Water: ${((r.todayMl||0)/1000).toFixed(2)} L today from Fitbit`); } }).catch(()=>{}); }, 5000);
     }
   }
 }catch(e){ console.warn("GoogleHealthWater", e); }
@@ -27824,7 +27905,7 @@ function vSettings(){
   const who = window.CloudStore && CloudStore.currentEmail ? CloudStore.currentEmail() : null;
   const cloudReady = !window.claude && !!(window.CloudStore && CloudStore.configured && CloudStore.configured());
   const names = [...new Set(Object.values(PROGRAM).flat().map(e=>e[0]))].sort();
-  const restOpts=[[90,"1:30"],[120,"2:00"],[150,"2:30"],[180,"3:00"]];
+  const mmss=x=>Math.floor(x/60)+":"+String(x%60).padStart(2,"0"), restIn=(k,v,label)=>`<input style="width:6.5em;text-align:center;font-variant-numeric:tabular-nums" inputmode="text" enterkeyhint="done" placeholder="m:ss" value="${mmss(+v||0)}" data-rest-k="${k}" aria-label="${label}">`;
   return `
   ${tabHead("Settings", `<button class="btn ghost small" data-act="gotab" data-tab="today">Done</button>`)}
   ${cat("Appearance")}
@@ -27838,8 +27919,8 @@ function vSettings(){
   <div class="card"><h3>Workout</h3><div class="set-list">
     ${row("Train screen", full?"Templates, Start workout, history":"Today's plan with set rows", seg("tmode",[["full","Full logger"],["quick","Quick log"]],view.trainMode).replace(/data-k=/g,'data-m='))}
     ${lb?row("Live workout view","List is the Strong-style table; Gym is one set at a time with big buttons",seg("lbset",[["list","List"],["gym","Gym"]],lb.gym?"gym":"list",'data-s="gym"')):""}
-    ${lb?row("Rest after big lifts","Bench, rows, hack squat",seg("lbset",restOpts,lb.restCompound,'data-s="restCompound"')):row("Rest timer","Starts when you tick a set",seg("rest",restOpts,restSec()))}
-    ${lb?row("Rest after other lifts","",seg("lbset",restOpts,lb.restIso,'data-s="restIso"')):""}
+    ${lb?row("Rest after big lifts","Bench, rows, hack squat. Type any time: 1:45, 105 or 2m",restIn("restCompound",lb.restCompound,"Rest after big lifts")):row("Rest timer","Starts when you tick a set. Type any time: 1:45, 105 or 2m",restIn("restSec",restSec(),"Rest timer"))}
+    ${lb?row("Rest after other lifts","Tap the time between sets in a workout to change one set",restIn("restIso",lb.restIso,"Rest after other lifts")):""}
     ${row("Start the timer after each set","",sw("restauto",m.restAuto!==false,"Start the rest timer after each set"))}
     ${lb&&WorkoutLogger.restStyles?row("Rest timer look",'Full circle and Screen fill take the whole screen, like Strong',`<span class="row" style="gap:6px;justify-content:flex-end">${WorkoutLogger.restStyles.map(([k,l])=>`<button type="button" class="chip" data-act="lbpick" data-s="restStyle" data-k="${k}" aria-pressed="${(lb.restStyle||"bar")===k}">${l}</button>`).join("")}<button type="button" class="btn ghost small" data-act="lbtry">Try it (10 s)</button></span>`):""}
     ${lb&&window.GymSounds&&GymSounds.REST_SOUNDS?(()=>{ const cur=lb.restSound||"restDone", chip=(id,label)=>`<button type="button" class="chip" data-act="lbpick" data-s="restSound" data-k="${id}" aria-pressed="${cur===id}">${esc(label)}</button>`, mine=GymSounds.customInfo&&GymSounds.customInfo();
@@ -28050,6 +28131,11 @@ main.addEventListener("change",e=>{
   const el=e.target, d=view.date;
   if(el.id==="strongFile" && el.files && el.files[0]){ importStrong(el.files[0]); return; }
   if(el.id==="stepsFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyStepsText(String(fr.result)); fr.readAsText(el.files[0]); return; }
+  if(el.dataset.restK){ const k=el.dataset.restK, v=window.WorkoutLogger&&WorkoutLogger.parseRest?WorkoutLogger.parseRest(el.value):(parseFloat(el.value)||null);
+    if(v==null||v<5){ toast("Type a time like 1:45 or 105"); render(); return; }
+    if(k==="restSec"||k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=v; put("prefs","main",p); }
+    if(k!=="restSec" && window.WorkoutLogger&&WorkoutLogger.setSettings) WorkoutLogger.setSettings({[k]:v});
+    el.value=Math.floor(v/60)+":"+String(v%60).padStart(2,"0"); return; }
   if(el.id==="sleepH"){ const day=getDay(d); const v=parseFloat(el.value); if(isFinite(v)&&v>=0&&v<=16) day.sleep=v; else delete day.sleep; saveDay(day,{quiet:true}); renderPending=true; return; }
   if(el.id==="restSoundFile" && el.files && el.files[0]){ if(!window.GymSounds||!GymSounds.setCustom) return; GymSounds.prime(); GymSounds.setCustom(el.files[0]).then(info=>{ if(window.WorkoutLogger&&WorkoutLogger.setSettings) WorkoutLogger.setSettings({restSound:"custom"}); GymSounds.play("custom"); toast("Rest will end with "+info.name); render(); }, err=>toast(err.message||"That sound could not be added")); el.value=""; return; }
     if(el.id==="waterhFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyWaterHText(String(fr.result)); fr.readAsText(el.files[0]); return; }

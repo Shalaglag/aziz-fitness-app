@@ -50,3 +50,13 @@ API not enabled, no internet, access refused.
 
 Then on the phone: update the app → Water card → **Connect Fitbit / Google Health** → pick your Google
 account → Continue past "unverified app" → Allow.
+
+## How fast it updates (Nov 2, 2026)
+- On open, resume, focus and back online: re-check the last 3 days, at most every 15 s.
+- While the app is on screen: `autoSync({live:true})` re-reads today only, every 15 s (the shell ticks every 5 s and the
+  module throttles). Only a real change re-renders the screen, then the Water fluid rises and a toast says the new total.
+- After a non-network error (401/403/400…) auto and live back off to once per 5 minutes; offline does not back off.
+- Per-second updates are not possible from here: the sip has to travel bottle → WaterH app (Bluetooth, when WaterH is
+  open or syncs in the background) → Fitbit cloud → Google Health API. The app sees it within 15 s of Fitbit having it.
+- While Fitbit is connected, Health Connect water yields (`yieldTo` option of HealthConnectSync), so the two never
+  overwrite each other's records.
