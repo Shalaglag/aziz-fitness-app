@@ -48,7 +48,19 @@ const AndroidShell = (function () {
 
   function onBack(fn) { handlers.push(fn); return function () { const i = handlers.indexOf(fn); if (i >= 0) handlers.splice(i, 1); }; }
 
-  function visible(el) { return !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length)); }
+  // A closed sheet can still have a size (the coach panel slides off-screen with visibility:hidden), so check
+  // hidden/aria-hidden/visibility/display too, or back would "close" it forever and never change tab.
+  function visible(el) {
+    if (!el || !(el.offsetWidth || el.offsetHeight || (el.getClientRects && el.getClientRects().length))) return false;
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      if (n.hidden || (n.getAttribute && n.getAttribute("aria-hidden") === "true")) return false;
+    }
+    try {
+      const cs = typeof getComputedStyle === "function" ? getComputedStyle(el) : null;
+      if (cs && (cs.visibility === "hidden" || cs.display === "none" || cs.opacity === "0")) return false;
+    } catch (e) { }
+    return true;
+  }
   function closeTopSheet(doc) {
     const dialogs = Array.from(doc.querySelectorAll('[role="dialog"], dialog[open]')).filter(visible);
     const top = dialogs[dialogs.length - 1];
