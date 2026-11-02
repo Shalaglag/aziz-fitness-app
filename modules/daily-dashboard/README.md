@@ -3,22 +3,19 @@
 Feature 11 of the app plan: one card at the top of Today with everything for the day, plus a month calendar for the whole app (not just lifts). Plain JS, no imports, no network. Global `DailyDashboard`.
 
 - `daily-dashboard.js`: the module.
-- `daily-dashboard.test.js`: tests, run with `node modules/daily-dashboard/daily-dashboard.test.js` (17 cases).
+- `daily-dashboard.test.js`: tests, run with `node modules/daily-dashboard/daily-dashboard.test.js` (20 cases).
 - `apply-patch.js`: inlines it into the app. `node modules/daily-dashboard/apply-patch.js app/index.html [out.html]`. Each step is an exact-text swap and stops if the app has drifted.
 
 ## What Aziz sees
 
-**Today at a glance** (top of Today, follows the shared date picker). Seven tiles; each one jumps to where you log it:
+**Today at a glance** (top of Today, follows the shared date picker). A scoreboard (Aziz picked it Nov 2, 2026):
 
-| Tile | Shows | Tap |
-|---|---|---|
-| Workout | Session, sets and exercises logged, minutes, cardio done. Before logging: the planned session and its exercise count. | Train |
-| Meals | Items ticked as eaten out of items on the day, how many are still only planned, how many are estimates | Food |
-| Calories left | Target minus eaten, plus what the plan would leave. Turns red as "Calories over". | Food |
-| Protein left | Grams to the minimum, the target range, what the plan would leave | Food |
-| Weigh-in | Today's kg, change vs last weigh-in, 7-day average. "Not logged" with the last reading when missing. | Weight input |
-| Water | Litres against the day's goal, +250 / +500 buttons | (buttons) |
-| Recovery | Readiness score when RecoveryFatigue is in the app, else hours slept; last effort rating, lighter week. Flags short sleep, a 9–10 effort in the last 2 days, 4+ lifting days in a row, low readiness. | Sleep input |
+- Calorie strip: the day's target split by meal slot, eaten solid, planned hatched, with "plan leaves …" (tap: Food).
+- Four big numbers: kcal left (red when over), protein to go ("Hit" once reached), water with a +250 ml button, weight with change and 7-day average ("Not logged" with the last reading when missing).
+- Workout row: session, sets / exercises / minutes / cardio once logged, sleep, readiness and last effort underneath, Start / Done / Pick button (tap: Train). Recovery flags (short sleep, a 9–10 effort in the last 2 days, 4+ lifting days in a row, low readiness) show under it.
+- "Your day ›" (`data-act="dd-day"`) opens Progress → Your day.
+
+**Your day** (`dayHtml`, Progress → Your day): the day as a timeline. Weigh-in and sleep, each meal slot with its items, and the workout placed at its time (`opts.trainTime(date)` → "15:30", from the phone reminders); a Now box with kcal and protein left and water squares sits before the first open step on today; past days end with a Total and mark what was missed. `day(docs, date, opts)` returns the same as data.
 
 **Calendar** (under the daily score). Each day shows the session (filled = lifted, orange label = a chosen session with nothing logged, grey = planned from the rotation) and dots for weigh-in, calories on target / over / under, protein hit, water hit. Arrows change month; tapping a day opens it in every tab. The footer totals the month.
 
