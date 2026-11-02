@@ -5,6 +5,7 @@
  *   readBody(body)                                         -> validated {question, ctx, history, effort, lang}
  *   buildRequest(input, env)                               -> the Messages API request body
  *   ledger*                                                -> the monthly spending ledger (state in, state out)
+ *   readImageBody / buildReadRequest / readEstimateUsd -> POST /v1/read (menu screenshots -> JSON items)
  *   foldEvent(acc, ev)                                     -> fold one SDK stream event into text / usage / stop
  * The Worker (index.js) does the network calls; the ledger runs inside one Durable Object, so every
  * reserve/settle is applied one at a time (no two requests can both pass the cap).
@@ -145,6 +146,53 @@ export function buildRequest(input, env) {
   };
 }
 export const promptChars = (input) => SYSTEM.length + input.ctxJson.length + input.question.length + input.history.reduce((s, h) => s + h.q.length + h.a.length, 0);
+
+// ---------- menu reading (POST /v1/read) ----------
+// Mizan's menu card sends screenshots (or the pages of a scanned PDF) of a meal-prep menu. The instructions
+// live here so the endpoint only ever reads menus: the app can't send its own prompt.
+export const READ = { maxImages: 4, maxB64: 2_500_000, maxTotalB64: 7_000_000, imageTokens: 6000, maxTokens: 4000 };
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+export function readImageBody(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw err("bad_request", 400);
+  if (body.kind !== "menu") throw err("bad_request", 400);
+  const images = Array.isArray(body.images) ? body.images : [];
+  if (!images.length) throw err("no_images", 400);
+  if (images.length > READ.maxImages) throw err("too_many_images", 413);
+  let total = 0;
+  const out = images.map(im => {
+    const media_type = im && String(im.media_type || "").toLowerCase();
+    const data = im && typeof im.data === "string" ? im.data.replace(/^data:[^,]*,/, "") : "";
+    if (!IMAGE_TYPES.includes(media_type) || !data || !/^[A-Za-z0-9+/=]+$/.test(data)) throw err("image_rejected", 400);
+    if (data.length > READ.maxB64) throw err("too_large", 413);
+    total += data.length;
+    return { media_type, data };
+  });
+  if (total > READ.maxTotalB64) throw err("too_large", 413);
+  return { images: out };
+}
+export const MENU_PROMPT = [
+  "The attached images are pages of a restaurant or meal-prep menu (often Nutreeze, Kuwait).",
+  "List every food or drink item that shows nutrition numbers, copying the numbers exactly as printed.",
+  "Rules:",
+  "- Never estimate or calculate. If a number is missing, cut off, blurry or you are not sure of a digit, use null for it and set \"unsure\": true.",
+  "- kcal is calories (kcal/Cal/Energy). protein, carbs, fat are grams.",
+  "- section is the heading the item sits under, mapped to one of: meal, snack, salad, soup, drink, other. Desserts, fruit, nuts and sweets are snack. Breakfast and main dishes are meal.",
+  "- Use the item name as printed (English if both English and Arabic are shown). If the menu lists what comes with the dish (for example fries, rice, sauce), add it to the name after \" with \" so it can be filtered. Ignore prices.",
+  "- Skip items with no nutrition numbers at all, and say how many you skipped in note.",
+  "Reply with only JSON in this shape, no other text:",
+  '{"items":[{"name":"Buffalo Chicken with Sweet Potato","section":"meal","kcal":496,"protein":65,"carbs":41,"fat":8,"unsure":false}],"note":"One short sentence on anything hard to read."}',
+].join("\n");
+export function buildReadRequest(input) {
+  return {
+    model: MODEL,
+    max_tokens: READ.maxTokens,
+    output_config: { effort: "low" },
+    messages: [{ role: "user", content: input.images.map(im => ({ type: "image", source: { type: "base64", media_type: im.media_type, data: im.data } }))
+      .concat([{ type: "text", text: MENU_PROMPT }]) }],
+  };
+}
+// High guess for the ledger: each image counted as 6,000 tokens (a full-size page is about 1,600-5,000).
+export const readEstimateUsd = input => estimateUsd(input.images.length * READ.imageTokens + MENU_PROMPT.length, READ.maxTokens);
 
 // ---------- the monthly ledger ----------
 // state = {month, capUsd, allTimeUsd (every month so far, to compare with the prepaid credit), confirmedUsd, unsettledUsd, requests, tokens:{in, out, cacheWrite, cacheRead},

@@ -43,3 +43,6 @@ Each flagged item has an **OK** button (numbers match the menu) and every number
 
 ## App data
 New synced collection `menus/{date}` in the Nutreeze menu format (`docs/nutreeze-menu-format.md`) plus `source` (`pdf`, `pdf-image`, `image`, `text`), `confirmed` and `skip` per item.
+
+## Pick for, leave out, why (Nov 2)
+`optimize(items, engine, {priority, avoid})`: `priority` is one of `MenuImport.PRIORITIES` (`protein`, `balanced` = the engine's own order and the API default, `lowfat`, `carbs`, `liked`). Combos that fit the day's budget (±100 kcal; and the protein minimum, except for `protein`) are ranked by that priority; the budget itself never changes. `avoid` = words to leave out (whole-word, like dislikes), applied to menu items and the fixed snack list. Each option gets `why` (up to 4 sentences, `MenuImport.explain`). `MenuImport.avoidSuggestions(items, chosen)` gives chip words found in the menu. The card defaults to Most protein, runs as soon as a menu is read, and remembers the choice through `host.pickPrefs()` / `host.setPickPrefs(v)`. Optional `host.readService(blobs, {pages})` reads images when the page has no `sample` capability (the Android app uses the coach service's `POST /v1/read`).

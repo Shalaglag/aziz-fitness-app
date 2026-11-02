@@ -235,6 +235,55 @@ test('optimiser takes the day targets from AppTargets instead of 2,000 / 160', (
   assert.ok(!/2,000/.test(best.check.verdict + best.check.notes.join()));
 });
 
+test('priority: most protein puts the highest-protein combo that fits the budget first, and says why', () => {
+  const { items } = M.parseText(MENU + '\nChicken Burger with Fries  640  50  58  20');
+  const bal = M.optimize(items, E, { dayType: 'training' });
+  const pro = M.optimize(items, E, { dayType: 'training', priority: 'protein' });
+  assert.equal(pro.priority, 'protein');
+  const best = pro.options[0];
+  assert.ok(Math.abs(best.totals.kcal - 2000) <= 100, String(best.totals.kcal)); // the budget never moves
+  assert.ok(best.totals.p >= bal.options[0].totals.p);
+  assert.ok(pro.options.every(o => o.totals.p <= best.totals.p + 0.5));
+  assert.match(best.why[0], /^Most protein of the \d+ meal pairs that fit your 2,000 kcal budget: \d+ g/);
+  assert.match(best.why.join(' '), /2,000 budget\) and \d+ g protein \(meets your 160 g minimum\)/);
+  assert.match(pro.options[1].why[0], /Against the best option: [−+]\d+ g protein/);
+  // Alternatives are different meal pairs.
+  const pairs = pro.options.map(o => o.meal1.name + o.meal2.name);
+  assert.equal(new Set(pairs).size, pairs.length);
+});
+
+test('leave out: "fries" removes every item with fries in its name, and the reason says so', () => {
+  const { items } = M.parseText(MENU + '\nChicken Burger with Fries  640  60  58  14\nLoaded Fries  450  12  50  22');
+  const r = M.optimize(items, E, { priority: 'protein', avoid: ['fries'] });
+  const used = r.options.flatMap(o => [o.meal1, o.meal2, ...o.snacks].map(x => x.name));
+  assert.ok(!used.some(n => /fries/i.test(n)));
+  assert.ok(r.skipped.some(s => s.name === 'Chicken Burger with Fries' && /leave out: fries/.test(s.reason)));
+  assert.match(r.options[0].why.join(' '), /Nothing with fries, as you asked/);
+  assert.deepEqual(M.avoidSuggestions(items, ['fries']).slice(0, 3), ['rice', 'pasta', 'potato']);
+  assert.ok(M.avoidSuggestions(items, []).includes('fries'));
+});
+
+test('other priorities: lower fat, more carbs, favourites; balanced is the old order', () => {
+  const { items } = M.parseText(MENU);
+  const bal = M.optimize(items, E, {}), plain = M.optimize(items, E, { priority: 'balanced' });
+  assert.deepEqual(bal.options.map(o => o.score), plain.options.map(o => o.score));
+  const lf = M.optimize(items, E, { priority: 'lowfat' });
+  assert.ok(lf.options[0].totals.f <= bal.options[0].totals.f + 0.5);
+  assert.match(lf.options[0].why[0], /Lowest fat/);
+  const cb = M.optimize(items, E, { priority: 'carbs' });
+  assert.ok(cb.options[0].totals.c >= bal.options[0].totals.c - 0.5);
+  const fav = M.optimize(items, E, { priority: 'liked' });
+  assert.ok([fav.options[0].meal1.name, fav.options[0].meal2.name].includes('French Tacos Chicken'));
+  assert.match(fav.options[0].why[0], /favourite/);
+  assert.ok(M.optimize(items, E, { priority: 'nonsense' }).options.length);
+});
+
+test("Claude's answer wrapped in a code fence still parses", () => {
+  const r = M.parseRead('```json\n{"items":[{"name":"Chicken Masala","section":"meal","kcal":607,"protein":67,"carbs":60,"fat":11}]}\n```');
+  assert.equal(r.items.length, 1);
+  assert.equal(r.items[0].kcal, 607);
+});
+
 test('engine without menu snacks still uses the fixed list (old callers unchanged)', () => {
   const meals = E.parseMenu('French Tacos Chicken 650 55 60 20\nBuffalo Chicken with Sweet Potato 496 65 41 8\nChicken Masala 607 67 60 11');
   const r = E.pick({ meals, top: 1 });

@@ -7,6 +7,9 @@
  *        {"t":"d","text":"…"} answer text as it arrives, then
  *        {"t":"done","costUsd","usage","stop","month"} or {"t":"error","error"}
  *
+ *   POST /v1/read    {kind:"menu", images:[{media_type, data}]}  owner only; reads a menu's nutrition numbers:
+ *        {text, costUsd, month}   (text is the model's JSON answer; the instructions are fixed on the server)
+ *
  * Every request needs the Firebase ID token of a signed-in Mizan account (Authorization: Bearer …), and the
  * account must be listed in ALLOWED_EMAILS or ALLOWED_UIDS (both empty = nobody). The API key is the Worker
  * secret ANTHROPIC_API_KEY; it never leaves this service. Spending goes through one Durable Object (the
@@ -22,7 +25,8 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { MODEL, LIMITS, JWKS_URL, err, verifyIdToken, isAllowed, readBody, buildRequest, promptChars, estimateUsd,
-  ledgerReserve, ledgerSettle, ledgerSetCap, ledgerTidy, ledgerSummary, foldEvent, round6 } from "./core.js";
+  ledgerReserve, ledgerSettle, ledgerSetCap, ledgerTidy, ledgerSummary, foldEvent, round6,
+  readImageBody, buildReadRequest, readEstimateUsd } from "./core.js";
 
 const CORS = {
   "access-control-allow-origin": "*", // bearer tokens only, no cookies: any page still needs the owner's sign-in
@@ -113,6 +117,32 @@ async function chat(req, env, ctx, who) {
   return new Response(readable, { status: 200, headers: Object.assign({ "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", "x-coach-model": MODEL }, CORS) });
 }
 
+// Menu screenshots -> the printed numbers as JSON. Not streamed: the app waits for the whole list anyway.
+async function readMenu(req, env, who) {
+  if (!env.ANTHROPIC_API_KEY) return json(503, { error: "no_key" });
+  if (+(req.headers.get("content-length") || 0) > 8 * 1024 * 1024) return json(413, { error: "too_large" });
+  const input = readImageBody(await req.json().catch(() => null));
+  const body = buildReadRequest(input);
+  const id = crypto.randomUUID(), book = ledger(env);
+  const r = await book.reserve({ uid: who.uid, usd: readEstimateUsd(input), id, now: Date.now(), tz: tz(env) }, limits(env));
+  if (!r.ok) return json(r.status, { error: r.error, retryAfter: r.retryAfter || undefined, month: r.summary || undefined });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort("timeout"), +env.TIMEOUT_MS || 90000);
+  let msg;
+  try { msg = await claude(env).messages.create(body, { signal: ctl.signal }); }
+  catch (e) {
+    clearTimeout(timer); await book.settle({ id, usage: null, now: Date.now(), tz: tz(env) });
+    if (ctl.signal.aborted) return json(504, { error: "timeout" });
+    const [code, status] = upstreamError(e instanceof Anthropic.APIError ? e.status : 0, e && e.message);
+    console.log("read upstream", e instanceof Anthropic.APIError ? e.status : "network");
+    return json(status, { error: code });
+  }
+  clearTimeout(timer);
+  const s = await book.settle({ id, usage: msg.usage || null, now: Date.now(), tz: tz(env) }).catch(() => null);
+  const text = (msg.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+  return json(200, { text, stop: msg.stop_reason || null, costUsd: s ? s.usd : null, month: s ? s.summary : null });
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
@@ -128,6 +158,7 @@ export default {
         return r.ok ? json(200, r.summary) : json(400, { error: r.error });
       }
       if (url.pathname === "/v1/chat" && req.method === "POST") return await chat(req, env, ctx, await owner(req, env));
+      if (url.pathname === "/v1/read" && req.method === "POST") return await readMenu(req, env, await owner(req, env));
       return json(404, { error: "not_found" });
     } catch (e) {
       if (e && e.code) return json(e.status || 400, { error: e.code, uid: e.uid || undefined });
