@@ -308,3 +308,48 @@ test("actions: only the fixed menu survives parsing, and nothing applies without
   assert.equal(applied.length, 1);
   Coach._state.msgs = [];
 });
+
+// --- Goal plan (prefs/main.goalSetup) steers the review ---
+const G = require("../goal-setup/goal-setup.js");
+const planOf = (goal, extra) => { const a = Object.assign({ sex: "male", age: 29, heightCm: 172, kg: 92, activity: "moderate", goal }, extra); return { answers: a, result: G.compute(a, { today: START }), at: START }; };
+
+test("gain plan: the pace band follows the chosen pace, and gaining too fast past week two suggests fewer calories (confirm only)", () => {
+  const plan = planOf("bulk", { pace: "lean", targetKg: 100 });
+  const T = Coach.targets(make(), { targets: TARGETS, plan });
+  assert.equal(T.plan.direction, 1); assert.ok(T.paceLo < T.paceHi && T.paceHi <= 0.5, JSON.stringify([T.paceLo, T.paceHi]));
+  const R = Coach.review(make({ kgWk: 0.6 }), opts("2026-11-23", { plan }));
+  assert.equal(R.verdict, "too-fast");
+  assert.match(R.headline, /^Gaining faster/);
+  assert.equal(R.recs[0].id, "trim"); assert.deepEqual(R.recs[0].change, { key: "profile.cutKcal", from: 2000, to: 1850 });
+  assert.match(R.basis, /your plan \(gain weight, 0\.3 % of body weight a week, lean, moderate\), 2,000 kcal and 14 days of logs: \d+ weigh-ins/);
+  const ok = Coach.review(make({ kgWk: 0.25 }), opts("2026-11-23", { plan }));
+  assert.equal(ok.verdict, "on-track"); assert.match(ok.headline, /gain is on plan/); assert.ok(ok.recs.every(r => !r.change));
+  const stuck = Coach.review(make({ kgWk: 0 }), opts("2026-11-23", { plan }));
+  assert.equal(stuck.verdict, "stalled"); assert.equal(stuck.recs[0].change.to, 2150, "a stalled gain suggests more, not less");
+});
+
+test("maintain plan: steady is on-track; a drift with on-target eating offers a small nudge, never a silent change", () => {
+  const plan = planOf("maintain", {});
+  const steady = Coach.review(make({ kgWk: 0.1 }), opts("2026-11-23", { plan }));
+  assert.equal(steady.verdict, "on-track"); assert.match(steady.headline, /steady/);
+  const R = Coach.review(make({ kgWk: -0.6 }), opts("2026-11-23", { plan }));
+  assert.equal(R.verdict, "drift"); assert.match(R.headline, /drifting down on a maintenance plan/);
+  assert.equal(R.recs[0].id, "nudge"); assert.deepEqual(R.recs[0].change, { key: "profile.cutKcal", from: 2000, to: 2100 });
+  assert.doesNotMatch(Coach.reviewHtml(make({ kgWk: -0.6 }), opts("2026-11-23", { plan })), /Use 2,100/, "no apply button without onApply");
+  const uneven = Coach.review(make({ kgWk: -0.6, kcal: i => (i % 3 ? 2600 : 2000) }), opts("2026-11-23", { plan }));
+  assert.equal(uneven.verdict, "adherence"); assert.ok(uneven.recs.every(r => !r.change));
+});
+
+test("the basis line and the plan reach the card and the Claude context; without a plan the review still runs", () => {
+  const plan = planOf("cut", { pace: "regular", targetKg: 80 });
+  const h = Coach.reviewHtml(make(), opts("2026-11-23", { plan }));
+  assert.match(h, /co-src">Based on your plan \(lose fat, 0\.5 % of body weight a week, regular, moderate\)/);
+  const ctx = Coach.context(make(), opts("2026-11-23", { plan }));
+  assert.equal(ctx.plan.goal, "cut"); assert.equal(ctx.plan.targetKg, 80); assert.equal(ctx.plan.ratePctPerWeek, 0.5); assert.match(ctx.plan.note, /not a generic cut/);
+  assert.match(ctx.basis, /^Based on your plan/);
+  const none = Coach.review(make(), opts("2026-11-23"));
+  assert.equal(none.verdict, "on-track"); assert.match(none.basis, /^Based on your targets, 2,000 kcal/);
+  assert.equal(Coach.context(make(), opts("2026-11-23")).plan, null);
+  const skipped = Coach.review(make(), opts("2026-11-23", { plan: { skipped: true } }));
+  assert.equal(skipped.verdict, "on-track");
+});
