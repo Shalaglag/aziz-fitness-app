@@ -123,7 +123,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.strictEqual((r.profile || {}).cutKcal, undefined, "nothing wrote a new calorie target");
       await go(page, "food");
       const v = await page.evaluate(() => [...document.querySelectorAll(".fsum .v")].map(e => e.textContent.trim()));
-      assert.deepStrictEqual(v, ["2,000", "870", "1,130"], "budget ignores the 450 kcal treadmill and 14k steps");
+      assert.deepStrictEqual(v, ["1,130", "870", "2,000"], "remaining, eaten, target: budget ignores the 450 kcal treadmill and 14k steps");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });
@@ -146,8 +146,8 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "food");
       const r = await page.evaluate(() => { const v = [...document.querySelectorAll(".fsum .v")].map(e => e.textContent.trim()); return { v, target: kcalTarget(TODAY), labels: [...document.querySelectorAll(".fsum .label")].map(e => e.textContent.trim()) }; });
-      assert.deepStrictEqual(r.v, ["2,000", "870", "1,130"], "budget, food, remaining");
-      assert.deepStrictEqual(r.labels, ["Budget", "Food", "Remaining"]);
+      assert.deepStrictEqual(r.v, ["1,130", "870", "2,000"], "remaining, eaten, target");
+      assert.deepStrictEqual(r.labels, ["Remaining", "Eaten", "Target"]);
       assert.strictEqual(r.target, 2000, "the budget is the chosen target, never lowered on its own");
       // Open the sheet for Meal 2, add a food, and it lands under Meal 2 with the sheet closed
       await page.click('.mealgrp:has(.mh span:text-is("Meal 2")) [data-act="foodadd"]');
@@ -156,7 +156,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.fill("#fname", "Greek yoghurt"); await page.fill("#fk", "150"); await page.fill("#fp", "15"); await page.check("#featen");
       await page.click('#foodSheet button[type="submit"]');
       await page.waitForTimeout(200);
-      const after = await page.evaluate(() => ({ sheet: !!document.getElementById("foodSheet"), meal2: [...document.querySelectorAll('.mealgrp')].find(g => /^Meal 2/.test(g.textContent)).textContent, remaining: document.querySelector(".fsum .v.big").textContent.trim() }));
+      const after = await page.evaluate(() => ({ sheet: !!document.getElementById("foodSheet"), meal2: [...document.querySelectorAll('.mealgrp')].find(g => /^Meal 2/.test(g.textContent)).textContent, remaining: document.querySelector(".fsum .rem").textContent.trim() }));
       assert.strictEqual(after.sheet, false, "sheet closes after adding");
       assert.ok(/Greek yoghurt/.test(after.meal2), "new food is under Meal 2");
       assert.strictEqual(after.remaining, "980", "remaining drops by the eaten 150 kcal");
