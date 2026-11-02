@@ -194,8 +194,8 @@ const CloudStore = (() => {
     return scoped(fs, who.uid);
   }
   function currentEmail() { return state.user ? state.user.email : null; }
-  // Firebase ID token of the signed-in person (null when nobody is signed in). The coach endpoint
-  // checks it server-side before calling Claude.
+  // Firebase ID token of the signed-in person (null when nobody is signed in), for any server call
+  // that needs to know who is asking (none uses it since the AI coach was removed).
   function idToken() { return state.user && state.user.getIdToken ? state.user.getIdToken().catch(() => null) : Promise.resolve(null); }
   async function signOut() { if (state.auth) await state.auth.signOut(); state.user = null; }
   // The unscoped Firestore handle and uid, for the shared Friends collections (modules/friends), whose
