@@ -302,6 +302,16 @@ body:has(.gs-wrap) .bottombar{display:none!important}
 .gs-art .confetti circle,.gs-art .confetti rect{animation:gs-float 2.4s ease-in-out infinite alternate}
 .gs-art .confetti :nth-child(2n){animation-delay:.6s}
 .gs-art .confetti :nth-child(3n){animation-delay:1.1s}
+.gs-art .needle2{transform-origin:120px 106px;animation:gs-needle2 1.1s 500ms cubic-bezier(.3,1.4,.5,1) both}
+@keyframes gs-needle2{from{transform:rotate(-60deg)}to{transform:rotate(0)}}
+.gs-art .hand{transform-origin:195px 46px;animation:gs-spin 6s 800ms linear infinite}
+@keyframes gs-spin{to{transform:rotate(360deg)}}
+.gs-art .pulse path{stroke-dasharray:160;stroke-dashoffset:160;animation:gs-draw 900ms 500ms var(--ease-out,ease-out) forwards}
+@keyframes gs-draw{to{stroke-dashoffset:0}}
+.gs-art .arrow{animation:gs-shoot 600ms 350ms cubic-bezier(.2,.9,.3,1) both}
+@keyframes gs-shoot{from{opacity:0;transform:translate(-40px,-32px)}to{opacity:1;transform:none}}
+.gs-art .spark{animation:gs-spark 500ms 950ms var(--ease-out,ease-out) both}
+@keyframes gs-spark{from{opacity:0;transform:scale(.4);transform-origin:140px 60px}to{opacity:1;transform:scale(1)}}
 @keyframes gs-blob{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
 @keyframes gs-part{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes gs-pulse{0%,100%{transform:scale(1)}40%{transform:scale(1.12)}}
@@ -327,25 +337,21 @@ body:has(.gs-wrap) .bottombar{display:none!important}
   const g = (d, inner, cls) => '<g class="p ' + (cls || '') + '" style="--d:' + d + '">' + inner + '</g>';
   const ART = {
     about: svgWrap(
-      g(0, '<line class="ink" x1="40" y1="30" x2="40" y2="124" stroke-width="3"/><line class="ink" x1="40" y1="30" x2="40" y2="124" stroke-width="10" stroke-dasharray="2 9.4" opacity=".55"/>')
-      + g(1, '<rect class="s3" x="70" y="118" width="100" height="16" rx="8"/><rect class="acc" x="108" y="122" width="24" height="8" rx="3"/>')
-      + g(2, '<rect class="ink" x="103" y="88" width="13" height="34" rx="6"/><rect class="ink" x="124" y="88" width="13" height="34" rx="6"/><rect class="acc" x="90" y="54" width="60" height="42" rx="18"/><path class="accs" d="M96 66 L78 94 M144 66 L162 94" stroke-width="11" stroke-linecap="round"/>')
-      + g(3, '<circle class="ink" cx="120" cy="36" r="17"/><path class="acc2" d="M106 30 q14 -16 28 0" stroke-width="5" stroke-linecap="round" fill="none"/>')
-      + g(4, '<path class="warn" d="M58 78 Q120 104 182 72" stroke-width="9" stroke-linecap="round" fill="none"/><path class="ink" d="M58 78 Q120 104 182 72" stroke-width="9" stroke-dasharray="1.6 7" stroke-linecap="butt" fill="none" opacity=".45"/>')
-      + g(5, '<rect class="s3" x="186" y="98" width="34" height="26" rx="6"/><rect class="acc" x="192" y="104" width="22" height="4" rx="2"/><rect class="ink" x="192" y="112" width="14" height="4" rx="2" opacity=".6"/>')),
+      g(0, '<rect class="s3" x="66" y="30" width="108" height="100" rx="22"/><rect class="bg" x="78" y="42" width="84" height="76" rx="16"/><circle class="ink" cx="76" cy="40" r="3" opacity=".18"/><circle class="ink" cx="164" cy="40" r="3" opacity=".18"/><circle class="ink" cx="76" cy="120" r="3" opacity=".18"/><circle class="ink" cx="164" cy="120" r="3" opacity=".18"/>')
+      + g(1, '<rect class="ink" x="94" y="52" width="52" height="22" rx="6"/><rect class="bg" x="102" y="58" width="6" height="10" rx="1.5"/><rect class="bg" x="112" y="58" width="6" height="10" rx="1.5"/><rect class="bg" x="122" y="58" width="6" height="10" rx="1.5"/><circle class="bg" cx="135" cy="67" r="1.5"/><rect class="acc" x="137" y="58" width="4" height="10" rx="1.5"/>')
+      + g(2, '<path class="ink" d="M94 106 A26 26 0 0 1 146 106" stroke-width="5" fill="none" stroke-linecap="round" opacity=".22"/><path class="ink" d="M94 106 A26 26 0 0 1 146 106" stroke-width="5" fill="none" stroke-dasharray="1.5 7.4" opacity=".5"/><g class="needle2"><line class="accs" x1="120" y1="106" x2="136" y2="86" stroke-width="4" stroke-linecap="round"/></g><circle class="ink" cx="120" cy="106" r="4"/>')
+      + g(3, '<path class="warn" d="M52 118 Q84 138 108 130" stroke-width="9" stroke-linecap="round" fill="none"/><path class="ink" d="M52 118 Q84 138 108 130" stroke-width="9" stroke-dasharray="1.6 7" fill="none" opacity=".4"/><circle class="warn" cx="38" cy="112" r="21"/><circle class="bg" cx="38" cy="112" r="9"/><circle class="warn" cx="38" cy="112" r="4"/>')
+      + g(4, '<rect class="ink" x="172" y="18" width="56" height="40" rx="9"/><circle class="acc" cx="188" cy="38" r="8"/><rect class="bg" x="202" y="30" width="18" height="4" rx="2" opacity=".9"/><rect class="bg" x="202" y="40" width="12" height="4" rx="2" opacity=".6"/>')),
     activity: svgWrap(
-      g(0, '<line class="ink" x1="26" y1="132" x2="214" y2="132" stroke-width="3" opacity=".35"/>')
-      + g(1, '<rect class="ink" x="104" y="74" width="32" height="38" rx="13"/><rect class="acc" x="104" y="74" width="32" height="38" rx="13"/><path class="ink" d="M111 110 L101 132 M129 110 L139 132" stroke-width="11" stroke-linecap="round"/><circle class="ink" cx="120" cy="58" r="13"/>')
-      + g(2, '<path class="accs" d="M110 80 L98 50 M130 80 L142 50" stroke-width="10" stroke-linecap="round"/>')
-      + g(3, '<line class="ink" x1="36" y1="44" x2="204" y2="44" stroke-width="6" stroke-linecap="round"/><rect class="acc" x="42" y="26" width="16" height="36" rx="5"/><rect class="ink" x="60" y="31" width="10" height="26" rx="4"/><rect class="acc" x="182" y="26" width="16" height="36" rx="5"/><rect class="ink" x="170" y="31" width="10" height="26" rx="4"/>')
-      + g(4, '<path class="warn" d="M28 28 l-8 -8 M30 56 l-10 6 M212 28 l8 -8 M210 56 l10 6" stroke-width="3" stroke-linecap="round" fill="none"/><circle class="good" cx="58" cy="112" r="5"/><circle class="good" cx="178" cy="106" r="4"/><circle class="acc2" cx="196" cy="120" r="3"/>'),
-      ''),
+      g(0, '<g transform="rotate(-24 120 90)"><rect class="ink" x="70" y="85" width="100" height="10" rx="5"/><rect class="acc" x="46" y="64" width="24" height="52" rx="8"/><rect class="ink" x="70" y="71" width="12" height="38" rx="5"/><rect class="acc" x="170" y="64" width="24" height="52" rx="8"/><rect class="ink" x="158" y="71" width="12" height="38" rx="5"/><rect class="bg" x="52" y="72" width="4" height="36" rx="2" opacity=".35"/><rect class="bg" x="184" y="72" width="4" height="36" rx="2" opacity=".35"/></g>')
+      + g(1, '<rect class="ink" x="190" y="12" width="10" height="9" rx="2.5"/><rect class="ink" x="208" y="20" width="9" height="6" rx="2" transform="rotate(40 212 23)"/><circle class="s3" cx="195" cy="46" r="25"/><circle class="bg" cx="195" cy="46" r="19"/><circle class="ink" cx="195" cy="46" r="16" fill="none" stroke-width="2" stroke-dasharray="1.5 6.4" opacity=".45"/><g class="hand"><line class="accs" x1="195" y1="46" x2="195" y2="32" stroke-width="3.5" stroke-linecap="round"/></g><circle class="ink" cx="195" cy="46" r="3"/>')
+      + g(2, '<path class="good" d="M18 124 h22 l8 -18 l10 36 l10 -28 l8 10 h26" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>', 'pulse')
+      + g(3, '<circle class="acc2" cx="40" cy="40" r="4"/><circle class="warn" cx="64" cy="26" r="3"/><circle class="good" cx="222" cy="96" r="3.5"/><rect class="acc2" x="206" y="124" width="7" height="7" rx="2" transform="rotate(20 209 127)"/>', 'confetti')),
     goal: svgWrap(
-      g(0, '<circle class="warn" cx="50" cy="40" r="15"/>')
-      + g(1, '<polygon class="s3" points="14,132 96,52 150,106 170,132"/>')
-      + g(2, '<polygon class="ink" points="64,132 160,30 232,132"/><polygon class="bg" points="146,45 160,30 174,45 166,52 160,46 154,52"/>')
-      + g(3, '<path class="bg" d="M88 132 Q120 118 128 98 T160 60" stroke-width="3.5" stroke-dasharray="6 7" stroke-linecap="round" fill="none" opacity=".9"/><circle class="acc" cx="128" cy="98" r="5"/><circle class="acc" cx="104" cy="124" r="5"/>')
-      + g(4, '<line class="ink" x1="160" y1="30" x2="160" y2="4" stroke-width="3"/><polygon class="acc" points="160,5 188,13 160,21"/>', 'flag')),
+      g(0, '<ellipse class="ink" cx="120" cy="142" rx="54" ry="5" opacity=".14"/><circle class="s3" cx="120" cy="84" r="56"/><circle class="bg" cx="120" cy="84" r="44"/><circle class="acc" cx="120" cy="84" r="32"/><circle class="bg" cx="120" cy="84" r="20"/><circle class="acc" cx="120" cy="84" r="9"/>')
+      + g(1, '<g transform="rotate(38 120 84)"><line class="ink" x1="22" y1="84" x2="108" y2="84" stroke-width="5" stroke-linecap="round"/><polygon class="ink" points="120,84 100,74 105,84 100,94"/><polygon class="warn" points="22,84 8,70 30,70"/><polygon class="warn" points="22,84 8,98 30,98"/><polygon class="acc" points="36,84 24,72 42,72"/><polygon class="acc" points="36,84 24,96 42,96"/></g>', 'arrow')
+      + g(2, '<path class="warn" d="M138 60 l6 -8 M146 70 l9 -3 M140 52 l1 -9" stroke-width="3" stroke-linecap="round" fill="none"/>', 'spark')
+      + g(3, '<circle class="good" cx="34" cy="120" r="4"/><circle class="acc2" cx="206" cy="124" r="3.5"/><rect class="warn" x="196" y="30" width="7" height="7" rx="2" transform="rotate(25 199 33)"/><circle class="acc2" cx="44" cy="34" r="3"/>', 'confetti')),
     plan: svgWrap(
       g(0, '<rect class="s3" x="30" y="40" width="98" height="86" rx="12"/><path class="ink" d="M30 52 a12 12 0 0 1 12 -12 h74 a12 12 0 0 1 12 12 v12 h-98z"/><rect class="ink" x="50" y="30" width="7" height="20" rx="3.5"/><rect class="ink" x="101" y="30" width="7" height="20" rx="3.5"/>')
       + g(1, '<g class="bg">' + [0,1,2].map(r => [0,1,2,3].map(c => '<circle cx="' + (49 + c * 20) + '" cy="' + (78 + r * 18) + '" r="5"/>').join('')).join('') + '</g><circle class="acc" cx="49" cy="78" r="6.5"/><path class="accs" d="M49 78 L109 114" stroke-width="3" stroke-dasharray="4 5" fill="none"/><circle class="acc" cx="109" cy="114" r="8"/><path class="bg" d="M104.5 114 l3 3 l5.5 -6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
