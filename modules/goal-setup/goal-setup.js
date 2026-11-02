@@ -267,6 +267,7 @@
 .gs-kv li{display:flex;justify-content:space-between;gap:12px;font-size:.95rem;padding:8px 0;border-bottom:1px solid var(--line)}
 .gs-kv li:last-child{border-bottom:0}
 .gs-kv li span:last-child{font-weight:600;text-align:right}
+.gs-check{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--card-line,transparent);border-radius:12px;padding:10px 12px;cursor:pointer}.gs-check input{margin-top:3px;width:18px;height:18px;flex:none;accent-color:var(--accent)}.gs-check small{display:block;color:var(--muted);font-size:.82rem;line-height:1.35;margin-top:2px}
 .gs-ms{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .gs-ms::-webkit-scrollbar{display:none}
 .gs-ms div{flex:none;background:var(--surface);border-radius:12px;padding:8px 12px;text-align:center;border:1px solid var(--card-line,transparent)}
@@ -375,6 +376,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
     const today = realDate(opts.today) ? opts.today : todayIso();
     const existing = opts.existing || null;                       // {profile, targets} of the current plan, if any
     const a = Object.assign({ mode: 'pace' }, opts.answers || {});
+    if (opts.cycling && opts.cycling.available && a.cycling === undefined) a.cycling = !!opts.cycling.on;
     let step = 0, errs = [], result = null;
     const el = doc.createElement('div'); el.className = 'gs-wrap'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Goal setup');
     let unBack = null;
@@ -386,6 +388,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
     const errFor = k => { const e = errs.find(x => x.field === k); return e ? '<p class="gs-err">' + esc(e.msg) + '</p>' : ''; };
 
     function readInputs() { el.querySelectorAll('[data-gs-f]').forEach(i => { const k = i.dataset.gsF, v = i.value.trim(); a[k] = v === '' ? undefined : (k === 'endDate' ? v : +v); }); }
+    function readChecks() { el.querySelectorAll('[data-gs-c]').forEach(i => { a[i.dataset.gsC] = !!i.checked; }); }
 
     function body() {
       const s = steps()[step];
@@ -423,6 +426,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
           + (r.milestones.length > 1 ? '<div class="gs-ms">' + r.milestones.map(m => '<div class="' + (m.final ? 'final' : '') + '"><b class="num">' + m.kg + ' kg</b><span>' + fmtDate(m.date, today) + '</span></div>').join('') + '</div>' : '') + '</div>' : '')
         + r.warnings.map(w => '<p class="note">' + esc(w) + '</p>').join('') + r.notes.map(n => '<p class="note info">' + esc(n) + '</p>').join('')
         + (cur ? '<div><span class="label">' + (changed ? 'Compared with your current numbers' : 'Same as your current numbers') + '</span><table class="gs-cmp"><tr><th></th><th>Now</th><th>New</th></tr>' + cmpRow('Calories', cur.kcal, r.kcal, '') + cmpRow('Protein', cur.proteinMin, r.protein, ' g') + cmpRow('Fat', cur.fatLo != null && cur.fatHi != null ? (cur.fatLo + cur.fatHi) / 2 : null, r.fat, ' g') + cmpRow('Goal weight', cur.goalKg, r.profile.goalKg, ' kg') + '</table><p class="gs-line muted" style="margin-top:6px">Nothing changes until you tap "Use these numbers". Your history is never touched.</p></div>' : '')
+        + (opts.cycling && opts.cycling.available ? '<label class="gs-check"><input type="checkbox" data-gs-c="cycling"' + (a.cycling ? ' checked' : '') + '><span><b>Shift calories to lift days</b> (optional)<small>Same calories for the week: about 150 more on days you lift, a little less on rest days. Protein and fat stay the same. Exercise calories are never added on top.</small></span></label>' : '')
         + '<details><summary>How this is worked out</summary><ul>' + SOURCES.map(s => '<li><b>' + esc(s.t) + '</b>: ' + esc(s.s) + '</li>').join('') + '<li>The weekly pace is set from your weight today; re-run this when your weight has moved a kilo or more and the app offers it after a weigh-in.</li></ul></details>';
     }
 
@@ -469,7 +473,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
       if (act === 'back') { readInputs(); errs = []; step = Math.max(0, step - 1); dirCls = 'gs-in-l'; paint(); return; }
       if (act === 'skip') { close('skip'); return; }
       if (act === 'close') { close('close'); return; }
-      if (act === 'apply') { if (result && result.ok) { if (opts.onApply) opts.onApply(result, Object.assign({}, a)); close('apply'); } return; }
+      if (act === 'apply') { readChecks(); if (result && result.ok) { if (opts.onApply) opts.onApply(result, Object.assign({}, a)); close('apply'); } return; }
     });
     el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); const n = el.querySelector('[data-gs="next"]'); if (n) n.click(); } });
 

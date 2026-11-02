@@ -18,3 +18,6 @@ Shell: `planCheck()`, `planDecide()`, `planWeekLine()`, `planCheckNudge()` (Toda
 
 ## Tests
 `node --test modules/plan-check/plan-check.test.js` (uses the real TrendTDEE and GoalSetup). Phone walk-through in `tests/app-phone.test.js` ("plan check").
+
+## Plan phases
+`PlanCheck.phases(plan, {today, breaks, maintenanceKcal, reverse, kg})` → `{direction, today, items:[{kind:'start'|'break'|'goal'|'after', date, title, text, optional}], note}`; `PlanCheck.phasesHtml(P)` renders the `.pc-phases` card with a `.pc-tl` timeline. For a cut: start, up to three *optional* maintenance weeks (`breaks` = `DietBreak.build().plannedBreaks` not yet taken, future only), the goal with kilos to go, and an optional return to maintenance (`reverse` = ReverseDiet's `{weeks, to}` preview). For a gain: start, goal, hold at the new maintenance. For a hold: what maintenance means. Every optional phase says the person starts it and the app never switches calories on its own; nothing is presented as mandatory.

@@ -111,3 +111,20 @@ test('weekLine for maintain and gain plans', () => {
   const b = PC.weekLine(up, { today, plan: mk('bulk', { pace: 'lean', targetKg: 95 }), trend: T.series(up.weights, { today }) });
   assert.equal(b[0], 'good'); assert.match(b[2], /gain about 0.23 kg a week/);
 });
+
+test('phases: cut shows start, optional breaks, goal and an optional return to maintenance; gain and maintain explain maintenance', () => {
+  const P = PC.phases(plan(), { today: '2026-11-16', kg: 90.5, maintenanceKcal: 2850, breaks: [{ start: '2026-12-28', end: '2027-01-03' }, { start: '2026-10-05', end: '2026-10-11' }], reverse: { weeks: 5, to: 2850 } });
+  assert.deepEqual(P.items.map(i => i.kind), ['start', 'break', 'goal', 'after']);
+  assert.equal(P.items[1].optional, true); assert.match(P.items[1].text, /nothing starts by itself/);
+  assert.match(P.items[2].text, /80 kg around May 3 \(10.5 kg to go\)/);
+  assert.match(P.items[3].text, /over about 5 weeks, adding 100 kcal a week/); assert.match(P.items[3].text, /Maintenance means eating about what you burn/);
+  assert.match(P.note, /never switches your calories on its own/);
+  const h = PC.phasesHtml(P);
+  assert.match(h, /pc-tl/); assert.match(h, /class="break opt"/); assert.doesNotMatch(h, /mandatory|must/i);
+  const mk = (goal, extra) => { const a = Object.assign({}, answers, { goal }, extra); return { answers: a, result: G.compute(a, { today: PLAN_DAY }), at: PLAN_DAY }; };
+  const gain = PC.phases(mk('bulk', { pace: 'lean', targetKg: 95 }), { today: '2026-11-16' });
+  assert.deepEqual(gain.items.map(i => i.kind), ['start', 'goal', 'after']); assert.match(gain.items[2].text, /Hold the new weight/);
+  const hold = PC.phases(mk('maintain', { pace: undefined, targetKg: undefined }), { today: '2026-11-16' });
+  assert.deepEqual(hold.items.map(i => i.kind), ['start', 'after']); assert.match(hold.items[1].text, /about 2,8\d\d kcal for you/);
+  assert.equal(PC.phases(null, {}), null); assert.equal(PC.phasesHtml(null), '');
+});
