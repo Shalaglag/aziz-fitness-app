@@ -66,7 +66,7 @@ function fakePhone({ installed = 70, latest = 71, status = 200, canInstall = tru
   };
   globalThis.Capacitor = { isNativePlatform: () => true, Plugins: { AppUpdate } };
   globalThis.localStorage = { getItem: k => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v); }, removeItem: k => { delete mem[k]; } };
-  Object.assign(A._state, { phase: "idle", current: null, latest: null, msg: "", editing: false, lastAuto: 0 });
+  Object.assign(A._state, { phase: "idle", current: null, latest: null, msg: "", editing: false, lastAuto: 0, dismissed: false });
   return { calls, mem };
 }
 const TOKEN = "github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz";
@@ -160,11 +160,11 @@ test("installs not allowed yet: asks to allow instead of failing; wrong signatur
   assert.match(A._state.msg, /isn't signed with your app's key/);
 });
 
-test("auto-check runs at most every 6 hours, with or without a key", () => {
+test("auto-check runs on open/resume at most every 10 minutes, with or without a key", () => {
   const { calls } = fakePhone({ pub: { status: 200, json: LATEST } });
   assert.equal(A.autoCheck(1e12), true, "no key needed");
-  assert.equal(A.autoCheck(1e12 + 3600e3), false, "an hour later: skipped");
-  assert.equal(A.autoCheck(1e12 + 7 * 3600e3), true, "seven hours later: checks again");
+  assert.equal(A.autoCheck(1e12 + 5 * 60e3), false, "five minutes later: skipped");
+  assert.equal(A.autoCheck(1e12 + 11 * 60e3), true, "eleven minutes later: checks again");
   void calls;
 });
 
@@ -185,4 +185,47 @@ test("native plugin: compiled copy matches, registered, permission declared, key
   assert.doesNotMatch(src, /SharedPreferences|getSharedPreferences/, "the plugin does not keep the key");
   assert.match(src, /url\.host == "api\.github\.com"/, "the key is only sent to api.github.com, not to the redirect target");
   assert.match(src, /signingCertificateHistory/, "signature check present");
+});
+
+test("a newer build shows the 'Update required' popup; Close hides it until the app is opened or resumed again", async () => {
+  fakePhone({ pub: { status: 200, json: LATEST } });
+  await A.check({ quiet: true });
+  const html = A.promptHTML();
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /Update required/);
+  assert.match(html, /build 110/);
+  assert.match(html, /data-au="update"/);
+  assert.match(html, /aria-label="Close"/, "Android back button can close it");
+  assert.match(html, /data-au="dismiss"[^>]*data-close/);
+  A._state.dismissed = true;
+  assert.equal(A.promptHTML(), "", "closed");
+  A.onOpen(1e12 + 1); // resume within 10 minutes: no new check, but the popup comes back
+  assert.match(A.promptHTML(), /Update required/);
+});
+
+test("no popup when already newest, when nothing is published, or off Android", async () => {
+  fakePhone({ installed: 200, pub: { status: 200, json: LATEST } });
+  await A.check({ quiet: true });
+  assert.equal(A.promptHTML(), "");
+  fakePhone();
+  await A.check({ quiet: true });
+  assert.equal(A.promptHTML(), "");
+  fakePhone({ pub: { status: 200, json: LATEST } });
+  await A.check({ quiet: true });
+  globalThis.Capacitor = undefined;
+  assert.equal(A.promptHTML(), "");
+});
+
+test("popup follows the update: allow, then download progress, then the installer step", async () => {
+  fakePhone({ canInstall: false, pub: { status: 200, json: LATEST } });
+  await A.check({ quiet: true });
+  await A.update();
+  assert.match(A.promptHTML(), /data-au="allow"/);
+  fakePhone({ pub: { status: 200, json: LATEST } });
+  await A.check({ quiet: true });
+  A._state.phase = "downloading"; A._state.done = 5; A._state.total = 10;
+  assert.match(A.promptHTML(), /Downloading build 110/);
+  assert.match(A.promptHTML(), /width:50%/);
+  await A.update();
+  assert.match(A.promptHTML(), /Open the installer again/);
 });
