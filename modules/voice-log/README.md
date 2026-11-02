@@ -20,7 +20,12 @@ Speak a set or a meal instead of typing it. Plain JS, no imports, no network of 
 (`treadmill 30 minutes 2 km`), duration (`plank 45 seconds`), and `then` / `and` between exercises.
 
 ## Speech
-`SpeechRecognition` (Chrome on Android, Chrome/Edge desktop) when the page may use the microphone. Inside an embed that
+**In the Android app** the WebView cannot reach the microphone, so `android/SpeechPlugin.kt` (native `Speech` plugin,
+Android's `SpeechRecognizer`) listens instead: the first tap asks for the microphone permission (`RECORD_AUDIO` in the
+manifest), partial text streams into the box, and the final text goes through the same parser. The compiled copy lives in
+`android/app/src/main/java/com/azizfitness/app/` and the test checks it is identical; it is registered in `MainActivity`.
+
+**In a browser**, `SpeechRecognition` (Chrome on Android, Chrome/Edge desktop) when the page may use the microphone. Inside an embed that
 blocks the mic, or in a browser without the API, the mic button explains and the same box takes **keyboard voice typing**
 (Gboard's mic), which is parsed identically. The Artifact runtime has no microphone capability to declare, so nothing
 changes in the app's publish; if the embed blocks the mic, keyboard dictation is the path.

@@ -48,6 +48,15 @@ de-duplicates phone + watch + several apps. There is no background sync, so a fr
 last app open; the row shows "updated 2 h ago" and turns to "Updated 3 days ago" (stale) after 36 hours.
 Typed steps count too (`source: "manual"`). No steps shared → "Not sharing steps"; shared but never connected → "Steps not connected".
 
+## Working out now
+The logger fires `lb:active` whenever the active workout changes; the shell calls `inst.setLive(w)`, which publishes
+`shares/{uid}.live = {name, start}` immediately (category `live`, the only one on by default; it carries the workout
+name and start time, nothing else). Friends see a pulsing "Working out now · N min" pill and a banner; `liveOf(share, now)`
+returns null once the workout is older than `LIVE_MAX_H` (3 h). On a friend's share update the module calls
+`opts.notify(title, body, uid)` once per workout start while it is under 10 minutes old (remembered in
+localStorage `fr-live-noted`); the shell maps that to an Android local notification. There is no push server, so the
+heads-up only arrives while Mizan is running (foreground or recently backgrounded).
+
 ## Removing and stopping
 Removing a friend deletes `friends/{a_b}`; from then on the rules refuse both share documents, both apps drop the
 other person's row at once, and nothing new flows either way. Switching a category off rewrites `shares/{uid}`

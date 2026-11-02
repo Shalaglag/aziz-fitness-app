@@ -451,6 +451,11 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
     await t.test("goal setup: opens first for a new install, Skip is remembered, Settings reruns it, the result applies only on confirm", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], null, { keepSetup: true });
       assert.ok(await page.$('.gs-wrap[role="dialog"]'), "a fresh install starts on the questionnaire");
+      // Regression (Aziz, Nov 2): on a signed-in phone the local cache is empty until the cloud answers, and the
+      // questionnaire opened on every launch. Before the store has decided, an empty cache must not count as "new user".
+      const early = await page.evaluate(() => { document.querySelector(".gs-wrap").remove(); gsOpen = null; gsFirstRunChecked = false; storeReady = false; render(); const opened = !!document.querySelector(".gs-wrap"); storeReady = true; render(); return { opened, later: !!document.querySelector(".gs-wrap") }; });
+      assert.strictEqual(early.opened, false, "nothing opens while the store is still deciding");
+      assert.strictEqual(early.later, true, "and it opens once the store has settled with no data");
       assert.ok(await page.$('.gs-wrap [data-gs="skip"]'), "a new user can skip it");
       await page.click('.gs-wrap [data-gs="skip"]');
       await page.waitForFunction(() => !document.querySelector(".gs-wrap"));
@@ -475,9 +480,17 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.ok((await wide()) <= 1, "about step with the optional block fits the phone");
       await p2.click('.gs-wrap [data-gs="next"]'); assert.ok((await wide()) <= 1, "activity step fits the phone");
       await p2.click('.gs-wrap [data-gs="pick"][data-v="moderate"]'); await p2.click('.gs-wrap [data-gs="next"]');
-      await p2.click('.gs-wrap [data-gs="pick"][data-v="cut"]'); await p2.click('.gs-wrap [data-gs="next"]');
+      // Goals are multi-select: lose fat + build muscle is a recomp (no aggressive/extreme pace, protein 2.2 g/kg)
+      await p2.click('.gs-wrap [data-gs="goal"][data-v="cut"]'); await p2.click('.gs-wrap [data-gs="goal"][data-v="muscle"]');
+      const pressed = await p2.$$eval('.gs-wrap [data-gs="goal"][aria-pressed="true"]', els => els.map(e => e.dataset.v));
+      assert.deepStrictEqual(pressed, ["cut", "muscle"], "both goals stay selected");
+      await p2.click('.gs-wrap [data-gs="goal"][data-v="maintain"]');
+      assert.deepStrictEqual(await p2.$$eval('.gs-wrap [data-gs="goal"][aria-pressed="true"]', els => els.map(e => e.dataset.v)), ["maintain", "muscle"], "a second direction replaces the first");
+      await p2.click('.gs-wrap [data-gs="goal"][data-v="cut"]'); await p2.click('.gs-wrap [data-gs="next"]');
+      assert.deepStrictEqual(await p2.$$eval('.gs-wrap [data-gs="pick"][data-k="pace"]', els => els.map(e => e.dataset.v)), ["easy", "regular"], "recomp offers only the gentle paces");
       await p2.click('.gs-wrap [data-gs="pick"][data-v="regular"]'); await p2.fill('.gs-wrap [data-gs-f="targetKg"]', "80"); await p2.click('.gs-wrap [data-gs="next"]');
       await p2.waitForSelector(".gs-wrap .gs-hero");
+      assert.match(await p2.evaluate(() => document.querySelector(".gs-wrap .gs-sub").textContent), /Lose fat \+ Build muscle/);
       assert.ok((await wide()) <= 1, "result step fits the phone");
       const r = await p2.evaluate(() => ({ hero: document.querySelector(".gs-hero").textContent, ms: document.querySelectorAll(".gs-ms div").length, cmp: !!document.querySelector(".gs-cmp"), kcal: kcalTarget(TODAY), cyc: document.querySelector('.gs-wrap [data-gs-c="cycling"]') ? document.querySelector('.gs-wrap [data-gs-c="cycling"]').checked : null }));
       assert.match(r.hero, /Maintenance about/); assert.ok(r.ms >= 2, "milestones with dates"); assert.ok(r.cmp, "existing numbers are compared, not overwritten");
@@ -490,7 +503,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await p2.waitForFunction(() => !document.querySelector(".gs-wrap"));
       const after = await p2.evaluate(() => ({ kcal: kcalTarget(TODAY), prof: S.docs.prefs.main.profile, gs: S.docs.prefs.main.goalSetup, floor: KCAL_FLOOR, cyc: S.docs.prefs.main.cycling, base: APPT.kcal }));
       assert.ok(after.base !== before && after.base === after.prof.cutKcal, "confirm applies the calories everywhere");
-      assert.strictEqual(after.prof.goalKg, 80); assert.strictEqual(after.gs.answers.goal, "cut"); assert.strictEqual(after.floor, after.prof.kcalFloor);
+      assert.strictEqual(after.prof.goalKg, 80); assert.strictEqual(after.gs.answers.goal, "cut"); assert.deepStrictEqual(after.gs.answers.goals, ["cut", "muscle"]); assert.strictEqual(after.gs.result.proteinPerKg, 2.2); assert.strictEqual(after.floor, after.prof.kcalFloor);
       assert.strictEqual(after.cyc && after.cyc.on, true, "ticking the box turns calorie cycling on");
       assert.strictEqual(after.gs.answers.bodyFatPct, 22); assert.strictEqual(after.gs.answers.bodyFatMethod, "calipers"); assert.strictEqual(after.gs.answers.bodyFatAt, await p2.evaluate(() => TODAY)); assert.strictEqual(after.gs.result.tdeeSource, "bodyfat");
       const mk = await p2.evaluate(() => Object.values(S.docs.markers || {}).map(m => [m.preset, (m.entries || []).map(e => e.v)]).sort());

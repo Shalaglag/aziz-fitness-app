@@ -19,10 +19,24 @@ function docs() {
 const ctx = (over) => Object.assign({ today: TODAY, now: Date.parse("2026-11-04T10:00:00+03:00"), docs: docs(), getDay: d => docs().days[d] || { date: d, food: [], water: 0 }, stepGoal: 8000, waterGoal: () => 3000, kcalTarget: () => 2000, proteinMin: 160, weekGoal: 4, stepsConnected: true }, over);
 const me = { uid: "u_me", name: "Aziz", avatar: "🦁" };
 
-test("nothing is shared until a category is switched on", () => {
+test("nothing is shared until a category is switched on (only the live badge is on by default)", () => {
   const s = F.buildShare(me, F.defaultSharing(), ctx());
   assert.equal(s.name, "Aziz");
-  for (const c of F.CATS) { assert.equal(s.cats[c.key], false); assert.equal(s[c.key], undefined); }
+  for (const c of F.CATS.filter(c => c.key !== "live")) { assert.equal(s.cats[c.key], false); assert.equal(s[c.key], undefined); }
+  assert.equal(s.cats.live, true); assert.equal(s.live, null);
+});
+
+test("working out now: name + start only while a workout runs, gone after 3 h or when switched off", () => {
+  const start = NOW - 12 * 60000;
+  const s = F.buildShare(me, { live: true }, ctx({ live: { id: "w9", name: "Push A", start, exercises: [{ sets: [1] }] } }));
+  assert.deepEqual(s.live, { name: "Push A", start });
+  assert.deepEqual(F.liveOf(s, NOW), { name: "Push A", start, min: 12 });
+  assert.equal(F.liveOf(s, NOW + 4 * 3600e3), null);
+  assert.equal(F.liveOf(F.buildShare(me, { live: false }, ctx({ live: { name: "Push A", start } })), NOW), null);
+  assert.equal(F.buildShare(me, { live: true }, ctx({ live: null })).live, null);
+  const st = { uid: "u_me", me, code: "ABC-123", requestsIn: [], requestsOut: [], friends: [{ pairId: "u_b_u_me", uid: "u_b", name: "Brother" }], shares: { u_b: Object.assign(share("u_b", "Brother", null), { cats: { live: true }, live: { name: "Legs", start } }) }, myShare: null, challenges: {}, entries: {}, sub: "friends", period: "today", sharing: F.defaultSharing() };
+  const h = F.screenHTML(st, { today: TODAY, now: NOW });
+  assert.match(h, /Brother<\/b> is working out now \(Legs, 12 min\)/); assert.match(h, /Working out now · 12 min/);
 });
 
 test("steps share holds daily counts, goal and last sync time, nothing older than 35 days", () => {

@@ -668,6 +668,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 </nav>
 <div class="wrap err-banner" id="errBanner" hidden role="alert"></div>
 <main class="wrap" id="main"></main>
+<div id="coachHost"></div>
 <div class="wrap" id="lbHost" hidden></div>
 <div class="wrap" id="ppHost" hidden></div>
 <div class="wrap" id="dioHost" hidden></div>
@@ -874,6 +875,9 @@ async function remove(col,id){
 }
 const clone = o => JSON.parse(JSON.stringify(o||{}));
 
+// True once initStore has decided between device-only and cloud sync. Until then the local cache may be empty on a
+// signed-in phone, so nothing that reads "no data yet" as "new user" may run (the goal questionnaire, milestones).
+let storeReady=false;
 async function initStore(){
   loadLocal(); S.mode="local"; render();
   let db = null;
@@ -882,7 +886,8 @@ async function initStore(){
   if(!db && !window.claude && window.CloudStore && (await CloudStore.loadConfig()) && CloudStore.configured()){
     try{ db = await CloudStore.connect({mount:document.body}); }catch(e){ toast("Couldn't reach your account. Saving on this device for now."); }
   }
-  if(!db){ setSync(); return; }
+  if(!db){ storeReady=true; setSync(); render(); return; }
+  storeReady=true;
   let localOnly = {}; COLS.forEach(c=>localOnly[c]=S.docs[c]||{});
   S.db = db; S.mode="sync"; COLS.forEach(c=>S.docs[c]={});
   COLS.forEach(c=>{
@@ -1164,7 +1169,7 @@ function milestonesR(){ if(!window.Milestones) return null; try{ let lifts=[]; t
 function milestonesCard(){ const R=milestonesR(); if(!R||(!R.all.length&&!R.next.length)) return ""; return fold("ms","Milestones", R.all.length? R.all.length+" reached":"", Milestones.html(R,{today:TODAY})); }
 let msChecked=false;
 function celebrateMilestones(){
-  if(!window.Milestones || S.mode==="loading") return;
+  if(!window.Milestones || S.mode==="loading" || !storeReady) return;
   if(S.mode==="sync" && !(S.synced.has("prefs")&&S.synced.has("weights")&&S.synced.has("days")&&S.synced.has("workouts"))) return;
   const R=milestonesR(); if(!R||!R.unseen.length) return;
   if(R.fresh.length) toast(Milestones.toastText(R.fresh[0])+(R.fresh.length>1?" (+"+(R.fresh.length-1)+" more)":""));
@@ -1172,7 +1177,7 @@ function celebrateMilestones(){
 }
 // New user: no entries and no plan yet → the questionnaire opens first. Once per install; Skip is remembered.
 function maybeFirstRunSetup(){
-  if(gsFirstRunChecked || gsOpen || !window.GoalSetup || S.mode==="loading") return;
+  if(gsFirstRunChecked || gsOpen || !window.GoalSetup || S.mode==="loading" || !storeReady) return;
   if(S.mode==="sync" && !(S.synced.has("prefs") && S.synced.has("weights") && S.synced.has("days"))) return;
   gsFirstRunChecked=true;
   const m=S.docs.prefs.main||{};
@@ -1237,9 +1242,101 @@ function tcOpts(){ // Compare trends: reuse the trend line and the lift e1RM ser
 let coachPending=null, weightPending=null;
 // >5% off the average of the last 7 days of weigh-ins (needs 3+) needs a second tap. Catches 91.9 typed as 99.1 or 81.9.
 function weightOutlier(date,kg){ const ws=weightsSorted().filter(w=>w.date!==date && w.date<=date && diffDays(w.date,date)<=7); if(ws.length<3) return null; const avg=ws.reduce((a,w)=>a+w.kg,0)/ws.length; const pct=(kg-avg)/avg*100; return Math.abs(pct)>5 ? {avg,pct} : null; }
-let coachCache=null; // one computation per tick: the Reviews cards share it
+// Exercise knowledge for the coach: form guide entry + whether a verified demo exists (never a URL).
+let coachFC=null, coachDemos=null;
+function coachExercise(name){
+  try{
+    if(coachFC===null) coachFC=(window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE,{demoLinks:false}) : false;
+    if(coachDemos===null) coachDemos=(window.ExerciseDemos && window.EXERCISE_DEMOS && window.WorkoutLogger) ? ExerciseDemos.create(window.EXERCISE_DEMOS,{library:WorkoutLogger.library}) : false;
+    const e=coachFC ? coachFC.find(name) : null, demo=coachDemos ? coachDemos.best(name) : null;
+    if(!e && !demo) return null;
+    return {name:(e&&e.name)||name, setup:e?e.setup:[], cues:e?e.cues:[], mistakes:e?e.mistakes:[], primary:e?e.primary:[], secondary:e?e.secondary:[], demo:demo||null};
+  }catch(err){ return null; }
+}
+function coachPlanToday(){ const sf=sessionFor(TODAY); const ex=(programEff()[sf.session]||[]).map(t=>({name:t[0], w:t[1], reps:t[2], sets:t[3], unit:t[4]||"kg"})); return {session:sf.session, chosen:!!sf.chosen, exercises:ex}; }
+const coachNorm = s => String(s||"").toLowerCase().replace(/\(.*?\)/g," ").replace(/[^a-z0-9]+/g," ").trim();
+const coachFmt = n => Math.round(n).toLocaleString("en-US");
+let coachAnim=null;
+function coachMeal(name){ const k=coachNorm(name); return Object.values(S.docs.meals||{}).find(m=>m && Array.isArray(m.items) && coachNorm(m.name)===k) || null; }
+function coachMenuItem(name){ const mn=(S.docs.menus||{})[TODAY], k=coachNorm(name); return mn && Array.isArray(mn.items) ? mn.items.find(i=>i && i.name && !i.skip && coachNorm(i.name)===k) || null : null; }
+function coachPlanName(name){ const w=workoutDoc(TODAY), k=coachNorm(name); return (PROGRAM[w.session]||[]).map(e=>e[0]).find(n=>coachNorm(n)===k) || null; }
+const coachActions = {
+  check(a){
+    if(a.type==="set_calorie_target"){
+      const cur=APPT && APPT.kcal, to=Math.round(+a.kcal);
+      if(!(to>0)) return {ok:false, error:"No calorie number was given."};
+      if(to<KCAL_FLOOR) return {ok:false, error:"That is below the "+fkc(KCAL_FLOOR)+" kcal safety floor."};
+      if(cur && Math.abs(to-cur)>150) return {ok:false, error:"Changes go in steps of up to 150 kcal; that would be "+coachFmt(Math.abs(to-cur))+"."};
+      if(cur===to) return {ok:false, error:"That is already your target."};
+      return {ok:true, change:"Daily calorie target "+(cur?coachFmt(cur)+" → ":"")+coachFmt(to)+" kcal (Settings, Your numbers). Diet-break and lift-day adjustments still apply on top."};
+    }
+    if(a.type==="add_saved_meal"){
+      const m=coachMeal(a.name); if(!m) return {ok:false, error:"There is no saved meal called \""+a.name+"\"."};
+      const k=m.items.reduce((t,i)=>t+(+i.kcal||0),0), p=m.items.reduce((t,i)=>t+(+i.p||0),0);
+      return {ok:true, change:"Add \""+m.name+"\" to today as planned, not eaten: "+m.items.length+" item"+(m.items.length===1?"":"s")+", "+coachFmt(k)+" kcal, "+Math.round(p)+" g protein."};
+    }
+    if(a.type==="add_menu_item"){
+      const it=coachMenuItem(a.name); if(!it) return {ok:false, error:"\""+a.name+"\" isn't on today's imported menu."};
+      if(it.kcal==null) return {ok:false, error:"Its calories weren't readable on the menu, so it can't be added from the chat."};
+      return {ok:true, change:"Add \""+it.name+"\" from today's menu as planned, not eaten: "+coachFmt(it.kcal)+" kcal"+(it.protein!=null?", "+Math.round(it.protein)+" g protein":"")+"."};
+    }
+    if(a.type==="swap_exercise"){
+      if(!window.ExerciseSwap) return {ok:false, error:"Exercise swaps aren't available here."};
+      const w=workoutDoc(TODAY), from=coachPlanName(a.from), to=String(a.to||"").trim();
+      if(!w.session || w.session==="Rest") return {ok:false, error:"Today is a rest day."};
+      if(!from) return {ok:false, error:"\""+a.from+"\" isn't in today's "+w.session+" session."};
+      if(!to || coachNorm(to)===coachNorm(from)) return {ok:false, error:"No replacement was given."};
+      if(ExerciseSwap.isAvoided(to)) return {ok:false, error:to+" is on your avoid list."};
+      if(ExerciseSwap.hurtInfo(swapState(), to)) return {ok:false, error:"You marked "+to+" as hurting."};
+      return {ok:true, change:"Today ("+w.session+"): do "+to+" instead of "+from+". Its sets count for the "+from+" slot; Back to plan on Train undoes it."};
+    }
+    if(a.type==="show_exercise"){
+      const ex=coachExercise(a.name); if(!ex) return {ok:false, error:"\""+a.name+"\" isn't in the exercise guide yet."};
+      return {ok:true, change:"Open how to do "+ex.name+": cues, common mistakes and the built-in demo where there is one."};
+    }
+    return {ok:false, error:"Unknown action."};
+  },
+  async apply(a){
+    const c=coachActions.check(a); if(!c.ok) return {ok:false, message:c.error};
+    if(a.type==="set_calorie_target"){
+      const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), cutKcal:Math.round(+a.kcal)}; await put("prefs","main",p);
+      return {ok:+(S.docs.prefs.main?.profile?.cutKcal)===Math.round(+a.kcal), message:"Calorie target is now "+coachFmt(+a.kcal)+" kcal. Change it any time in Settings, Your numbers."};
+    }
+    if(a.type==="add_saved_meal"){
+      const m=coachMeal(a.name); const r=SavedMeals.applyToDay(getDay(TODAY),m,{uid});
+      if(!r.added.length) return {ok:false, message:"Everything in "+m.name+" is already on today."};
+      saveDay(r.day); put("meals",m.id,SavedMeals.markUsed(m),{quiet:true});
+      return {ok:true, message:"Added "+r.added.length+" item"+(r.added.length===1?"":"s")+" to Food. Tick them as you eat."};
+    }
+    if(a.type==="add_menu_item"){
+      const it=coachMenuItem(a.name), day=getDay(TODAY);
+      if(day.food.some(x=>coachNorm(x.name)===coachNorm(it.name) && !x.eaten)) return {ok:false, message:it.name+" is already planned for today."};
+      day.food=day.food.concat([{id:uid(), name:it.name, slot:it.slot||it.meal||"Meal", kcal:+it.kcal, p:+it.protein||0, c:+it.carbs||0, f:+it.fat||0, eaten:false}]); saveDay(day);
+      return {ok:true, message:"Added "+it.name+" to Food as planned. Tick it when you eat it."};
+    }
+    if(a.type==="swap_exercise"){
+      const from=coachPlanName(a.from); doSwap(from, String(a.to).trim(), "coach", TODAY);
+      return {ok:!!usedFor(S.docs.workouts[TODAY], from), message:"Today's "+from+" is now "+String(a.to).trim()+" on Train."};
+    }
+    if(a.type==="show_exercise"){
+      const ex=coachExercise(a.name);
+      try{
+        if(window.ExerciseAnim && window.ExerciseDemos && window.EXERCISE_DEMOS && window.WorkoutLogger){
+          coachAnim=coachAnim||ExerciseAnim.create(); const id=ExerciseDemos.create(window.EXERCISE_DEMOS,{library:WorkoutLogger.library}).id(ex.name);
+          if(id && coachAnim.has(id)){ coachAnim.info=()=>({title:ex.name, cues:ex.cues||[], steps:ex.setup||[], video:null}); coachAnim.open(id); return {ok:true, message:"Opened the demo for "+ex.name+". Cues: "+(ex.cues||[]).slice(0,3).join("; ")+"."}; }
+        }
+      }catch(e){}
+      return {ok:true, message:(ex.cues&&ex.cues.length?"Cues: "+ex.cues.slice(0,4).join("; ")+". ":"")+(ex.mistakes&&ex.mistakes.length?"Watch for: "+ex.mistakes.slice(0,2).join(" "):"")};
+    }
+    return {ok:false, message:"Unknown action."};
+  }
+};
+let coachCache=null; // one computation per tick: the panel's getters all ask within the same call
 function coachOpts(){ if(coachCache) return coachCache; const o={today:TODAY, targets:APPT, rules:{floor:KCAL_FLOOR}, kcalTarget, plan:S.docs.prefs.main?.goalSetup||null}; coachCache=o; setTimeout(()=>{ coachCache=null; },0);
   try{ if(window.StrengthAnalytics) o.strength=StrengthAnalytics.analyze(S.docs, strengthOpts()); }catch(e){}
+  try{ if(window.RecoveryFatigue && RecoveryFatigue.summary) o.recoveryText=RecoveryFatigue.summary(S.docs, {today:TODAY, ...rfOpts()}); }catch(e){}
+  try{ if(window.Cardio && Cardio.summary) o.cardioText=Cardio.summary(S.docs, {today:TODAY}); }catch(e){}
+  try{ o.planToday=coachPlanToday(); o.exerciseNames=Object.values(PROGRAM).flat().map(t=>t[0]); o.exercise=coachExercise; }catch(e){}
   try{ if(window.EffortDeload) o.effort=EffortDeload.analyze(S.docs.workouts,{today:TODAY, dismissedAt:S.docs.prefs.main?.deloadDismissedAt}); }catch(e){}
   try{ if(window.TrendTDEE) o.tdee=TrendTDEE.estimate(S.docs,tdeeOpts()); }catch(e){}
   return o; }
@@ -1712,7 +1809,8 @@ function vProgress(){
     + coachSafe(()=>Coach.insightsHtml(S.docs, {...co, seen:S.docs.prefs.main?.coachSeen||{}}))
     + coachSafe(()=>Coach.reviewHtml(S.docs, co))
     + fold("wr","Weekly report","Weight, food, lifts", safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, Object.assign({planLine:planWeekLine()}, view.wrWeek==null?{}:{week:view.wrWeek}))))
-    + fold("mr","Monthly recap","", safeMod("MonthlyRecap",()=>MonthlyRecap.html(S.docs, mrOpts())));
+    + fold("mr","Monthly recap","", safeMod("MonthlyRecap",()=>MonthlyRecap.html(S.docs, mrOpts())))
+    + coachSafe(()=>Coach.chatHtml(S.docs, co));
   return tabHead("Progress") + nav + body;
 }
 /* ---------- GUIDE ---------- */
@@ -1786,7 +1884,11 @@ function mountFriends(){
   frInst = Friends.mount({ fs:r.fs, uid:r.uid, email:r.email, today:()=>TODAY, ctx:frCtx, getSharing:frSharing, setSharing:o=>put("prefs","friends",o,{quiet:true}),
     render:()=>{ if(view.tab==="friends") scheduleRender(); }, toast, confirm:m=>window.confirm(m), goSteps:()=>{ view.tab="today"; view.open["f:steps"]=true; render(); const el=document.querySelector('[data-keep="f:steps"]'); if(el) el.scrollIntoView({block:"start"}); },
     apkUrl: window.AppUpdate && AppUpdate.RELEASE_URL ? AppUpdate.RELEASE_URL : "https://github.com/Shalaglag/mizan-releases/releases/tag/android-latest",
-    share:text=>{ if(navigator.share) return navigator.share({text}).catch(()=>{}); return (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>toast("Invite copied. Paste it into WhatsApp or a message."),()=>toast(text)); } });
+    share:text=>{ if(navigator.share) return navigator.share({text}).catch(()=>{}); return (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>toast("Invite copied. Paste it into WhatsApp or a message."),()=>toast(text)); },
+    notify:(title,body,u)=>{ if(window.AndroidShell && AndroidShell.isNative() && AndroidShell.notifyAt){ const id=9000+([...String(u)].reduce((a,c)=>a+c.charCodeAt(0),0)%900); AndroidShell.notifyAt(id, Date.now()+500, title, body).then(ok=>{ if(!ok) toast(title); }); } else toast(title); } });
+  // the logger's live workout -> "Working out now" for friends (name + start only; off via Sharing › Working out now)
+  try{ const act=JSON.parse(localStorage.getItem("lb_active")||"null"); if(act && act.start && !act.end) frInst.setLive(act); }catch(e){}
+  window.addEventListener("lb:active", e=>{ try{ frInst.setLive(e.detail && e.detail.workout); }catch(err){} });
 }
 function vFriends(){
   const cloudReady = !window.claude && !!(window.CloudStore && CloudStore.configured && CloudStore.configured());
@@ -2260,12 +2362,28 @@ try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css
 ["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
-  // 14-day review + Patterns in your logs (rule-based; the AI coach chat was removed Nov 2, 2026).
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget, plan:()=>S.docs.prefs.main?.goalSetup||null,
+    effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee, tab:()=>view.tab,
+    strength:()=>coachOpts().strength, recoveryText:()=>coachOpts().recoveryText, cardioText:()=>coachOpts().cardioText,
+    planToday:coachPlanToday, exerciseNames:()=>Object.values(PROGRAM).flat().map(t=>t[0]), exercise:coachExercise,
+    actionHost:coachActions,
     onDismiss:id=>{ const m=clone(S.docs.prefs.main||{}); m.coachSeen={...(m.coachSeen||{}), [id]:TODAY}; put("prefs","main",m,{quiet:true}); },
+    // Inside Claude: the page's sample capability (free, no API credit). Everywhere else (the Android app, any website copy):
+    // the Mizan coach service (worker/, a Cloudflare Worker holding the API key, Claude Haiku 5.5, the spending cap).
+    // Its address comes from AI settings (prefs/main.coachService) or cloud-config's coachEndpoint; none = quick questions only.
+    getSample:()=>window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
+    endpoint:()=>window.claude ? null : (S.docs.prefs.main?.coachService || (window.FITNESS_CLOUD_CONFIG||{}).coachEndpoint || null),
+    // Nothing goes to Anthropic until the person turns the AI chat on (the panel lists what is sent).
+    consent:()=>!!(S.docs.prefs.main?.coachAI?.consent),
+    setConsent:on=>{ const m=clone(S.docs.prefs.main||{}); m.coachAI={...(m.coachAI||{}), consent:on?TODAY:null}; put("prefs","main",m,{quiet:true}); },
+    setService:url=>{ const m=clone(S.docs.prefs.main||{}); if(url) m.coachService=url; else delete m.coachService; put("prefs","main",m,{quiet:true}); },
+    getToken:()=>window.CloudStore && CloudStore.idToken ? CloudStore.idToken() : Promise.resolve(null),
+    // Chat history: chats/main {msgs}, synced like everything else (DataIO backs it up, Clear chat empties it).
+    chats:{ load:()=>((S.docs.chats||{}).main||{}).msgs||[], save:msgs=>put("chats","main",{id:"main",msgs,at:Date.now()},{quiet:true}) },
     onApply: ch=>{ if(!ch || ch.key!=="profile.cutKcal" || !(+ch.to>0)) return;
       if(!coachPending || coachPending.to!==ch.to || Date.now()-coachPending.at>10000){ coachPending={to:ch.to, at:Date.now()}; toast(`Tap again to change your calorie target from ${Math.round(ch.from).toLocaleString("en-US")} to ${Math.round(ch.to).toLocaleString("en-US")} kcal.`); return; }
       coachPending=null; const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), cutKcal:+ch.to}; put("prefs","main",p); toast(`Calorie target is now ${Math.round(ch.to).toLocaleString("en-US")} kcal. Change it any time in Settings, Your numbers.`); } });
+  if(window.Coach && Coach.mountPanel) safe("coach panel", ()=>Coach.mountPanel(document.getElementById("coachHost")));
   if(window.MacroTarget){ const mst=document.createElement("style"); mst.textContent=MacroTarget.css; document.head.appendChild(mst);
     MacroTarget.bind(document, { date: () => view.date, render, onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items.map(it=>({id:uid(),eaten:false,...it}))); saveDay(day); toast("Added "+items[0].name+(items[0].eaten?"":". Tick it when you eat it.")); } }); }
   PhotoFood.bind(document, {

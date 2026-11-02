@@ -169,3 +169,25 @@ test('waist (optional): ratio to height with the health note, never a body-fat c
   assert.ok(e.some(x => x.field === 'bodyFatPct') && e.some(x => x.field === 'waistCm'));
   assert.equal(G.compute(Object.assign({}, AZIZ, { bodyFatPct: '' , waistCm: undefined })).ok, true, 'blank optional fields are fine');
 });
+
+test('several goals: build muscle rides on a direction; lose fat + build muscle is a recomp (pace capped at 0.5 %, protein 2.2 g/kg)', () => {
+  assert.deepEqual(G.effectiveGoal(['cut', 'muscle']), { goal: 'cut', muscle: true, goals: ['cut', 'muscle'], conflict: false });
+  assert.equal(G.effectiveGoal(['bulk', 'muscle']).goal, 'muscle', 'gain weight + build muscle = lean gain');
+  assert.equal(G.effectiveGoal(['muscle']).goal, 'muscle'); assert.equal(G.effectiveGoal([]).goal, null);
+  assert.equal(G.effectiveGoal(['cut', 'bulk']).conflict, true);
+  assert.deepEqual(G.toggleGoal(['cut', 'muscle'], 'maintain'), ['muscle', 'maintain'], 'a new direction replaces the old one');
+  assert.deepEqual(G.toggleGoal(['cut', 'muscle'], 'muscle'), ['cut']);
+  const r = run({ goals: ['cut', 'muscle'], pace: 'regular' });
+  assert.equal(r.ok, true); assert.equal(r.goal, 'cut'); assert.equal(r.muscle, true); assert.equal(r.label, 'Lose fat + Build muscle'); assert.equal(r.direction, -1);
+  assert.equal(r.proteinPerKg, 2.2); assert.equal(r.protein, Math.round(88.8 * 2.2 / 5) * 5);
+  assert.ok(r.notes.some(n => /building muscle at once/.test(n) && /Barakat/.test(n)));
+  assert.deepEqual(G.pacesFor({ goal: 'cut', muscle: true }).map(p => p.id), ['easy', 'regular'], 'no aggressive or extreme pace for a recomp');
+  assert.ok(G.compute(Object.assign({}, AZIZ, { goals: ['cut', 'muscle'], pace: 'extreme' })).errors.some(e => e.field === 'pace'));
+  const dated = run({ goals: ['cut', 'muscle'], mode: 'date', pace: undefined, endDate: '2026-12-14', targetKg: 80 });
+  assert.ok(dated.warnings.some(w => /above the 0\.5 %\/wk/.test(w) && /still building muscle/.test(w)));
+  const hold = run({ goals: ['maintain', 'muscle'], pace: undefined, targetKg: undefined });
+  assert.equal(hold.goal, 'maintain'); assert.equal(hold.direction, 0); assert.equal(hold.proteinPerKg, 2.0); assert.ok(hold.notes.some(n => /recomp at maintenance/.test(n)));
+  assert.equal(run({ goals: ['bulk', 'muscle'], pace: 'lean', targetKg: 95 }).goal, 'muscle');
+  assert.ok(G.compute(Object.assign({}, AZIZ, { goals: ['cut', 'bulk'] })).errors.some(e => e.field === 'goal' && /Pick one of/.test(e.msg)));
+  const old = run({}); assert.deepEqual(old.goals, ['cut']); assert.equal(old.muscle, false); assert.equal(old.proteinPerKg, 2.0, 'a plain cut is unchanged');
+});
