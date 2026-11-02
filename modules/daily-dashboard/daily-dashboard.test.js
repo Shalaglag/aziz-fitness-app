@@ -154,4 +154,36 @@ t("cardio details and readiness come through", () => {
   assert.ok(html.includes("42/100")); assert.ok(html.includes("cardio ✓ 30 min"));
 });
 
+t("scoreboard: calorie strip has one segment per slot, eaten solid and planned hatched", () => {
+  const g = DD.glance(docs(), "2026-10-27", base);
+  assert.deepStrictEqual(g.meals.slots.map(s => s.slot), ["Meal 1", "Snack", "Meal 2"]);
+  assert.strictEqual(g.meals.slots[2].eatenKcal, 0); assert.strictEqual(g.meals.slots[2].kcal, 800);
+  const html = DD.glanceHtml(docs(), "2026-10-27", base);
+  assert.ok(html.includes('class="dd-kbar"')); assert.strictEqual((html.match(/<i class="pl"/g) || []).length, 1);
+  assert.ok(html.includes("1,150")); assert.ok(html.includes("plan leaves 350"));
+  assert.ok(html.includes('data-act="dd-day"')); assert.ok(html.includes('data-act="water" data-ml="250"'));
+  assert.ok(!html.includes("dd-tile"));
+});
+
+t("your day: steps in order with the workout at its time and Now before the first open step", () => {
+  const d = docs(); d.workouts["2026-10-27"].sets = {}; // not lifted yet
+  const o = { ...base, trainTime: () => "15:30" };
+  const y = DD.day(d, "2026-10-27", o);
+  assert.deepStrictEqual(y.steps.map(s => s.key), ["weigh", "slot:Meal 1", "train", "slot:Snack", "slot:Meal 2"]);
+  assert.strictEqual(y.steps[2].label, "3:30 pm");
+  assert.deepStrictEqual(y.steps.map(s => s.state), ["done", "done", "todo", "done", "todo"]);
+  assert.strictEqual(y.now.at, 2); assert.strictEqual(y.done, 3);
+  const html = DD.dayHtml(d, "2026-10-27", o);
+  assert.ok(html.indexOf(">Now<") < html.indexOf("3:30 pm")); assert.ok(html.includes("1,150"));
+});
+
+t("your day: past days show misses and a total, future days only plans", () => {
+  const past = DD.day(docs(), "2026-10-26", base);
+  assert.strictEqual(past.now, null); assert.ok(DD.dayHtml(docs(), "2026-10-26", base).includes(">Total<"));
+  const fut = DD.day(docs(), "2026-10-29", base);
+  assert.strictEqual(fut.steps.find(s => s.key === "weigh").state, "todo");
+  assert.ok(DD.dayHtml(docs(), "2026-10-29", base).includes("Planned"));
+  assert.strictEqual(DD.day({}, "2026-10-25", base).steps.find(s => s.key === "weigh").state, "miss");
+});
+
 console.log(n + " tests passed");

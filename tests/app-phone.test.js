@@ -303,7 +303,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
-    await t.test("guide: search filters sections and jump chips exist; progress has four sections", async () => {
+    await t.test("guide: search filters sections and jump chips exist; progress has five sections", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "guide");
       assert.ok((await page.$$('.jump .chip')).length >= 7, "jump chips");
@@ -312,7 +312,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.deepStrictEqual(cards, ["Supplements"]);
       await go(page, "progress");
       const tabs = await page.$$eval('.subnav [data-act="ptab"]', els => els.map(e => e.textContent));
-      assert.deepStrictEqual(tabs, ["Weight", "Lifts", "Food", "Reviews"]);
+      assert.deepStrictEqual(tabs, ["Your day", "Weight", "Lifts", "Food", "Reviews"]);
       await page.click('[data-act="ptab"][data-k="reviews"]'); await page.waitForTimeout(100);
       assert.ok(await page.$('details.fold[data-keep="f:wr"]'), "weekly report folded under Reviews");
       assert.deepStrictEqual(errors, []);
@@ -390,13 +390,13 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       const visible = sel => page.evaluate(s => { const r = document.querySelector(s).getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight - 100; }, sel);
       assert.ok(!(await visible("#waterCard")), "Water card starts below the fold");
-      await page.click(".dd-water .label");
+      await page.click(".dd-water .dd-cap1");
       await page.waitForTimeout(900);
       assert.ok(await visible("#waterCard"), "tapping the Water tile scrolls to the Water card");
       const before = await page.evaluate(() => getDay(TODAY).water);
       await page.click('.dd-water [data-act="water"][data-ml="250"]');
-      assert.strictEqual(await page.evaluate(() => getDay(TODAY).water), before + 250, "the tile's +250 chip still adds water");
-      for (const [tile, target] of [[".dd-weight", "#wkg"], [".dd-recovery", "#sleepH"]]) {
+      assert.strictEqual(await page.evaluate(() => getDay(TODAY).water), before + 250, "the cell's + button still adds water");
+      for (const [tile, target] of [[".dd-weight", "#wkg"], ['[data-act="dd-focus"][data-target="sleepH"]', "#sleepH"]]) {
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.click(tile);
         await page.waitForTimeout(900);
