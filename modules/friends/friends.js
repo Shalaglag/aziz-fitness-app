@@ -36,8 +36,10 @@ const Friends = (() => {
     { key: "cardio", label: "Cardio", sub: "Minutes and distance per day" },
     { key: "strength", label: "Strength", sub: "Best set per exercise (kg), so the same lift can be compared" },
     { key: "nutrition", label: "Nutrition goals", sub: "Only whether you hit your calorie and protein targets, never meals" },
-    { key: "weight", label: "Weight progress", sub: "Change over 30 days as kg or %, never your actual weight" }
+    { key: "weight", label: "Weight progress", sub: "Change over 30 days as kg or %, never your actual weight" },
+    { key: "plan", label: "Goal plan", sub: "Your goal (lose fat, maintain, gain), chosen pace and how far along you are as a %; never your weight, calories or dates" }
   ];
+  const GOAL_WORDS = { cut: "Losing fat", maintain: "Maintaining", muscle: "Building muscle", bulk: "Gaining weight" };
   const CH_TYPES = [
     { key: "steps_total", label: "Most steps", unit: "steps", sub: "Whoever walks the most wins", target: false },
     { key: "steps_goal_days", label: "Most goal days", unit: "days", sub: "Days on which you reached your own step goal", target: false },
@@ -92,6 +94,19 @@ const Friends = (() => {
       const map = {};
       Object.entries(ctx.docs.cardio || {}).forEach(([d, doc]) => { if (d < from || d > today) return; const ss = Array.isArray(doc && doc.sessions) ? doc.sessions.filter(s => s && +s.min > 0) : []; if (!ss.length) return; map[d] = { min: Math.round(ss.reduce((a, s) => a + (+s.min || 0), 0)), km: Math.round(ss.reduce((a, s) => a + (+s.km || 0), 0) * 10) / 10 }; });
       share.cardio = { days: map };
+    }
+    if (on("plan")) {
+      // Only the shape of the plan and a progress %: no weights, no calories, no dates. Progress = how much of the
+      // start→goal distance the latest weigh-in has covered (null for a maintenance plan).
+      const gp = ctx.plan && ctx.plan.result && ctx.plan.result.ok ? ctx.plan.result : null;
+      if (gp) {
+        const ws = Object.values(ctx.docs.weights || {}).filter(w => w && w.date && +w.kg > 0).sort((a, b) => a.date < b.date ? -1 : 1), last = ws[ws.length - 1];
+        const startKg = gp.answers && +gp.answers.kg, goalKg = gp.profile && +gp.profile.goalKg;
+        let pct = null;
+        if (gp.direction !== 0 && last && startKg > 0 && goalKg > 0 && startKg !== goalKg) pct = Math.round(clamp((startKg - last.kg) / (startKg - goalKg), 0, 1) * 100);
+        const since = gp.today && /^\d{4}-\d{2}-\d{2}$/.test(gp.today) ? gp.today : null;
+        share.plan = { goal: gp.goal, direction: gp.direction, pace: gp.pace || null, ratePct: gp.ratePct != null ? Math.round(gp.ratePct * 100) / 100 : null, pct, weeks: since ? Math.max(0, Math.floor(diffDays(since, today) / 7)) : null };
+      } else share.plan = { goal: null };
     }
     if (on("strength")) {
       const ex = {}, exNames = ctx.docs.lb_exercises || {}, since = Date.parse(addDays(today, -90) + "T00:00:00");
@@ -188,6 +203,8 @@ const Friends = (() => {
     row("Nutrition goals this week", "nutrition", nut, nut);
     const wt = x => x.since ? (x.mode === "percent" ? (x.pct > 0 ? "+" : "") + x.pct + "% in " + x.days + " days" : (x.change > 0 ? "+" : "") + x.change + " kg in " + x.days + " days") : "No weigh-ins yet";
     row("Weight change", "weight", wt, wt);
+    const pl = x => x.goal ? (GOAL_WORDS[x.goal] || x.goal) + (x.direction && x.pace ? " · " + x.pace + " pace" : "") + (x.pct != null ? " · " + x.pct + "% there" : x.weeks != null ? " · week " + (x.weeks + 1) : "") : "No plan yet";
+    row("Goal plan", "plan", pl, pl);
     const lifts = [];
     if (both("strength")) Object.keys(a.strength.ex || {}).filter(n => b.strength.ex && b.strength.ex[n]).sort().forEach(n => lifts.push({ name: n, a: a.strength.ex[n], b: b.strength.ex[n] }));
     return { rows, lifts, strengthShared: both("strength"), m30 };

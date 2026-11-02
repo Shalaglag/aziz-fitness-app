@@ -1868,7 +1868,7 @@ const GUIDE_SECTIONS = () => [
 let frInst=null;
 function frSharing(){ return clone(S.docs.prefs.friends); }
 function frCtx(){ const sh=frSharing(); const hcs=hcSteps?safeMod("HealthConnectSteps",()=>hcSteps.status()):null;
-  return {today:TODAY, now:Date.now(), docs:S.docs, getDay, stepGoal:window.Steps?Steps.stepGoal(S.docs.prefs.main||{}):10000, waterGoal:d=>{ const s=sessionFor(d); return s && s.session!=="Rest" && dayType(d)!=="friday" ? 3500 : 3000; }, totalWater, kcalTarget, proteinMin:TARGET.pMin, weekGoal:sh.weekGoal||4, stepsConnected:!!(hcs && hcs.state==="ready")}; }
+  return {today:TODAY, now:Date.now(), docs:S.docs, getDay, stepGoal:window.Steps?Steps.stepGoal(S.docs.prefs.main||{}):10000, waterGoal:d=>{ const s=sessionFor(d); return s && s.session!=="Rest" && dayType(d)!=="friday" ? 3500 : 3000; }, totalWater, kcalTarget, proteinMin:TARGET.pMin, weekGoal:sh.weekGoal||4, stepsConnected:!!(hcs && hcs.state==="ready"), plan:S.docs.prefs.main?.goalSetup||null}; }
 function mountFriends(){
   if(frInst || !window.Friends || !window.CloudStore || !CloudStore.raw) return;
   const r=CloudStore.raw(); if(!r) return;
