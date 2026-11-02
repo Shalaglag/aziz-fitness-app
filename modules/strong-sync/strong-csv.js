@@ -236,6 +236,8 @@ const StrongCSV = (() => {
         const name = matchName(ex.name, pool) || matchName(ex.name, allNames);
         if (!name) { report.unmatched[ex.name] = (report.unmatched[ex.name] || 0) + 1; }
         const key = name || ex.name;
+        // An older import saved this exercise under its Strong name: drop that copy so the day isn't doubled.
+        if (name && name !== ex.name && doc.source === "strong" && !(doc.strongNames || []).includes(ex.name)) delete doc.sets[ex.name];
         const to = unitOf[key] || ex.sets[0]?.unit || "kg";
         const sets = ex.sets.filter(s => s.kind !== "warmup" && s.r > 0).map(s => ({ w: convert(s.w, s.unit, to), r: s.r }));
         if (!sets.length) continue;

@@ -1759,6 +1759,8 @@ window.StrongCSV = (() => {
         const name = matchName(ex.name, pool) || matchName(ex.name, allNames);
         if (!name) { report.unmatched[ex.name] = (report.unmatched[ex.name] || 0) + 1; }
         const key = name || ex.name;
+        // An older import saved this exercise under its Strong name: drop that copy so the day isn't doubled.
+        if (name && name !== ex.name && doc.source === "strong" && !(doc.strongNames || []).includes(ex.name)) delete doc.sets[ex.name];
         const to = unitOf[key] || ex.sets[0]?.unit || "kg";
         const sets = ex.sets.filter(s => s.kind !== "warmup" && s.r > 0).map(s => ({ w: convert(s.w, s.unit, to), r: s.r }));
         if (!sets.length) continue;
@@ -5042,12 +5044,17 @@ Power Clean (Barbell)|Other|Barbell|`;
     const p = parseStrong(text, opts);
     if (p.error) return { error: p.error, added: 0, updated: 0, skipped: 0, newEx: 0 };
     p.newExercises.forEach(e => put('exercises', e));
-    let added = 0, updated = 0, skipped = 0;
+    let added = 0, updated = 0, skipped = 0; const docs = [];
     for (const { doc, action } of p.workouts) {
       if (action === 'skip') { skipped++; continue; }
       if (action === 'update') updated++; else added++;
-      put('workouts', doc);
+      docs.push(doc);
     }
+    if (S.storage && S.storage.putMany && docs.length > 1) {
+      // One batched write per 200 workouts (the host's db batch) instead of a request per workout.
+      docs.forEach(d => { S.data.workouts[d.id] = d; });
+      await queue('workouts/*import', () => S.storage.putMany(COLL.workouts, docs.map(clone)));
+    } else docs.forEach(d => put('workouts', d));
     bump(); if (root && !E && !sheets.length) renderMain();
     return { added, updated, skipped, newEx: p.newExercises.length, workouts: p.workouts.length };
   }
@@ -42294,7 +42301,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     const among = n > 1 ? `of the ${n} meal pairs that fit your ${fmtN(T.kcal)} kcal budget` : `that fits your ${fmtN(T.kcal)} kcal budget`;
     if (i === 0) {
       const next = ctx.options[1];
-      if (!fitsFor(c, pri, T)) why.push(`Nothing on this menu fits your ${fmtN(T.kcal)} kcal budget${pri === 'protein' ? '' : ` with ${T.proteinMin} g protein`}, so this is the closest.`);
+      if (!fitsFor(c, pri, T)) why.push(pri === 'protein' ? `Most protein this menu allows; no combination reaches your ${fmtN(T.kcal)} kcal budget.` : `Closest to your ${fmtN(T.kcal)} kcal budget; nothing on this menu fits it exactly.`);
       else if (pri === 'protein') why.push(`Most protein ${among}: ${Math.round(t.p)} g${next && next.totals.p < t.p - 0.5 ? `, ${Math.round(t.p - next.totals.p)} g more than the next option` : ''}.`);
       else if (pri === 'lowfat') why.push(`Lowest fat ${among}: ${Math.round(t.f)} g.`);
       else if (pri === 'carbs') why.push(`Most carbs ${among}: ${Math.round(t.c)} g, for training energy.`);
@@ -42303,12 +42310,12 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     } else {
       const swaps = [c.meal1, c.meal2].filter(m => ![best.meal1.name, best.meal2.name].includes(m.name)).map(m => m.name);
       const d = [`${signed(t.p - best.totals.p, ' g')} protein`, `${signed(t.kcal - best.totals.kcal, ' kcal')}`, `${signed(t.f - best.totals.f, ' g')} fat`];
-      why.push(`${swaps.length ? 'Uses ' + swaps.join(' and ') + '. ' : 'Same meals, different snacks. '}Against the best option: ${d.join(', ')}.`);
+      why.push(`${swaps.length ? 'Swaps in ' + swaps.join(' and ') + '. ' : 'Same meals, different snacks. '}Against the best option: ${d.join(', ')}.`);
     }
     const dk = Math.round(t.kcal - T.kcal);
-    why.push(`${fmtN(t.kcal)} kcal (${Math.abs(dk) <= 10 ? 'on' : Math.abs(dk) + (dk > 0 ? ' over' : ' under')} your ${fmtN(T.kcal)} budget) and ${Math.round(t.p)} g protein (${proteinFits(c, T) ? 'meets' : Math.round(T.proteinMin - t.p) + ' g short of'} your ${T.proteinMin} g minimum).`);
-    if (i === 0 && ctx.dayType === 'training' && c.meal1.f <= c.meal2.f) why.push(`${c.meal1.name} is Meal 1 because it's lighter in fat (${Math.round(c.meal1.f)} g) for before training.`);
+    if (i === 0) why.push(`${fmtN(t.kcal)} kcal is ${Math.abs(dk) <= 10 ? 'right on' : fmtN(Math.abs(dk)) + (dk > 0 ? ' over' : ' under')} your ${fmtN(T.kcal)} budget; ${Math.round(t.p)} g protein ${proteinFits(c, T) ? 'meets' : 'is ' + Math.round(T.proteinMin - t.p) + ' g short of'} your ${T.proteinMin} g goal.`);
     if (i === 0 && ctx.avoided && ctx.avoided.length) why.push(`Nothing with ${ctx.avoided.join(' or ')}, as you asked.`);
+    if (i === 0 && ctx.dayType === 'training' && c.meal1.f <= c.meal2.f) why.push(`${c.meal1.name} goes first: it's lower in fat (${Math.round(c.meal1.f)} g) for before training.`);
     return why.slice(0, 4);
   }
   // Words worth offering as one-tap "leave out" chips: the ones that appear in this menu's names.
@@ -42549,23 +42556,49 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
 .mi .mi-nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.3fr);gap:6px;margin-top:6px}
 .mi .mi-nums label{display:flex;flex-direction:column;font-size:.72rem;color:var(--muted);gap:2px}
 .mi input.mi-in,.mi select.mi-in{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:6px;padding:6px;font:inherit;font-size:.9rem}
-.mi input.n{font-family:var(--mono);text-align:right}
+.mi input.n{text-align:right;font-variant-numeric:tabular-nums}
 .mi .mi-why{font-size:.8rem;color:var(--warn);margin-top:4px}
 .mi .mi-ban{font-size:.8rem;color:var(--bad);margin-top:4px}
-.mi .mi-sub{font-size:.85rem}
+.mi .mi-sub{font-size:.92rem;line-height:1.45}
 .mi .mi-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .mi .mi-chips .chip[aria-pressed="true"]{background:var(--accent,#2f6f5e);color:#fff;border-color:transparent}
-.mi .mi-lbl{font-size:.78rem;color:var(--muted);margin-top:10px;display:block}
+.mi .mi-lbl{font-size:.8rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+.mi .mi-chips{margin-top:0}
+.mi .mi-opt{border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:14px;background:var(--surface)}
+.mi .mi-opt.best{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.mi .mi-oh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.mi .mi-ot{font-weight:700;font-size:1.02rem;color:var(--ink)}
+.mi .mi-tag{font-size:.8rem;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.mi .mi-tag.ok{background:color-mix(in srgb,var(--good) 15%,transparent);color:var(--good)}
+.mi .mi-tag.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:color-mix(in srgb,var(--warn) 70%,var(--ink))}
+.mi .mi-rows{display:flex;flex-direction:column}
+.mi .mi-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.mi .mi-row:last-child{border-bottom:0}
+.mi .mi-g .mg{margin:0}
+.mi .mi-nm{font-size:.98rem;line-height:1.3;overflow-wrap:anywhere}
+.mi .mi-nm small,.mi .mi-mac small{display:block;font-size:.8rem;color:var(--muted);margin-top:2px}
+.mi .mi-mac{text-align:right;font-size:.82rem;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.mi .mi-mac b{font-size:1rem;color:var(--ink);font-weight:700}
+.mi .mi-x{width:30px;height:30px;padding:0;border-radius:50%;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:.85rem;cursor:pointer}
+.mi .mi-fixed{font-size:.85rem;color:var(--muted);margin:8px 0 0}
+.mi .mi-tot{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:12px 0 4px}
+.mi .mi-tot div{background:var(--sunk);border-radius:10px;padding:8px 4px;text-align:center}
+.mi .mi-tot b{display:block;font-size:1.05rem;font-variant-numeric:tabular-nums}
+.mi .mi-tot span{font-size:.75rem;color:var(--muted)}
+.mi .mi-whys{margin:10px 0 0;padding-left:1.2em;font-size:.9rem;line-height:1.45}
+.mi .mi-whys li{margin:4px 0}
+.mi .mi-plan{width:100%;margin-top:12px;justify-content:center}
+.mi .mi-alt{border:1px solid var(--line);border-radius:14px;padding:0 14px;margin-top:8px}
+.mi .mi-alt summary{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;cursor:pointer;list-style:none}
+.mi .mi-alt summary::-webkit-details-marker{display:none}
+.mi .mi-alt summary::after{content:"›";color:var(--muted);font-size:1.2rem;transition:transform .15s}
+.mi .mi-alt[open] summary::after{transform:rotate(90deg)}
+.mi .mi-alt[open]{padding-bottom:14px}
+.mi .mi-sum{font-size:.88rem;color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
+.mi .mi-note{font-size:.88rem;color:var(--muted);line-height:1.45;margin:8px 0 0}
+.mi .mi-notes{border-style:dashed}
 .mi .mi-avoidrow{display:flex;gap:6px;margin-top:6px}
 .mi .mi-avoidrow input{flex:1;min-width:0}
-.mi .mi-why-list{margin:6px 0 0;padding-left:1.1em;font-size:.86rem}
-.mi .mi-why-list li{margin:2px 0}
-.mi .mi-res li{display:flex;align-items:center;gap:6px;list-style:none;margin-left:-1.1em}
-.mi .mi-res li .nm{flex:1;min-width:0}
-.mi .mi-res .mi-no{padding:2px 8px;font-size:.75rem}
-.mi details.mi-menu{margin-top:10px}
-.mi details.mi-menu summary{cursor:pointer;font-size:.88rem;padding:6px 0}
-.mi .ex.best{border:1px solid color-mix(in srgb,var(--good,#2f6f5e) 40%,transparent)}
 `;
 
   // A–D grade pill from the MealGrade module when it is inlined; '' otherwise.
@@ -42595,30 +42628,55 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
       ${flagged ? `<p class="mi-sub"><b>${flagged} item${flagged > 1 ? 's need' : ' needs'} a check.</b> Compare with the menu and tap OK, or fix the number. <button class="btn ghost small" data-mi="okall">All match the menu</button></p>` : ''}`;
   }
 
+  // One food row: grade, name with its slot, kcal and protein in a right-hand column.
+  function foodRow(it, kind, slot, T, canDrop) {
+    return `<div class="mi-row">
+        <span class="mi-g">${gradeOf(it, kind, T)}</span>
+        <span class="mi-nm">${esc(it.name)}<small>${esc(slot)}${it.needsCheck ? ' · numbers not confirmed' : ''}</small></span>
+        <span class="mi-mac"><b>${fmtN(it.kcal)}</b> kcal<small>${r0(it.p)} g protein</small></span>
+        ${canDrop ? `<button type="button" class="mi-x" data-mi="notthis" data-n="${esc(it.name)}" aria-label="Not ${esc(it.name)}, pick something else" title="Not this">✕</button>` : ''}
+      </div>`;
+  }
+  function rowsOf(o, res, T, canDrop) {
+    return foodRow(o.meal1, 'meal', 'Meal 1', T, canDrop) + foodRow(o.meal2, 'meal', 'Meal 2', T, canDrop)
+      + o.snacks.map(x => foodRow(x, 'snack', 'Snack with ' + (x.with === 'meal2' ? 'Meal 2' : 'Meal 1'), T, canDrop)).join('');
+  }
+  const tiles = t => `<div class="mi-tot">${[[fmtN(t.kcal), 'kcal'], [r0(t.p) + ' g', 'protein'], [r0(t.c) + ' g', 'carbs'], [r0(t.f) + ' g', 'fat']].map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join('')}</div>`;
+  function status(o, T) {
+    const dk = Math.round(o.totals.kcal - T.kcal);
+    if (o.check.fits) return '<span class="mi-tag ok">Fits your day</span>';
+    return `<span class="mi-tag warn">${Math.abs(dk) > 100 ? fmtN(Math.abs(dk)) + ' kcal ' + (dk > 0 ? 'over' : 'under') : Math.round(T.proteinMin - o.totals.p) + ' g protein short'}</span>`;
+  }
   function resultHtml(res, T) {
     if (!res) return '';
-    const line = (it, kind, i) => `<li><span class="nm">${gradeOf(it, kind, T)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r0(it.p)} P</span>${it.needsCheck ? ' <span class="pill warn">unconfirmed</span>' : ''}</span>${i === 0 ? `<button class="btn ghost small mi-no" data-mi="notthis" data-n="${esc(it.name)}" aria-label="Not ${esc(it.name)}, pick something else">Not this</button>` : ''}</li>`;
-    const fixedLines = (res.fixed || []).map(x => `<li class="muted"><span class="nm">${esc(x.name)} <span class="num" style="font-size:.85rem">${r0(x.kcal)} kcal · ${r0(x.p)} P${x.estimate ? ' (estimate)' : ''}</span></span></li>`).join('');
-    const opt = (o, i) => `<div class="ex${i === 0 ? ' best' : ''}">
-        <div class="spread"><b>${i === 0 ? 'Best for ' + esc((PRIORITIES[res.priority] || PRIORITIES.balanced).label.toLowerCase()) : 'Option ' + (i + 1)}</b><span class="pill ${o.check.fits ? 'good' : 'warn'}">${o.check.fits ? 'Fits' : 'Closest'}</span></div>
-        <ul class="mi-res" style="margin:0;padding-left:1.1em">${line(o.meal1, 'meal', i)}${line(o.meal2, 'meal', i)}${o.snacks.map(x => line(x, 'snack', i)).join('')}${i === 0 ? fixedLines : ''}</ul>
-        ${o.why && o.why.length ? `<ul class="mi-why-list">${(i === 0 ? o.why : o.why.slice(0, 1)).map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
-        <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small${i === 0 ? '' : ' ghost'}" data-mi="use" data-i="${i}">Plan this day</button></div>
-        ${o.check.notes && o.check.notes.length && !o.check.fits ? `<p class="muted mi-sub">${esc(o.check.verdict)}</p>` : ''}
-      </div>`;
+    const fixed = res.fixed || [];
+    const fixedKcal = fixed.reduce((a, x) => a + (+x.kcal || 0), 0);
+    const best = res.options[0];
+    const notes = res.notes.concat(res.skipped.length ? ['Left out: ' + res.skipped.map(x => `${x.name} (${x.reason})`).join('; ') + '.'] : []);
     return `${res.error ? `<p class="note">${esc(res.error)}</p>` : ''}
-      ${res.options.length ? opt(res.options[0], 0) : ''}
-      ${res.options.length > 1 ? `<span class="mi-lbl">Other options</span>${res.options.slice(1).map((o, i) => opt(o, i + 1)).join('')}` : ''}
-      ${res.notes.length ? `<p class="muted mi-sub">${res.notes.map(esc).join(' ')}</p>` : ''}
-      ${res.skipped.length ? `<p class="muted mi-sub">Left out: ${res.skipped.map(x => `${esc(x.name)} (${esc(x.reason)})`).join(', ')}</p>` : ''}`;
+      ${best ? `<div class="mi-opt best">
+        <div class="mi-oh"><span class="mi-ot">Best for ${esc((PRIORITIES[res.priority] || PRIORITIES.balanced).label.toLowerCase())}</span>${status(best, T)}</div>
+        <div class="mi-rows">${rowsOf(best, res, T, true)}</div>
+        ${fixed.length ? `<p class="mi-fixed">Plus ${esc(fixed.map(x => x.name.replace(/\s*\(.*\)$/, '')).join(', '))} · ${fmtN(fixedKcal)} kcal</p>` : ''}
+        ${tiles(best.totals)}
+        ${best.why && best.why.length ? `<ul class="mi-whys">${best.why.slice(0, 3).map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+        <button class="btn mi-plan" data-mi="use" data-i="0">Plan this day</button>
+      </div>` : ''}
+      ${res.options.length > 1 ? `<p class="mi-lbl">Other options</p>${res.options.slice(1).map((o, j) => `<details class="mi-alt">
+        <summary><span class="mi-ot">Option ${j + 2}</span><span class="mi-sum">${fmtN(o.totals.kcal)} kcal · ${r0(o.totals.p)} g protein</span></summary>
+        <div class="mi-rows">${rowsOf(o, res, T, false)}</div>
+        ${o.why && o.why[0] ? `<p class="mi-note">${esc(o.why[0])}</p>` : ''}
+        <button class="btn ghost mi-plan" data-mi="use" data-i="${j + 1}">Plan this day</button>
+      </details>`).join('')}` : ''}
+      ${notes.length ? `<details class="mi-alt mi-notes"><summary><span class="mi-sum">Notes (${notes.length})</span></summary>${notes.map(n => `<p class="mi-note">${esc(n)}</p>`).join('')}</details>` : ''}`;
   }
 
   function pickControls() {
     const sugg = avoidSuggestions(ST.items, ST.opts.avoid);
-    return `<span class="mi-lbl">Pick for</span>
+    return `<p class="mi-lbl">Pick for</p>
       <div class="mi-chips" role="group" aria-label="Pick for">${Object.keys(PRIORITIES).map(k => `<button type="button" class="chip" data-mi="pri" data-k="${k}" aria-pressed="${ST.opts.priority === k}">${esc(PRIORITIES[k].label)}</button>`).join('')}</div>
-      <span class="mi-lbl">Leave out</span>
-      <div class="mi-chips">${ST.opts.avoid.map(w => `<button type="button" class="chip" data-mi="avoid" data-w="${esc(w)}" aria-pressed="true" aria-label="Stop leaving out ${esc(w)}">No ${esc(w)} ✕</button>`).join('')}${sugg.slice(0, 8).map(w => `<button type="button" class="chip" data-mi="avoid" data-w="${esc(w)}" aria-pressed="false">No ${esc(w)}</button>`).join('')}</div>
+      <p class="mi-lbl">Leave out</p>
+      <div class="mi-chips">${ST.opts.avoid.map(w => `<button type="button" class="chip" data-mi="avoid" data-w="${esc(w)}" aria-pressed="true" aria-label="Stop leaving out ${esc(w)}">No ${esc(w)} ✕</button>`).join('')}${sugg.slice(0, 6).map(w => `<button type="button" class="chip" data-mi="avoid" data-w="${esc(w)}" aria-pressed="false">No ${esc(w)}</button>`).join('')}</div>
       <div class="mi-avoidrow"><input class="mi-in" id="miAvoid" type="text" placeholder="Something else to leave out, e.g. mushrooms" aria-label="Leave out"><button type="button" class="btn ghost small" data-mi="avoidadd">Add</button></div>`;
   }
 
@@ -42644,9 +42702,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
       ${ST.error ? `<p class="note">${esc(ST.error)}</p>` : ''}
       ${ST.warnings.length ? `<p class="muted mi-sub">${ST.warnings.map(esc).join(' ')}</p>` : ''}
       ${has ? `${pickControls()}
-        ${flagged ? `<p class="mi-sub" style="margin-top:10px"><b>${flagged} item${flagged > 1 ? 's' : ''} to check</b> in the menu list below; picks using them are marked unconfirmed.</p>` : ''}
-        <div style="margin-top:10px">${resultHtml(ST.result, T)}</div>
-        <details class="mi-menu"${flagged ? ' open' : ''}><summary>Menu items (${ST.items.length}) and settings</summary>
+        ${flagged ? `<p class="mi-note"><b>${flagged} item${flagged > 1 ? 's' : ''} to check</b> in Menu items below.</p>` : ''}
+        ${resultHtml(ST.result, T)}
+        <details class="mi-alt mi-menu"${flagged ? ' open' : ''}><summary><span class="mi-sum" style="margin-left:0">Menu items (${ST.items.length}) and settings</span></summary>
           ${itemsTable(ST.items, bans, T)}
           <div class="row" style="flex-wrap:wrap;gap:12px">
             <label class="mi-sub"><input type="checkbox" id="miAdonis"${ST.opts.adonis ? ' checked' : ''}> Adonis cookie dough</label>
@@ -42699,7 +42757,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     const mergeCols = opts.mergeCols || [];
     const exec = opts.exec, onChange = opts.onChange || (() => {});
     const now = opts.now || Date.now;
-    let pending = {}, chains = {}, enabled = true;
+    let pending = {}, chains = {}, enabled = true, bulkDepth = 0;
+    const batchSize = opts.batchSize || 200;
 
     function save() { try { if (storage) storage.setItem(key, JSON.stringify(pending)); } catch (e) {} onChange(size(), pending); }
     function load() { try { const j = storage && JSON.parse(storage.getItem(key) || "null"); pending = j && typeof j === "object" ? j : {}; } catch (e) { pending = {}; } onChange(size(), pending); return size(); }
@@ -42714,8 +42773,33 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
         else delete w.fields;                        // older full write still unsent: send the whole doc
         w.told = p.told;
       }
-      pending[k] = w; save();
+      pending[k] = w;
+      if (bulkDepth) return Promise.resolve();        // inside bulk(): saved and sent together at the end
+      save();
       return flush(k);
+    }
+    // Many writes at once (an import): queue them all, store once, then send them in batches via
+    // opts.execMany (when the db has one) instead of hundreds of single requests.
+    async function bulk(fn) {
+      bulkDepth++;
+      try { await fn(); } finally { bulkDepth--; if (!bulkDepth) save(); }
+      if (!bulkDepth) await retryAll();
+    }
+    function flushMany(ws) {
+      const p = (async () => {
+        try {
+          await opts.execMany(ws);
+          ws.forEach(w => { const k = keyOf(w.col, w.id); if (pending[k] === w) delete pending[k]; });
+          save();
+        } catch (e) {
+          const first = ws.some(w => !w.told);
+          ws.forEach(w => { w.err = String((e && (e.message || e.code)) || e); w.told = true; });
+          save();
+          if (first && opts.onFail) opts.onFail(ws[0], e);
+        }
+      })();
+      ws.forEach(w => { chains[keyOf(w.col, w.id)] = p; });
+      return p;
     }
     function flush(k) {
       chains[k] = (chains[k] || Promise.resolve()).then(async () => {
@@ -42752,10 +42836,23 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
       }
       return docs;
     }
-    function retryAll() { return Promise.all(Object.keys(pending).map(flush)); }
+    function retryAll() {
+      if (!enabled) return Promise.resolve();
+      const keys = Object.keys(pending);
+      if (opts.execMany && keys.length > 1) {
+        const many = keys.map(k => pending[k]).filter(w => !w.fields);   // field merges still go one by one
+        if (many.length > 1) {
+          const chunks = [];
+          for (let i = 0; i < many.length; i += batchSize) chunks.push(many.slice(i, i + batchSize));
+          return Promise.all(chunks.map(flushMany).concat(keys.filter(k => pending[k].fields).map(flush)));
+        }
+      }
+      return Promise.all(keys.map(flush));
+    }
+    function firstError() { const w = Object.values(pending).find(x => x.err); return w ? w.err : null; }
     function setEnabled(v) { enabled = !!v; if (v) retryAll(); }
 
-    return { load, put, remove, overlay, retryAll, flush: (col, id) => flush(keyOf(col, id)), size, list, setEnabled, has: (col, id) => !!pending[keyOf(col, id)] };
+    return { load, put, remove, overlay, retryAll, bulk, firstError, flush: (col, id) => flush(keyOf(col, id)), size, list, setEnabled, has: (col, id) => !!pending[keyOf(col, id)] };
   }
 
   return { create, changedFields, pick };
@@ -42849,6 +42946,15 @@ window.CloudStore = (() => {
           add: d => col.add(d),
           get: () => col.get(),
           onSnapshot: (next, err) => col.onSnapshot(next, err)
+        };
+      },
+      // One commit for many documents (Firestore allows 500 writes per batch); the outbox uses it for imports.
+      batch() {
+        const b = fs.batch(), me = fs.collection("users").doc(uid);
+        return {
+          set: (c, id, d) => b.set(me.collection(c).doc(id), d),
+          delete: (c, id) => b.delete(me.collection(c).doc(id)),
+          commit: () => b.commit()
         };
       }
     };
@@ -44158,13 +44264,19 @@ function uploadLocalOnly(local){
 }
 /* Outbox: every synced write is kept in localStorage until the db confirms it, retried on reconnect,
  * and days/prefs docs are sent as field merges so phone and PC edits to the same day don't erase each other. */
+async function execWrite(w){
+  const ref = S.db.collection(w.col).doc(w.id);
+  if(w.op==="delete") return ref.delete();
+  if(w.fields){ try{ return await ref.update(PendingWrites.pick(w.data, w.fields)); }catch(e){ if(!(e && e.code==="invalid_argument")) throw e; } }
+  return ref.set(w.data);
+}
 const outbox = PendingWrites.create({
   storage: window.localStorage, key: "aziz-cut-pending", mergeCols: ["days","prefs"],
-  exec: async w => {
-    const ref = S.db.collection(w.col).doc(w.id);
-    if(w.op==="delete") return ref.delete();
-    if(w.fields){ try{ return await ref.update(PendingWrites.pick(w.data, w.fields)); }catch(e){ if(!(e && e.code==="invalid_argument")) throw e; } }
-    return ref.set(w.data);
+  exec: execWrite,
+  // Imports (Strong history: 400+ days) go out as Firestore batches of 200 instead of one request per day.
+  execMany: async ws => {
+    if(!S.db.batch){ for(const w of ws) await execWrite(w); return; }
+    const b=S.db.batch(); ws.forEach(w=>{ if(w.op==="delete") b.delete(w.col,w.id); else b.set(w.col,w.id,w.data); }); await b.commit();
   },
   onChange: n => { const b=document.getElementById("unsaved"); if(!b) return; b.hidden=!n; b.textContent = n+(n===1?" change":" changes")+" not saved yet · tap to retry"; },
   onFail: () => toast("Couldn't reach the server. Kept on this device, will retry.")
@@ -44257,7 +44369,7 @@ async function initStore(){
   window.addEventListener("online", ()=>outbox.retryAll());
   document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") outbox.retryAll(); });
   setInterval(()=>{ if(outbox.size()) outbox.retryAll(); }, 30000);
-  document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>toast(outbox.size()?"Still can't reach the server. Your changes are kept on this device.":"All changes saved")); });
+  document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>{ const e=outbox.firstError(); toast(outbox.size()?"Still can't save"+(e?" ("+e+")":"")+". Your changes are kept on this device.":"All changes saved"); }); });
   LB_READ.forEach(c=>{ try{ db.collection(c).onSnapshot(qs=>{ const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=o; if(view.tab!=="train") scheduleRender(); }, ()=>{}); }catch(e){} });
   setSync();
   try{ mountFriends(); }catch(e){ console.warn("Friends", e); }
@@ -45600,7 +45712,8 @@ function importStrong(file){
     try{
       const {docs, report} = StrongCSV.toWorkouts(text, {program:programEff(), rotation:ROTATION, existing:S.docs.workouts});
       const list = Array.isArray(docs) ? docs : Object.values(docs);
-      let sets=0; list.forEach(doc=>{ Object.values(doc.sets||{}).forEach(a=>sets+=a.length); put("workouts",doc.date,doc,{quiet:true}); });
+      let sets=0; list.forEach(doc=>{ Object.values(doc.sets||{}).forEach(a=>sets+=a.length); });
+      await outbox.bulk(async()=>{ for(const doc of list) await put("workouts",doc.date,doc,{quiet:true}); });
       const un = (report && report.unmatched) || {};
       const unNames = Array.isArray(un) ? un.map(u=>typeof u==="string"?u:(u.name||"")).filter(Boolean) : Object.keys(un);
       view.strongMsg = `Imported <b>${list.length}</b> workout${list.length===1?"":"s"} with <b>${sets}</b> sets.` + (unNames.length?` Not in your program (saved under their own names): ${unNames.map(esc).join(", ")}.`:"");
@@ -45706,6 +45819,7 @@ function syncLogger(){
   const storage = db ? {
     list: c => db.collection(c).get().then(qs=>qs.docs.map(d=>clone(d.data()))),
     put: (c,id,doc) => db.collection(c).doc(id).set(doc),
+    putMany: async (c,docs) => { if(!db.batch){ for(const d of docs) await db.collection(c).doc(d.id).set(d); return; } for(let i=0;i<docs.length;i+=200){ const b=db.batch(); docs.slice(i,i+200).forEach(d=>b.set(c,d.id,d)); await b.commit(); } },
     remove: (c,id) => db.collection(c).doc(id).delete()
   } : undefined;
   try{

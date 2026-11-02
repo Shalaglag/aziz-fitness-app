@@ -53,6 +53,15 @@ const CloudStore = (() => {
           get: () => col.get(),
           onSnapshot: (next, err) => col.onSnapshot(next, err)
         };
+      },
+      // One commit for many documents (Firestore allows 500 writes per batch); the outbox uses it for imports.
+      batch() {
+        const b = fs.batch(), me = fs.collection("users").doc(uid);
+        return {
+          set: (c, id, d) => b.set(me.collection(c).doc(id), d),
+          delete: (c, id) => b.delete(me.collection(c).doc(id)),
+          commit: () => b.commit()
+        };
       }
     };
   }
