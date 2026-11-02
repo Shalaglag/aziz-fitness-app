@@ -800,13 +800,19 @@ function uploadLocalOnly(local){
 }
 /* Outbox: every synced write is kept in localStorage until the db confirms it, retried on reconnect,
  * and days/prefs docs are sent as field merges so phone and PC edits to the same day don't erase each other. */
+async function execWrite(w){
+  const ref = S.db.collection(w.col).doc(w.id);
+  if(w.op==="delete") return ref.delete();
+  if(w.fields){ try{ return await ref.update(PendingWrites.pick(w.data, w.fields)); }catch(e){ if(!(e && e.code==="invalid_argument")) throw e; } }
+  return ref.set(w.data);
+}
 const outbox = PendingWrites.create({
   storage: window.localStorage, key: "aziz-cut-pending", mergeCols: ["days","prefs"],
-  exec: async w => {
-    const ref = S.db.collection(w.col).doc(w.id);
-    if(w.op==="delete") return ref.delete();
-    if(w.fields){ try{ return await ref.update(PendingWrites.pick(w.data, w.fields)); }catch(e){ if(!(e && e.code==="invalid_argument")) throw e; } }
-    return ref.set(w.data);
+  exec: execWrite,
+  // Imports (Strong history: 400+ days) go out as Firestore batches of 200 instead of one request per day.
+  execMany: async ws => {
+    if(!S.db.batch){ for(const w of ws) await execWrite(w); return; }
+    const b=S.db.batch(); ws.forEach(w=>{ if(w.op==="delete") b.delete(w.col,w.id); else b.set(w.col,w.id,w.data); }); await b.commit();
   },
   onChange: n => { const b=document.getElementById("unsaved"); if(!b) return; b.hidden=!n; b.textContent = n+(n===1?" change":" changes")+" not saved yet · tap to retry"; },
   onFail: () => toast("Couldn't reach the server. Kept on this device, will retry.")
@@ -899,7 +905,7 @@ async function initStore(){
   window.addEventListener("online", ()=>outbox.retryAll());
   document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") outbox.retryAll(); });
   setInterval(()=>{ if(outbox.size()) outbox.retryAll(); }, 30000);
-  document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>toast(outbox.size()?"Still can't reach the server. Your changes are kept on this device.":"All changes saved")); });
+  document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>{ const e=outbox.firstError(); toast(outbox.size()?"Still can't save"+(e?" ("+e+")":"")+". Your changes are kept on this device.":"All changes saved"); }); });
   LB_READ.forEach(c=>{ try{ db.collection(c).onSnapshot(qs=>{ const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=o; if(view.tab!=="train") scheduleRender(); }, ()=>{}); }catch(e){} });
   setSync();
   try{ mountFriends(); }catch(e){ console.warn("Friends", e); }
@@ -2215,7 +2221,8 @@ function importStrong(file){
     try{
       const {docs, report} = StrongCSV.toWorkouts(text, {program:programEff(), rotation:ROTATION, existing:S.docs.workouts});
       const list = Array.isArray(docs) ? docs : Object.values(docs);
-      let sets=0; list.forEach(doc=>{ Object.values(doc.sets||{}).forEach(a=>sets+=a.length); put("workouts",doc.date,doc,{quiet:true}); });
+      let sets=0; list.forEach(doc=>{ Object.values(doc.sets||{}).forEach(a=>sets+=a.length); });
+      await outbox.bulk(async()=>{ for(const doc of list) await put("workouts",doc.date,doc,{quiet:true}); });
       const un = (report && report.unmatched) || {};
       const unNames = Array.isArray(un) ? un.map(u=>typeof u==="string"?u:(u.name||"")).filter(Boolean) : Object.keys(un);
       view.strongMsg = `Imported <b>${list.length}</b> workout${list.length===1?"":"s"} with <b>${sets}</b> sets.` + (unNames.length?` Not in your program (saved under their own names): ${unNames.map(esc).join(", ")}.`:"");
@@ -2321,6 +2328,7 @@ function syncLogger(){
   const storage = db ? {
     list: c => db.collection(c).get().then(qs=>qs.docs.map(d=>clone(d.data()))),
     put: (c,id,doc) => db.collection(c).doc(id).set(doc),
+    putMany: async (c,docs) => { if(!db.batch){ for(const d of docs) await db.collection(c).doc(d.id).set(d); return; } for(let i=0;i<docs.length;i+=200){ const b=db.batch(); docs.slice(i,i+200).forEach(d=>b.set(c,d.id,d)); await b.commit(); } },
     remove: (c,id) => db.collection(c).doc(id).delete()
   } : undefined;
   try{

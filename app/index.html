@@ -1686,6 +1686,8 @@ window.StrongCSV = (() => {
         const name = matchName(ex.name, pool) || matchName(ex.name, allNames);
         if (!name) { report.unmatched[ex.name] = (report.unmatched[ex.name] || 0) + 1; }
         const key = name || ex.name;
+        // An older import saved this exercise under its Strong name: drop that copy so the day isn't doubled.
+        if (name && name !== ex.name && doc.source === "strong" && !(doc.strongNames || []).includes(ex.name)) delete doc.sets[ex.name];
         const to = unitOf[key] || ex.sets[0]?.unit || "kg";
         const sets = ex.sets.filter(s => s.kind !== "warmup" && s.r > 0).map(s => ({ w: convert(s.w, s.unit, to), r: s.r }));
         if (!sets.length) continue;
@@ -4969,12 +4971,17 @@ Power Clean (Barbell)|Other|Barbell|`;
     const p = parseStrong(text, opts);
     if (p.error) return { error: p.error, added: 0, updated: 0, skipped: 0, newEx: 0 };
     p.newExercises.forEach(e => put('exercises', e));
-    let added = 0, updated = 0, skipped = 0;
+    let added = 0, updated = 0, skipped = 0; const docs = [];
     for (const { doc, action } of p.workouts) {
       if (action === 'skip') { skipped++; continue; }
       if (action === 'update') updated++; else added++;
-      put('workouts', doc);
+      docs.push(doc);
     }
+    if (S.storage && S.storage.putMany && docs.length > 1) {
+      // One batched write per 200 workouts (the host's db batch) instead of a request per workout.
+      docs.forEach(d => { S.data.workouts[d.id] = d; });
+      await queue('workouts/*import', () => S.storage.putMany(COLL.workouts, docs.map(clone)));
+    } else docs.forEach(d => put('workouts', d));
     bump(); if (root && !E && !sheets.length) renderMain();
     return { added, updated, skipped, newEx: p.newExercises.length, workouts: p.workouts.length };
   }
@@ -42626,7 +42633,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     const mergeCols = opts.mergeCols || [];
     const exec = opts.exec, onChange = opts.onChange || (() => {});
     const now = opts.now || Date.now;
-    let pending = {}, chains = {}, enabled = true;
+    let pending = {}, chains = {}, enabled = true, bulkDepth = 0;
+    const batchSize = opts.batchSize || 200;
 
     function save() { try { if (storage) storage.setItem(key, JSON.stringify(pending)); } catch (e) {} onChange(size(), pending); }
     function load() { try { const j = storage && JSON.parse(storage.getItem(key) || "null"); pending = j && typeof j === "object" ? j : {}; } catch (e) { pending = {}; } onChange(size(), pending); return size(); }
@@ -42641,8 +42649,33 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
         else delete w.fields;                        // older full write still unsent: send the whole doc
         w.told = p.told;
       }
-      pending[k] = w; save();
+      pending[k] = w;
+      if (bulkDepth) return Promise.resolve();        // inside bulk(): saved and sent together at the end
+      save();
       return flush(k);
+    }
+    // Many writes at once (an import): queue them all, store once, then send them in batches via
+    // opts.execMany (when the db has one) instead of hundreds of single requests.
+    async function bulk(fn) {
+      bulkDepth++;
+      try { await fn(); } finally { bulkDepth--; if (!bulkDepth) save(); }
+      if (!bulkDepth) await retryAll();
+    }
+    function flushMany(ws) {
+      const p = (async () => {
+        try {
+          await opts.execMany(ws);
+          ws.forEach(w => { const k = keyOf(w.col, w.id); if (pending[k] === w) delete pending[k]; });
+          save();
+        } catch (e) {
+          const first = ws.some(w => !w.told);
+          ws.forEach(w => { w.err = String((e && (e.message || e.code)) || e); w.told = true; });
+          save();
+          if (first && opts.onFail) opts.onFail(ws[0], e);
+        }
+      })();
+      ws.forEach(w => { chains[keyOf(w.col, w.id)] = p; });
+      return p;
     }
     function flush(k) {
       chains[k] = (chains[k] || Promise.resolve()).then(async () => {
@@ -42679,10 +42712,23 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
       }
       return docs;
     }
-    function retryAll() { return Promise.all(Object.keys(pending).map(flush)); }
+    function retryAll() {
+      if (!enabled) return Promise.resolve();
+      const keys = Object.keys(pending);
+      if (opts.execMany && keys.length > 1) {
+        const many = keys.map(k => pending[k]).filter(w => !w.fields);   // field merges still go one by one
+        if (many.length > 1) {
+          const chunks = [];
+          for (let i = 0; i < many.length; i += batchSize) chunks.push(many.slice(i, i + batchSize));
+          return Promise.all(chunks.map(flushMany).concat(keys.filter(k => pending[k].fields).map(flush)));
+        }
+      }
+      return Promise.all(keys.map(flush));
+    }
+    function firstError() { const w = Object.values(pending).find(x => x.err); return w ? w.err : null; }
     function setEnabled(v) { enabled = !!v; if (v) retryAll(); }
 
-    return { load, put, remove, overlay, retryAll, flush: (col, id) => flush(keyOf(col, id)), size, list, setEnabled, has: (col, id) => !!pending[keyOf(col, id)] };
+    return { load, put, remove, overlay, retryAll, bulk, firstError, flush: (col, id) => flush(keyOf(col, id)), size, list, setEnabled, has: (col, id) => !!pending[keyOf(col, id)] };
   }
 
   return { create, changedFields, pick };
@@ -42776,6 +42822,15 @@ window.CloudStore = (() => {
           add: d => col.add(d),
           get: () => col.get(),
           onSnapshot: (next, err) => col.onSnapshot(next, err)
+        };
+      },
+      // One commit for many documents (Firestore allows 500 writes per batch); the outbox uses it for imports.
+      batch() {
+        const b = fs.batch(), me = fs.collection("users").doc(uid);
+        return {
+          set: (c, id, d) => b.set(me.collection(c).doc(id), d),
+          delete: (c, id) => b.delete(me.collection(c).doc(id)),
+          commit: () => b.commit()
         };
       }
     };
@@ -44085,13 +44140,19 @@ function uploadLocalOnly(local){
 }
 /* Outbox: every synced write is kept in localStorage until the db confirms it, retried on reconnect,
  * and days/prefs docs are sent as field merges so phone and PC edits to the same day don't erase each other. */
+async function execWrite(w){
+  const ref = S.db.collection(w.col).doc(w.id);
+  if(w.op==="delete") return ref.delete();
+  if(w.fields){ try{ return await ref.update(PendingWrites.pick(w.data, w.fields)); }catch(e){ if(!(e && e.code==="invalid_argument")) throw e; } }
+  return ref.set(w.data);
+}
 const outbox = PendingWrites.create({
   storage: window.localStorage, key: "aziz-cut-pending", mergeCols: ["days","prefs"],
-  exec: async w => {
-    const ref = S.db.collection(w.col).doc(w.id);
-    if(w.op==="delete") return ref.delete();
-    if(w.fields){ try{ return await ref.update(PendingWrites.pick(w.data, w.fields)); }catch(e){ if(!(e && e.code==="invalid_argument")) throw e; } }
-    return ref.set(w.data);
+  exec: execWrite,
+  // Imports (Strong history: 400+ days) go out as Firestore batches of 200 instead of one request per day.
+  execMany: async ws => {
+    if(!S.db.batch){ for(const w of ws) await execWrite(w); return; }
+    const b=S.db.batch(); ws.forEach(w=>{ if(w.op==="delete") b.delete(w.col,w.id); else b.set(w.col,w.id,w.data); }); await b.commit();
   },
   onChange: n => { const b=document.getElementById("unsaved"); if(!b) return; b.hidden=!n; b.textContent = n+(n===1?" change":" changes")+" not saved yet · tap to retry"; },
   onFail: () => toast("Couldn't reach the server. Kept on this device, will retry.")
@@ -44184,7 +44245,7 @@ async function initStore(){
   window.addEventListener("online", ()=>outbox.retryAll());
   document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") outbox.retryAll(); });
   setInterval(()=>{ if(outbox.size()) outbox.retryAll(); }, 30000);
-  document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>toast(outbox.size()?"Still can't reach the server. Your changes are kept on this device.":"All changes saved")); });
+  document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>{ const e=outbox.firstError(); toast(outbox.size()?"Still can't save"+(e?" ("+e+")":"")+". Your changes are kept on this device.":"All changes saved"); }); });
   LB_READ.forEach(c=>{ try{ db.collection(c).onSnapshot(qs=>{ const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=o; if(view.tab!=="train") scheduleRender(); }, ()=>{}); }catch(e){} });
   setSync();
   try{ mountFriends(); }catch(e){ console.warn("Friends", e); }
@@ -45500,7 +45561,8 @@ function importStrong(file){
     try{
       const {docs, report} = StrongCSV.toWorkouts(text, {program:programEff(), rotation:ROTATION, existing:S.docs.workouts});
       const list = Array.isArray(docs) ? docs : Object.values(docs);
-      let sets=0; list.forEach(doc=>{ Object.values(doc.sets||{}).forEach(a=>sets+=a.length); put("workouts",doc.date,doc,{quiet:true}); });
+      let sets=0; list.forEach(doc=>{ Object.values(doc.sets||{}).forEach(a=>sets+=a.length); });
+      await outbox.bulk(async()=>{ for(const doc of list) await put("workouts",doc.date,doc,{quiet:true}); });
       const un = (report && report.unmatched) || {};
       const unNames = Array.isArray(un) ? un.map(u=>typeof u==="string"?u:(u.name||"")).filter(Boolean) : Object.keys(un);
       view.strongMsg = `Imported <b>${list.length}</b> workout${list.length===1?"":"s"} with <b>${sets}</b> sets.` + (unNames.length?` Not in your program (saved under their own names): ${unNames.map(esc).join(", ")}.`:"");
@@ -45606,6 +45668,7 @@ function syncLogger(){
   const storage = db ? {
     list: c => db.collection(c).get().then(qs=>qs.docs.map(d=>clone(d.data()))),
     put: (c,id,doc) => db.collection(c).doc(id).set(doc),
+    putMany: async (c,docs) => { if(!db.batch){ for(const d of docs) await db.collection(c).doc(d.id).set(d); return; } for(let i=0;i<docs.length;i+=200){ const b=db.batch(); docs.slice(i,i+200).forEach(d=>b.set(c,d.id,d)); await b.commit(); } },
     remove: (c,id) => db.collection(c).doc(id).delete()
   } : undefined;
   try{
