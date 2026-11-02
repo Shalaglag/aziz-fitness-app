@@ -13,8 +13,9 @@
 /* ==========================================================================
    Fitness app theme  ·  "Plate" system
    Neutrals: warm chalk (light) and warm charcoal (dark) — the "Warm Light" look (Nov 2026).
-   Accents: coral (default) plus Aziz's bumper plates (2.5 kg red, 5 kg white,
-   10 kg green, 15 kg yellow, 20 kg blue). Pick one with <html data-accent="blue">.
+   Accents: app colour picked in Settings → Colour. "coral" is the default (the warm
+   brown-orange); others: red, orange, yellow (gold), green, teal, blue, purple, pink, white (mono).
+   Pick one with <html data-accent="blue">.
    Mode: <html data-theme="light|dark">, or no attribute to follow the system.
    Fonts (Google Fonts):
    https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap
@@ -89,7 +90,11 @@
 [data-accent="red"]    { --accent-light: #D0302A; --accent-dark: #F2665D; --on-accent-light: #FFFFFF; --on-accent-dark: #220B0A; }
 [data-accent="blue"]   { --accent-light: #1F5FD1; --accent-dark: #6B9BF5; --on-accent-light: #FFFFFF; --on-accent-dark: #0B1222; }
 [data-accent="yellow"] { --accent-light: #A87300; --accent-dark: #F2C230; --on-accent-light: #FFFFFF; --on-accent-dark: #221A02; }
-/* 5 kg white plate: graphite on light backgrounds so it stays visible, white on dark */
+[data-accent="orange"] { --accent-light: #C25E00; --accent-dark: #FF9A3D; --on-accent-light: #FFFFFF; --on-accent-dark: #241200; }
+[data-accent="teal"]   { --accent-light: #0B7A7C; --accent-dark: #3CC7C3; --on-accent-light: #FFFFFF; --on-accent-dark: #03201F; }
+[data-accent="purple"] { --accent-light: #7A3DC2; --accent-dark: #B98CF5; --on-accent-light: #FFFFFF; --on-accent-dark: #1A0B2B; }
+[data-accent="pink"]   { --accent-light: #C22A6E; --accent-dark: #F57AAE; --on-accent-light: #FFFFFF; --on-accent-dark: #2A0816; }
+/* "Mono": graphite on light backgrounds so it stays visible, white on dark */
 [data-accent="white"]  { --accent-light: #2B3139; --accent-dark: #F2F4F6; --on-accent-light: #FFFFFF; --on-accent-dark: #0D1013; }
 [data-accent="green"]  { --accent-light: #1B8048; --accent-dark: #43C47E; --on-accent-light: #FFFFFF; --on-accent-dark: #06200F; }
 
@@ -560,6 +565,10 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .set-row:first-child{border-top:0}
 .set-row>span:first-child{display:flex;flex-direction:column;gap:2px;min-width:0}
 .set-row small{color:var(--muted);font-size:.8rem}
+.set-row>.swatches{gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.chip.swatch{display:inline-flex;align-items:center;gap:6px}
+.chip.swatch i{width:14px;height:14px;border-radius:50%;flex:none;box-shadow:0 0 0 1px color-mix(in srgb,var(--fg) 18%,transparent)}
+.chip.swatch[aria-pressed="true"] i{box-shadow:0 0 0 2px var(--accent-ink)}
 .seg{display:inline-flex;background:var(--sunk);border-radius:10px;padding:3px;gap:2px;flex:none}
 .seg button{border:0;background:none;padding:6px 11px;border-radius:8px;font-weight:600;font-size:.88rem;color:var(--muted);cursor:pointer;min-height:32px}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-1)}
@@ -1021,7 +1030,9 @@ const main = document.getElementById("main");
 main.before(document.getElementById("lbHost")); // the full logger sits above the Train extras
 
 function currentAccent(){ return S.docs.prefs.main?.accent || "coral"; }
-function applyAccent(a){ if(["coral","red","white","green","yellow","blue"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
+// App colour (Settings → Colour). Keys are stored in prefs.main.accent; "coral" is the default warm brown.
+const ACCENTS=[["coral","Default","#C64F19"],["red","Red","#D0302A"],["orange","Orange","#E07A1F"],["yellow","Gold","#D9A11A"],["green","Green","#1B8048"],["teal","Teal","#0B7A7C"],["blue","Blue","#1F5FD1"],["purple","Purple","#7A3DC2"],["pink","Pink","#C22A6E"],["white","Mono","#5A626C"]];
+function applyAccent(a){ if(!ACCENTS.some(x=>x[0]===a)) a="coral"; document.documentElement.setAttribute("data-accent",a); }
 let lastTab=null;
 let lastWaterLvl=0; // Water fluid rises from the last level drawn
 // Tab switch motion: slide from the side of the tapped tab (bar order), class removed when done so no transform lingers.
@@ -1834,7 +1845,7 @@ function vSettings(){
     ${row("Navigation","Where the sections live",seg("navset",[["bottom","Bottom bar"],["drawer","Side menu"],["both","Both"]],m.nav||"bottom"))}
     ${(()=>{ const sc=uiScale(m.uiScale??1); return row("Text size",`Makes words, rows and boxes smaller or bigger · <b id="scaleVal">${Math.round(sc*100)}%</b>`,`<span class="row" style="gap:6px;justify-content:flex-end;flex-wrap:nowrap"><span aria-hidden="true" style="font-size:.8rem">A</span><input type="range" id="uiScale" min="0.8" max="1.3" step="0.05" value="${sc}" aria-label="Text size"><span aria-hidden="true" style="font-size:1.2rem">A</span><button type="button" class="btn ghost small" data-act="scalereset">Reset</button></span>`); })()}
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
-    ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","2.5 kg red"],["white","5 kg white"],["green","10 kg green"],["yellow","15 kg yellow"],["blue","20 kg blue"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
+    ${row("App colour","Buttons, tabs and highlights across the whole app",`<span class="row swatches" role="group" aria-label="App colour">${ACCENTS.map(([k,l,c])=>`<button type="button" class="chip swatch" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}"><i style="background:${c}" aria-hidden="true"></i>${l}</button>`).join("")}</span>`)}
   </div></div>
   ${cat("Workouts and units")}
   <div class="card"><h3>Workout</h3><div class="set-list">
