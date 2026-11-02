@@ -1451,12 +1451,17 @@ Power Clean (Barbell)|Other|Barbell|`;
     const p = parseStrong(text, opts);
     if (p.error) return { error: p.error, added: 0, updated: 0, skipped: 0, newEx: 0 };
     p.newExercises.forEach(e => put('exercises', e));
-    let added = 0, updated = 0, skipped = 0;
+    let added = 0, updated = 0, skipped = 0; const docs = [];
     for (const { doc, action } of p.workouts) {
       if (action === 'skip') { skipped++; continue; }
       if (action === 'update') updated++; else added++;
-      put('workouts', doc);
+      docs.push(doc);
     }
+    if (S.storage && S.storage.putMany && docs.length > 1) {
+      // One batched write per 200 workouts (the host's db batch) instead of a request per workout.
+      docs.forEach(d => { S.data.workouts[d.id] = d; });
+      await queue('workouts/*import', () => S.storage.putMany(COLL.workouts, docs.map(clone)));
+    } else docs.forEach(d => put('workouts', d));
     bump(); if (root && !E && !sheets.length) renderMain();
     return { added, updated, skipped, newEx: p.newExercises.length, workouts: p.workouts.length };
   }

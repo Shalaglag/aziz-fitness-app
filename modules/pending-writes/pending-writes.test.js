@@ -88,3 +88,28 @@ test("writes to one document run one at a time, in order", async () => {
   assert.strictEqual(max, 2);           // a and b in parallel
   assert.deepStrictEqual(order.sort(), [2, 3]);   // a's two writes coalesced into the latest one
 });
+
+test("bulk(): writes are stored once and sent in batches through execMany", async () => {
+  const storage = mem(); const single = [], batches = [];
+  const q = PW.create({ storage, key: "p", mergeCols: ["days"], batchSize: 3, exec: async w => single.push(w.id), execMany: async ws => batches.push(ws.map(w => w.id)), onChange: () => {} });
+  await q.bulk(async () => { for (let i = 0; i < 7; i++) await q.put("workouts", "d" + i, { date: "d" + i }, undefined); });
+  assert.strictEqual(q.size(), 0);
+  assert.deepStrictEqual(batches, [["d0", "d1", "d2"], ["d3", "d4", "d5"], ["d6"]]);
+  assert.deepStrictEqual(single, []);
+  // a field merge inside a bulk still goes alone
+  await q.bulk(async () => { await q.put("workouts", "x", { a: 1 }, undefined); await q.put("workouts", "y", { a: 1 }, undefined); await q.put("days", "d", { date: "d", water: 1 }, { date: "d", water: 0 }); });
+  assert.deepStrictEqual(batches[3], ["x", "y"]);
+  assert.deepStrictEqual(single, ["d"]);
+});
+
+test("a failed batch keeps every write, records the error, and clears on a later retry", async () => {
+  const storage = mem(); let fail = true; const fails = [];
+  const q = PW.create({ storage, key: "p", mergeCols: [], exec: async () => {}, execMany: async () => { if (fail) throw new Error("permission-denied"); }, onChange: () => {}, onFail: w => fails.push(w.id) });
+  await q.bulk(async () => { await q.put("workouts", "a", { a: 1 }); await q.put("workouts", "b", { b: 1 }); });
+  assert.strictEqual(q.size(), 2);
+  assert.strictEqual(q.firstError(), "permission-denied");
+  assert.deepStrictEqual(fails, ["a"]);
+  assert.strictEqual(JSON.parse(storage.m.p)["workouts/b"].err, "permission-denied");
+  fail = false; await q.retryAll();
+  assert.strictEqual(q.size(), 0); assert.strictEqual(q.firstError(), null);
+});

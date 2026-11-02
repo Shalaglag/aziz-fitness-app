@@ -37,7 +37,8 @@
     const mergeCols = opts.mergeCols || [];
     const exec = opts.exec, onChange = opts.onChange || (() => {});
     const now = opts.now || Date.now;
-    let pending = {}, chains = {}, enabled = true;
+    let pending = {}, chains = {}, enabled = true, bulkDepth = 0;
+    const batchSize = opts.batchSize || 200;
 
     function save() { try { if (storage) storage.setItem(key, JSON.stringify(pending)); } catch (e) {} onChange(size(), pending); }
     function load() { try { const j = storage && JSON.parse(storage.getItem(key) || "null"); pending = j && typeof j === "object" ? j : {}; } catch (e) { pending = {}; } onChange(size(), pending); return size(); }
@@ -52,8 +53,33 @@
         else delete w.fields;                        // older full write still unsent: send the whole doc
         w.told = p.told;
       }
-      pending[k] = w; save();
+      pending[k] = w;
+      if (bulkDepth) return Promise.resolve();        // inside bulk(): saved and sent together at the end
+      save();
       return flush(k);
+    }
+    // Many writes at once (an import): queue them all, store once, then send them in batches via
+    // opts.execMany (when the db has one) instead of hundreds of single requests.
+    async function bulk(fn) {
+      bulkDepth++;
+      try { await fn(); } finally { bulkDepth--; if (!bulkDepth) save(); }
+      if (!bulkDepth) await retryAll();
+    }
+    function flushMany(ws) {
+      const p = (async () => {
+        try {
+          await opts.execMany(ws);
+          ws.forEach(w => { const k = keyOf(w.col, w.id); if (pending[k] === w) delete pending[k]; });
+          save();
+        } catch (e) {
+          const first = ws.some(w => !w.told);
+          ws.forEach(w => { w.err = String((e && (e.message || e.code)) || e); w.told = true; });
+          save();
+          if (first && opts.onFail) opts.onFail(ws[0], e);
+        }
+      })();
+      ws.forEach(w => { chains[keyOf(w.col, w.id)] = p; });
+      return p;
     }
     function flush(k) {
       chains[k] = (chains[k] || Promise.resolve()).then(async () => {
@@ -90,10 +116,23 @@
       }
       return docs;
     }
-    function retryAll() { return Promise.all(Object.keys(pending).map(flush)); }
+    function retryAll() {
+      if (!enabled) return Promise.resolve();
+      const keys = Object.keys(pending);
+      if (opts.execMany && keys.length > 1) {
+        const many = keys.map(k => pending[k]).filter(w => !w.fields);   // field merges still go one by one
+        if (many.length > 1) {
+          const chunks = [];
+          for (let i = 0; i < many.length; i += batchSize) chunks.push(many.slice(i, i + batchSize));
+          return Promise.all(chunks.map(flushMany).concat(keys.filter(k => pending[k].fields).map(flush)));
+        }
+      }
+      return Promise.all(keys.map(flush));
+    }
+    function firstError() { const w = Object.values(pending).find(x => x.err); return w ? w.err : null; }
     function setEnabled(v) { enabled = !!v; if (v) retryAll(); }
 
-    return { load, put, remove, overlay, retryAll, flush: (col, id) => flush(keyOf(col, id)), size, list, setEnabled, has: (col, id) => !!pending[keyOf(col, id)] };
+    return { load, put, remove, overlay, retryAll, bulk, firstError, flush: (col, id) => flush(keyOf(col, id)), size, list, setEnabled, has: (col, id) => !!pending[keyOf(col, id)] };
   }
 
   return { create, changedFields, pick };

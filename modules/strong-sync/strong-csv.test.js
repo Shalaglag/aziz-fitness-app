@@ -72,3 +72,12 @@ test("two Strong names that map to one app name in the same workout add up inste
   assert.deepEqual(docs["2026-10-28"].sets["Bench Press (Barbell)"], [{ w: 90, r: 8 }, { w: 90, r: 7 }, { w: 60, r: 12 }]);
   assert.equal(report.sets, 9);
 });
+
+test("re-import over an older import that kept Strong names drops the old copies", () => {
+  const existing = { "2026-10-28": { date: "2026-10-28", source: "strong", strong: { title: "Push A" }, sets: { "Gundam": [{ w: 55, r: 8 }], "Bench Press (Barbell)": [{ w: 85, r: 8 }], "Cable Crossover": [{ w: 16.5, r: 10 }] } } };
+  const { docs } = StrongCSV.toWorkouts(CSV, { program: PROGRAM, rotation: ROTATION, existing });
+  const d = docs["2026-10-28"];
+  assert.equal(d.sets["Gundam"], undefined);
+  assert.deepEqual(d.sets["Gundam (Chest Machine)"], [{ w: 60, r: 8 }]);
+  assert.deepEqual(d.sets["Cable Crossover"], [{ w: 16.5, r: 10 }]);
+});
