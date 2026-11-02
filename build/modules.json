@@ -48,6 +48,7 @@
     { "file": "modules/app-targets/app-targets.js" },
     { "file": "modules/goal-setup/goal-setup.js", "expose": ["GoalSetup"] },
     { "file": "modules/plan-check/plan-check.js", "expose": ["PlanCheck"] },
+    { "file": "modules/milestones/milestones.js", "expose": ["Milestones"] },
     { "file": "modules/daily-dashboard/daily-dashboard.js" },
     { "file": "modules/supps-drinks/supps-drinks.js", "expose": ["SuppDrinks"] },
     { "file": "modules/recovery-fatigue/recovery-fatigue.js", "expose": ["RecoveryFatigue"] },

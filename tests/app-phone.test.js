@@ -518,6 +518,29 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close(); await p2.close();
     });
 
+    await t.test("milestones: trend-based weight numbers and workout counts, celebrated once, old ones recorded quietly", async () => {
+      // 61 days losing 0.5 kg/wk from 91.9 (the trend passed 90 kg weeks ago) and 10 workouts, the tenth yesterday.
+      const seedMs = today => {
+        const d = { weights: {}, days: {}, workouts: {}, prefs: {} };
+        for (let i = 0; i < 61; i++) { const date = addDays(today, -(60 - i)); d.weights[date] = { date, kg: Math.round((91.9 - 0.5 * i / 7) * 10) / 10 }; }
+        for (let i = 0; i < 10; i++) { const date = addDays(today, -(1 + i * 3)); d.workouts[date] = { date, session: "Push A", sets: { "Bench Press": [{ w: 80, r: 8 }] } }; }
+        return d;
+      };
+      const { page, errors } = await openApp(browser, PHONES[0], seedMs);
+      await page.evaluate(() => { const a = { sex: "male", age: 29, heightCm: 172, kg: 91.9, activity: "moderate", goal: "cut", pace: "regular", targetKg: 80 }; const start = addDays(TODAY, -60); const r = GoalSetup.compute(a, { today: start }); const p = clone(S.docs.prefs.main || {}); p.profile = { ...(p.profile || {}), ...r.profile }; p.goalSetup = { answers: a, result: r, at: start + "T07:00:00Z" }; put("prefs", "main", p); });
+      await page.waitForTimeout(150);
+      const st = await page.evaluate(() => ({ toast: [...document.querySelectorAll(".toast")].map(t => t.textContent), seen: Object.keys(S.docs.prefs.main.milestones || {}).sort(), card: document.querySelector('#main details[data-keep="f:ms"]') ? document.querySelector('#main details[data-keep="f:ms"]').textContent : "" }));
+      assert.ok(st.seen.includes("kg:90") && st.seen.includes("workouts:10"), JSON.stringify(st.seen));
+      assert.ok(st.toast.some(t => /10 workouts logged/.test(t)), "the fresh one (yesterday) is celebrated: " + JSON.stringify(st.toast));
+      assert.ok(!st.toast.some(t => /90 kg/.test(t)), "the weeks-old weight milestone is recorded without a toast");
+      assert.match(st.card, /90 kg on the trend/); assert.match(st.card, /10 workouts logged/); assert.match(st.card, /Next up:/);
+      await page.reload(); await page.waitForFunction(() => document.querySelector("#main").children.length > 0); await page.waitForTimeout(150);
+      assert.deepStrictEqual(await page.evaluate(() => [...document.querySelectorAll(".toast")].map(t => t.textContent).filter(t => /logged|on the trend|est\. 1RM|steady/.test(t))), [], "nothing fires twice");
+      assert.ok((await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("plan check: two weeks of logs → estimate card with a range, weekly report plan line, apply only on tap", async () => {
       // 28 days of weigh-ins losing 0.15 kg/wk while eating 2,370: slower than the plan's 0.46, so the estimate is lower and a change is offered.
       const seedPlan = today => {
