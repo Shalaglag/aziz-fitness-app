@@ -1,6 +1,6 @@
 // The whole route on a phone-sized screen: the built app (app/index.html in Chromium, 360×800) → the coach
 // service running in the local Workers runtime (wrangler dev) → a mock Claude API. Checks the consent card,
-// that nothing is sent before consent, the streamed answer, the cost line, and the AI settings meter.
+// that nothing is sent before consent, the streamed answer, spending hidden by default, and the AI settings meter once switched on.
 // Not part of npm test (needs wrangler + Playwright): node test/app-e2e.mjs [screenshot.png]
 import http from "node:http";
 import { spawn } from "node:child_process";
@@ -84,8 +84,12 @@ try {
   await page.waitForFunction(() => /متوسط وزنك/.test(document.querySelector(".co-msgs").textContent));
   assert.equal(seen[1].messages.length, 3, "the second question carries the first turn");
   await page.click("[data-coach-settings]");
+  await page.waitForFunction(() => /AI chat is on/.test(document.querySelector(".co-settings") ? document.querySelector(".co-settings").textContent : ""));
+  assert.ok(!/\$\d/.test(await page.textContent(".co-panel")), "no spending amounts shown by default");
+  await page.check("[data-coach-showcost]");
   await page.waitForFunction(() => /of your \$100 cap this month \(2 answers\)/.test(document.querySelector(".co-settings") ? document.querySelector(".co-settings").textContent : ""));
   const consent = await page.evaluate(() => S.docs.prefs.main.coachAI);
+  assert.equal(consent.showCost, true, "the spending-details switch is saved");
   assert.ok(consent && consent.consent, "consent stored in prefs");
   const wide = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
   assert.ok(wide, "no sideways scrolling");
