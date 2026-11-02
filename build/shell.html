@@ -1309,7 +1309,7 @@ const coachActions = {
   }
 };
 let coachCache=null; // one computation per tick: the panel's getters all ask within the same call
-function coachOpts(){ if(coachCache) return coachCache; const o={today:TODAY, targets:APPT, rules:{floor:KCAL_FLOOR}, kcalTarget}; coachCache=o; setTimeout(()=>{ coachCache=null; },0);
+function coachOpts(){ if(coachCache) return coachCache; const o={today:TODAY, targets:APPT, rules:{floor:KCAL_FLOOR}, kcalTarget, plan:S.docs.prefs.main?.goalSetup||null}; coachCache=o; setTimeout(()=>{ coachCache=null; },0);
   try{ if(window.StrengthAnalytics) o.strength=StrengthAnalytics.analyze(S.docs, strengthOpts()); }catch(e){}
   try{ if(window.RecoveryFatigue && RecoveryFatigue.summary) o.recoveryText=RecoveryFatigue.summary(S.docs, {today:TODAY, ...rfOpts()}); }catch(e){}
   try{ if(window.Cardio && Cardio.summary) o.cardioText=Cardio.summary(S.docs, {today:TODAY}); }catch(e){}
@@ -2330,7 +2330,7 @@ try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css
 ["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
-  if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget,
+  if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget, plan:()=>S.docs.prefs.main?.goalSetup||null,
     effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee, tab:()=>view.tab,
     strength:()=>coachOpts().strength, recoveryText:()=>coachOpts().recoveryText, cardioText:()=>coachOpts().cardioText,
     planToday:coachPlanToday, exerciseNames:()=>Object.values(PROGRAM).flat().map(t=>t[0]), exercise:coachExercise,
