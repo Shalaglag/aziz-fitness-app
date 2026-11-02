@@ -43110,7 +43110,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
  *   event "progress" {done, total}
  *
  * Shell API: AppUpdate.bind({render, toast}); AppUpdate.cardHTML(); AppUpdate.bannerHTML();
- * AppUpdate.autoCheck(). Pure helpers for tests: parseLatest, parseRelease, compare, errorText, LATEST_URL, APK_URL, TOKEN_URL.
+ * AppUpdate.autoCheck(); AppUpdate.promptHTML() (the "Update required" popup, shown on open/resume). Pure helpers for tests: parseLatest, parseRelease, compare, errorText, LATEST_URL, APK_URL, TOKEN_URL.
  */
 (function (root) {
   // Public releases-only repository: APK + latest.json, no code, no key needed.
@@ -43123,7 +43123,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
   const RELEASE_URL = `https://api.github.com/repos/${REPO.owner}/${REPO.repo}/releases/tags/${REPO.tag}`;
   const TOKEN_URL = "https://github.com/settings/personal-access-tokens/new?name=Aziz%20Fitness%20updates&description=Lets%20the%20Aziz%20Fitness%20app%20download%20its%20own%20updates&target_name=" + REPO.owner + "&expires_in=none&contents=read";
   const KEY = "aziz-update-token";
-  const AUTO_EVERY = 6 * 3600e3;
+  const AUTO_EVERY = 10 * 60e3; // re-check on open/resume at most every 10 minutes
 
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -43166,7 +43166,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
   const store = () => { try { return root.localStorage || null; } catch (e) { return null; } };
   function getToken() { try { return (store() && store().getItem(KEY)) || ""; } catch (e) { return ""; } }
   function setToken(t) { try { const s = store(); if (!s) return; t ? s.setItem(KEY, t.trim()) : s.removeItem(KEY); } catch (e) { } }
-  const redraw = () => { try { ctx.render(); } catch (e) { } };
+  const redraw = () => { try { ctx.render(); } catch (e) { } syncPrompt(); };
 
   async function current() {
     if (S.current) return S.current;
@@ -43205,7 +43205,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
       const ok = await p.canInstall();
       if (!ok.allowed) { S.phase = "allow"; S.msg = errorText("install-not-allowed"); redraw(); return; }
       S.phase = "downloading"; S.done = 0; S.total = S.latest.size; S.msg = ""; redraw();
-      const sub = p.addListener ? await p.addListener("progress", e => { S.done = e.done || 0; S.total = e.total || S.total; const bar = root.document && root.document.getElementById("auBar"); if (bar) bar.style.width = pct() + "%"; }) : null;
+      const sub = p.addListener ? await p.addListener("progress", e => { S.done = e.done || 0; S.total = e.total || S.total; const d = root.document; if (d && d.querySelectorAll) d.querySelectorAll(".au-track span").forEach(bar => { bar.style.width = pct() + "%"; }); }) : null;
       let got;
       try { got = await p.download({ url: S.latest.assetUrl, token: S.latest.source === "private" ? token : "", minVersion: (S.current && S.current.versionCode || 0) + 1 }); }
       finally { try { sub && sub.remove && sub.remove(); } catch (e) { } }
@@ -43257,6 +43257,46 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
     return `<div class="card au-banner"><div class="spread"><span><b>New version ready</b> · build ${esc(S.latest.build)}</span><button class="btn small" data-au="update">Update</button></div></div>`;
   }
 
+  // Full-screen "Update required" popup: shown whenever a newer build is found on open or resume.
+  // Close hides it until the app is next opened or brought back to the front.
+  const promptOn = () => native() && !S.dismissed && !!S.latest && ["available", "allow", "downloading", "installing"].includes(S.phase);
+  function promptHTML() {
+    if (!promptOn()) return "";
+    const L = S.latest;
+    let body, btns;
+    if (S.phase === "downloading") {
+      body = `<p>Downloading build ${esc(L.build)}…</p><div class="au-track" aria-hidden="true"><span style="width:${pct()}%"></span></div>`;
+      btns = "";
+    } else if (S.phase === "installing") {
+      body = `<p>Android is asking you to confirm. Tap <b>Update</b> there. Your data stays.</p>`;
+      btns = `<button class="btn" data-au="update">Open the installer again</button>`;
+    } else {
+      body = `<p>A new version of Mizan is ready (build ${esc(L.build)}${L.size ? `, ${mb(L.size)}` : ""}). Update the app to continue.</p><p class="muted" style="font-size:.88rem">Your logs, settings and account stay as they are.</p>`;
+      btns = (S.phase === "allow" ? `<button class="btn" data-au="allow">Allow updates</button>` : "") + `<button class="btn${S.phase === "allow" ? " ghost" : ""}" data-au="update">Update now</button>`;
+    }
+    return `<div class="au-prompt" role="dialog" aria-modal="true" aria-labelledby="auPromptTitle"><div class="au-prompt-box card">
+      <button class="au-x" data-au="dismiss" aria-label="Close">×</button>
+      <h2 id="auPromptTitle">Update required</h2>${body}${S.msg ? `<p class="au-msg" role="status">${esc(S.msg)}</p>` : ""}
+      <div class="au-prompt-btns">${btns}<button class="btn ghost" data-au="dismiss" data-close>Close</button></div></div></div>`;
+  }
+  let promptKey = "";
+  function syncPrompt() {
+    const d = root.document; if (!d || !d.body || !d.createElement) return;
+    let el = d.getElementById("auPrompt");
+    const html = promptHTML();
+    if (!html) { if (el) el.remove(); promptKey = ""; return; }
+    // Keep the same node while downloading so the progress bar is not rebuilt on every tick.
+    const key = S.phase + "|" + S.msg + "|" + (S.latest && S.latest.build);
+    if (el && key === promptKey) return;
+    if (!el) { el = d.createElement("div"); el.id = "auPrompt"; d.body.appendChild(el); }
+    el.innerHTML = html; promptKey = key;
+  }
+  // Called on start-up and every time the app comes back to the front.
+  function onOpen(now) {
+    S.dismissed = false;
+    if (!autoCheck(now)) syncPrompt();
+  }
+
   async function onClick(e) {
     const b = e.target.closest && e.target.closest("[data-au]"); if (!b) return;
     const a = b.dataset.au;
@@ -43268,6 +43308,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
     } else if (a === "cancel") { S.editing = false; redraw(); }
     else if (a === "edit") { S.editing = true; redraw(); }
     else if (a === "forget") { setToken(""); S.phase = "idle"; S.latest = null; S.msg = ""; redraw(); ctx.toast("Download key removed from this phone."); }
+    else if (a === "dismiss") { S.dismissed = true; syncPrompt(); }
     else if (a === "check") check();
     else if (a === "update") update();
     else if (a === "allow") { const p = plugin(); if (p) { try { await p.openInstallSettings(); } catch (er) { } } S.phase = "available"; S.msg = "After you allow it, come back and tap Update now."; redraw(); }
@@ -43277,12 +43318,12 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
     ctx = Object.assign(ctx, o || {});
     if (root.document && !bind.done) { root.document.addEventListener("click", onClick); bind.done = true; }
     if (native()) {
-      current().then(redraw); autoCheck();
+      current().then(redraw); onOpen();
       const app = cap().Plugins && cap().Plugins.App;
-      if (app && app.addListener && !bind.resume) { bind.resume = true; try { app.addListener("resume", () => autoCheck()); } catch (e) { } }
+      if (app && app.addListener && !bind.resume) { bind.resume = true; try { app.addListener("resume", () => onOpen()); } catch (e) { } }
     }
   }
-  // Quietly checks at start-up and when the app comes back to the front, at most every 6 hours.
+  // Quietly checks at start-up and when the app comes back to the front, at most every 10 minutes.
   function autoCheck(now) {
     if (!native()) return false;
     const t = now || Date.now();
@@ -43294,9 +43335,14 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
   const css = `.au-steps{margin:.4em 0 .6em 1.2em;padding:0;font-size:.9rem}.au-steps li{margin:.2em 0}
 .au-track{height:8px;border-radius:4px;background:var(--line,#ddd);overflow:hidden}.au-track span{display:block;height:100%;background:var(--accent,#2b6);transition:width .2s}
 .au-msg{font-size:.88rem;margin:.5em 0 0}.au-banner .spread{gap:10px;align-items:center}
+.au-prompt{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.au-prompt-box{position:relative;width:100%;max-width:380px;margin:0;padding:22px 18px 16px;background:var(--card,#fff);color:var(--ink,inherit)}
+.au-prompt-box h2{margin:0 0 .5em;font-size:1.25rem}.au-prompt-box p{margin:.3em 0}
+.au-prompt-btns{display:flex;flex-direction:column;gap:8px;margin-top:14px}.au-prompt-btns .btn{width:100%;min-height:44px}
+.au-x{position:absolute;top:6px;right:8px;background:none;border:0;font-size:1.6rem;line-height:1;padding:6px 10px;color:inherit;cursor:pointer}
 .linkbtn{background:none;border:0;padding:0;color:inherit;text-decoration:underline;font:inherit;cursor:pointer}`;
 
-  const AppUpdate = { PUBLIC, LATEST_URL, APK_URL, REPO, RELEASE_URL, TOKEN_URL, parseLatest, parseRelease, compare, errorText, check, update, cardHTML, bannerHTML, bind, autoCheck, getToken, setToken, css, _state: S };
+  const AppUpdate = { PUBLIC, LATEST_URL, APK_URL, REPO, RELEASE_URL, TOKEN_URL, parseLatest, parseRelease, compare, errorText, check, update, cardHTML, bannerHTML, promptHTML, bind, autoCheck, onOpen, getToken, setToken, css, _state: S };
   root.AppUpdate = AppUpdate;
   if (typeof module !== "undefined" && module.exports) module.exports = AppUpdate;
 })(typeof window !== "undefined" ? window : globalThis);
