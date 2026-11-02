@@ -51,8 +51,10 @@ Errors: `not_signed_in` 401, `not_allowed` 403, `cap_reached` / `out_of_credit` 
    - `ANTHROPIC_API_KEY`, type **Secret**: the key from https://platform.claude.com/settings/keys
    - `ALLOWED_EMAILS`, type Text: the email you sign in to Mizan with
 4. Open `https://mizan-coach.<your-subdomain>.workers.dev/v1/health`: `keySet` and `ownerSet` should be `true`.
-5. In Mizan: Ask Claude → ⚙ AI settings → paste that address → Save address. Ask a question and turn the AI
-   chat on when asked.
+5. The app's built-in address is `coachEndpoint` in `app/cloud-config.js` (the BASE address, no `/v1/…`):
+   `https://mizan-coach.a47alshaheen.workers.dev` since Nov 2. A different service can be set in Ask Claude → ⚙ AI
+   settings; the field drops a pasted `/v1/health`, `/v1/chat`, `/v1/usage` or `/v1/cap` suffix. Ask a question and
+   turn the AI chat on when asked.
 
 The key is only ever typed into Cloudflare's secret field. It is never in the repo, the APK, the app's data,
 browser storage or a chat.

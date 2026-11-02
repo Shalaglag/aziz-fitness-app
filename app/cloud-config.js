@@ -11,8 +11,8 @@ window.FITNESS_CLOUD_CONFIG = {
   // Sign-in method → Google → Web SDK configuration (…apps.googleusercontent.com). Empty = the Google button
   // says it isn't switched on yet; email sign-in keeps working. Not a secret (docs/GOOGLE-SIGN-IN.md).
   googleClientId: "323272267870-3msmnmomuj6l9k89kkegq4vu2qv7ev70.apps.googleusercontent.com",
-  // Ask Claude: the address of the Mizan coach service (worker/, Cloudflare Workers), e.g.
-  // "https://mizan-coach.<your-subdomain>.workers.dev". Not a secret; the API key stays in the service. Empty = set it
-  // in the app (Ask Claude → ⚙ AI settings) instead.
-  coachEndpoint: ""
+  // Ask Claude: the BASE address of the Mizan coach service (worker/, Cloudflare Workers; deployed Nov 2 2026).
+  // Not a secret; the API key stays in the service, which only answers the owner's account. A custom address saved in
+  // Ask Claude → ⚙ AI settings (prefs/main.coachService) takes precedence.
+  coachEndpoint: "https://mizan-coach.a47alshaheen.workers.dev"
 };
