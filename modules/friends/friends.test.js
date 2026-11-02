@@ -56,6 +56,23 @@ test("weight share gives change over 30 days (kg or %), never the weight itself"
   assert.equal(JSON.stringify(s).includes("90"), false);
 });
 
+test("goal plan share is opt-in and carries only goal, pace and a progress %; never weight, calories or dates", () => {
+  const plan = { answers: { kg: 92, targetKg: 80 }, result: { ok: true, goal: "cut", direction: -1, pace: "regular", ratePct: 0.5, kcal: 2370, tdee: 2874, today: "2026-10-01", endDate: "2027-05-03", profile: { goalKg: 80, startKg: 92, cutKcal: 2370 }, answers: { kg: 92 } } };
+  assert.equal(F.buildShare(me, F.defaultSharing(), ctx({ plan })).plan, undefined, "off by default");
+  const s = F.buildShare(me, { plan: true }, ctx({ plan }));
+  assert.deepEqual(s.plan, { goal: "cut", direction: -1, pace: "regular", ratePct: 0.5, pct: 17, weeks: 4 });
+  const txt = JSON.stringify(s.plan);
+  for (const secret of ["92", "90", "80", "2370", "2874", "2026-10", "2027"]) assert.equal(txt.includes(secret), false, secret);
+  assert.deepEqual(F.buildShare(me, { plan: true }, ctx()).plan, { goal: null }, "no plan saved → nothing but that");
+  const hold = F.buildShare(me, { plan: true }, ctx({ plan: { result: { ok: true, goal: "maintain", direction: 0, today: "2026-10-01", profile: { goalKg: 92 }, answers: { kg: 92 } } } }));
+  assert.equal(hold.plan.pct, null); assert.equal(hold.plan.weeks, 4);
+  const c = F.compare(Object.assign({}, s, { cats: { plan: true } }), Object.assign({}, hold, { cats: { plan: true } }), TODAY);
+  const row = c.rows.find(r => r.label === "Goal plan");
+  assert.equal(row.a, "Losing fat · regular pace · 17% there"); assert.equal(row.b, "Maintaining · week 5");
+  assert.equal(F.compare(Object.assign({}, s, { cats: {} }), hold, TODAY).rows.find(r => r.label === "Goal plan").a, "Not shared");
+  assert.ok(!F.CH_TYPES.some(t => /weight|kg|loss/i.test(t.key + t.label + t.sub)), "no weight-loss race among the challenge types");
+});
+
 test("water, cardio and nutrition shares are summaries only", () => {
   const c = ctx(); c.docs.days[TODAY].food = [{ kcal: 1900, p: 170, eaten: true }, { kcal: 900, p: 10, eaten: false }]; c.getDay = d => c.docs.days[d] || { date: d };
   const s = F.buildShare(me, { water: true, cardio: true, nutrition: true }, c);

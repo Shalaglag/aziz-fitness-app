@@ -24,7 +24,8 @@ compare what they choose to share, and run private challenges. Plain script, `wi
 `steps {goal, days{date:n}, at, source, connected}`, `workouts {weekGoal, dates[]}`, `water {goal, days, goals}`,
 `cardio {days{date:{min,km}}}`, `strength {ex{name:{kg,reps,e1rm,at}}}` (best set per exercise, kg, 90 days),
 `nutrition {days{date:{kcalOk,proteinOk}}}` (never meals), `weight {mode, change|pct, since, days}` (never the
-weight). Challenge entries carry only `{s, g}` (steps, goal) and/or `{w}` per day inside the challenge window.
+weight), `plan {goal, direction, pace, ratePct, pct, weeks}` (the goal plan's shape and a progress %; never weight,
+calories or dates; off by default like every category; `ctx.plan` = `prefs/main.goalSetup`). Challenge entries carry only `{s, g}` (steps, goal) and/or `{w}` per day inside the challenge window.
 
 Sharing choices are the person's own `prefs/friends` doc (`{steps:bool, …, weightMode, weekGoal, name, avatar}`).
 
