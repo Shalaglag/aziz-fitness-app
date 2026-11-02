@@ -89,17 +89,18 @@ const TrendTDEE = (() => {
     docs = docs || {};
     KCAL = posNum(opts.kcal) || KCAL_DEFAULT; FLOOR = posNum(opts.floor) || FLOOR_DEFAULT; REVIEW_AT = isDate(opts.review) ? opts.review : REVIEW;
     const today = isDate(opts.today) ? opts.today : localToday();
+    const startAt = isDate(opts.start) ? opts.start : START;   // the plan's start (profile.start); the window never reaches before it
     const ser = series(docs.weights, { today });
     const at = d => { const r = ser.find(x => x.date === d); return r ? r.trend : null; };
     const trendNow = ser.length ? ser[ser.length - 1].trend : null;
     const wk = at(add(today, -7));
     const to = add(today, -1);
-    const from = add(to, -(MAX_DAYS - 1)) < START ? START : add(to, -(MAX_DAYS - 1));
+    const from = add(to, -(MAX_DAYS - 1)) < startAt ? startAt : add(to, -(MAX_DAYS - 1));
     const days = Math.max(0, diff(from, to) + 1);
     const R = {
       today, from, to, days, trendNow, trendDelta7: trendNow != null && wk != null ? trendNow - wk : null,
       weighIns: 0, foodDays: 0, estDays: 0, intakeAvg: null, rateKgWk: null, tdee: null, tdeeLo: null, tdeeHi: null,
-      suggest: null, readyOn: add(START, MIN_DAYS), reviewOpen: today > REVIEW_AT, notes: [], ready: false, status: "empty",
+      suggest: null, readyOn: add(startAt, MIN_DAYS), reviewOpen: today > REVIEW_AT, notes: [], ready: false, status: "empty",
     };
     if (!ser.length) return R;
     R.status = "building";
@@ -133,7 +134,7 @@ const TrendTDEE = (() => {
     const missing = days - R.foodDays;
     if (missing) R.notes.push(missing + " day" + (missing === 1 ? "" : "s") + " without food logged " + (missing === 1 ? "was" : "were") + " left out. If those were bigger days (Fridays), real burn is a little lower than shown.");
     if (R.estDays) R.notes.push(R.estDays + " logged day" + (R.estDays === 1 ? " includes" : "s include") + " estimated items.");
-    if (from <= add(START, 6)) R.notes.push("Includes the first week of the cut, when water and glycogen drop fast, so burn may read high. It settles as more weeks come in.");
+    if (from <= add(startAt, 6)) R.notes.push("Includes the first week of the cut, when water and glycogen drop fast, so burn may read high. It settles as more weeks come in.");
     if (band >= 300) R.notes.push("Weigh-ins are noisy over this window, so the range is wide. More days will narrow it.");
     return R;
   }

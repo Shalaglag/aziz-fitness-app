@@ -498,6 +498,45 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close(); await p2.close();
     });
 
+    await t.test("plan check: two weeks of logs → estimate card with a range, weekly report plan line, apply only on tap", async () => {
+      // 28 days of weigh-ins losing 0.15 kg/wk while eating 2,370: slower than the plan's 0.46, so the estimate is lower and a change is offered.
+      const seedPlan = today => {
+        const d = { weights: {}, days: {}, workouts: {}, prefs: {} };
+        for (let i = 0; i < 28; i++) { const date = addDays(today, -(27 - i)); d.weights[date] = { date, kg: Math.round((91.9 - 0.15 * i / 7) * 10) / 10 }; d.days[date] = { date, food: [{ id: "a", name: "Food", kcal: 2370, p: 180, c: 250, f: 65, eaten: true }], water: 0, supps: {}, treadmill: false }; }
+        return d;
+      };
+      const { page, errors } = await openApp(browser, PHONES[0], seedPlan);
+      await page.evaluate(() => { const a = { sex: "male", age: 29, heightCm: 172, kg: 91.9, activity: "moderate", goal: "cut", pace: "regular", targetKg: 80 }; const start = addDays(TODAY, -27); const r = GoalSetup.compute(a, { today: start }); const p = clone(S.docs.prefs.main || {}); p.profile = { ...(p.profile || {}), ...r.profile }; p.goalSetup = { answers: a, result: r, at: start + "T07:00:00Z" }; put("prefs", "main", p); });
+      await page.waitForTimeout(200);
+      const before = await page.evaluate(() => ({ kcal: kcalTarget(TODAY), nudge: !!document.querySelector('#main [data-act="pcgo"]'), R: planCheck() }));
+      assert.strictEqual(before.R.status, "ready", JSON.stringify(before.R.reasons));
+      assert.strictEqual(before.R.verdict, "offer"); assert.ok(before.nudge, "Today shows the plan-check nudge");
+      await page.click('#main [data-act="pcgo"]');
+      await page.waitForSelector("#main .pc-card [data-pc=\"apply\"]");
+      const card = await page.evaluate(() => ({ text: document.querySelector("#main .pc-card").textContent, wide: document.documentElement.scrollWidth - window.innerWidth, wr: document.querySelector("#main .wr-verdict") ? document.querySelector("#main .wr-verdict").textContent : "" }));
+      assert.match(card.text, /Estimated maintenance/); assert.match(card.text, /about [\d,]+–[\d,]+ kcal/); assert.match(card.text, /Nothing changes unless you tap/);
+      assert.ok(card.wide <= 1, "plan check card fits the phone");
+      await page.evaluate(() => { const f = document.querySelector('#main details[data-keep="f:wr"]'); if (f) f.open = true; });
+      const wr = await page.evaluate(() => document.querySelector("#main .wr-verdict") ? document.querySelector("#main .wr-verdict").textContent : "");
+      assert.match(wr, /Plan: lose about 0.46 kg a week/); assert.match(wr, /Slower than planned|On plan|Faster/); assert.doesNotMatch(wr, /water likely/);
+      // "Ask again in a week" changes nothing; "Use N kcal" applies and keeps the start date
+      await page.click('#main .pc-card [data-pc="later"]');
+      await page.waitForTimeout(150);
+      const later = await page.evaluate(() => ({ kcal: kcalTarget(TODAY), rc: S.docs.prefs.main.goalSetup.recheck.decision, card: document.querySelector("#main .pc-card").textContent }));
+      assert.strictEqual(later.kcal, before.kcal); assert.strictEqual(later.rc, "later"); assert.match(later.card, /reminded on/);
+      await page.evaluate(() => { const p = clone(S.docs.prefs.main); delete p.goalSetup.recheck; put("prefs", "main", p); });
+      await page.waitForSelector('#main .pc-card [data-pc="apply"]');
+      await page.click('#main .pc-card [data-pc="apply"]');
+      await page.waitForTimeout(150);
+      const after = await page.evaluate(() => ({ kcal: kcalTarget(TODAY), prof: S.docs.prefs.main.profile, gs: S.docs.prefs.main.goalSetup, card: document.querySelector("#main .pc-card").textContent }));
+      assert.ok(after.kcal < before.kcal && after.kcal === after.prof.cutKcal, "applied calories drive the day target: " + after.kcal);
+      assert.strictEqual(after.prof.start, addDays(await page.evaluate(() => TODAY), -27), "plan start date is kept");
+      assert.strictEqual(after.gs.result.profile.goalKg, 80); assert.strictEqual(after.gs.recheck.decision, "apply");
+      assert.match(after.card, /changed to [\d,]+ kcal/);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     for (const phone of PHONES) {
       await t.test(phone.name + ": every tab renders with no errors and no sideways scroll", async () => {
         for (const data of [null, seed]) {

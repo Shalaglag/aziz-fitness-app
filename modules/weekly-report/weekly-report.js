@@ -192,7 +192,9 @@ const WeeklyReport = (() => {
     if (two.length) v.push(["bad", "Strength", two.map(l => l.label).join(", ") + " dropped 2 sessions in a row. Check sleep, pre-workout food and volume before touching calories."]);
     else if (one.length) v.push(["warn", "Strength", one.map(l => l.label).join(", ") + " dipped last session. One dip is normal on a cut; act only if it drops again."]);
     else if (logged.length) v.push(["good", "Strength", "All " + logged.length + " logged main lifts are holding or up."]);
-    if (end < REVIEW) v.push(["neutral", "Plan", "Keep " + kc(KCAL) + " kcal. The calorie review comes after " + reviewLabel() + ", based on the 2-week average."]);
+    // opts.planLine: the host's own "vs plan" verdict (PlanCheck.weekLine) replaces the fixed review reminder.
+    if (Array.isArray(opts.planLine) && opts.planLine.length === 3) v.push(opts.planLine);
+    else if (end < REVIEW) v.push(["neutral", "Plan", "Keep " + kc(KCAL) + " kcal. The calorie review comes after " + reviewLabel() + ", based on the 2-week average."]);
     else if (end === REVIEW) {
       const a = weeks[0].avg, b = weeks[1] && weeks[1].avg;
       let t = "Log both weeks to get the review.";
