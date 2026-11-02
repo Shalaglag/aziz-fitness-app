@@ -123,7 +123,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.strictEqual((r.profile || {}).cutKcal, undefined, "nothing wrote a new calorie target");
       await go(page, "food");
       const v = await page.evaluate(() => [...document.querySelectorAll(".fsum .v")].map(e => e.textContent.trim()));
-      assert.deepStrictEqual(v, ["2,000", "870", "1,130"], "budget ignores the 450 kcal treadmill and 14k steps");
+      assert.deepStrictEqual(v, ["1,130", "870", "2,000"], "remaining, eaten, target: budget ignores the 450 kcal treadmill and 14k steps");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });
@@ -146,8 +146,8 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "food");
       const r = await page.evaluate(() => { const v = [...document.querySelectorAll(".fsum .v")].map(e => e.textContent.trim()); return { v, target: kcalTarget(TODAY), labels: [...document.querySelectorAll(".fsum .label")].map(e => e.textContent.trim()) }; });
-      assert.deepStrictEqual(r.v, ["2,000", "870", "1,130"], "budget, food, remaining");
-      assert.deepStrictEqual(r.labels, ["Budget", "Food", "Remaining"]);
+      assert.deepStrictEqual(r.v, ["1,130", "870", "2,000"], "remaining, eaten, target");
+      assert.deepStrictEqual(r.labels, ["Remaining", "Eaten", "Target"]);
       assert.strictEqual(r.target, 2000, "the budget is the chosen target, never lowered on its own");
       // Open the sheet for Meal 2, add a food, and it lands under Meal 2 with the sheet closed
       await page.click('.mealgrp:has(.mh span:text-is("Meal 2")) [data-act="foodadd"]');
@@ -156,7 +156,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.fill("#fname", "Greek yoghurt"); await page.fill("#fk", "150"); await page.fill("#fp", "15"); await page.check("#featen");
       await page.click('#foodSheet button[type="submit"]');
       await page.waitForTimeout(200);
-      const after = await page.evaluate(() => ({ sheet: !!document.getElementById("foodSheet"), meal2: [...document.querySelectorAll('.mealgrp')].find(g => /^Meal 2/.test(g.textContent)).textContent, remaining: document.querySelector(".fsum .v.big").textContent.trim() }));
+      const after = await page.evaluate(() => ({ sheet: !!document.getElementById("foodSheet"), meal2: [...document.querySelectorAll('.mealgrp')].find(g => /^Meal 2/.test(g.textContent)).textContent, remaining: document.querySelector(".fsum .rem").textContent.trim() }));
       assert.strictEqual(after.sheet, false, "sheet closes after adding");
       assert.ok(/Greek yoghurt/.test(after.meal2), "new food is under Meal 2");
       assert.strictEqual(after.remaining, "980", "remaining drops by the eaten 150 kcal");
@@ -170,17 +170,37 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("Food look setting: Ring by default, Night / Board / Gauge draw their own hero with the same numbers", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "food");
+      assert.ok(await page.$(".fhero.fh-ring"), "Ring is the default look");
+      for (const [k, cls] of [["night", ".fh-night .fs-ring"], ["score", ".fh-score .sc-bar"], ["gauge", ".fh-gauge .gg"]]) {
+        await page.evaluate(k => { S.docs.prefs.main = Object.assign({}, S.docs.prefs.main, { foodLook: k }); render(); }, k);
+        assert.ok(await page.$(cls), k + " look renders");
+        const rem = await page.$eval(".fhero .rem", e => e.textContent.trim());
+        assert.strictEqual(rem, "1,130", k + " shows the same remaining");
+      }
+      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(wide <= 1, "no sideways scroll at 360 px");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("menu picker sits on the Food page above Food check: most protein by default, leave out fries, reasons shown, plan adds planned items", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "food");
       const order = await page.evaluate(() => { const m = document.getElementById("menuPicker"), f = [...document.querySelectorAll("#main details, #main .fold, #main [data-fold]")].find(e => /Food check/.test(e.textContent)); return { has: !!m, before: !!(m && f && (m.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
       assert.ok(order.has, "menu picker card is on the Food page");
       assert.ok(order.before, "menu picker comes before Food check");
-      await page.click('#menuPicker [data-mi="paste"]');
+      // The picker now sits below the taller Food hero, so on CI Playwright's pointer tap kept landing under the fixed header or bottom bar; tap it the way the ticks are tapped above.
+      await page.$eval('#menuPicker [data-mi="paste"]', e => e.click());
       await page.fill("#miText", ["Main Meals", "Item  Calories  Protein  Carbs  Fat", "French Tacos Chicken  650  55  60  20", "Buffalo Chicken with Sweet Potato  496  65  41  8",
         "Chicken Masala with Rice  607  67  60  11", "Grilled Steak with Potato  560  52  45  18", "Chicken Burger with Fries  600  70  50  14", "Snacks", "Greek Yogurt Berry Cup  150  15  18  2",
         "Protein Brownie  210  14  22  7", "Fresh Fruit Cup  90  1  22  0"].join("\n"));
-      await page.click('#menuPicker [data-mi="readtext"]');
+      const diagLog = [];
+      const diag = async (label) => { for (let i = 0; i < 6; i++) { const d = await page.evaluate(() => { const e = document.querySelector('#menuPicker [data-mi="readtext"]') || document.querySelector('#menuPicker [data-mi="paste"]'); const r = e ? e.getBoundingClientRect() : {}; const at = e && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return { scrollY: Math.round(scrollY), ih: innerHeight, dh: document.documentElement.scrollHeight, sw: document.documentElement.scrollWidth, top: Math.round(r.y), left: Math.round(r.x), w: Math.round(r.width), at: at && (at.tagName + "." + at.className), vv: visualViewport && [visualViewport.scale, Math.round(visualViewport.offsetTop), Math.round(visualViewport.height)], anims: document.getAnimations().length, wide: [...document.querySelectorAll("body *")].filter(x => x.getBoundingClientRect().right > innerWidth + 1 && !x.closest(".tablewrap")).slice(0, 10).map(x => (x.id || "") + "." + (typeof x.className === "string" ? x.className : "") + "@" + Math.round(x.getBoundingClientRect().left) + "-" + Math.round(x.getBoundingClientRect().right)), mainCls: document.getElementById("main").className, active: document.activeElement && document.activeElement.id }; }); diagLog.push(label + " " + i + " " + JSON.stringify(d)); await page.waitForTimeout(400); } };
+      await diag("before-readtext");
+      try { await page.click('#menuPicker [data-mi="readtext"]', { timeout: 8000 }); } catch (e) { await diag("after-fail"); throw new Error("readtext tap failed. " + diagLog.join(" || ") + " || " + e.message.split("\n")[0]); }
       await page.waitForSelector("#menuPicker .mi-opt.best");
       const pressed = await page.$eval('#menuPicker [data-mi="pri"][aria-pressed="true"]', e => e.textContent);
       assert.strictEqual(pressed, "Most protein");

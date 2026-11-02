@@ -586,15 +586,88 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 @media (max-width:400px){.subnav{gap:2px}.subnav button{padding:8px 2px;font-size:.85rem}}
 .subnav button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-1)}
 /* Food (Lose It-style diary) */
-.fsum{display:grid;grid-template-columns:1fr auto 1fr auto 1.3fr;align-items:end;gap:6px;text-align:center}
-.fsum .v{font-family:var(--display);font-weight:700;font-size:1.6rem;line-height:1}
-.fsum .v.big{font-size:2.6rem;color:var(--accent)}
+/* Food hero (Nov 2 redesign): calorie ring with remaining / eaten / target, three macro columns, Eaten|Remaining switch */
+.fsum{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:6px;text-align:center;padding:2px 0}
+.fsum .v{font-family:var(--display);font-weight:700;font-size:clamp(1.25rem,7vw,1.75rem);line-height:1;font-variant-numeric:tabular-nums}
+.fsum .v.big{font-size:2.9rem}
 .fsum .v.over{color:var(--bad)}
-.fsum .op{font-size:1.3rem;color:var(--muted);padding-bottom:8px}
-.fsum .label{display:block;margin-top:4px}
+.fsum .label{display:block;margin-top:5px}
+.fs-ring{position:relative;width:min(150px,42vw);height:min(150px,42vw)}
+.fs-ring svg{width:100%;height:100%;display:block}
+.fs-ring circle{fill:none;stroke-width:7}
+.fs-ring .ring-plan{stroke:var(--accent);opacity:.22;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:calc(100 - min(var(--value,0),100));transform:rotate(-90deg);transform-origin:center;transition:stroke-dashoffset var(--dur-fill) var(--ease-out)}
+.fs-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.fs-plan{margin:0;text-align:center;color:var(--muted);font-size:.82rem}
+.mcols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.mcol{display:flex;flex-direction:column;gap:6px;min-width:0;align-items:stretch}
+.mcol .mlab{font-size:.8rem;font-weight:600;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:5px}
+.mcol .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.mcol .mbar{height:6px;border-radius:3px}
+.mbar .eaten.over{background:var(--warn)}
+.mcol .mval{font-family:var(--body);font-size:.85rem;color:var(--muted);text-align:center}
+.mcol .mval b{color:var(--ink);font-weight:700}
+.fseg{display:inline-flex;gap:2px;background:var(--sunk);border-radius:999px;padding:3px;margin:0 auto}
+.fseg button{border:0;background:none;border-radius:999px;padding:6px 16px;font-weight:600;font-size:.85rem;color:var(--muted);cursor:pointer;min-height:32px}
+.fseg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-1)}
+/* Food looks B, C, D (Settings › Appearance › Food look; A = ring is the default) */
+.fhero{overflow:hidden}
+.fhero.fh-night,.fhero.fh-gauge{--fh-bg:#1C1917;--fh-ink:#F3EEE6;--fh-muted:#A79E94;--fh-line:#342E28;--fh-accent:#F08A57;--protein:#3EC1C3;--carbs:#F0AE4A;--fat:#A08BF2;background:var(--fh-bg);color:var(--fh-ink);border-color:var(--fh-bg)}
+[data-theme="dark"] .fhero.fh-night,[data-theme="dark"] .fhero.fh-gauge{--fh-bg:#231E1A}
+.fh-night .label,.fh-gauge .label,.fh-night .muted,.fh-gauge .muted,.fh-night .fs-plan,.fh-gauge .fs-plan,.fh-night .mcol .mlab,.fh-night .mcol .mval{color:var(--fh-muted)}
+.fh-night .mcol .mval b,.fh-gauge b{color:var(--fh-ink)}
+.fh-night .fs-ring{width:156px;height:156px}
+.fh-night .fs-ring circle{stroke-width:4}
+.fh-night .fs-ring .ring-track{stroke:var(--fh-line)}
+.fh-night .fs-ring .ring-fill,.fh-night .fs-ring .ring-plan{stroke:var(--fh-accent)}
+.fh-night .fsum .v.big{font-size:3.2rem}
+.fh-night .mcol{flex-direction:column}
+.fh-night .mcol .mbar{order:-1;height:3px;background:var(--fh-line)}
+.fh-night .mcols{gap:18px;padding-top:6px}
+.fh-night .fseg{background:var(--fh-line)} .fh-night .fseg button{color:var(--fh-muted)} .fh-night .fseg button[aria-pressed="true"]{background:var(--fh-ink);color:var(--fh-bg)}
+.fh-night .fverdict .pill,.fh-gauge .fverdict .pill{filter:brightness(1.35)}
+.fh-score .sc-top{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.fh-score .sc-big{font-family:var(--display);font-weight:800;font-size:4rem;line-height:.9;color:var(--accent)}
+.fh-score .sc-big.over{color:var(--bad)}
+.fh-score .sc-sub{font-size:.9rem;color:var(--muted);margin-top:6px}
+.fh-score .sc-side{text-align:right;font-size:.82rem;color:var(--muted);line-height:1.6}
+.fh-score .sc-side b{font-size:1rem;color:var(--ink)}
+.fh-score .sc-bar{display:flex;height:14px;border-radius:7px;background:var(--sunk);overflow:hidden;gap:2px}
+.fh-score .sc-bar span{display:block;height:100%}
+.fh-score .sc-bar .is-over{background:var(--bad)}
+.fh-score .sc-leg{display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem;color:var(--muted)}
+.fh-score .sc-leg i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:1px}
+.fh-score .sc-macros{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;border-top:1px solid var(--line);padding-top:14px}
+.fh-score .sc-m{display:flex;align-items:center;gap:8px;min-width:0}
+.fh-score .sc-m svg{width:44px;height:44px;flex:none}
+.fh-score .sc-m circle{fill:none;stroke-width:10}
+.fh-score .sc-m .ring-track{stroke:var(--sunk)}
+.fh-score .sc-m.mk-p .ring-fill{stroke:var(--protein)} .fh-score .sc-m.mk-c .ring-fill{stroke:var(--carbs)} .fh-score .sc-m.mk-f .ring-fill{stroke:var(--fat)}
+.fh-score .sc-m b{font-size:1rem;line-height:1;display:block}
+.fh-score .sc-m b small{font-size:.7rem;color:var(--muted);font-weight:500}
+.fh-score .sc-m span{font-size:.72rem;color:var(--muted);display:block;margin-top:3px}
+.fh-gauge .gg{position:relative;width:min(250px,74vw);margin:0 auto}
+.fh-gauge .gg svg{width:100%;height:auto;display:block}
+.fh-gauge .gg path{fill:none;stroke-width:12;stroke-linecap:round}
+.fh-gauge .gg .g-track{stroke:#3F3730}
+.fh-gauge .gg .g-plan{stroke:var(--fh-accent);opacity:.3}
+.fh-gauge .gg .g-fill{stroke:var(--fh-accent);stroke-dasharray:100;stroke-dashoffset:calc(100 - min(var(--value,0),100));transition:stroke-dashoffset var(--dur-fill) var(--ease-out)}
+.fh-gauge .gg .g-fill.is-over{stroke:var(--bad)}
+.fh-gauge .gg .g-mid{position:absolute;left:0;right:0;bottom:0;text-align:center}
+.fh-gauge .gg .g-mid .v{font-family:var(--display);font-weight:800;font-size:2.8rem;line-height:.9}
+.fh-gauge .gg .g-mid .v.over{color:var(--bad)}
+.fh-gauge .gg .g-mid span{display:block;font-size:.8rem;color:var(--fh-muted);margin-top:4px}
+.fh-gauge .g-row{display:flex;justify-content:space-between;font-size:.8rem;color:var(--fh-muted);padding:0 6px}
+.fh-gauge .g-row b{font-size:.95rem}
+.fh-gauge .g-macros{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;border-top:1px solid var(--fh-line);padding-top:12px}
+.fh-gauge .g-m .t{display:flex;justify-content:space-between;font-size:.78rem;color:var(--fh-muted)}
+.fh-gauge .g-m .t b{font-weight:700}
+.fh-gauge .g-m .t b small{color:var(--fh-muted);font-weight:500;font-size:.75rem}
+.fh-gauge .g-m .mbar{height:5px;background:var(--fh-line);margin-top:6px}
+.fverdict:empty{display:none}
+.fverdict .row{justify-content:center;gap:6px}
 .mealgrp{background:var(--surface);border:1px solid var(--card-line);box-shadow:var(--shadow-card);border-radius:18px;padding:0 14px;min-width:0}
 .mealgrp .mh{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;font-weight:700;font-size:1.05rem}
-.mealgrp .mh small{color:var(--muted);font-weight:500;font-family:var(--mono);font-size:.85rem}
+.mealgrp .mh small{color:var(--muted);font-weight:500;font-size:.85rem}.mealgrp .mh small b{color:var(--ink);font-weight:700}
 .mealgrp .item{padding:10px 0;grid-template-columns:auto minmax(0,1fr) auto auto;border-top:1px solid var(--line)}
 .mealgrp .item .nm b{overflow-wrap:anywhere;line-height:1.25}
 .mealgrp .item .mac{font-size:.75rem;line-height:1.3}
@@ -610,6 +683,60 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .sheet-head h2{font-size:1.2rem;text-align:center}
 .sheet-body{overflow-y:auto;padding:12px 16px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
 .sheet-body .grid{display:flex;flex-direction:column}
+/* Food rows: round tick, name with macro line, calories on the right */
+.mealgrp .item.fi{grid-template-columns:auto minmax(0,1fr) auto auto;gap:12px;padding:11px 0;align-items:center}
+.fi .tick{position:relative;width:24px;height:24px;flex:none;display:block}
+.fi .tick input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;z-index:1;cursor:pointer}
+.fi .tick i{position:absolute;inset:0;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;transition:background-color var(--dur-ui) var(--ease-out),border-color var(--dur-ui) var(--ease-out)}
+.fi .tick i::after{content:"";width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg);opacity:0}
+.fi .tick input:checked+i{background:var(--good);border-color:var(--good)}
+.fi .tick input:checked+i::after{opacity:1}
+.fi .nm small{font-size:.8rem;margin-top:2px;font-weight:500}
+.fi .nm small .mp{color:var(--protein)} .fi .nm small .mc{color:var(--carbs)} .fi .nm small .mf{color:var(--fat)}
+.fi .kc{text-align:right;line-height:1}
+.fi .kc b{font-size:1.05rem;font-weight:700;font-family:var(--body)}
+.fi .kc small{display:block;color:var(--muted);font-size:.7rem;margin-top:2px}
+.item.planned .kc b{color:var(--muted)}
+@media (max-width:380px){.mealgrp .item.fi{grid-template-columns:auto minmax(0,1fr) auto auto;row-gap:0}}
+/* Add / edit food: detail header, impact rings, value tiles and a number pad */
+.fadd{display:flex;flex-direction:column;gap:12px}
+.fa-top{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px}
+.fa-top input{font-size:1rem;padding:10px 12px;border-radius:12px;width:100%}
+.fa-top select{border-radius:12px}
+.fh-nums{display:grid;grid-template-columns:minmax(0,1.25fr) repeat(3,minmax(0,1fr));gap:6px;align-items:end;text-align:center}
+.fh-kcal b{font-family:var(--display);font-size:2.5rem;font-weight:700;line-height:1;display:block}
+.fh-kcal span,.fh-mac span{display:block;font-size:.76rem;color:var(--muted);margin-top:3px}
+.fh-mac i{display:inline-block;font-style:normal;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-bottom:4px;color:var(--ink)}
+.fh-mac.mk-p i{background:color-mix(in srgb,var(--protein) 22%,var(--surface))}
+.fh-mac.mk-c i{background:color-mix(in srgb,var(--carbs) 24%,var(--surface))}
+.fh-mac.mk-f i{background:color-mix(in srgb,var(--fat) 22%,var(--surface))}
+.fh-mac b{display:block;font-size:1.25rem;font-weight:700;line-height:1.1}
+.fh-imp{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.imps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;text-align:center}
+.imp{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.74rem;color:var(--muted)}
+.imp svg{width:58px;height:58px;display:block}
+.imp circle{fill:none;stroke-width:6}
+.imp.mk-p .ring-fill{stroke:var(--protein)} .imp.mk-c .ring-fill{stroke:var(--carbs)} .imp.mk-f .ring-fill{stroke:var(--fat)}
+.imp b{position:absolute;top:0;left:0;right:0;height:58px;display:grid;place-items:center;font-size:.8rem;color:var(--ink)}
+.fa-acts{display:flex;gap:8px;flex-wrap:wrap}
+.fa-act{position:relative;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 12px;font-weight:600;font-size:.85rem;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--ink);min-height:36px}
+.fa-act input{position:absolute;inset:0;opacity:0;margin:0;width:100%;height:100%;cursor:pointer}
+.fa-act .ico{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-size:.7rem;color:transparent}
+.fa-act:has(input:checked){background:color-mix(in srgb,var(--good) 14%,var(--surface));border-color:var(--good)}
+.fa-act:has(input:checked) .ico{background:var(--good);border-color:var(--good);color:#fff}
+.fa-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.fa-field{display:flex;flex-direction:column;gap:2px;background:var(--sunk);border:2px solid transparent;border-radius:12px;padding:8px 4px 6px;text-align:center;cursor:pointer;min-width:0}
+.fa-field span{font-size:.72rem;color:var(--muted);font-weight:600}
+.fa-field input{all:unset;box-sizing:border-box;width:100%;text-align:center;font-size:1.2rem;font-weight:700;font-variant-numeric:tabular-nums;caret-color:var(--accent);min-height:1.4em}
+.fa-field.is-active{border-color:var(--accent);background:var(--accent-soft)}
+.fa-field.mk-p.is-active{border-color:var(--protein)} .fa-field.mk-c.is-active{border-color:var(--carbs)} .fa-field.mk-f.is-active{border-color:var(--fat)}
+.fa-portion{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.pad{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.pad button{border:0;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-1);min-height:48px;font-size:1.25rem;font-weight:600;color:var(--ink);cursor:pointer;font-family:var(--body)}
+.pad .pk-del{background:var(--sunk);box-shadow:none}
+.pad .pk-next{grid-column:4;grid-row:1/span 2;background:var(--sunk);box-shadow:none;font-size:.95rem}
+.pad .pk-add{grid-column:4;grid-row:3/span 2;background:var(--accent);color:var(--accent-ink);font-size:1.05rem}
+
 #lbHost{padding-top:18px}
 #lbHost:not([hidden]){padding-bottom:0!important}
 #lbHost:not([hidden])+main{padding-top:0}
@@ -1106,14 +1233,16 @@ function kcalTarget(d){
   // Over-budget recovery cuts (days/{date}.budgetAdj) apply on top of the day's target, never more than 150 below it.
   const adj=Object.values(S.docs.days[d]?.budgetAdj||{}).reduce((x,v)=>x+(Math.min(0,+v||0)),0);
   return Math.max(base-150, base+adj); }
+// Goals the Food bars fill towards: protein = the floor to reach, carbs and fat = the top of the range. From the profile (AppTargets) when set, else the plan defaults.
+function foodGoals(d){ const T=dayTargets(d)||{}; return {kcal:kcalTarget(d), pMin:+T.proteinMin||TARGET.pMin, cMax:+T.carbsHi||TARGET.cMax, fMax:+T.fatHi||TARGET.fMax}; }
 function macroBars(items){
-  const all=sum(items), eaten=sum(items.filter(i=>i.eaten)), KT=kcalTarget(view.date);
-  const rows=[["Calories","kcal",KT-100,KT+100,Math.max(2400,KT+400),"kcal",""],["Protein","p",TARGET.pMin,TARGET.pMax,220,"p","g"],["Carbs","c",TARGET.cMin,TARGET.cMax,280,"c","g"],["Fat","f",TARGET.fMin,TARGET.fMax,100,"f","g"]];
-  return `<div class="macros">${rows.map(([lab,k,lo,hi,max,cls,u])=>`
-    <div class="mrow"><span class="label">${lab}</span>
-      <div class="mbar" aria-hidden="true"><span class="planned ${cls}" style="width:${Math.min(100,all[k]/max*100)}%"></span><span class="eaten ${cls}" style="width:${Math.min(100,eaten[k]/max*100)}%"></span><span class="zone" style="left:${lo/max*100}%;width:${(hi-lo)/max*100}%"></span></div>
-      <span class="mval">${r0(eaten[k])}${u} <span class="muted">of ${k==="kcal"?fkc(KT):`${lo}–${hi}`}</span>${all[k]>eaten[k]+0.5?`<small class="plannedn">+${r0(all[k]-eaten[k])}${u} planned</small>`:""}</span></div>`).join("")}
-    <p class="muted" style="font-size:.8rem">Solid = eaten, faded = planned, brackets = target range.</p></div>`;
+  const all=sum(items), eaten=sum(items.filter(i=>i.eaten)), mode=view.foodMode||"eaten", G=foodGoals(view.date);
+  const cols=[["Protein","p",G.pMin],["Carbs","c",G.cMax],["Fat","f",G.fMax]];
+  return `<div class="macros mcols">${cols.map(([lab,k,goal],i)=>{ const e=eaten[k], a=all[k], left=goal-e;
+    return `<div class="mcol" style="--i:${i}"><span class="mlab"><i class="dot ${k}"></i>${lab}</span>
+      <div class="mbar" aria-hidden="true"><span class="planned ${k}" style="width:${Math.min(100,a/goal*100)}%"></span><span class="eaten ${k} ${e>goal?"over":""}" style="width:${Math.min(100,e/goal*100)}%"></span></div>
+      <span class="mval">${mode==="left" ? (left>=0?`<b>${r0(left)}</b> g left`:`<b>${r0(-left)}</b> g over`) : `<b>${r0(e)}</b> / ${r0(goal)} g`}</span></div>`; }).join("")}</div>
+    <div class="fseg" role="group" aria-label="Show as"><button type="button" data-act="foodmode" data-k="eaten" aria-pressed="${mode!=="left"}">Eaten</button><button type="button" data-act="foodmode" data-k="left" aria-pressed="${mode==="left"}">Remaining</button></div>`;
 }
 function verdict(items){
   const t=sum(items); if(!items.length) return "";
@@ -1605,39 +1734,67 @@ function vTrainSession(){
 /* ---------- FOOD (Lose It-style diary) ---------- */
 const FOOD_SLOTS=["Breakfast","Meal 1","Snack","Meal 2","Extra"];
 const slotLabel = s => s==="Snack"?"Snacks":s==="Extra"?"Extras":s==="Fixed"?"Every day":s;
-function foodItemHtml(i){ return `<div class="item ${i.eaten?"":"planned"}">
-        <input type="checkbox" data-act="eat" data-id="${i.id}" ${i.eaten?"checked":""} aria-label="Eaten">
-        <div class="nm"><button type="button" data-act="foodedit" data-id="${i.id}" aria-label="Edit ${esc(i.name)}"><b>${esc(i.name)}</b><small>${i.est?"estimate · ":""}${i.auto?"auto · ":""}${i.eaten?"eaten":"planned"}${isNever(i.name)?` · <span style="color:var(--bad)">never-pick list</span>`:""}</small></button></div>
-        <div class="mac">${r0(i.kcal)} kcal<br><span style="color:var(--protein)">${r1(+i.p||0)}P</span> <span style="color:var(--carbs)">${r1(+i.c||0)}C</span> <span style="color:var(--fat)">${r1(+i.f||0)}F</span></div>
+function foodItemHtml(i){ return `<div class="item fi ${i.eaten?"":"planned"}">
+        <label class="tick"><input type="checkbox" data-act="eat" data-id="${i.id}" ${i.eaten?"checked":""} aria-label="Eaten"><i></i></label>
+        <div class="nm"><button type="button" data-act="foodedit" data-id="${i.id}" aria-label="Edit ${esc(i.name)}"><b>${esc(i.name)}</b><small><span class="mp">${r0(+i.p||0)} P</span> · <span class="mc">${r0(+i.c||0)} C</span> · <span class="mf">${r0(+i.f||0)} F</span>${i.est?" · estimate":""}${i.auto?" · auto":""}${i.eaten?"":" · planned"}${isNever(i.name)?` · <span style="color:var(--bad)">never-pick</span>`:""}</small></button></div>
+        <div class="kc"><b class="num">${r0(i.kcal)}</b><small>kcal</small></div>
         <button class="x" data-act="delfood" data-id="${i.id}" aria-label="Remove">×</button>
       </div>`; }
 // Budget − Food = Remaining. Exercise never adds to the budget (plan rule), and the budget is kcalTarget(): the chosen target, never auto-lowered.
-function kcalSummary(day, d){ const KT=kcalTarget(d), eaten=sum(day.food.filter(i=>i.eaten)), all=sum(day.food), left=KT-eaten.kcal;
-  return `<div class="fsum" aria-label="Calories: budget minus food equals remaining">
-      <div><div class="v num">${fkc(KT)}</div><span class="label">Budget</span></div><span class="op">−</span>
-      <div><div class="v num">${fkc(eaten.kcal)}</div><span class="label">Food</span></div><span class="op">=</span>
-      <div><div class="v num big ${left<0?"over":""}">${fkc(Math.abs(left))}</div><span class="label">${left<0?"Over":"Remaining"}</span></div></div>
-    ${all.kcal>eaten.kcal+0.5?`<p class="muted" style="font-size:.82rem;text-align:center">${fkc(all.kcal-eaten.kcal)} kcal planned but not eaten yet</p>`:""}`; }
+function kcalSummary(day, d){ const KT=kcalTarget(d), eaten=sum(day.food.filter(i=>i.eaten)), all=sum(day.food), left=KT-eaten.kcal, over=left<0, mode=view.foodMode||"eaten";
+  const pct=Math.min(100,eaten.kcal/KT*100), ppct=Math.min(100,all.kcal/KT*100);
+  const remHtml=`<div class="v num rem ${over?"over":""}">${fkc(Math.abs(left))}</div><span class="label">${over?"Over":"Remaining"}</span>`;
+  const eatHtml=`<div class="v num">${fkc(eaten.kcal)}</div><span class="label">Eaten</span>`;
+  return `<div class="fsum" aria-label="Calories: eaten, remaining and target">
+      <div class="fs-side">${mode==="left"?eatHtml:remHtml}</div>
+      <div class="fs-ring"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="44" pathLength="100"></circle><circle class="ring-plan" cx="50" cy="50" r="44" pathLength="100" style="--value:${ppct}"></circle><circle class="ring-fill ${over?"is-over":""}" cx="50" cy="50" r="44" pathLength="100" style="--value:${pct}"></circle></svg>
+        <div class="fs-mid">${mode==="left"?`<div class="v num big rem ${over?"over":""}">${fkc(Math.abs(left))}</div><span class="label">${over?"Over":"Remaining"}</span>`:`<div class="v num big">${fkc(eaten.kcal)}</div><span class="label">Eaten</span>`}</div></div>
+      <div class="fs-side"><div class="v num">${fkc(KT)}</div><span class="label">Target</span></div></div>
+    ${all.kcal>eaten.kcal+0.5?`<p class="fs-plan">${fkc(all.kcal-eaten.kcal)} kcal planned, not eaten yet</p>`:""}`; }
 function foodPrefsHtml(){ const dislikes=S.docs.prefs.main?.dislikes||[]; return `<div class="card"><h3>Likes</h3><ul style="margin:0;padding-left:1.1em">${LIKES.map(l=>`<li>${l}</li>`).join("")}</ul></div>
     <div class="card"><h3>Never pick</h3>
       <ul style="margin:0;padding-left:1.1em">${NEVER.map(l=>`<li>${l}</li>`).join("")}${dislikes.map((l,i)=>`<li>${esc(l)} <button class="x" data-act="deldislike" data-i="${i}" aria-label="Remove">×</button></li>`).join("")}</ul>
       <form class="row" data-form="dislike"><input type="text" id="dislike" placeholder="Add a meal you dislike" style="flex:1"><button class="btn ghost small" type="submit">Add</button></form>
     </div>`; }
+const FOOD_LOOKS=[["ring","Ring"],["night","Night"],["score","Board"],["gauge","Gauge"]];
+function foodLook(){ const k=S.docs.prefs.main?.foodLook; return FOOD_LOOKS.some(x=>x[0]===k) ? k : "ring"; }
+// C · Scoreboard: the number that matters (kcal left), one bar split by meal, small macro rings.
+function scoreHero(day, d){ const KT=kcalTarget(d), eaten=sum(day.food.filter(i=>i.eaten)), all=sum(day.food), left=KT-eaten.kcal, over=left<0, G=foodGoals(d);
+  const shades=["var(--accent)","color-mix(in srgb,var(--accent) 72%,var(--surface))","color-mix(in srgb,var(--accent) 48%,var(--surface))","color-mix(in srgb,var(--accent) 30%,var(--surface))","color-mix(in srgb,var(--accent) 18%,var(--surface))"];
+  const slots=[...new Set(day.food.map(i=>i.slot))]; let si=0; const segs=[], leg=[];
+  slots.forEach(sl=>{ const e=sum(day.food.filter(i=>i.slot===sl&&i.eaten)).kcal, p=sum(day.food.filter(i=>i.slot===sl&&!i.eaten)).kcal, col=shades[Math.min(si++,shades.length-1)];
+    if(e>0){ segs.push(`<span style="flex:${e};background:${col}"></span>`); leg.push(`<span><i style="background:${col}"></i>${esc(slotLabel(sl))} ${fkc(e)}</span>`); }
+    if(p>0) segs.push(`<span style="flex:${p};background:${col};opacity:.35"></span>`); });
+  if(all.kcal>eaten.kcal+0.5) leg.push(`<span><i style="background:var(--accent);opacity:.35"></i>${fkc(all.kcal-eaten.kcal)} planned</span>`);
+  const rest=Math.max(0,KT-all.kcal); if(rest>0) segs.push(`<span style="flex:${rest};background:transparent"></span>`);
+  const ring=(lab,val,goal,cls)=>`<div class="sc-m mk-${cls}"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="40" pathLength="100"></circle><circle class="ring-fill" cx="50" cy="50" r="40" pathLength="100" style="--value:${Math.min(100,val/goal*100)}"></circle></svg><div><b>${r0(val)}<small>/${r0(goal)}</small></b><span>${lab}</span></div></div>`;
+  return `<div class="fsum sc-top" aria-label="Calories: remaining, eaten and target"><div><div class="v num sc-big rem ${over?"over":""}">${fkc(Math.abs(left))}</div><div class="sc-sub">kcal ${over?"over":"left of"} <b class="v num">${fkc(KT)}</b></div></div>
+      <div class="sc-side"><div><b class="v num big">${fkc(eaten.kcal)}</b> eaten</div>${all.kcal>eaten.kcal+0.5?`<div><b>${fkc(all.kcal-eaten.kcal)}</b> planned</div>`:""}</div></div>
+    <div class="sc-bar ${over?"is-over":""}" aria-hidden="true">${segs.join("")}</div>
+    ${leg.length?`<div class="sc-leg">${leg.join("")}</div>`:""}
+    <div class="sc-macros">${ring("Protein",eaten.p,G.pMin,"p")}${ring("Carbs",eaten.c,G.cMax,"c")}${ring("Fat",eaten.f,G.fMax,"f")}</div>`; }
+// D · Gauge: half-circle gauge on a dark card, macro bars inside it.
+function gaugeHero(day, d){ const KT=kcalTarget(d), eaten=sum(day.food.filter(i=>i.eaten)), all=sum(day.food), left=KT-eaten.kcal, over=left<0, G=foodGoals(d);
+  const arc='M15 100 A85 85 0 0 1 185 100';
+  const bar=(lab,val,goal,cls)=>`<div class="g-m"><div class="t"><span>${lab}</span><b>${r0(val)}<small>/${r0(goal)}</small></b></div><div class="mbar" aria-hidden="true"><span class="eaten ${cls} ${val>goal?"over":""}" style="width:${Math.min(100,val/goal*100)}%"></span></div></div>`;
+  return `<div class="gg" aria-label="Calories: remaining, eaten and target"><svg viewBox="0 0 200 110" aria-hidden="true"><path class="g-track" d="${arc}"></path><path class="g-plan" d="${arc}" pathLength="100" stroke-dasharray="${Math.min(100,all.kcal/KT*100)} 100"></path><path class="g-fill ${over?"is-over":""}" d="${arc}" pathLength="100" style="--value:${Math.min(100,eaten.kcal/KT*100)}"></path></svg>
+      <div class="g-mid"><div class="v num big rem ${over?"over":""}">${fkc(Math.abs(left))}</div><span>kcal ${over?"over":"left"}</span></div></div>
+    <div class="g-row"><span><b class="v num">${fkc(eaten.kcal)}</b> eaten</span><span>${all.kcal>eaten.kcal+0.5?`<b>${fkc(all.kcal-eaten.kcal)}</b> planned`:""}</span><span>target <b class="v num">${fkc(KT)}</b></span></div>
+    <div class="g-macros">${bar("Protein",eaten.p,G.pMin,"p")}${bar("Carbs",eaten.c,G.cMax,"c")}${bar("Fat",eaten.f,G.fMax,"f")}</div>`; }
 function vFood(){
-  const d=view.date, day=getDay(d), type=dayType(d), ses=sessionFor(d);
+  const d=view.date, day=getDay(d), type=dayType(d), ses=sessionFor(d), look=foodLook();
   const training = type!=="friday" && !(ses && ses.session==="Rest");
   const meals = day.food.filter(i=>/Meal/.test(i.slot)), mealP=sum(meals).p;
   const slots = FOOD_SLOTS.filter(s=>s!=="Breakfast" || type==="saturday" || day.food.some(i=>i.slot==="Breakfast")).concat([...new Set(day.food.map(i=>i.slot))].filter(s=>!FOOD_SLOTS.includes(s)));
   const group = slot => { const items=day.food.filter(i=>i.slot===slot), k=sum(items.filter(i=>i.eaten)).kcal, kp=sum(items).kcal;
-    return `<div class="mealgrp"><div class="mh"><span>${esc(slotLabel(slot))}</span><small>${items.length?`${fkc(k)} kcal eaten${kp>k+0.5?` · ${fkc(kp-k)} planned`:""}`:""}</small></div>
+    return `<div class="mealgrp"><div class="mh"><span>${esc(slotLabel(slot))}</span><small>${items.length?`<b>${fkc(k)}</b> kcal${kp>k+0.5?` · ${fkc(kp-k)} planned`:""}`:""}</small></div>
       ${items.length?`<div class="items">${items.map(foodItemHtml).join("")}</div>`:""}
       <button class="madd" data-act="foodadd" data-slot="${esc(slot)}">+ Add food</button></div>`; };
   return `
-  <div class="card hero">
+  <div class="card hero fhero fh-${look}">
     <div class="spread"><h2>${fmt(d,{weekday:"long",month:"short",day:"numeric"})}</h2><span class="label">${training?"Training day":"No training"}</span></div>
-    ${kcalSummary(day,d)}
-    ${macroBars(day.food)}
-    ${verdict(day.food)}
+    ${look==="score" ? scoreHero(day,d) : look==="gauge" ? gaugeHero(day,d) : kcalSummary(day,d)+macroBars(day.food)}
+    <div class="fverdict">${verdict(day.food)}</div>
   </div>
   ${window.MenuImport ? safeMod("MenuImport",()=>MenuImport.html(d)) : ""}
   ${day.food.length?fold("fcheck","Food check","Grades, protein gap, tips", `${safe("Protein gap",()=>proteinGapHtml(day))}
@@ -1651,6 +1808,16 @@ function vFood(){
   ${fold("fcycle","Calorie cycling","", safeMod("CalorieCycling",()=>CalorieCycling.html(ccTargets(), ccState(), ccOpts())))}
   ${view.foodSheet?foodSheet(d,day,training):""}`;
 }
+// Food detail header in the add/edit sheet: big calories, macro grams with their share of the calories, and "Impact on today" rings (share of each day goal). foodFormSync() updates it as the numbers change.
+function foodHeadHtml(v, G){ const k=+v.kcal||0,p=+v.p||0,c=+v.c||0,f=+v.f||0, kc=(p*4+c*4+f*9)||1, pc=x=>Math.round(x/kc*100);
+  const impact=(lab,val,goal,cls)=>{ const pct=goal?Math.round(val/goal*100):0; return `<div class="imp mk-${cls}"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="42" pathLength="100"></circle><circle class="ring-fill" data-fh-ring="${cls}" cx="50" cy="50" r="42" pathLength="100" style="--value:${Math.min(100,pct)}"></circle></svg><b data-fh="i${cls}">${pct}%</b><span>${lab}</span></div>`; };
+  return `<div class="fh-nums"><div class="fh-kcal"><b class="num" data-fh="kcal">${fkc(k)}</b><span>Calories</span></div>
+      <div class="fh-mac mk-p"><i data-fh="sp">${pc(p*4)}%</i><b data-fh="p">${r1(p)}</b><span>Protein</span></div><div class="fh-mac mk-c"><i data-fh="sc">${pc(c*4)}%</i><b data-fh="c">${r1(c)}</b><span>Carbs</span></div><div class="fh-mac mk-f"><i data-fh="sf">${pc(f*9)}%</i><b data-fh="f">${r1(f)}</b><span>Fat</span></div></div>
+    <div class="fh-imp"><span class="label">Impact on today</span><div class="imps">${impact("Calories",k,G.kcal,"kcal")}${impact("Protein",p,G.pMin,"p")}${impact("Carbs",c,G.cMax,"c")}${impact("Fat",f,G.fMax,"f")}</div></div>`; }
+function foodFormSync(){ const h=document.getElementById("fhead"); if(!h) return; const g=id=>+(document.getElementById(id)||{}).value||0, k=g("fk"),p=g("fp"),c=g("fc"),f=g("ff"), G=foodGoals(view.date), kc=(p*4+c*4+f*9)||1;
+  const set=(key,txt)=>{ const el=h.querySelector(`[data-fh="${key}"]`); if(el && el.textContent!==txt) el.textContent=txt; };
+  set("kcal",fkc(k)); set("p",String(r1(p))); set("c",String(r1(c))); set("f",String(r1(f))); set("sp",Math.round(p*4/kc*100)+"%"); set("sc",Math.round(c*4/kc*100)+"%"); set("sf",Math.round(f*9/kc*100)+"%");
+  [["kcal",k,G.kcal],["p",p,G.pMin],["c",c,G.cMax],["f",f,G.fMax]].forEach(([cls,val,goal])=>{ const pct=goal?Math.round(val/goal*100):0; set("i"+cls,pct+"%"); const r=h.querySelector(`[data-fh-ring="${cls}"]`); if(r) r.style.setProperty("--value",Math.min(100,pct)); }); }
 // One add-food sheet: Add (type it in, or edit an item), Quick (plan foods, snack menu), Saved (combos, copy a day), Menu (Nutreeze menu), Scan (barcode, label, photo, voice)
 function foodSheet(d, day, training){
   const fs=view.foodSheet, tab=fs.tab||"add", slot=fs.slot||"Meal 1", edit = fs.edit ? day.food.find(i=>i.id===fs.edit) : null;
@@ -1658,15 +1825,18 @@ function foodSheet(d, day, training){
   const tabs=[["add",edit?"Edit":"Add"],["quick","Quick"],["saved","Saved"]].concat(window.MenuImport?[]:[["menu","Menu"]]).concat([["scan","Scan"]]);
   const num=(id,l,v,st)=>`<label class="field"><span class="label">${l}</span><input type="number" id="${id}" step="${st}" value="${v??""}" ${id==="fk"?"required":""}></label>`;
   let body="";
-  if(tab==="add") body = `<form data-form="food" class="card" style="gap:10px">
+  if(tab==="add"){ const v=edit||{}, G=foodGoals(d), FIELDS=[["fk","Calories","kcal","k"],["fp","Protein","p","p"],["fc","Carbs","c","c"],["ff","Fat","f","f"]];
+    body = `<form data-form="food" class="fadd" autocomplete="off">
         ${edit?`<input type="hidden" id="fedit" value="${esc(edit.id)}">`:""}
-        <div class="row"><select id="fslot" aria-label="Meal">${["Meal 1","Meal 2","Snack","Breakfast","Extra"].concat(edit&&!["Meal 1","Meal 2","Snack","Breakfast","Extra"].includes(edit.slot)?[edit.slot]:[]).map(s=>`<option ${s===(edit?edit.slot:slot)?"selected":""}>${esc(s)}</option>`).join("")}</select>
-          <input type="text" id="fname" placeholder="Food name" style="flex:1;min-width:10em" required aria-label="Food name" value="${edit?esc(edit.name):""}"></div>
-        <div class="row">${num("fk","kcal",edit?edit.kcal:"",1)}${num("fp","Protein",edit?edit.p:"",0.1)}${num("fc","Carbs",edit?edit.c:"",0.1)}${num("ff","Fat",edit?edit.f:"",0.1)}</div>
-        ${edit?`<div class="row"><span class="label">Portion</span>${[0.5,0.75,1.5,2].map(m=>`<button type="button" class="chip" data-act="portion" data-m="${m}">×${m}</button>`).join("")}<span class="muted" style="font-size:.82rem">scales the numbers above</span></div>`:""}
-        <label class="row" style="font-size:.9rem"><input type="checkbox" id="featen" ${edit&&edit.eaten?"checked":""}> ${edit?"Eaten":"Already eaten"}</label>
-        <div class="row"><button class="btn" type="submit">${edit?"Save":"Add"}</button>${edit?`<button class="btn ghost" type="button" data-act="delfood" data-id="${esc(edit.id)}">Remove</button>`:`<span class="muted" style="font-size:.85rem">Planned food counts once you tick it.</span>`}</div></form>
-      ${edit||typeof MacroTarget==="undefined" ? "" : MacroTarget.html(d)}`;
+        <div class="fa-top"><select id="fslot" aria-label="Meal">${["Meal 1","Meal 2","Snack","Breakfast","Extra"].concat(edit&&!["Meal 1","Meal 2","Snack","Breakfast","Extra"].includes(edit.slot)?[edit.slot]:[]).map(s=>`<option ${s===(edit?edit.slot:slot)?"selected":""}>${esc(s)}</option>`).join("")}</select>
+          <input type="text" id="fname" placeholder="Food name" required aria-label="Food name" value="${edit?esc(edit.name):""}"></div>
+        <div class="fa-head" id="fhead">${foodHeadHtml({kcal:+v.kcal||0,p:+v.p||0,c:+v.c||0,f:+v.f||0}, G)}</div>
+        <div class="fa-acts"><label class="fa-act"><input type="checkbox" id="featen" ${edit&&edit.eaten?"checked":""}><span class="ico">✓</span>${edit?"Eaten":"Eaten now"}</label>${edit?`<button type="button" class="fa-act" data-act="fooddup" data-id="${esc(edit.id)}">Add again</button><button type="button" class="fa-act" data-act="delfood" data-id="${esc(edit.id)}">Delete</button>`:""}</div>
+        <div class="fa-fields">${FIELDS.map(([id,l,key,cls],i)=>`<label class="fa-field mk-${cls} ${i===0?"is-active":""}"><span>${l}</span><input type="text" inputmode="none" id="${id}" value="${v[key]??""}" ${id==="fk"?"required":""} aria-label="${l}"></label>`).join("")}</div>
+        <div class="fa-portion"><span class="label">Portion</span>${[0.5,0.75,1.5,2].map(m=>`<button type="button" class="chip" data-act="portion" data-m="${m}">×${m}</button>`).join("")}</div>
+        <div class="pad" role="group" aria-label="Number pad">${["1","2","3","4","5","6","7","8","9",".","0","del"].map(k=>`<button type="button" data-act="pad" data-k="${k}" class="${k==="del"?"pk-del":""}" aria-label="${k==="del"?"Delete":k}">${k==="del"?"⌫":k}</button>`).join("")}<button type="button" class="pk-next" data-act="padnext">Next</button><button class="pk-add" type="submit">${edit?"Save":"Add"}</button></div>
+        ${edit?"":`<p class="muted" style="font-size:.82rem;margin:0;text-align:center">Not eaten yet? Leave "Eaten now" off and tick it later.</p>`}</form>
+      ${edit||typeof MacroTarget==="undefined" ? "" : MacroTarget.html(d)}`; }
   else if(tab==="quick") body = `<div class="card"><h3>Your usual</h3><div class="row"><button class="btn small" data-act="fixed">Add Adonis${training?" + Gatorade":""}</button>${FIXED.map(f=>`<button class="chip" data-act="quick" data-k="${f.key}">${esc(f.name.split(" (")[0].split(":")[0])}</button>`).join("")}</div></div>
       <div class="card"><div class="spread"><h3>Nutreeze snacks</h3><span class="muted" style="font-size:.85rem">Pick any 2</span></div>
       <div class="tablewrap"><table><thead><tr><th>Snack</th><th class="n">kcal</th><th class="n">P</th><th class="n">C</th><th class="n">F</th><th></th></tr></thead>
@@ -1942,6 +2112,7 @@ function vSettings(){
     ${row("Navigation","Where the sections live",seg("navset",[["bottom","Bottom bar"],["drawer","Side menu"],["both","Both"]],m.nav||"bottom"))}
     ${(()=>{ const sc=uiScale(m.uiScale??1); return row("Text size",`Makes words, rows and boxes smaller or bigger · <b id="scaleVal">${Math.round(sc*100)}%</b>`,`<span class="row" style="gap:6px;justify-content:flex-end;flex-wrap:nowrap"><span aria-hidden="true" style="font-size:.8rem">A</span><input type="range" id="uiScale" min="0.8" max="1.3" step="0.05" value="${sc}" aria-label="Text size"><span aria-hidden="true" style="font-size:1.2rem">A</span><button type="button" class="btn ghost small" data-act="scalereset">Reset</button></span>`); })()}
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
+    ${row("Food look","The calorie card on Food. Ring is the default; Night, Board and Gauge are the other looks",seg("foodlook",FOOD_LOOKS,foodLook()))}
     ${row("App colour","Buttons, tabs and highlights across the whole app",`<span class="row swatches" role="group" aria-label="App colour">${ACCENTS.map(([k,l,c])=>`<button type="button" class="chip swatch" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}"><i style="background:${c}" aria-hidden="true"></i>${l}</button>`).join("")}</span>`)}
   </div></div>
   ${cat("Workouts and units")}
@@ -2100,7 +2271,14 @@ main.addEventListener("click",e=>{
   if(a==="foodedit"){ view.foodSheet={tab:"add", edit:el.dataset.id}; render(); return; }
   if(a==="foodclose"){ view.foodSheet=null; render(); return; }
   if(a==="foodtab"){ view.foodSheet={...(view.foodSheet||{}), tab:el.dataset.k}; render(); return; }
-  if(a==="portion"){ const m=+el.dataset.m; ["fk","fp","fc","ff"].forEach(id=>{ const inp=document.getElementById(id); if(inp && inp.value!=="") inp.value=Math.round(+inp.value*m*10)/10; }); return; }
+  if(a==="portion"){ const m=+el.dataset.m; ["fk","fp","fc","ff"].forEach(id=>{ const inp=document.getElementById(id); if(inp && inp.value!=="") inp.value=Math.round(+inp.value*m*10)/10; }); foodFormSync(); return; }
+  if(a==="foodmode"){ view.foodMode=el.dataset.k; render(); return; }
+  if(a==="fooddup"){ const it=getDay(d).food.find(i=>i.id===el.dataset.id); if(!it) return; const {id, eaten, ...rest}=it; view.foodSheet=null; addFood({...rest, eaten:false}); toast("Added "+it.name+" again. Tick it when you eat it."); return; }
+  if(a==="pad"||a==="padnext"){ const fields=[...main.querySelectorAll(".fa-field")]; if(!fields.length) return; let cur=fields.find(x=>x.classList.contains("is-active"))||fields[0];
+    if(a==="padnext"){ const nx=fields[(fields.indexOf(cur)+1)%fields.length]; fields.forEach(x=>x.classList.toggle("is-active",x===nx)); return; }
+    const inp=cur.querySelector("input"), k=el.dataset.k; let v=String(inp.value||"");
+    if(k==="del") v=v.slice(0,-1); else if(k===".") { if(!v.includes(".")) v=(v||"0")+"."; } else v = (v==="0" ? k : v+k).slice(0,7);
+    inp.value=v; foodFormSync(); return; }
   if(a==="scalereset"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.uiScale=1; applyScale(1); put("prefs","main",p); return; }
   if(a==="theme"){ const p=clone(S.docs.prefs.main); p.theme=el.dataset.k; applyTheme(p.theme); put("prefs","main",p); return; }
   if(a==="rest"){ const p=clone(S.docs.prefs.main); p.restSec=+el.dataset.k; put("prefs","main",p); return; }
@@ -2157,6 +2335,7 @@ main.addEventListener("click",e=>{
   else if(a==="pick"){ runPicker(); }
   else if(a==="pickclear"){ view.pick=null; render(); }
   else if(a==="usepick"){ usePick(+el.dataset.i); }
+  else if(a==="foodlook"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.foodLook=el.dataset.k; put("prefs","main",p); toast("Food look: "+(FOOD_LOOKS.find(x=>x[0]===p.foodLook)||[])[1]); }
   else if(a==="navset"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.nav=el.dataset.k; applyNav(p.nav); put("prefs","main",p); }
   else if(a==="lbshow"){ view.tab="train"; view.trainMode="full"; render(); try{ WorkoutLogger.show(el.dataset.k); }catch(e){} window.scrollTo(0,0); }
   else if(a==="accent"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.accent=el.dataset.k; applyAccent(p.accent); put("prefs","main",p); }
@@ -2189,7 +2368,8 @@ main.addEventListener("change",e=>{
 });
 main.addEventListener("input",e=>{ if(e.target.id==="uiScale"){ applyScale(e.target.value); const l=document.getElementById("scaleVal"); if(l) l.textContent=Math.round(uiScale(e.target.value)*100)+"%"; } });
 main.addEventListener("change",e=>{ if(e.target.id==="uiScale"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.uiScale=uiScale(e.target.value); applyScale(p.uiScale); put("prefs","main",p); } });
-main.addEventListener("input",e=>{ if(e.target.id==="libq"){ view.q=e.target.value; const pos=e.target.selectionStart; render(); const s=document.getElementById("libq"); s.focus(); try{s.setSelectionRange(pos,pos)}catch(_){} } });
+main.addEventListener("focusin",e=>{ const f=e.target.closest && e.target.closest(".fa-field"); if(f) f.parentElement.querySelectorAll(".fa-field").forEach(x=>x.classList.toggle("is-active",x===f)); });
+main.addEventListener("input",e=>{ if(/^f[kpcf]$/.test(e.target.id)) foodFormSync(); if(e.target.id==="libq"){ view.q=e.target.value; const pos=e.target.selectionStart; render(); const s=document.getElementById("libq"); s.focus(); try{s.setSelectionRange(pos,pos)}catch(_){} } });
 main.addEventListener("submit",e=>{
   e.preventDefault(); const f=e.target.dataset.form, d=view.date;
   if(f==="weight"){ const kg=parseFloat(document.getElementById("wkg").value); if(!(kg>30&&kg<250)){ toast("Enter your weight in kg, e.g. 91.4"); return; } const kg1=Math.round(kg*10)/10, out=weightOutlier(d,kg1);
