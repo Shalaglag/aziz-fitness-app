@@ -1786,7 +1786,11 @@ function mountFriends(){
   frInst = Friends.mount({ fs:r.fs, uid:r.uid, email:r.email, today:()=>TODAY, ctx:frCtx, getSharing:frSharing, setSharing:o=>put("prefs","friends",o,{quiet:true}),
     render:()=>{ if(view.tab==="friends") scheduleRender(); }, toast, confirm:m=>window.confirm(m), goSteps:()=>{ view.tab="today"; view.open["f:steps"]=true; render(); const el=document.querySelector('[data-keep="f:steps"]'); if(el) el.scrollIntoView({block:"start"}); },
     apkUrl: window.AppUpdate && AppUpdate.RELEASE_URL ? AppUpdate.RELEASE_URL : "https://github.com/Shalaglag/mizan-releases/releases/tag/android-latest",
-    share:text=>{ if(navigator.share) return navigator.share({text}).catch(()=>{}); return (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>toast("Invite copied. Paste it into WhatsApp or a message."),()=>toast(text)); } });
+    share:text=>{ if(navigator.share) return navigator.share({text}).catch(()=>{}); return (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>toast("Invite copied. Paste it into WhatsApp or a message."),()=>toast(text)); },
+    notify:(title,body,u)=>{ if(window.AndroidShell && AndroidShell.isNative() && AndroidShell.notifyAt){ const id=9000+([...String(u)].reduce((a,c)=>a+c.charCodeAt(0),0)%900); AndroidShell.notifyAt(id, Date.now()+500, title, body).then(ok=>{ if(!ok) toast(title); }); } else toast(title); } });
+  // the logger's live workout -> "Working out now" for friends (name + start only; off via Sharing › Working out now)
+  try{ const act=JSON.parse(localStorage.getItem("lb_active")||"null"); if(act && act.start && !act.end) frInst.setLive(act); }catch(e){}
+  window.addEventListener("lb:active", e=>{ try{ frInst.setLive(e.detail && e.detail.workout); }catch(err){} });
 }
 function vFriends(){
   const cloudReady = !window.claude && !!(window.CloudStore && CloudStore.configured && CloudStore.configured());
