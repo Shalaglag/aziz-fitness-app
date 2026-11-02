@@ -1,6 +1,6 @@
 # Form cues in the workout logger
 
-Shows technique cues, injury watch-outs, the muscles worked and a demo link for each exercise, inside the workout logger (Liftbook). Data comes from `exercise-form-guide.json` (the form guide, all 32 movements in the Push/Pull/Lower plan). Plain JS, no imports, no network.
+Shows technique cues, injury watch-outs, the muscles worked and a demo link for each exercise, inside the workout logger (Liftbook). Data comes from `exercise-form-guide.json` (the form guide: the 32 movements in the Push/Pull/Lower plan, plus 384 reviewed extras marked `extra: true` that show once the exercise is in the library). Plain JS, no imports, no network.
 
 ## Files
 - `form-cues.js`: the module (`window.FormCues`). Inline it as-is.
