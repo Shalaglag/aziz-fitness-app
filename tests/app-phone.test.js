@@ -230,9 +230,18 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ sound: true }); });
       await finishOne();
       assert.ok(await page.evaluate(() => played.includes("finish")), "Finish plays the finish chime");
+      assert.strictEqual(await page.evaluate(() => played[0]), "check", "ticking a set plays Aziz's Check sound by default");
       await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ sound: false }); });
       await finishOne();
-      assert.deepStrictEqual(await page.evaluate(() => played), [], "Beep setting off: no finish sound");
+      assert.deepStrictEqual(await page.evaluate(() => played), ["check"], "Beep setting off: no finish sound (the set tick has its own setting)");
+      await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ setSound: "off" }); });
+      await finishOne();
+      assert.deepStrictEqual(await page.evaluate(() => played), [], "set sound Off: ticking is silent");
+      await page.evaluate(() => WorkoutLogger.setSettings({ setSound: "check", sound: true }));
+      // Quick log tick plays it too
+      await page.evaluate(() => { played.length = 0; });
+      const quick = await page.evaluate(() => { const c = document.querySelector('[data-act="setdone"]'); if (c) c.click(); return !!c; });
+      if (quick) assert.ok(await page.evaluate(() => played.includes("check")), "quick log tick plays Check");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });
