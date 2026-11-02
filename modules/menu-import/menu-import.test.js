@@ -245,7 +245,7 @@ test('priority: most protein puts the highest-protein combo that fits the budget
   assert.ok(best.totals.p >= bal.options[0].totals.p);
   assert.ok(pro.options.every(o => o.totals.p <= best.totals.p + 0.5));
   assert.match(best.why[0], /^Most protein of the \d+ meal pairs that fit your 2,000 kcal budget: \d+ g/);
-  assert.match(best.why.join(' '), /2,000 budget\) and \d+ g protein \(meets your 160 g minimum\)/);
+  assert.match(best.why.join(' '), /your 2,000 budget; \d+ g protein meets your 160 g goal/);
   assert.match(pro.options[1].why[0], /Against the best option: [−+]\d+ g protein/);
   // Alternatives are different meal pairs.
   const pairs = pro.options.map(o => o.meal1.name + o.meal2.name);
