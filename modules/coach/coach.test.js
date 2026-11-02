@@ -362,19 +362,21 @@ function ndjsonResponse(lines, status = 200, ctype = "application/x-ndjson") {
     body: { getReader: () => ({ read: async () => i < chunks.length ? { value: chunks[i++], done: false } : { done: true } }) },
     json: async () => lines[0], text: async () => lines.map(l => JSON.stringify(l)).join("\n") };
 }
-function serviceSetup({ consent = true, reply, calls }) {
-  const listeners = {}, prefs = { consent };
+function serviceSetup({ consent = true, reply, calls, speech }) {
+  const listeners = {}, prefs = { consent, showCost: false };
   const root = { addEventListener: (k, fn) => { listeners[k] = fn; } };
   global.fetch = async (url, init) => { calls.push({ url, init, body: init && init.body ? JSON.parse(init.body) : null }); return reply(url, init); };
   Coach.bind(root, { getDocs: () => make({ days: 14 }), render: () => {}, today: () => add(START, 13), targets: () => TARGETS,
     endpoint: () => "https://mizan-coach.example.workers.dev/", getToken: async () => "token-abc",
     consent: () => prefs.consent, setConsent: on => { prefs.consent = on; },
+    showCost: () => prefs.showCost, setShowCost: on => { prefs.showCost = on; }, speech: () => speech || null, speechError: code => "speech error " + code,
     plan: () => ({ answers: { goals: ["cut", "muscle"], goal: "cut", sex: "male", age: 30, heightCm: 180, kg: 92 }, result: { ok: true, goals: ["cut", "muscle"], label: "Lose fat + Build muscle", goal: "cut", direction: -1, ratePct: 0.5, pace: "regular", kcal: 2100, today: START } }),
     getSample: () => { throw new Error("the paid service is set up, so the free in-Claude path must not be used"); } });
-  Coach._state.msgs = []; Coach._state.busy = false; Coach._state.error = ""; Coach._state.consentQ = null; Coach._state.month = null; Coach._state.noClaude = false;
+  Coach._state.msgs = []; Coach._state.busy = false; Coach._state.error = ""; Coach._state.consentQ = null; Coach._state.month = null; Coach._state.noClaude = false; Coach._state.voice = null; Coach._state.voiceErr = ""; Coach._state.voiceLang = null; Coach._state.draft = "";
   const submit = q => listeners.submit({ preventDefault() {}, target: { matches: s => s === "[data-coach-form]", querySelector: () => ({ value: q }) } });
   const tap = attrs => listeners.click({ target: { closest: () => ({ dataset: attrs, hasAttribute: k => k.replace("data-coach-", "") in attrs }) } });
-  return { submit, tap, prefs };
+  const change = (attr, checked) => listeners.change({ target: { checked, matches: s => s === "[data-coach-" + attr + "]" } });
+  return { submit, tap, change, prefs, listeners };
 }
 const tick = () => new Promise(r => setTimeout(r, 30));
 const MONTH = { month: "2026-11", model: "claude-haiku-5-5", capUsd: 100, confirmedUsd: 0.0021, unsettledUsd: 0, pendingUsd: 0, usedUsd: 0.0021, allTimeUsd: 0.0021, requests: 2, warn: false, stopped: false };
@@ -398,7 +400,11 @@ test("service: nothing is sent before the AI chat is turned on; the consent card
   assert.equal(chat.body.ctx.plan.label, "Lose fat + Build muscle");
   const m = Coach._state.msgs[Coach._state.msgs.length - 1];
   assert.equal(m.answer, "Yes."); assert.equal(m.costUsd, 0.0009);
-  assert.match(Coach.panelHtml(), /Claude, from your logs only · under \$0\.01/);
+  assert.match(Coach.panelHtml(), /Claude, from your logs only</, "the answer's cost is hidden by default");
+  assert.doesNotMatch(Coach.panelHtml(), /\$\d|under \$/);
+  prefs.showCost = true;
+  assert.match(Coach.panelHtml(), /Claude, from your logs only · under \$0\.01/, "shown once spending details are switched on");
+  prefs.showCost = false;
   tap({ coachConsent: "off" }); assert.equal(prefs.consent, false);
 });
 
@@ -435,7 +441,7 @@ test("trimContext sends only the sections a question needs; unclear questions ke
 
 test("service errors: cap reached, not allowed, out of credit, broken stream, offline; quick questions keep working", async () => {
   const cases = [
-    [() => ndjsonResponse([{ error: "cap_reached", month: Object.assign({}, MONTH, { usedUsd: 100, capUsd: 100, stopped: true }) }], 402, "application/json"), /spending cap is reached/],
+    [() => ndjsonResponse([{ error: "cap_reached", month: Object.assign({}, MONTH, { usedUsd: 100, capUsd: 100, stopped: true }) }], 402, "application/json"), /reached this month's limit/],
     [() => ndjsonResponse([{ error: "not_allowed", uid: "uid123" }], 403, "application/json"), /isn't allowed.*Account id: uid123/],
     [() => ndjsonResponse([{ error: "out_of_credit" }], 402, "application/json"), /credit has run out/],
     [() => ndjsonResponse([{ t: "d", text: '{"answer":"half' }]), /cut off/],
@@ -458,14 +464,20 @@ test("service errors: cap reached, not allowed, out of credit, broken stream, of
 test("AI settings: spending meter shows used vs cap, the 80 % warning, lost answers and the stop", async () => {
   const calls = [];
   const warn = Object.assign({}, MONTH, { usedUsd: 82, confirmedUsd: 81.5, unsettledUsd: 0.5, pendingUsd: 0.01, capUsd: 100, warn: true, requests: 9000 });
-  const { tap } = serviceSetup({ calls, reply: (url, init) => url.endsWith("/v1/cap") ? ndjsonResponse([Object.assign({}, warn, { capUsd: JSON.parse(init.body).capUsd })], 200, "application/json") : ndjsonResponse([warn], 200, "application/json") });
+  const { tap, change, prefs } = serviceSetup({ calls, reply: (url, init) => url.endsWith("/v1/cap") ? ndjsonResponse([Object.assign({}, warn, { capUsd: JSON.parse(init.body).capUsd })], 200, "application/json") : ndjsonResponse([warn], 200, "application/json") });
   tap({ settings: "" }); await tick();
   let html = Coach.panelHtml();
+  // Hidden by default: no amounts, no cap picker, only how things stand.
+  assert.doesNotMatch(html, /\$\d|data-coach-capsel|answers\)/); assert.match(html, /Close to this month's limit/); assert.match(html, /data-coach-showcost(?! checked)/);
+  change("showcost", true); assert.equal(prefs.showCost, true);
+  html = Coach.panelHtml();
   assert.match(html, /\$82<\/b> of your \$100 cap/); assert.match(html, /Over 80 % of the cap is used/); assert.match(html, /counted at its estimate/);
   assert.match(html, /Claude Console shows the actual bill/);
   assert.ok(calls.some(c => c.url.endsWith("/v1/usage")), "read once on open");
   Coach._state.month = Object.assign({}, warn, { usedUsd: 100, stopped: true });
   assert.match(Coach.panelHtml(), /Cap reached: new questions are stopped/);
+  change("showcost", false);
+  assert.match(Coach.panelHtml(), /Monthly limit reached/); assert.doesNotMatch(Coach.panelHtml(), /\$\d/);
   Coach._state.settings = false;
 });
 
@@ -490,4 +502,31 @@ test("service address: the health-check or endpoint link is cut back to the base
   listeners.submit({ preventDefault() {}, target: { matches: s => s === "[data-coach-svcform]", querySelector: () => ({ value: "http://insecure.example.com" }) } });
   assert.equal(saved, base, "a non-https address is refused and the saved one kept");
   assert.match(Coach._state.capMsg, /must start with https/);
+});
+
+test("voice: the mic asks the question when you stop talking, in English or Arabic; errors are shown; no mic without speech", async () => {
+  const calls = [], starts = [];
+  let cb = null, stopped = 0;
+  const speech = { supported: () => true, start: o => { starts.push(o.lang); cb = o; return { stop() { stopped++; } }; } };
+  const { tap } = serviceSetup({ calls, speech, reply: url => url.endsWith("/v1/usage") ? ndjsonResponse([MONTH], 200, "application/json") : ndjsonResponse([{ t: "d", text: '{"answer":"Fine."}' }, { t: "done", stop: "end_turn", costUsd: 0.001, usage: {} }]) });
+  assert.match(Coach.panelHtml(), /data-coach-mic/); assert.match(Coach.panelHtml(), /data-coach-vlang[^>]*>EN</);
+  tap({ mic: "" });
+  assert.equal(starts[0], "en-US"); assert.match(Coach.panelHtml(), /Listening… speak now/); assert.match(Coach.panelHtml(), /co-mic on/);
+  cb.onText("how much protein", false); assert.equal(Coach._state.draft, "how much protein");
+  assert.equal(calls.filter(c => c.url.endsWith("/v1/chat")).length, 0, "nothing sent while still talking");
+  cb.onText("how much protein is left", true); cb.onEnd(); await tick();
+  const chat = calls.filter(c => c.url.endsWith("/v1/chat"));
+  assert.equal(chat.length, 1); assert.equal(chat[0].body.question, "how much protein is left");
+  tap({ vlang: "" }); assert.match(Coach.panelHtml(), /data-coach-vlang[^>]*>ع</);
+  tap({ mic: "" }); assert.equal(starts[1], "ar-KW");
+  tap({ mic: "" }); assert.equal(stopped, 1, "tapping again stops listening"); assert.equal(Coach._state.voice, null);
+  tap({ mic: "" }); cb.onError("not-allowed"); assert.match(Coach.panelHtml(), /speech error not-allowed/);
+  Coach.bind({ addEventListener() {} }, { speech: () => ({ supported: () => false }) });
+  assert.doesNotMatch(Coach.panelHtml(), /data-coach-mic/, "no mic button when the phone or browser can't listen");
+});
+
+test("parseAnswer reads a reply wrapped in code fences or with text before the JSON", () => {
+  assert.equal(Coach.parseAnswer('```json\n{"answer":"Eat 40 g more protein."}\n```').answer, "Eat 40 g more protein.");
+  assert.equal(Coach.parseAnswer('Here you go: {"answer":"Rest today.","evidence":["Sleep 5 h"]}').evidence[0], "Sleep 5 h");
+  assert.equal(Coach.parseAnswer("Plain words only").answer, "Plain words only");
 });
