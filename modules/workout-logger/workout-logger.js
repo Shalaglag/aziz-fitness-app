@@ -15,7 +15,8 @@
  *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
  * Rest timer look (settings.restStyle: bar | half | ring | fill | plates | blocks; ring and fill take the whole
- *   screen like Strong) and end sound (settings.restSound: a GymSounds.REST_SOUNDS id) are picked in Settings.
+ *   screen like Strong) and end sound (settings.restSound: a GymSounds.REST_SOUNDS id) are picked in Settings. A ticked set plays
+ *   settings.setSound (a GymSounds.SET_SOUNDS id, default 'check' = Aziz's recording, or 'off').
  * Live workouts open in Gym mode (one set at a time, big steppers, RIR, rest countdown with "up next");
  *   "List view" in the header switches to the full table. Sets may carry rir (0-4, 4 = 4+).
  * Styling uses the shell tokens (--bg --surface --sunk --line --ink --muted --accent --accent-ink
@@ -454,7 +455,7 @@ Power Clean (Barbell)|Other|Barbell|`;
 
   const DEFAULT_SETTINGS = {
     unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: false,
-    restStyle: 'bar', restSound: 'restDone', countBuzz: true,
+    restStyle: 'bar', restSound: 'restDone', countBuzz: true, setSound: 'check',
     bar: 20, barLb: 45, platesKg: [25, 20, 15, 10, 5, 2.5, 1.25], platesLb: [45, 35, 25, 10, 5, 2.5],
     rotOverride: null, seeded: false
   };
@@ -787,6 +788,8 @@ Power Clean (Barbell)|Other|Barbell|`;
       [0, 0.22, 0.44].forEach((d, i) => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = i === 2 ? 1320 : 880; g.gain.setValueAtTime(0.0001, audio.currentTime + d); g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + d + 0.18); o.connect(g).connect(audio.destination); o.start(audio.currentTime + d); o.stop(audio.currentTime + d + 0.2); });
     } catch (e) { }
   }
+  // The sound a ticked set makes (settings.setSound: a GymSounds.SET_SOUNDS id or 'off'); Aziz's own Check by default.
+  function setDoneSound() { const v = S.settings.setSound || 'check'; if (v !== 'off' && GS()) { GS().prime(); GS().play(v); } }
   function primeAudio() { if (S.settings.sound && GS()) { GS().prime(); return; } try { if (S.settings.sound && !audio) audio = new (window.AudioContext || window.webkitAudioContext)(); if (audio && audio.state === 'suspended') audio.resume(); } catch (e) { } }
   async function keepAwake(onState) {
     try {
@@ -1306,14 +1309,16 @@ Power Clean (Barbell)|Other|Barbell|`;
   function restLookHtml() {
     const st = S.settings, chips = (k, list) => '<div class="lb-row tight lb-chips">' + list.map(([id, l]) => '<button class="lb-btn small' + (st[k] === id ? ' primary' : ' ghost') + '" data-a="setPick" data-k="' + k + '" data-v="' + id + '" aria-pressed="' + (st[k] === id) + '">' + esc(l) + '</button>').join('') + '</div>';
     return '<div class="lb-field"><span>Rest timer look</span>' + chips('restStyle', REST_STYLES) + '<button class="lb-link small" data-a="restTry">Try it (10 s)</button></div>' +
-      '<div class="lb-field"><span>Sound when rest ends</span>' + chips('restSound', restSounds()) + '</div>';
+      '<div class="lb-field"><span>Sound when rest ends</span>' + chips('restSound', restSounds()) + '</div>' +
+      '<div class="lb-field"><span>Sound when you tick a set</span>' + chips('setSound', setSounds()) + '</div>';
   }
   on('setPick', t => {
     const k = t.dataset.k, v = t.dataset.v;
     if (k === 'restStyle' && !REST_STYLES.some(r => r[0] === v)) return;
     if (k === 'restSound' && !restSounds().some(r => r[0] === v)) return;
     S.settings[k] = v; saveSettings();
-    if (k === 'restSound' && GS()) { GS().prime(); GS().play(v); }
+    if (k === 'setSound' && !setSounds().some(r => r[0] === v)) return;
+    if ((k === 'restSound' || k === 'setSound') && v !== 'off' && GS()) { GS().prime(); GS().play(v); }
     if (k === 'restStyle' && rest) renderRest();
     rerenderTools();
   });
@@ -1734,6 +1739,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     f.forEach(k => { const ph = phFor(prev, p, e, k); if ((s[k] === '' || s[k] == null) && ph !== '') s[k] = String(ph).replace(/,/g, ''); });
     if (f.every(k => s[k] === '' || s[k] == null)) { toast('Enter ' + (f[0] === 'w' ? 'weight and reps' : 'a value') + ' first'); return false; }
     s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id);
+    setDoneSound();
     const cel = celebration(e, s);
     if (s.pr.length && !quiet) { if (cel) PRC.fire(cel, { toast, vibrate: !!S.settings.vibrate }); else toast('New record: ' + ex.name + ' · ' + s.pr.join(', ')); }
     if (ex.cat !== 'Cardio' && restAfter(E.doc.exercises, i, j)) startRest(setRestOf(e, s), [i, j]);
@@ -1945,6 +1951,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   // Looks (Settings → Rest timer look). ring and fill cover the whole screen like Strong; "Minimise" drops to the bar for that rest.
   const REST_STYLES = [['bar', 'Loading bar'], ['half', 'Half circle'], ['ring', 'Full circle'], ['fill', 'Screen fill'], ['plates', 'Plates off the bar'], ['blocks', 'Blocks']];
   const FULL_STYLES = { ring: 1, fill: 1 };
+  const setSounds = () => (GS() && GS().SET_SOUNDS ? GS().SET_SOUNDS.map(r => [r.id, r.label]) : []).concat([['off', 'Off']]);
   const restSounds = () => (GS() && GS().REST_SOUNDS ? GS().REST_SOUNDS.map(r => [r.id, r.label]).concat(GS().customInfo && GS().customInfo() ? [['custom', 'Your sound: ' + GS().customInfo().name]] : []) : [['restDone', 'Bell (Strong-style)']]);
   const restStyle = () => (REST_STYLES.some(r => r[0] === S.settings.restStyle) ? S.settings.restStyle : 'bar');
   // Plates per side, inner to outer; they come off outer first as the rest runs down.
