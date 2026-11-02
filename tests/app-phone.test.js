@@ -407,6 +407,15 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.strictEqual(both.nav, "both"); assert.notStrictEqual(both.menu, "none", "menu button stays in Both mode"); assert.notStrictEqual(both.guide, "none"); assert.strictEqual(both.more, "none");
       await page.click('[data-act="navset"][data-k="drawer"]'); await page.waitForTimeout(100);
       assert.strictEqual(await page.evaluate(() => document.documentElement.dataset.nav), undefined);
+      // Text size slider scales every rem-sized thing from the 15px base and is saved in prefs.
+      const fs = () => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+      assert.strictEqual(await fs(), 15, "default text size is the compact 15px base");
+      await page.evaluate(() => { const r = document.getElementById("uiScale"); r.value = "0.85"; r.dispatchEvent(new Event("input", { bubbles: true })); r.dispatchEvent(new Event("change", { bubbles: true })); });
+      await page.waitForTimeout(100);
+      assert.ok(Math.abs(await fs() - 12.75) < 0.01, "slider shrinks the text");
+      assert.strictEqual(await page.evaluate(() => S.docs.prefs.main.uiScale), 0.85, "text size is saved");
+      await page.click('[data-act="scalereset"]'); await page.waitForTimeout(100);
+      assert.strictEqual(await fs(), 15, "Reset goes back to the default size");
       await go(page, "train");
       await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
       const lg = await page.evaluate(async () => { const s = WorkoutLogger.settings(); const btn = [...document.querySelectorAll('#lbHost [data-a="startTplName"],#lbHost [data-a="startTpl"]')][0]; btn.click(); await new Promise(r => setTimeout(r, 400)); const tog = document.querySelectorAll(".lb-live-body .lb-demo-toggle").length, before = document.querySelectorAll(".lb-live-body .ea-card").length; const t = document.querySelector(".lb-live-body .lb-demo-toggle"); if (t) t.click(); await new Promise(r => setTimeout(r, 200)); return { gym: s.gym, listOnce: s.listOnce, tog, before, after: document.querySelectorAll(".lb-live-body .ea-card").length }; });
