@@ -49,9 +49,30 @@
   const GOALS = [
     { id: 'cut', label: 'Lose fat', sub: 'Eat below maintenance, keep the muscle' },
     { id: 'maintain', label: 'Maintain', sub: 'Hold your weight, eat at maintenance' },
-    { id: 'muscle', label: 'Build muscle', sub: 'A small surplus so most of the gain is muscle' },
+    { id: 'muscle', label: 'Build muscle', sub: 'On its own: a small surplus, mostly muscle. With "Lose fat" or "Maintain": a recomp' },
     { id: 'bulk', label: 'Gain weight', sub: 'A bigger surplus, faster scale gain' },
   ];
+  const DIRECTIONS = ['cut', 'maintain', 'bulk'];
+  // Several goals can be picked. One sets the direction (lose fat / maintain / gain weight); "build muscle" can ride on any of
+  // them: with lose fat it is a recomp (small deficit, high protein), with maintain a recomp at maintenance, with gain weight a
+  // lean gain. The effective single goal keeps the rest of the app (coach, plan check, sharing) on one id.
+  function effectiveGoal(goals) {
+    const g = Array.isArray(goals) ? goals.filter(x => GOALS.some(o => o.id === x)).sort((x, y) => GOALS.findIndex(o => o.id === x) - GOALS.findIndex(o => o.id === y)) : [];
+    const dir = g.filter(x => DIRECTIONS.includes(x)), muscle = g.includes('muscle');
+    if (dir.length > 1) return { goal: null, muscle, goals: g, conflict: true };
+    if (!dir.length) return { goal: muscle ? 'muscle' : null, muscle, goals: g, conflict: false };
+    return { goal: dir[0] === 'bulk' && muscle ? 'muscle' : dir[0], muscle, goals: g, conflict: false };
+  }
+  function toggleGoal(goals, id) {
+    let g = (Array.isArray(goals) ? goals : []).slice();
+    if (g.includes(id)) return g.filter(x => x !== id);
+    if (DIRECTIONS.includes(id)) g = g.filter(x => !DIRECTIONS.includes(x));
+    return g.concat([id]);
+  }
+  const goalLabel = a => { const e = effectiveGoal(a.goals && a.goals.length ? a.goals : [a.goal]); const names = e.goals.map(id => (GOALS.find(x => x.id === id) || {}).label).filter(Boolean); return names.length ? names.join(' + ') : (GOALS.find(x => x.id === a.goal) || {}).label || ''; };
+  const RECOMP_MAX_PCT = 0.5;
+  // Paces on offer: a recomp (lose fat + build muscle) stops at 0.5 %/wk so the deficit stays small enough to build.
+  const pacesFor = a => (PACES[a.goal] || []).filter(p => !(a.goal === 'cut' && a.muscle && p.pct > RECOMP_MAX_PCT));
   // pct = % of body weight a week; sign comes from the goal.
   const PACES = {
     cut: [
@@ -99,6 +120,7 @@
     { t: 'Morton RW et al. 2018, BJSM', s: 'protein benefits plateau around 1.6 g/kg, upper range 2.2 g/kg' },
     { t: 'Iraki J et al. 2019, Sports', s: 'gain 0.25–0.5 % of body weight a week when building muscle' },
     { t: '7,700 kcal per kg', s: 'the usual energy value of a kilogram of body weight change' },
+    { t: 'Barakat C et al. 2020, Strength Cond J', s: 'body recomposition: fat loss and muscle gain together with a small deficit, high protein and progressive training' },
     { t: 'Katch-McArdle', s: 'resting energy from lean mass: 370 + 21.6 × lean kg; averaged with Mifflin when you give a body-fat estimate' },
     { t: 'Ashwell M et al. 2012, Obes Rev', s: 'a waist under half your height is the simple health marker; waist is not a body-fat measurement' },
   ];
@@ -132,10 +154,13 @@
     if (clean.bodyFatPct != null) { clean.bodyFatMethod = bfMethod(A.bodyFatMethod).id; if (realDate(A.bodyFatAt)) clean.bodyFatAt = A.bodyFatAt; }
     if (clean.waistCm != null && realDate(A.waistAt)) clean.waistAt = A.waistAt;
     if (ACTIVITY.some(x => x.id === A.activity)) clean.activity = A.activity; else errors.push({ field: 'activity', msg: 'Pick an activity level' });
-    if (GOALS.some(g => g.id === A.goal)) clean.goal = A.goal; else errors.push({ field: 'goal', msg: 'Pick a goal' });
+    const eg = effectiveGoal(Array.isArray(A.goals) && A.goals.length ? A.goals : (GOALS.some(g => g.id === A.goal) ? [A.goal] : []));
+    if (eg.conflict) errors.push({ field: 'goal', msg: 'Pick one of Lose fat, Maintain or Gain weight; Build muscle can go with any of them' });
+    else if (eg.goal) { clean.goal = eg.goal; clean.muscle = eg.muscle; clean.goals = eg.goals.length ? eg.goals : [eg.goal]; }
+    else errors.push({ field: 'goal', msg: 'Pick a goal' });
     clean.mode = A.mode === 'date' ? 'date' : 'pace';
     if (clean.goal && clean.goal !== 'maintain') {
-      if (clean.mode === 'pace') { if (paceOf(clean.goal, A.pace)) clean.pace = A.pace; else errors.push({ field: 'pace', msg: 'Pick a pace' }); }
+      if (clean.mode === 'pace') { if (pacesFor(clean).some(p => p.id === A.pace)) clean.pace = A.pace; else errors.push({ field: 'pace', msg: 'Pick a pace' }); }
       else {
         if (realDate(A.endDate)) clean.endDate = A.endDate; else errors.push({ field: 'endDate', msg: 'Pick the date you want to get there' });
         if (clean.targetKg == null) errors.push({ field: 'targetKg', msg: 'A date needs a target weight too' });
@@ -174,6 +199,7 @@
     if (body && body.bmrKatch) notes.push('Body fat ' + body.pct + ' % by ' + body.methodLabel.toLowerCase() + ' (usually within ±' + body.pm + ' points' + (body.at ? ', measured ' + fmtDate(body.at, today) : '') + '): lean mass about ' + body.leanKg + ' kg, fat about ' + body.fatKg + ' kg. Maintenance averages the weight formula and the lean-mass formula; with that error band it sits between ' + fk(body.tdeeLo) + ' and ' + fk(body.tdeeHi) + ' kcal, so treat it as a range, not a reading.');
     if (body && body.waistCm != null) notes.push('Waist ' + body.waistCm + ' cm is ' + body.whtr.toFixed(2) + ' of your height' + (body.whtr < 0.5 ? ' (under 0.5, the usual healthy marker)' : ' (over 0.5; under is the usual health target)') + '. Waist alone is not a body-fat measurement; it is saved as a health marker so you can watch the trend.');
     const dir = a.goal === 'cut' ? -1 : a.goal === 'maintain' ? 0 : 1;
+    const recomp = !!a.muscle && a.goal === 'cut', holdMuscle = !!a.muscle && a.goal === 'maintain';
     const floor = Math.max(FLOOR[a.sex], Math.round(tdee * (1 - MAX_DEFICIT)));
     const diffKg = a.targetKg != null ? Math.abs(a.targetKg - a.kg) : null;
 
@@ -183,10 +209,10 @@
     else if (a.mode === 'date') {
       const weeks = Math.max(daysBetween(today, a.endDate), 1) / 7;
       rateKgWk = r2(diffKg / weeks); ratePct = r2(rateKgWk / a.kg * 100);
-      const cap = dir < 0 ? 1.0 : 0.5;
+      const cap = dir < 0 ? (recomp ? RECOMP_MAX_PCT : 1.0) : 0.5;
       if (ratePct > cap) {
         const safeWeeks = diffKg / (cap / 100 * a.kg);
-        warnings.push((dir < 0 ? 'Losing' : 'Gaining') + ' ' + rateKgWk.toFixed(2) + ' kg a week is ' + ratePct.toFixed(1) + ' % of your body weight, above the ' + cap + ' %/wk that the evidence supports' + (dir < 0 ? ' without losing muscle' : ' without gaining mostly fat') + '. The earliest realistic date is about ' + fmtDate(addDays(today, Math.ceil(safeWeeks * 7)), today) + '.');
+        warnings.push((dir < 0 ? 'Losing' : 'Gaining') + ' ' + rateKgWk.toFixed(2) + ' kg a week is ' + ratePct.toFixed(1) + ' % of your body weight, above the ' + cap + ' %/wk that the evidence supports' + (recomp ? ' while still building muscle' : dir < 0 ? ' without losing muscle' : ' without gaining mostly fat') + '. The earliest realistic date is about ' + fmtDate(addDays(today, Math.ceil(safeWeeks * 7)), today) + '.');
       } else if (dir < 0 && ratePct < 0.2) notes.push('That is a very gentle pace (under 0.2 % a week). Fine if you like it slow, but weigh-in noise will hide progress for a while.');
     } else {
       const p = paceOf(a.goal, a.pace);
@@ -208,10 +234,10 @@
     const bmi = a.kg / Math.pow(a.heightCm / 100, 2);
     const proteinKg = bmi > 30 ? r1(30 * Math.pow(a.heightCm / 100, 2)) : a.kg;
     if (bmi > 30) notes.push('Protein is set from ' + proteinKg + ' kg (your weight at a BMI of 30) so the number stays realistic.');
-    const proteinPerKg = PROTEIN_PER_KG[a.goal];
+    const proteinPerKg = recomp ? 2.2 : holdMuscle ? 2.0 : PROTEIN_PER_KG[a.goal];
     let protein = r5(proteinKg * proteinPerKg);
     // With a body-fat estimate, lean mass sets protein for a cut or a muscle goal (Helms 2014: 2.3–3.1 g per kg of lean mass), inside the 1.6–2.4 g/kg body-weight band.
-    if (body && body.leanKg && (a.goal === 'cut' || a.goal === 'muscle')) { const fromLean = r5(Math.max(proteinKg * 1.6, Math.min(proteinKg * 2.4, body.leanKg * 2.6))); if (fromLean !== protein) { notes.push('Protein ' + fromLean + ' g comes from your lean mass (2.6 g per kg of ' + body.leanKg + ' kg) instead of ' + protein + ' g from body weight.'); protein = fromLean; } }
+    if (body && body.leanKg && (a.goal === 'cut' || a.goal === 'muscle' || a.muscle)) { const fromLean = r5(Math.max(proteinKg * 1.6, Math.min(proteinKg * 2.4, body.leanKg * 2.6))); if (fromLean !== protein) { notes.push('Protein ' + fromLean + ' g comes from your lean mass (2.6 g per kg of ' + body.leanKg + ' kg) instead of ' + protein + ' g from body weight.'); protein = fromLean; } }
     let fat = r5(Math.max(kcal * FAT_SHARE / 9, a.kg * FAT_MIN_PER_KG));
     let carbs = r5((kcal - protein * 4 - fat * 9) / 4);
     if (carbs < MIN_CARBS) { fat = r5(Math.max(kcal * 0.2 / 9, a.kg * FAT_MIN_PER_KG)); carbs = Math.max(0, r5((kcal - protein * 4 - fat * 9) / 4)); }
@@ -231,12 +257,14 @@
         milestones.push({ kg: a.targetKg, date: endDate, final: true });
       }
     }
+    if (recomp) notes.push('Losing fat and building muscle at once works best with a small deficit, protein at 2.2 g/kg and progressive lifting (Barakat 2020). Expect the scale to move slower than the mirror: judge this plan by lifts going up and waist coming down as much as by weight.');
+    if (holdMuscle) notes.push('A recomp at maintenance: weight holds while lifts go up and the waist comes down over months. Protein 2 g/kg and progressive lifting do the work; re-check the trend every two weeks.');
     if (dir < 0 && !floored && weeks != null && weeks >= 12) notes.push('Plan a one-week diet break at maintenance every 8–12 weeks; the app\'s Diet break card handles it.');
     if (dir > 0) notes.push('Weigh weekly averages, not single days. If the average climbs faster than planned for two weeks, trim 100–150 kcal.');
     if (dir === 0) notes.push('Maintenance is an estimate. After two weeks of logging, the Trend weight card shows your real burn; adjust by 100 kcal if the trend drifts.');
 
     const profile = { start: today, startKg: a.kg, goalKg: a.targetKg != null ? a.targetKg : a.kg, cutKcal: kcal, maintenance: tdee, protein, fat, kcalFloor: floor };
-    return { ok: true, errors: [], today, bmr, tdee, tdeeSource, body, activity: act.id, activityFactor: act.f, goal: a.goal, direction: dir, pace: paceId, mode: a.mode,
+    return { ok: true, errors: [], today, bmr, tdee, tdeeSource, body, activity: act.id, activityFactor: act.f, goal: a.goal, goals: a.goals || [a.goal], muscle: !!a.muscle, label: goalLabel(a), direction: dir, pace: paceId, mode: a.mode,
       ratePct: r2(ratePct), rateKgWk: r2(rateKgWk), kcal, floor, floored, deficit, protein, fat, carbs, proteinPerKg, proteinKg, bmi: r1(bmi),
       weeks, endDate, milestones, warnings, notes, profile, answers: a };
   }
@@ -441,9 +469,9 @@ body:has(.gs-wrap) .bottombar{display:none!important}
         + '<label class="field"><span class="label">Measured with</span><select data-gs-f="bodyFatMethod">' + BF_METHODS.map(m => '<option value="' + m.id + '"' + ((a.bodyFatMethod || 'scale') === m.id ? ' selected' : '') + '>' + esc(m.label) + '</option>').join('') + '</select></label>'
         + field('waistCm', 'Waist (at the navel)', 'cm', 'type="number" inputmode="decimal" min="40" max="200" step="0.5" placeholder="90"', 'wide') + '</div>' + errFor('bodyFatPct') + errFor('waistCm') + '</details>';
       if (s === 'activity') return '<h2>How active are you?</h2><p class="gs-sub">Count your job and your training together. Most people who lift 4–5 days and sit the rest of the day are "Active".</p><div class="gs-opts">' + ACTIVITY.map(x => opt('activity', x.id, x.label, x.sub)).join('') + '</div>' + errFor('activity');
-      if (s === 'goal') return '<h2>What do you want?</h2><div class="gs-opts">' + GOALS.map(g => opt('goal', g.id, g.label, g.sub)).join('') + '</div>' + errFor('goal');
+      if (s === 'goal') { const picked = a.goals && a.goals.length ? a.goals : (a.goal ? [a.goal] : []); return '<h2>What do you want?</h2><p class="gs-sub">Pick one or more. "Build muscle" goes with any of the others: with Lose fat it is a recomp.</p><div class="gs-opts">' + GOALS.map(g => '<button type="button" class="gs-opt" data-gs="goal" data-v="' + g.id + '" aria-pressed="' + String(picked.includes(g.id)) + '"><span class="gs-radio gs-check-box"></span><span><b>' + esc(g.label) + '</b><small>' + esc(g.sub) + '</small></span></button>').join('') + '</div>' + errFor('goal'); }
       if (s === 'plan') {
-        const dir = a.goal === 'cut' ? 'lose' : 'gain', paces = PACES[a.goal] || [];
+        const dir = a.goal === 'cut' ? 'lose' : 'gain', paces = pacesFor(a);
         const kgNow = isNum(a.kg) ? +a.kg : null;
         return '<h2>How fast?</h2><p class="gs-sub">The pace is a share of your body weight a week; the calories follow from it.' + (kgNow ? ' At ' + kgNow + ' kg, 0.5 % is ' + r2(kgNow * 0.005).toFixed(2) + ' kg a week.' : '') + '</p>'
           + '<div class="gs-seg">' + opt('mode', 'pace', 'Pick a pace') + opt('mode', 'date', 'I have a date') + '</div>'
@@ -463,7 +491,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
       const cur = existing && existing.targets ? existing.targets : null;
       const cmpRow = (l, was, now, unit) => '<tr><td>' + l + '</td><td>' + (was == null ? '—' : fk(was) + unit) + '</td><td class="new">' + fk(now) + unit + '</td></tr>';
       const changed = cur && [['kcal', r.kcal], ['proteinMin', r.protein], ['goalKg', r.profile.goalKg]].some(([k, v]) => cur[k] != null && Math.round(cur[k]) !== Math.round(v));
-      return '<h2>Your plan</h2><p class="gs-sub">' + esc(g.label) + ' · ' + pace + '</p>'
+      return '<h2>Your plan</h2><p class="gs-sub">' + esc(r.label || g.label) + ' · ' + pace + '</p>'
         + '<div class="gs-hero"><span class="label">Daily calories</span><div class="big num">' + fk(r.kcal) + '<small>kcal</small></div><p class="gs-line muted">Maintenance about <b class="num">' + fk(r.tdee) + '</b> kcal (resting ' + fk(r.bmr) + ' × ' + r.activityFactor + ')' + (r.deficit ? ', so ' + (r.deficit < 0 ? 'a ' + fk(-r.deficit) + ' kcal deficit' : 'a ' + fk(r.deficit) + ' kcal surplus') : '') + '.' + (r.floored ? ' Kept at your safe minimum.' : '') + '</p></div>'
         + '<div class="gs-macros"><div><b class="num">' + r.protein + ' g</b><span>Protein</span><em>' + r.proteinPerKg + ' g/kg · ' + pct(r.protein * 4) + ' %</em></div><div><b class="num">' + r.fat + ' g</b><span>Fat</span><em>' + pct(r.fat * 9) + ' %</em></div><div><b class="num">' + r.carbs + ' g</b><span>Carbs</span><em>' + pct(r.carbs * 4) + ' %</em></div></div>'
         + (r.endDate ? '<div><span class="label">Projected</span><p class="gs-line" style="margin-top:4px">Reach <b>' + r.profile.goalKg + ' kg</b> around <b>' + fmtDate(r.endDate, today) + '</b>, about ' + Math.round(r.weeks) + ' weeks' + (r.weeks >= 9 ? ' (' + r1(r.weeks / 4.345).toFixed(1).replace(/\.0$/, '') + ' months)' : '') + '.</p>'
@@ -513,6 +541,7 @@ body:has(.gs-wrap) .bottombar{display:none!important}
     el.addEventListener('click', e => {
       const t = e.target.closest('[data-gs]'); if (!t) return;
       const act = t.dataset.gs;
+      if (act === 'goal') { readInputs(); const goals = toggleGoal(a.goals && a.goals.length ? a.goals : (a.goal ? [a.goal] : []), t.dataset.v); const e = effectiveGoal(goals); a.goals = e.conflict ? goals : e.goals; if (e.goal !== a.goal || e.muscle !== a.muscle) a.pace = undefined; a.goal = e.conflict ? undefined : e.goal || undefined; a.muscle = e.muscle; errs = errs.filter(x => x.field !== 'goal'); paint(); return; }
       if (act === 'pick') { readInputs(); a[t.dataset.k] = t.dataset.v; if (t.dataset.k === 'goal') { a.pace = undefined; } errs = errs.filter(x => x.field !== t.dataset.k); paint(); return; }
       if (act === 'next') { readInputs(); errs = stepErrors(); if (errs.length) { paint(); return; } if (a.goal === 'maintain') { a.pace = undefined; a.mode = 'pace'; a.targetKg = a.kg; a.endDate = undefined; } step = Math.min(step + 1, steps().length - 1); dirCls = 'gs-in-r'; paint(); return; }
       if (act === 'back') { readInputs(); errs = []; step = Math.max(0, step - 1); dirCls = 'gs-in-l'; paint(); return; }
@@ -528,5 +557,5 @@ body:has(.gs-wrap) .bottombar{display:none!important}
     return { el, close: () => close('close'), state: () => Object.assign({ step }, a) };
   }
 
-  return { compute, validate, needsRerun, compactHtml, open, css, ACTIVITY, GOALS, PACES, SOURCES, PROTEIN_PER_KG, FLOOR, BF_METHODS };
+  return { compute, validate, needsRerun, compactHtml, open, css, ACTIVITY, GOALS, PACES, SOURCES, PROTEIN_PER_KG, FLOOR, BF_METHODS, effectiveGoal, toggleGoal, pacesFor };
 });
