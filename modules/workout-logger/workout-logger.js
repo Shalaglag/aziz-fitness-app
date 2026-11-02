@@ -762,7 +762,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   function closeSheet() {
     const sh = sheets.pop(); if (!sh) return;
     sh.o.onClose && sh.o.onClose();
-    sh.el.classList.remove('open'); setTimeout(() => sh.el.remove(), 180);
+    sh.el.classList.remove('open'); sh.el.classList.add('closing'); setTimeout(() => sh.el.remove(), 240);
     if (!sheets.length) renderMain();
   }
   const topSheet = () => sheets[sheets.length - 1];
@@ -800,12 +800,16 @@ Power Clean (Barbell)|Other|Barbell|`;
 
   // ---------- Main views ----------
   const TABS = [['workout', 'Workout'], ['history', 'History'], ['exercises', 'Exercises'], ['progress', 'Progress'], ['tools', 'Tools']];
+  let shownTab = null, enterSel = null;
   function renderMain() {
     if (!root) return;
     if (!S.ready) { root.innerHTML = '<div class="lb-empty">Loading your workouts…</div>'; return; }
     const body = { workout: viewWorkout, history: viewHistory, exercises: viewExercises, progress: viewProgress, tools: viewTools }[tab]();
     const tabs = TABS.filter(([k]) => k === tab || !(S.opts.hideTabs || []).includes(k));
     root.innerHTML = (S.opts.title ? '<h1 class="lb-screen-title">' + esc(S.opts.title) + '</h1>' : '') + '<nav class="lb-subnav" aria-label="Workout sections">' + tabs.map(([k, l]) => '<button data-a="tab" data-k="' + k + '" class="' + (k === tab ? 'on' : '') + '" aria-current="' + (k === tab) + '">' + l + '</button>').join('') + '</nav>' + activeBanner() + '<div class="lb-view">' + body + '</div>';
+    // Short entry motion (CSS lb-in): the section fades in when you switch Workout/History/…, or the card that changed (e.g. Skip to the next session).
+    const sel = tab !== shownTab ? '.lb-view' : enterSel; shownTab = tab; enterSel = null;
+    const anim = sel && root.querySelector(sel); if (anim) anim.classList.add('lb-in');
     const q = root.querySelector('#lb-exq'); if (q && exFilter.focus) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   }
   on('tab', t => { tab = t.dataset.k; renderMain(); });
@@ -838,7 +842,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     const last = workouts().find(w => w.templateId === t.id);
     return '<button class="lb-card lb-tpl" data-a="tplPreview" data-id="' + t.id + '"><div class="lb-tpl-top"><b>' + esc(t.name) + '</b><span class="lb-muted small">' + (last ? relDay(last.start) : 'Not done yet') + '</span></div><p>' + esc(t.exercises.map(e => getEx(e.exId).name.replace(/ \(.*\)$/, '')).join(', ')) + '</p></button>';
   }
-  on('rotSkip', () => { const r = rotationInfo(); S.settings.rotOverride = { idx: (r.idx + 1) % ROTATION.length, at: Date.now() }; saveSettings(); bump(); renderMain(); });
+  on('rotSkip', () => { const r = rotationInfo(); S.settings.rotOverride = { idx: (r.idx + 1) % ROTATION.length, at: Date.now() }; saveSettings(); bump(); enterSel = '.lb-next'; renderMain(); });
   on('loadProgram', () => { buildProgram().forEach(t => { if (!S.data.templates[t.id]) put('templates', t); }); toast('Loaded 6 templates'); renderMain(); });
   on('tplPreview', t => {
     const tpl = S.data.templates[t.dataset.id]; if (!tpl) return;
@@ -1472,6 +1476,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (!liveEl) { liveEl = document.createElement('section'); liveEl.className = 'lb-live'; liveEl.setAttribute('role', 'dialog'); liveEl.setAttribute('aria-label', 'Workout'); overlay.appendChild(liveEl); }
     liveEl.innerHTML = '<header class="lb-live-head"></header><div class="lb-live-body"></div><div class="lb-rest" hidden></div>';
     liveEl.hidden = false; document.documentElement.classList.add('lb-noscroll');
+    liveEl.classList.remove('lb-live-in'); void liveEl.offsetWidth; liveEl.classList.add('lb-live-in'); clearTimeout(liveEl._inT); liveEl._inT = setTimeout(() => liveEl.classList.remove('lb-live-in'), 320);
     renderEditor(); renderRest(); startTick();
     liveEl.querySelector('.lb-live-body').scrollTop = 0;
     renderMain();
@@ -2201,10 +2206,10 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-overlay{position:fixed;inset:0;pointer-events:none;z-index:1000}
 .lb-overlay > *{pointer-events:auto}
 .lb-sheet-wrap{position:fixed;inset:0;display:flex;align-items:flex-end;justify-content:center;z-index:20}
-.lb-scrim{position:absolute;inset:0;background:rgba(10,12,16,.45);opacity:0;transition:opacity .18s}
-.lb-sheet{position:relative;width:100%;max-width:640px;max-height:88%;display:flex;flex-direction:column;background:var(--lb-bg);color:var(--lb-ink);border-radius:18px 18px 0 0;transform:translateY(30px);opacity:0;transition:transform .2s,opacity .2s;padding-bottom:env(safe-area-inset-bottom,0px)}
+.lb-scrim{position:absolute;inset:0;background:rgba(10,12,16,.45);opacity:0;transition:opacity .24s cubic-bezier(.2,.8,.2,1)}
+.lb-sheet{position:relative;width:100%;max-width:640px;max-height:88%;display:flex;flex-direction:column;background:var(--lb-bg);color:var(--lb-ink);border-radius:18px 18px 0 0;transform:translateY(40px);opacity:0;transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .22s cubic-bezier(.2,.8,.2,1);padding-bottom:env(safe-area-inset-bottom,0px)}
 .lb-sheet.full{height:94%;max-height:94%}
-.lb-sheet-wrap.open .lb-scrim{opacity:1} .lb-sheet-wrap.open .lb-sheet{transform:none;opacity:1}
+.lb-sheet-wrap.closing{pointer-events:none} .lb-sheet-wrap.open .lb-scrim{opacity:1} .lb-sheet-wrap.open .lb-sheet{transform:none;opacity:1}
 .lb-sheet-head{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:12px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--lb-line)}
 .lb-sheet-head h2{margin:0;font-family:var(--lb-display);font-size:1.2rem;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lb-sheet-right{min-width:3rem;display:flex;justify-content:flex-end}
@@ -2213,6 +2218,10 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-option.danger{color:var(--lb-bad)}
 .lb-copy{font-family:var(--lb-mono);font-size:.8rem}
 .lb-live{position:fixed;inset:0;z-index:10;background:var(--lb-bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.lb-live.lb-live-in{animation:lb-live-in .28s cubic-bezier(.2,.8,.2,1) backwards}
+@keyframes lb-live-in{from{opacity:0;transform:translateY(28px)}}
+.lb-in{animation:lb-in .22s cubic-bezier(.2,.8,.2,1) backwards}
+@keyframes lb-in{from{opacity:0;transform:translateY(6px)}}
 .lb-live-head{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--lb-line);background:var(--lb-surface)}
 .lb-live-head > b,.lb-elapsed{text-align:center;font-weight:700}
 .lb-elapsed{font-size:1.1rem}
