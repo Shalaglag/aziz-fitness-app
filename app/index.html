@@ -321,7 +321,10 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{background:var(--bg)}
-body{color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45}
+/* Text size: 15px base (Strong-like density) times the Settings › Text size slider (--ui-scale, 0.8–1.3). Everything sized in rem follows it. */
+html{font-size:calc(15px * var(--ui-scale,1))}
+body{color:var(--ink);font-family:var(--body);font-size:1rem;line-height:1.4}
+.set-row input[type=range]{width:min(180px,46vw);accent-color:var(--accent)}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
 .wrap{max-width:980px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:.01em;margin:0;text-wrap:balance;line-height:1.1}
@@ -4957,10 +4960,11 @@ Power Clean (Barbell)|Other|Barbell|`;
       const hint = E.mode === 'live' ? progressionHint(e.exId, e.unit, prev.e) : '';
       const xc = extraCols(ex);
       const cols = '2.1rem 1fr ' + f.map(() => '4.2rem').join(' ') + xc.map(() => ' 3rem').join('') + (live ? ' 2.6rem' : ' 2rem');
+      const dm = live ? demoSlot(e.exId) : '', dmHead = !!dm && !demoOpen.has(e.exId);
       html += '<article class="lb-exblock' + (e.ss ? ' ss ss' + (ssIdx % 4) : '') + '" data-ei="' + i + '">' +
         (e.ss ? '<div class="lb-sslabel">Superset ' + String.fromCharCode(65 + ssIdx) + '</div>' : '') +
-        '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button><button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
-        (live ? demoSlot(e.exId) : '') +
+        '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button>' + (dmHead ? dm : '') + '<button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
+        (dm && !dmHead ? dm : '') +
         (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') +
         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
@@ -5549,7 +5553,7 @@ textarea.lb-input{resize:vertical;min-height:42px;line-height:1.4}
 .lb-tbl td,.lb-tbl th{padding:6px 4px;border-bottom:1px solid var(--lb-line);text-align:left}
 .lb-tbl th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--lb-muted)}
 .lb-tbl .r{text-align:right}
-.lb-settag{display:inline-flex;align-items:center;justify-content:center;min-width:1.8rem;height:1.8rem;border-radius:7px;font-weight:700;font-size:1.05rem;background:none;font-variant-numeric:tabular-nums}
+.lb-settag{display:inline-flex;align-items:center;justify-content:center;min-width:1.6rem;height:1.6rem;border-radius:7px;font-weight:700;font-size:.95rem;background:none;font-variant-numeric:tabular-nums}
 td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-settag.w{color:var(--lb-warn)} .lb-settag.d{color:#7a4fd0} .lb-settag.f{color:var(--lb-bad)}
 .lb-note{background:var(--lb-sunk);border-radius:10px;padding:8px 12px;font-size:.9rem}
@@ -5580,37 +5584,42 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-elapsed{font-size:1.1rem}
 .lb-live-body{flex:1;overflow-y:auto;background:var(--lb-surface);padding:12px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(safe-area-inset-left,0px));-webkit-overflow-scrolling:touch}
 .lb-live-body > *{max-width:720px;margin-left:auto;margin-right:auto}
-.lb-title-in{width:100%;border:0;background:transparent;font-family:var(--lb-display);font-size:1.9rem;font-weight:700;padding:2px 0;color:var(--lb-ink)}
+.lb-title-in{width:100%;border:0;background:transparent;font-family:var(--lb-display);font-size:1.55rem;font-weight:700;padding:2px 0;color:var(--lb-ink)}
 .lb-notes{margin-top:6px}
-.lb-exblock{margin-top:28px;padding:0 2px;background:transparent;border:0;border-radius:0}
+.lb-live-body .lb-notes{min-height:34px;padding:6px 10px;font-size:.9rem}
+.lb-exblock{margin-top:20px;padding:0 2px;background:transparent;border:0;border-radius:0}
 .lb-exblock.ss{padding-left:10px}
 .lb-exblock.ss{border-left:4px solid var(--lb-accent)}
 .lb-exblock.ss1{border-left-color:#1f5fbf}.lb-exblock.ss2{border-left-color:#1f8a4c}.lb-exblock.ss3{border-left-color:#e3b300}
 .lb-sslabel{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--lb-muted)}
 .lb-exhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.lb-exhead h3{color:var(--lb-accent);font-size:1.3rem;font-weight:600;font-family:var(--lb-body)}
-.lb-exhead .lb-link.strong{color:var(--lb-accent);font-size:1.3rem;font-weight:600;font-family:var(--lb-body)}
+.lb-exhead .lb-link.strong{flex:1;min-width:0;line-height:1.2}
+.lb-exhead .lb-demo-toggle{margin:0;flex:none;padding:3px 9px;font-size:.78rem}
+.lb-exhead h3{color:var(--lb-accent);font-size:1.1rem;font-weight:600;font-family:var(--lb-body)}
+.lb-exhead .lb-link.strong{color:var(--lb-accent);font-size:1.1rem;font-weight:600;font-family:var(--lb-body)}
 .lb-memo{color:var(--lb-muted);font-style:italic}
 .lb-memo-btn{display:block;width:100%;text-align:left;background:none;border:1px dashed var(--lb-line);color:var(--lb-muted);border-radius:10px;padding:6px 10px;font:inherit;font-size:.85rem;font-style:italic;cursor:pointer;margin:4px 0}
 .lb-memo-btn:not(.empty){border-style:solid;color:inherit;font-style:normal}
 .lb-chips{margin:-4px 0 6px}
 .lb-hint{color:var(--lb-good);font-weight:600}
-.lb-sets{margin-top:12px}
-.lb-setrow{display:grid;grid-template-columns:var(--cols);gap:10px;align-items:center;padding:8px 2px;border-radius:12px;min-height:60px}
-.lb-setrow.head{min-height:0;padding:0 2px;font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--lb-ink);font-weight:700}
+.lb-sets{margin-top:6px}
+.lb-exblock .fc-inline{margin:.3rem 0 .2rem}.lb-exblock .fc-inline>summary{padding:.3rem .6rem;font-size:.8rem}
+.lb-exblock > p.small{margin:.2rem 0;font-size:.8rem}
+.lb-setrow{display:grid;grid-template-columns:var(--cols);gap:8px;align-items:center;padding:4px 2px;border-radius:10px;min-height:42px}
+.lb-setrow.head{min-height:0;padding:0 2px 2px;font-size:.68rem;text-transform:uppercase;letter-spacing:.14em;color:var(--lb-ink);font-weight:700}
 .lb-setrow.head span{text-align:center} .lb-setrow.head span:nth-child(2){text-align:left}
 .lb-setrow.done{background:color-mix(in srgb,var(--lb-good) 16%,transparent)}
-.lb-prev{font-size:1rem;color:var(--lb-muted);opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums;text-align:left}
+.lb-prev{font-size:.88rem;color:var(--lb-muted);opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums;text-align:left}
 .lb-prev.base{font-style:italic}
-.lb-cell{width:100%;min-width:0;height:2.9rem;font-size:1.3rem;text-align:center;border-radius:10px;border:1px solid transparent;background:var(--lb-sunk);color:var(--lb-ink);font-weight:600;font-variant-numeric:tabular-nums;padding:0 4px}
+.lb-cell{width:100%;min-width:0;height:2.15rem;font-size:1.05rem;text-align:center;border-radius:8px;border:1px solid transparent;background:var(--lb-sunk);color:var(--lb-ink);font-weight:600;font-variant-numeric:tabular-nums;padding:0 4px}
 .lb-cell::placeholder{color:var(--lb-muted);opacity:.75;font-weight:500}
 .lb-cell:focus{border-color:var(--lb-accent);outline:none;background:var(--lb-surface)}
 .lb-setrow.done .lb-cell{background:transparent}
-.lb-chk{height:2.9rem;border-radius:10px;background:var(--lb-sunk);color:var(--lb-muted);font-weight:800;font-size:1rem;display:flex;align-items:center;justify-content:center}
+.lb-chk{height:2.15rem;border-radius:8px;background:var(--lb-sunk);color:var(--lb-muted);font-weight:800;font-size:1rem;display:flex;align-items:center;justify-content:center}
 .lb-setrow.done .lb-chk{background:var(--lb-good);color:#fff}
 .lb-prrow{grid-column:2/-1;font-size:.72rem;font-weight:700;color:var(--lb-good);letter-spacing:.03em}
-.lb-exfoot{display:flex;justify-content:center;align-items:center;margin-top:12px;gap:14px;position:relative}
-.lb-exfoot .lb-btn{flex:1;background:none;border:0;color:var(--lb-accent);text-transform:uppercase;letter-spacing:.08em;font-weight:700;font-size:.95rem;min-height:44px}
+.lb-exfoot{display:flex;justify-content:center;align-items:center;margin-top:4px;gap:14px;position:relative}
+.lb-exfoot .lb-btn{flex:1;background:none;border:0;color:var(--lb-accent);text-transform:uppercase;letter-spacing:.08em;font-weight:700;font-size:.85rem;min-height:38px}
 .lb-exfoot .lb-link{position:absolute;right:0}
 .lb-rest{position:absolute;left:0;right:0;bottom:0;background:var(--lb-surface);border-top:1px solid var(--lb-line);padding:8px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));box-shadow:0 -6px 20px rgba(0,0,0,.12)}
 .lb-rest.floating{position:fixed;z-index:15;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));border-radius:14px;border:1px solid var(--lb-line);max-width:480px;margin:0 auto}
@@ -26668,6 +26677,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
 </script>
 <script>
 try{ const nv=localStorage.getItem("aziz-cut-nav"); if(nv!=="drawer") document.documentElement.setAttribute("data-nav",nv==="both"?"both":"bottom"); }catch(e){ document.documentElement.setAttribute("data-nav","bottom"); }
+try{ const sc=parseFloat(localStorage.getItem("aziz-cut-scale")); if(sc>=0.8&&sc<=1.3) document.documentElement.style.setProperty("--ui-scale",sc); }catch(e){}
 try{ const th=localStorage.getItem("aziz-cut-theme"); if(th==="light"||th==="dark") document.documentElement.setAttribute("data-theme",th); }catch(e){}
 /* ===================== Plan data (from Aziz's handoff, Oct 25 2026) ===================== */
 const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:220};
@@ -27028,7 +27038,7 @@ function render(){
   applyTargets();
   try{ autoFoodsTick(); }catch(e){ console.error("[auto foods]", e); }
   applyAccent(currentAccent());
-  if(S.mode!=="loading"){ applyTheme(S.docs.prefs.main?.theme); applyNav(S.docs.prefs.main?.nav); }
+  if(S.mode!=="loading"){ applyTheme(S.docs.prefs.main?.theme); applyNav(S.docs.prefs.main?.nav); if(S.docs.prefs.main?.uiScale!=null) applyScale(S.docs.prefs.main.uiScale); }
   if(window.AndroidShell && AndroidShell.visit) AndroidShell.visit(view.tab, window.scrollY);
   document.querySelectorAll("#tabs button, #bottomNav button").forEach(b=>b.setAttribute("aria-current", b.dataset.tab===view.tab?"page":"false"));
   document.getElementById("dateLabel").textContent = fmt(view.date) + (view.date===TODAY?" · today":"");
@@ -27125,6 +27135,8 @@ function setKg(s,name){ return convW(s.w, setUnit(s,name), "kg"); }
 // PROGRAM with each exercise's chosen unit and its baseline converted to it (for imports, analytics and the coach)
 function programEff(){ const o={}; for(const s in PROGRAM){ o[s]=PROGRAM[s].map(e=>{ const u=exUnit(e[0]); return u===(e[4]||"kg") ? e : [e[0], convW(e[1], e[4]||"kg", u), e[2], e[3], u, e[5]]; }); } return o; }
 function applyNav(n){ n=(n==="drawer"||n==="both")?n:"bottom"; if(n==="drawer") document.documentElement.removeAttribute("data-nav"); else document.documentElement.setAttribute("data-nav",n); try{ localStorage.setItem("aziz-cut-nav",n); }catch(e){} }
+function uiScale(v){ v=Math.round(parseFloat(v)*100)/100; return v>=0.8&&v<=1.3?v:1; }
+function applyScale(v){ v=uiScale(v); document.documentElement.style.setProperty("--ui-scale",v); try{ localStorage.setItem("aziz-cut-scale",v); }catch(e){} }
 function applyTheme(t){ t=t||"system"; if(t==="light"||t==="dark") document.documentElement.setAttribute("data-theme",t); else document.documentElement.removeAttribute("data-theme"); try{ localStorage.setItem("aziz-cut-theme",t); }catch(e){} }
 function lbSettings(){ try{ return window.WorkoutLogger && WorkoutLogger.settings ? WorkoutLogger.settings() : null; }catch(e){ return null; } }
 function restSec(){ const s=lbSettings(); return S.docs.prefs.main?.restSec || (s && s.restCompound) || 150; }
@@ -27823,6 +27835,7 @@ function vSettings(){
   ${cat("Appearance")}
   <div class="card"><div class="set-list">
     ${row("Navigation","Where the sections live",seg("navset",[["bottom","Bottom bar"],["drawer","Side menu"],["both","Both"]],m.nav||"bottom"))}
+    ${(()=>{ const sc=uiScale(m.uiScale??1); return row("Text size",`Makes words, rows and boxes smaller or bigger · <b id="scaleVal">${Math.round(sc*100)}%</b>`,`<span class="row" style="gap:6px;justify-content:flex-end;flex-wrap:nowrap"><span aria-hidden="true" style="font-size:.8rem">A</span><input type="range" id="uiScale" min="0.8" max="1.3" step="0.05" value="${sc}" aria-label="Text size"><span aria-hidden="true" style="font-size:1.2rem">A</span><button type="button" class="btn ghost small" data-act="scalereset">Reset</button></span>`); })()}
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
     ${row("Colour","Buttons and highlights",`<span class="row" style="gap:6px;justify-content:flex-end">${[["coral","Coral"],["red","2.5 kg red"],["white","5 kg white"],["green","10 kg green"],["yellow","15 kg yellow"],["blue","20 kg blue"]].map(([k,l])=>`<button class="chip" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}">${l}</button>`).join("")}</span>`)}
   </div></div>
@@ -27976,6 +27989,7 @@ main.addEventListener("click",e=>{
   if(a==="foodclose"){ view.foodSheet=null; render(); return; }
   if(a==="foodtab"){ view.foodSheet={...(view.foodSheet||{}), tab:el.dataset.k}; render(); return; }
   if(a==="portion"){ const m=+el.dataset.m; ["fk","fp","fc","ff"].forEach(id=>{ const inp=document.getElementById(id); if(inp && inp.value!=="") inp.value=Math.round(+inp.value*m*10)/10; }); return; }
+  if(a==="scalereset"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.uiScale=1; applyScale(1); put("prefs","main",p); return; }
   if(a==="theme"){ const p=clone(S.docs.prefs.main); p.theme=el.dataset.k; applyTheme(p.theme); put("prefs","main",p); return; }
   if(a==="rest"){ const p=clone(S.docs.prefs.main); p.restSec=+el.dataset.k; put("prefs","main",p); return; }
   if(a==="restauto"){ const p=clone(S.docs.prefs.main); p.restAuto=!(p.restAuto!==false); put("prefs","main",p); return; }
@@ -28056,6 +28070,8 @@ main.addEventListener("change",e=>{
     w.sets[n]=arr; put("workouts",d,w,{quiet:true}); renderPending=true;
   }
 });
+main.addEventListener("input",e=>{ if(e.target.id==="uiScale"){ applyScale(e.target.value); const l=document.getElementById("scaleVal"); if(l) l.textContent=Math.round(uiScale(e.target.value)*100)+"%"; } });
+main.addEventListener("change",e=>{ if(e.target.id==="uiScale"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.uiScale=uiScale(e.target.value); applyScale(p.uiScale); put("prefs","main",p); } });
 main.addEventListener("input",e=>{ if(e.target.id==="libq"){ view.q=e.target.value; const pos=e.target.selectionStart; render(); const s=document.getElementById("libq"); s.focus(); try{s.setSelectionRange(pos,pos)}catch(_){} } });
 main.addEventListener("submit",e=>{
   e.preventDefault(); const f=e.target.dataset.form, d=view.date;
