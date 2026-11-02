@@ -1689,7 +1689,7 @@ window.StrongCSV = (() => {
         const to = unitOf[key] || ex.sets[0]?.unit || "kg";
         const sets = ex.sets.filter(s => s.kind !== "warmup" && s.r > 0).map(s => ({ w: convert(s.w, s.unit, to), r: s.r }));
         if (!sets.length) continue;
-        doc.sets[key] = (docs[wo.date] && docs[wo.date].strongNames && docs[wo.date].strongNames.includes(key)) ? doc.sets[key].concat(sets) : sets;
+        doc.sets[key] = (doc.strongNames && doc.strongNames.includes(key)) ? doc.sets[key].concat(sets) : sets; // two Strong names on one app name (same day) add up
         doc.strongNames = (doc.strongNames || []).concat(key);
         report.sets += sets.length;
       }
@@ -4883,48 +4883,101 @@ Power Clean (Barbell)|Other|Barbell|`;
   on('importCsv', async t => {
     const file = t.files && t.files[0]; if (!file) return;
     const unitSel = root.querySelector('#lb-impunit'), unit = unitSel ? unitSel.value : 'kg';
-    const rows = parseCsv(await file.text()); t.value = '';
-    if (rows.length < 2) { toast('That file has no rows'); return; }
-    const h = rows[0].map(x => x.trim().toLowerCase()), col = n => h.indexOf(n);
-    const ci = { date: col('date'), name: col('workout name'), dur: col('duration'), ex: col('exercise name'), order: col('set order'), w: col('weight'), r: col('reps'), d: col('distance'), s: col('seconds'), notes: col('notes'), wnotes: col('workout notes'), rpe: col('rpe'), wu: col('weight unit') };
-    if (ci.date < 0 || ci.ex < 0) { toast('This doesn’t look like a Strong export (needs Date and Exercise Name columns)'); return; }
+    const text = await file.text(); t.value = '';
+    const r = await importStrong(text, { unit });
+    if (r.error) { toast(r.error); return; }
+    toast('Imported ' + r.added + ' workouts' + (r.updated ? ', updated ' + r.updated : '') + (r.skipped ? ', skipped ' + r.skipped + ' logged here' : '') + (r.newEx ? ', added ' + r.newEx + ' exercises' : ''));
+  });
+  // Strong names Aziz used (Nov 2024 - Oct 2026 export) -> library names. Keys are norm()ed.
+  const STRONG_ALIASES = {
+    'seatedabs': 'Seated Abs (Machine)', 'tricepspushdowncablestraightbar': 'Triceps Pushdown (Straight Bar)',
+    'latpulldownunderhandcable': 'Lat Pulldown (Reverse Grip)', 'trapsmachinefrontback': 'Shrug (Machine)', 'trapsmachine': 'Shrug (Machine)',
+    'calfpressonseatedlegpress': 'Calf Press (Leg Press)', 'highrowmachine': 'High Row (Machine)',
+    'isolaterallowrowplate': 'Iso-Lateral Low Row (Plate-loaded)', 'isolateralrowmachine': 'Iso-Lateral Low Row (Plate-loaded)',
+    'sidedeltsshoulders': 'Lateral Raise (Dumbbell)', 'sidedelts': 'Lateral Raise (Dumbbell)', 'standingsidedelts': 'Standing Lateral Raise (Machine)',
+    'tricepsropecable': 'Triceps Rope Pushdown (Cable)', 'tricepsrope': 'Triceps Rope Pushdown (Cable)', 'seatedoverheadmachine': 'Shoulder Press (Machine)',
+    'bicepseatedcurl': 'Seated Bicep Curl (Machine)', 'seatedbicepcurl': 'Seated Bicep Curl (Machine)', 'seatedshouldersmithback': 'Seated Overhead Press (Smith Machine)',
+    'hacksquat': 'Hack Squat (Machine)', 'gundam': 'Gundam Chest Press (Machine)', 'gundamchestmachine': 'Gundam Chest Press (Machine)',
+    'legpress': 'Leg Press (Machine)', 'cablestandingbiceps': 'Standing Bicep Curl (Cable)', 'latpulldownsinglearm': 'Lat Pulldown - Single Arm (Cable)',
+    'flatbenchbarbell': 'Bench Press (Barbell)', 'ezbarcurl': 'Bicep Curl (EZ Bar)', 'legextension': 'Leg Extension (Machine)', 'lyinglegcurl': 'Lying Leg Curl (Machine)',
+    'hipadductor': 'Hip Adductor (Machine)', 'hipabductor': 'Hip Abductor (Machine)', 'standingcalfraise': 'Standing Calf Raise (Machine)', 'smithsquat': 'Squat (Smith Machine)',
+    'inclinedbpress': 'Incline Bench Press (Dumbbell)', 'dbcurl': 'Bicep Curl (Dumbbell)', 'frontraisedb': 'Front Raise (Dumbbell)', 'seateddboverheadpress': 'Seated Overhead Press (Dumbbell)',
+    'latpulldownwide': 'Lat Pulldown - Wide Grip (Cable)', 'isolaterallowrow': 'Iso-Lateral Low Row (Plate-loaded)',
+  };
+  const PROG_UNIT = {}; PROGRAM_SRC.forEach(([, list]) => list.forEach(([n, u]) => { if (u === 'kg' || u === 'lb') PROG_UNIT[slug(n)] = u; }));
+  // Pure: Strong CSV text -> {workouts:[{doc, action}], newExercises:[], error?}. action: add | update (same import again) | skip (a workout logged here that day).
+  // Handles both Strong layouts (comma + "Weight", or semicolon + "Weight (kg)" + "Duration (sec)"), Note rows, warm-up/drop/failure set orders.
+  function parseStrong(text, opts) {
+    opts = opts || {};
+    const rows = parseCsv(String(text || '').replace(/^﻿/, ''));
+    if (rows.length < 2) return { error: 'That file has no rows', workouts: [], newExercises: [] };
+    const h = rows[0].map(x => x.trim().toLowerCase()), col = re => h.findIndex(x => re.test(x));
+    const ci = { date: col(/^date$/), name: col(/^workout name$/), dur: col(/^duration/), ex: col(/^exercise name$/), order: col(/^set order$/), w: col(/^weight/), r: col(/^reps$/), d: col(/^distance/), s: col(/^seconds$/), notes: col(/^notes$/), wnotes: col(/^workout notes$/), rpe: col(/^rpe$/), wu: col(/^weight unit$/) };
+    if (ci.date < 0 || ci.ex < 0) return { error: 'This doesn’t look like a Strong export (needs Date and Exercise Name columns)', workouts: [], newExercises: [] };
+    const fileUnit = ci.w >= 0 && /\(lb/.test(h[ci.w]) ? 'lb' : ci.w >= 0 && /\(kg/.test(h[ci.w]) ? 'kg' : (opts.unit === 'lb' ? 'lb' : 'kg');
+    const durSec = ci.dur >= 0 && /sec/.test(h[ci.dur]);
     const byName = {}; allExercises().forEach(e => { byName[norm(e.name)] = e.id; });
-    const existing = new Set(workouts().map(w => w.start + '|' + w.name));
-    const groups = new Map(); let newEx = 0;
+    const libByName = {}; Object.values(LIB).forEach(e => { libByName[norm(e.name)] = e.id; });
+    const newExercises = [], newIds = {};
+    const existing = (opts.existing || Object.values(S.data.workouts)).filter(w => w && w.start);
+    const byId = {}; existing.forEach(w => { byId[w.id] = w; });
+    const loggedDays = new Set(existing.filter(w => !w.imported).map(w => isoDate(w.start)));
+    const groups = new Map();
     rows.slice(1).forEach(r => {
       const key = r[ci.date] + '|' + (ci.name >= 0 ? r[ci.name] : '');
-      if (!groups.has(key)) groups.set(key, { rows: [] }); groups.get(key).rows.push(r);
+      if (!groups.has(key)) groups.set(key, []); groups.get(key).push(r);
     });
-    let added = 0, skipped = 0;
+    const out = [];
     for (const [, g] of groups) {
-      const r0 = g.rows[0], start = new Date(r0[ci.date].replace(' ', 'T')).getTime();
+      const r0 = g[0], start = new Date(String(r0[ci.date]).trim().replace(' ', 'T')).getTime();
       if (isNaN(start)) continue;
-      const name = (ci.name >= 0 && r0[ci.name]) || 'Workout';
-      if (existing.has(start + '|' + name)) { skipped++; continue; }
-      const w = { id: 'imp-' + start.toString(36) + '-' + slug(name).slice(0, 12), name, templateName: ROTATION.includes(name) ? name : undefined, start, end: start + (parseDurMs(ci.dur >= 0 ? r0[ci.dur] : '') || 60 * 6e4), notes: ci.wnotes >= 0 ? r0[ci.wnotes] : '', exercises: [], imported: true };
+      const name = (ci.name >= 0 && String(r0[ci.name]).trim()) || 'Workout';
+      const durMs = ci.dur >= 0 ? (durSec ? (num(r0[ci.dur]) || 0) * 1e3 : parseDurMs(r0[ci.dur])) : 0;
+      const w = { id: 'imp-' + start.toString(36) + '-' + slug(name).slice(0, 12), name, templateName: ROTATION.includes(name) ? name : undefined, start, end: start + (durMs || 60 * 6e4), notes: ci.wnotes >= 0 ? String(r0[ci.wnotes] || '').trim() : '', exercises: [], imported: true, source: 'strong' };
       const tpl = templateByName(name); if (tpl) w.templateId = tpl.id;
-      g.rows.forEach(r => {
-        const exName = r[ci.ex]; if (!exName) return;
-        const order = (ci.order >= 0 ? r[ci.order] : '').trim().toUpperCase();
-        if (order && !/^\d+$/.test(order) && !['W', 'D', 'F'].includes(order)) return; // rest timer rows etc.
-        let exId = byName[norm(exName)];
-        if (!exId) { exId = 'c-' + slug(exName); if (!S.data.exercises[exId]) { put('exercises', { id: exId, name: exName, part: 'Other', cat: guessCat(exName), custom: true }); newEx++; } byName[norm(exName)] = exId; }
-        let e = w.exercises[w.exercises.length - 1];
-        if (!e || e.exId !== exId) { e = { exId, unit: (ci.wu >= 0 && r[ci.wu]) || unit, notes: ci.notes >= 0 ? r[ci.notes] : '', sets: [] }; w.exercises.push(e); }
-        const sec = num(ci.s >= 0 ? r[ci.s] : ''), km = num(ci.d >= 0 ? r[ci.d] : '');
+      g.forEach(r => {
+        const exName = String(r[ci.ex] || '').trim(); if (!exName) return;
+        const order = (ci.order >= 0 ? String(r[ci.order] || '') : '').trim().toUpperCase();
+        if (order && !/^\d+$/.test(order) && !['W', 'D', 'F'].includes(order)) return; // Note / Rest Timer rows
+        const n = norm(exName), alias = STRONG_ALIASES[n];
+        let exId = byName[n] || (alias && (libByName[norm(alias)] || byName[norm(alias)])) || newIds[n];
+        if (!exId) { exId = 'c-' + slug(exName); newIds[n] = exId; if (!S.data.exercises[exId] && !LIB[exId]) newExercises.push({ id: exId, name: exName, part: 'Other', cat: guessCat(exName), custom: true }); }
         const ex = getEx(exId), f = fieldsFor(ex);
-        const s = { t: order === 'W' ? 'w' : order === 'D' ? 'd' : order === 'F' ? 'f' : 'n', w: num(r[ci.w]) ?? '', r: num(r[ci.r]) ?? '', done: true };
+        const wv = num(r[ci.w]), rv = num(r[ci.r]);
+        const sec = num(ci.s >= 0 ? r[ci.s] : ''), km = num(ci.d >= 0 ? r[ci.d] : '');
+        if (wv == null && rv == null && sec == null && km == null) return; // empty set left in Strong
+        const rowUnit = (ci.wu >= 0 && r[ci.wu]) || fileUnit;
+        let e = w.exercises[w.exercises.length - 1];
+        if (!e || e.exId !== exId) { e = { exId, unit: getEx(exId).unit || PROG_UNIT[exId] || rowUnit, notes: ci.notes >= 0 ? String(r[ci.notes] || '').trim() : '', sets: [] }; w.exercises.push(e); }
+        const s = { t: order === 'W' ? 'w' : order === 'D' ? 'd' : order === 'F' ? 'f' : 'n', w: wv == null ? '' : convW(wv, rowUnit, e.unit), r: rv == null ? '' : Math.round(rv), done: true };
         if (f[0] === 'km') { s.km = km ?? ''; s.min = sec ? Math.round(sec / 6) / 10 : ''; }
         if (f[0] === 'sec') s.sec = sec ?? '';
         if (ci.rpe >= 0 && num(r[ci.rpe])) s.rpe = num(r[ci.rpe]);
         e.sets.push(s);
       });
       if (!w.exercises.length) continue;
-      await put('workouts', w); added++;
+      const day = isoDate(start);
+      const action = byId[w.id] ? (byId[w.id].imported ? 'update' : 'skip') : loggedDays.has(day) ? 'skip' : 'add';
+      out.push({ doc: w, action });
     }
-    bump(); renderMain();
-    toast('Imported ' + added + ' workouts' + (skipped ? ', skipped ' + skipped + ' already here' : '') + (newEx ? ', added ' + newEx + ' exercises' : ''));
-  });
+    return { workouts: out, newExercises };
+  }
+  function convW(v, from, to) { if (!from || !to || from === to) return v; const kg = from === 'lb' ? v * LB : v; const o = to === 'lb' ? kg / LB : kg; return Math.round(o * 4) / 4; }
+  // Host entry: import a Strong export into the logger's history (Settings > Data and backup uses it too). Re-importing the same file updates, never doubles.
+  async function importStrong(text, opts) {
+    if (S.readyP) await S.readyP;
+    const p = parseStrong(text, opts);
+    if (p.error) return { error: p.error, added: 0, updated: 0, skipped: 0, newEx: 0 };
+    p.newExercises.forEach(e => put('exercises', e));
+    let added = 0, updated = 0, skipped = 0;
+    for (const { doc, action } of p.workouts) {
+      if (action === 'skip') { skipped++; continue; }
+      if (action === 'update') updated++; else added++;
+      put('workouts', doc);
+    }
+    bump(); if (root && !E && !sheets.length) renderMain();
+    return { added, updated, skipped, newEx: p.newExercises.length, workouts: p.workouts.length };
+  }
   on('importJson', async t => {
     const file = t.files && t.files[0]; if (!file) return; t.value = '';
     try {
@@ -5911,7 +5964,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     if (!root.dataset.lbBound) { delegate(root); root.dataset.lbBound = '1'; }
     if (!overlay.dataset.lbBound) { delegate(overlay); overlay.dataset.lbBound = '1'; }
     renderMain();
-    await loadAll();
+    S.readyP = loadAll(); await S.readyP;
     try { const r = JSON.parse(localStorage.getItem('lb_rest') || 'null'); if (r && r.end > Date.now()) rest = r; } catch (e) { }
     renderMain();
     if (S.active || rest) startTick();
@@ -5923,7 +5976,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   // Host settings screen: read the logger's settings and change some of them (gym, unit, rest) without opening its Tools tab.
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
-  const api = { mount, refresh, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+  const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     parseRest, setRestOf,
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest } };
   global.WorkoutLogger = api;
@@ -44699,7 +44752,7 @@ function otherLogged(){
 }
 function strongCard(){
   return `<div class="card"><div class="spread"><h3>Import from Strong</h3><label class="btn ghost small" style="cursor:pointer">Choose CSV file<input type="file" id="strongFile" accept=".csv,text/csv" hidden></label></div>
-  <p class="muted" style="font-size:.9rem">In Strong, open Settings, then Export Strong Data, and pick the CSV here. Warm-ups are skipped, weights convert to each exercise's unit, and importing again replaces that day's Strong sets instead of doubling them.</p>
+  <p class="muted" style="font-size:.9rem">In Strong, open Settings, then Export Strong Data, and pick the CSV here. Every Strong workout lands in Train › History (list and calendar) and in each day's record; weights convert to each exercise's unit, and importing again replaces instead of doubling.</p>
   ${view.strongMsg?`<p class="note info">${view.strongMsg}</p>`:""}</div>`;
 }
 function usedFor(wk, planName){ const m=(wk&&wk.swapped)||{}; return Object.keys(m).find(u=>m[u]===planName) || null; }
@@ -45442,14 +45495,24 @@ main.addEventListener("submit",e=>{
 /* Strong CSV import (StrongCSV module) */
 function importStrong(file){
   const fr=new FileReader();
-  fr.onload=()=>{
+  fr.onload=async()=>{
+    const text=String(fr.result);
     try{
-      const {docs, report} = StrongCSV.toWorkouts(String(fr.result), {program:programEff(), rotation:ROTATION, existing:S.docs.workouts});
+      const {docs, report} = StrongCSV.toWorkouts(text, {program:programEff(), rotation:ROTATION, existing:S.docs.workouts});
       const list = Array.isArray(docs) ? docs : Object.values(docs);
       let sets=0; list.forEach(doc=>{ Object.values(doc.sets||{}).forEach(a=>sets+=a.length); put("workouts",doc.date,doc,{quiet:true}); });
       const un = (report && report.unmatched) || {};
       const unNames = Array.isArray(un) ? un.map(u=>typeof u==="string"?u:(u.name||"")).filter(Boolean) : Object.keys(un);
       view.strongMsg = `Imported <b>${list.length}</b> workout${list.length===1?"":"s"} with <b>${sets}</b> sets.` + (unNames.length?` Not in your program (saved under their own names): ${unNames.map(esc).join(", ")}.`:"");
+      // The same file also fills the full logger's History (list and calendar), so every Strong day is a finished workout there.
+      view.strongMsg += " Adding them to Train › History…"; render();
+      if(window.WorkoutLogger && WorkoutLogger.importStrong){
+        try{
+          syncLogger();
+          const r = await WorkoutLogger.importStrong(text, {});
+          view.strongMsg = view.strongMsg.replace(" Adding them to Train › History…", r.error ? ` History: ${esc(r.error)}` : ` Train › History: <b>${r.added}</b> added${r.updated?`, ${r.updated} updated`:""}${r.skipped?`, ${r.skipped} skipped (already logged here)`:""}.`);
+        }catch(err){ view.strongMsg = view.strongMsg.replace(" Adding them to Train › History…", " The History list could not be filled; open Train › History once and import again."); }
+      } else view.strongMsg = view.strongMsg.replace(" Adding them to Train › History…", "");
     }catch(err){ view.strongMsg = "Couldn't read that file. Export it again from Strong as CSV and pick that file."; }
     render();
   };
