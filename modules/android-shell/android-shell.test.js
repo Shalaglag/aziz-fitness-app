@@ -99,3 +99,20 @@ test("going Today from a tab with no history clears it, then exits", () => {
   assert.equal(A.backPress(fakeDoc([])), "exit");
   delete global.window;
 });
+
+test("a closed sheet that still has a size (aria-hidden / visibility:hidden) does not swallow back", () => {
+  delete require.cache[require.resolve("./android-shell.js")];
+  const A = require("./android-shell.js");
+  let tab = "today", clicked = 0;
+  global.window = {};
+  global.getComputedStyle = (el) => ({ visibility: el._vis || "visible", display: "block", opacity: "1" });
+  A.init({ isHome: () => tab === "today", goHome: () => { tab = "today"; A.visit(tab); }, setTab: (t) => { tab = t; A.visit(t); } });
+  const closedPanel = { nodeType: 1, offsetWidth: 390, getAttribute: (k) => (k === "aria-hidden" ? "true" : null), _vis: "hidden", parentElement: null,
+    querySelector: () => ({ click() { clicked++; } }) };
+  const doc = { querySelectorAll: () => [closedPanel] };
+  A.visit("today"); A.visit("train"); A.visit("food");
+  assert.equal(A.backPress(doc), "tab"); assert.equal(tab, "train");
+  assert.equal(A.backPress(doc), "tab"); assert.equal(tab, "today");
+  assert.equal(clicked, 0);
+  delete global.window; delete global.getComputedStyle;
+});
