@@ -170,6 +170,22 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("Food look setting: Ring by default, Night / Board / Gauge draw their own hero with the same numbers", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "food");
+      assert.ok(await page.$(".fhero.fh-ring"), "Ring is the default look");
+      for (const [k, cls] of [["night", ".fh-night .fs-ring"], ["score", ".fh-score .sc-bar"], ["gauge", ".fh-gauge .gg"]]) {
+        await page.evaluate(k => { S.docs.prefs.main = Object.assign({}, S.docs.prefs.main, { foodLook: k }); render(); }, k);
+        assert.ok(await page.$(cls), k + " look renders");
+        const rem = await page.$eval(".fhero .rem", e => e.textContent.trim());
+        assert.strictEqual(rem, "1,130", k + " shows the same remaining");
+      }
+      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(wide <= 1, "no sideways scroll at 360 px");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("menu picker sits on the Food page above Food check: most protein by default, leave out fries, reasons shown, plan adds planned items", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "food");
