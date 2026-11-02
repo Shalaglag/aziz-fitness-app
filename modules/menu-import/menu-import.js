@@ -413,7 +413,11 @@
 
   function parseRead(value) {
     let v = value;
-    if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+    if (typeof v === 'string') {
+      const t = v.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '');
+      const a = t.indexOf('{'), b = t.lastIndexOf('}');
+      try { v = JSON.parse(a >= 0 && b > a ? t.slice(a, b + 1) : t); } catch (e) { v = null; }
+    }
     if (Array.isArray(v)) v = { items: v };
     if (!v || typeof v !== 'object' || !Array.isArray(v.items)) return { items: [], warnings: ['Claude\'s answer couldn\'t be read. Try again.'] };
     const n = x => {
@@ -473,8 +477,12 @@
    * snacks from section "snack" when the menu has at least 2, otherwise the engine's fixed Nutreeze snack list.
    */
   function optimize(items, engine, opts = {}) {
-    const o = Object.assign({ dayType: 'training', adonis: true, dislikes: [], onlyConfirmed: false, top: 3 }, opts);
-    const isBanned = makeBanned(engine, o.dislikes);
+    const o = Object.assign({ dayType: 'training', adonis: true, dislikes: [], onlyConfirmed: false, top: 3, priority: 'balanced', avoid: [] }, opts);
+    if (!PRIORITIES[o.priority]) o.priority = 'balanced';
+    const avoid = (o.avoid || []).map(w => String(w || '').trim()).filter(Boolean);
+    const banned = makeBanned(engine, o.dislikes);
+    const avoidHit = name => avoid.find(w => containsPhrase(name, w));
+    const isBanned = name => banned(name) || (avoidHit(name) ? 'You asked to leave out: ' + avoidHit(name) : null);
     if (o.gatorade == null) o.gatorade = o.dayType !== 'rest' && o.dayType !== 'friday';
     if (o.eggs == null) o.eggs = o.dayType === 'saturday';
     const tagged = annotate(items, { bannedReason: isBanned, likeOf: engine.likeOf });
@@ -500,10 +508,83 @@
       dayType: o.dayType, adonis: o.adonis, gatorade: o.gatorade, eggs: o.eggs, targets: o.targets || undefined,
       // Fixed-list snacks Aziz dislikes, by the same whole-word rule.
       exclude: usedMenuSnacks ? [] : (engine.SNACKS || []).filter(sn => isBanned(sn.name)).map(sn => sn.name),
-      lockMeals: o.lockMeals || [], lockSnacks: o.lockSnacks || [], top: o.top,
+      lockMeals: o.lockMeals || [], lockSnacks: o.lockSnacks || [], top: o.priority === 'balanced' ? o.top : 400,
     });
     if (!r.options.length) return { options: [], fixed: r.fixed, skipped, usedMenuSnacks, notes, error: 'No combination could be built. Check the snacks or add more meals.' };
-    return { options: r.options, fixed: r.fixed, fixedTotals: r.fixedTotals, labels: r.labels, skipped, usedMenuSnacks, notes };
+    const T = engine.targetsFrom ? engine.targetsFrom(o.targets || null) : engine.TARGETS;
+    const ranked = rerank(r.options, o.priority, T, engine);
+    const options = distinctPairs(ranked, o.top);
+    options.forEach(c => { if (!c.check && engine.evaluate) c.check = engine.evaluate(c, T); });
+    const ctx = { options, priority: o.priority, T, dayType: o.dayType, fitCount: new Set(ranked.filter(c => fitsFor(c, o.priority, T)).map(pairKey)).size,
+      avoided: avoid.filter(w => skipped.some(sk => /^You asked to leave out/.test(sk.reason) && containsPhrase(sk.name, w)) || (!usedMenuSnacks && (engine.SNACKS || []).some(sn => containsPhrase(sn.name, w)))), likeOf: engine.likeOf };
+    options.forEach((c, i) => { c.why = explain(c, i, ctx); });
+    return { options, fixed: r.fixed, fixedTotals: r.fixedTotals, labels: r.labels, skipped, usedMenuSnacks, notes, priority: o.priority, avoid };
+  }
+
+  /* ---------------- priorities + reasons ---------------- */
+
+  // What to pick for. Calories always stay at the day's budget (the 2,000 kcal rule): a priority only
+  // changes which of the combos that fit the budget comes first, never the budget itself.
+  const PRIORITIES = {
+    protein: { label: 'Most protein' },
+    balanced: { label: 'Best fit' },
+    lowfat: { label: 'Lower fat' },
+    carbs: { label: 'More carbs' },
+    liked: { label: 'Favourites' },
+  };
+  const pairKey = c => c.meal1.name + '|' + c.meal2.name;
+  const kcalFits = (c, T) => Math.abs(c.totals.kcal - T.kcal) <= 100;
+  const proteinFits = (c, T) => c.totals.p >= T.proteinMin - 0.5;
+  const fitsFor = (c, pri, T) => kcalFits(c, T) && (pri === 'protein' || proteinFits(c, T));
+  const likedIn = (c, likeOf) => likeOf ? [c.meal1, c.meal2, ...c.snacks].filter(x => likeOf(x.name)) : [];
+  function rerank(options, pri, T, engine) {
+    if (pri === 'balanced') return options.slice();
+    const key = { protein: c => -c.totals.p, lowfat: c => c.totals.f, carbs: c => -c.totals.c, liked: c => -likedIn(c, engine.likeOf).length }[pri];
+    const tier = c => (fitsFor(c, pri, T) ? 0 : kcalFits(c, T) ? 1 : 2);
+    return options.map((c, i) => ({ c, i })).sort((a, b) => tier(a.c) - tier(b.c) || (Math.round(key(a.c)) - Math.round(key(b.c))) || (a.c.score - b.c.score) || a.i - b.i).map(x => x.c);
+  }
+  // Alternatives are different meal pairs first, so the list isn't three snack swaps.
+  function distinctPairs(list, top) {
+    const seen = new Set(), out = [];
+    for (const c of list) { if (out.length >= top) break; if (seen.has(pairKey(c))) continue; seen.add(pairKey(c)); out.push(c); }
+    for (const c of list) { if (out.length >= top) break; if (!out.includes(c)) out.push(c); }
+    return out;
+  }
+  const fmtN = n => Math.round(n).toLocaleString('en-US');
+  const signed = (n, unit) => (n > 0 ? '+' : '−') + Math.abs(Math.round(n)) + unit;
+  /*
+   * Why an option was chosen, in plain sentences (at most 4).
+   * ctx: { options, priority, T, dayType, fitCount, avoided: [word], likeOf }
+   */
+  function explain(c, i, ctx) {
+    const T = ctx.T, t = c.totals, best = ctx.options[0], why = [];
+    const pri = ctx.priority, n = ctx.fitCount;
+    const among = n > 1 ? `of the ${n} meal pairs that fit your ${fmtN(T.kcal)} kcal budget` : `that fits your ${fmtN(T.kcal)} kcal budget`;
+    if (i === 0) {
+      const next = ctx.options[1];
+      if (!fitsFor(c, pri, T)) why.push(`Nothing on this menu fits your ${fmtN(T.kcal)} kcal budget${pri === 'protein' ? '' : ` with ${T.proteinMin} g protein`}, so this is the closest.`);
+      else if (pri === 'protein') why.push(`Most protein ${among}: ${Math.round(t.p)} g${next && next.totals.p < t.p - 0.5 ? `, ${Math.round(t.p - next.totals.p)} g more than the next option` : ''}.`);
+      else if (pri === 'lowfat') why.push(`Lowest fat ${among}: ${Math.round(t.f)} g.`);
+      else if (pri === 'carbs') why.push(`Most carbs ${among}: ${Math.round(t.c)} g, for training energy.`);
+      else if (pri === 'liked') { const l = likedIn(c, ctx.likeOf); why.push(l.length ? `Uses your favourite${l.length > 1 ? 's' : ''}: ${l.map(x => x.name).join(', ')}.` : 'None of your favourites fit today, so this is the best fit.'); }
+      else why.push('Closest to all your targets at once: calories, protein, fat and carbs.');
+    } else {
+      const swaps = [c.meal1, c.meal2].filter(m => ![best.meal1.name, best.meal2.name].includes(m.name)).map(m => m.name);
+      const d = [`${signed(t.p - best.totals.p, ' g')} protein`, `${signed(t.kcal - best.totals.kcal, ' kcal')}`, `${signed(t.f - best.totals.f, ' g')} fat`];
+      why.push(`${swaps.length ? 'Uses ' + swaps.join(' and ') + '. ' : 'Same meals, different snacks. '}Against the best option: ${d.join(', ')}.`);
+    }
+    const dk = Math.round(t.kcal - T.kcal);
+    why.push(`${fmtN(t.kcal)} kcal (${Math.abs(dk) <= 10 ? 'on' : Math.abs(dk) + (dk > 0 ? ' over' : ' under')} your ${fmtN(T.kcal)} budget) and ${Math.round(t.p)} g protein (${proteinFits(c, T) ? 'meets' : Math.round(T.proteinMin - t.p) + ' g short of'} your ${T.proteinMin} g minimum).`);
+    if (i === 0 && ctx.dayType === 'training' && c.meal1.f <= c.meal2.f) why.push(`${c.meal1.name} is Meal 1 because it's lighter in fat (${Math.round(c.meal1.f)} g) for before training.`);
+    if (i === 0 && ctx.avoided && ctx.avoided.length) why.push(`Nothing with ${ctx.avoided.join(' or ')}, as you asked.`);
+    return why.slice(0, 4);
+  }
+  // Words worth offering as one-tap "leave out" chips: the ones that appear in this menu's names.
+  const AVOID_WORDS = ['fries', 'rice', 'pasta', 'bread', 'potato', 'cheese', 'mayo', 'sauce', 'fried', 'burger', 'beef', 'fish', 'shrimp', 'tuna', 'egg', 'spicy', 'chocolate', 'nuts', 'peanut'];
+  function avoidSuggestions(items, chosen) {
+    const names = (items || []).map(it => it.name);
+    const have = new Set((chosen || []).map(w => normWords(w)));
+    return AVOID_WORDS.filter(w => !have.has(w) && names.some(nm => containsPhrase(nm, w)));
   }
 
   function toRecord(items, { date, source, notes, now } = {}) {
@@ -533,7 +614,7 @@
 
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const r0 = n => Math.round(n);
-  const ST = { date: '', items: null, warnings: [], source: '', busy: '', error: '', text: '', showText: false, result: null, opts: { adonis: true, onlyConfirmed: false }, canImage: null, ctl: null, loadedFor: '' };
+  const ST = { date: '', items: null, warnings: [], source: '', busy: '', error: '', text: '', showText: false, result: null, opts: { adonis: true, onlyConfirmed: false, priority: 'protein', avoid: [] }, canImage: null, ctl: null, loadedFor: '' };
   let H = null;
 
   function sync() {
@@ -561,9 +642,15 @@
 
   async function readImages(blobs, source) {
     const sample = await sampleOrNull();
-    if (!sample) { ST.error = 'Reading images needs Claude, which isn\'t available here. Paste the menu text instead.'; ST.showText = true; return; }
-    const lim = await sample.limits().catch(() => null);
-    if (!lim || !lim.images) { ST.error = 'This page can\'t send images to Claude. Paste the menu text instead.'; ST.showText = true; return; }
+    const lim = sample ? await sample.limits().catch(() => null) : null;
+    if (!(lim && lim.images)) {
+      // The Android app: the Mizan coach service reads the pictures (Claude Haiku, same spending cap as Ask Claude).
+      if (!H.readService) { ST.error = 'Reading images needs Claude, which isn\'t available here. Upload a PDF with text, or paste the menu text.'; ST.showText = true; return; }
+      if (blobs.length > 4) ST.warnings.push('Only the first 4 pages were read.');
+      const v = await H.readService(blobs.slice(0, 4), { pages: Math.min(blobs.length, 4) });
+      setItems(parseRead(v), source);
+      return;
+    }
     const max = lim.images.maxCount || 4;
     if (blobs.length > max) ST.warnings.push(`Only the first ${max} pages were read.`);
     ST.ctl = new AbortController();
@@ -622,7 +709,15 @@
       case 'not_granted': case 'sampling_disabled': case 'not_declared': case 'capability_disabled': case 'capability_removed':
         return 'Claude isn\'t available on this page right now. Paste the menu text instead.';
       case 'images_unavailable': case 'image_rejected': return 'That image couldn\'t be sent. Try a PNG or JPG screenshot.';
-      case 'rate_limited': return 'Claude is busy for a moment. Wait a minute and try again.';
+      case 'rate_limited': case 'busy': case 'upstream_busy': return 'Claude is busy for a moment. Wait a minute and try again.';
+      case 'not_signed_in': case 'token_expired': return 'Sign in first (Settings, Sync) so Claude can read screenshots for you.';
+      case 'not_allowed': return 'This account isn\'t allowed to use Claude in Mizan. Upload a PDF with text, or paste the menu text.';
+      case 'no_endpoint': case 'no_key': return 'Claude isn\'t set up in this app yet (Ask Claude, AI settings). Upload a PDF with text, or paste the menu text.';
+      case 'cap_reached': return 'This month\'s Claude spending cap is reached. Raise it in Ask Claude, or paste the menu text.';
+      case 'out_of_credit': return 'The Claude credit has run out. Paste the menu text instead.';
+      case 'daily_limit': return 'Claude\'s daily limit is reached. Try again tomorrow, or paste the menu text.';
+      case 'offline': case 'upstream_unreachable': case 'timeout': return 'Couldn\'t reach Claude. Check the internet and try again.';
+      case 'too_large': case 'too_many_images': return 'Those pictures are too big. Upload up to 4 screenshots.';
       case 'session_expired': return 'You\'ve been signed out. Reload the page and try again.';
       case 'invalid_json': case 'empty_completion': return 'Claude\'s answer couldn\'t be read. Try again.';
       default:
@@ -635,15 +730,29 @@
   function runOptimizer() {
     const d = H.date();
     const dt = H.dayType(d);
-    ST.result = optimize(ST.items, H.engine, { dayType: dt, adonis: ST.opts.adonis, dislikes: H.dislikes(), targets: H.targets ? H.targets(d) : null, onlyConfirmed: ST.opts.onlyConfirmed, top: 3 });
+    ST.result = optimize(ST.items, H.engine, { dayType: dt, adonis: ST.opts.adonis, dislikes: H.dislikes(), targets: H.targets ? H.targets(d) : null, onlyConfirmed: ST.opts.onlyConfirmed, top: 3, priority: ST.opts.priority, avoid: ST.opts.avoid });
     ST.result.dayType = dt;
+  }
+  // Priority and leave-out words are remembered (host.setPickPrefs, synced) so the next menu uses them too.
+  function loadPick() {
+    const p = H.pickPrefs ? H.pickPrefs() : null;
+    if (p && PRIORITIES[p.priority]) ST.opts.priority = p.priority;
+    if (p && Array.isArray(p.avoid)) ST.opts.avoid = p.avoid.filter(w => typeof w === 'string' && w.trim()).slice(0, 20);
+  }
+  function savePick() { ST.result = null; if (H.setPickPrefs) H.setPickPrefs({ priority: ST.opts.priority, avoid: ST.opts.avoid.slice() }); }
+  function toggleAvoid(w) {
+    w = String(w || '').trim().toLowerCase().slice(0, 40); if (!w) return;
+    const i = ST.opts.avoid.findIndex(x => normWords(x) === normWords(w));
+    if (i >= 0) ST.opts.avoid.splice(i, 1); else ST.opts.avoid.push(w);
+    savePick();
   }
 
   function bind(rootEl, host) {
     H = host;
+    loadPick();
     sampleOrNull().then(async s => {
       const lim = s ? await s.limits().catch(() => null) : null;
-      ST.canImage = !!(lim && lim.images); H.render();
+      ST.canImage = !!(lim && lim.images) || !!H.readService; H.render();
     });
     rootEl.addEventListener('click', e => {
       const b = e.target.closest('[data-mi]'); if (!b) return;
@@ -655,17 +764,30 @@
       else if (a === 'skip' && ST.items[i]) { ST.items[i] = { ...ST.items[i], skip: !ST.items[i].skip }; ST.result = null; save(); H.render(); }
       else if (a === 'okall') { ST.items = ST.items.map(it => complete(it) ? check({ ...it, confirmed: true }) : it); ST.result = null; save(); H.render(); }
       else if (a === 'go') { runOptimizer(); H.render(); }
+      else if (a === 'pri' && PRIORITIES[b.dataset.k]) { ST.opts.priority = b.dataset.k; savePick(); H.render(); }
+      else if (a === 'avoid') { toggleAvoid(b.dataset.w); H.render(); }
+      else if (a === 'avoidadd') { const el = rootEl.querySelector('#miAvoid'); if (el && el.value.trim()) { el.value.split(',').forEach(toggleAvoid); el.value = ''; H.render(); } }
+      else if (a === 'notthis') {
+        const name = b.dataset.n || '', j = (ST.items || []).findIndex(it => it.name === name);
+        if (j >= 0) { ST.items[j] = { ...ST.items[j], skip: true }; ST.result = null; save(); }
+        else toggleAvoid(name); // a snack from the usual list, not from this menu
+        H.toast('Left out ' + name + '. Tap Use in the menu list to bring it back.'); H.render();
+      }
       else if (a === 'use' && ST.result && ST.result.options[i]) { H.onUsePlan(H.date(), ST.result.options[i], ST.result.fixed); ST.result = null; H.render(); }
       else if (a === 'clear') { ST.items = null; ST.result = null; ST.warnings = []; ST.error = ''; H.saveMenu(H.date(), null); H.render(); }
     });
     rootEl.addEventListener('input', e => {
       const t = e.target;
       if (t.id === 'miText') { ST.text = t.value; return; }
+      if (t.id === 'miAvoid') return;
       const k = t.dataset && t.dataset.mik; if (!k || !ST.items) return;
       const it = ST.items[+t.dataset.i]; if (!it) return;
       if (k === 'name') it.name = t.value;
       else { const v = t.value.trim() === '' ? null : toNum(t.value); it[k] = v; it.confirmed = false; }
       it._dirty = true; ST.result = null;
+    });
+    rootEl.addEventListener('keydown', e => {
+      if (e.target && e.target.id === 'miAvoid' && e.key === 'Enter') { e.preventDefault(); const el = e.target; if (el.value.trim()) { el.value.split(',').forEach(toggleAvoid); el.value = ''; H.render(); } }
     });
     rootEl.addEventListener('change', e => {
       const t = e.target;
@@ -699,6 +821,19 @@
 .mi .mi-why{font-size:.8rem;color:var(--warn);margin-top:4px}
 .mi .mi-ban{font-size:.8rem;color:var(--bad);margin-top:4px}
 .mi .mi-sub{font-size:.85rem}
+.mi .mi-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.mi .mi-chips .chip[aria-pressed="true"]{background:var(--accent,#2f6f5e);color:#fff;border-color:transparent}
+.mi .mi-lbl{font-size:.78rem;color:var(--muted);margin-top:10px;display:block}
+.mi .mi-avoidrow{display:flex;gap:6px;margin-top:6px}
+.mi .mi-avoidrow input{flex:1;min-width:0}
+.mi .mi-why-list{margin:6px 0 0;padding-left:1.1em;font-size:.86rem}
+.mi .mi-why-list li{margin:2px 0}
+.mi .mi-res li{display:flex;align-items:center;gap:6px;list-style:none;margin-left:-1.1em}
+.mi .mi-res li .nm{flex:1;min-width:0}
+.mi .mi-res .mi-no{padding:2px 8px;font-size:.75rem}
+.mi details.mi-menu{margin-top:10px}
+.mi details.mi-menu summary{cursor:pointer;font-size:.88rem;padding:6px 0}
+.mi .ex.best{border:1px solid color-mix(in srgb,var(--good,#2f6f5e) 40%,transparent)}
 `;
 
   // A–D grade pill from the MealGrade module when it is inlined; '' otherwise.
@@ -730,17 +865,29 @@
 
   function resultHtml(res, T) {
     if (!res) return '';
-    const line = (it, kind) => `<li>${gradeOf(it, kind, T)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r0(it.p)} P</span>${it.needsCheck ? ' <span class="pill warn">unconfirmed</span>' : ''}</li>`;
-    const fixedLines = (res.fixed || []).map(x => `<li class="muted">${esc(x.name)} <span class="num" style="font-size:.85rem">${r0(x.kcal)} kcal · ${r0(x.p)} P${x.estimate ? ' (estimate)' : ''}</span></li>`).join('');
-    return `${res.notes.length ? `<p class="muted mi-sub">${res.notes.map(esc).join(' ')}</p>` : ''}
-      ${res.skipped.length ? `<p class="muted mi-sub">Left out: ${res.skipped.map(s => `${esc(s.name)} (${esc(s.reason)})`).join(', ')}</p>` : ''}
-      ${res.error ? `<p class="note">${esc(res.error)}</p>` : ''}
-      ${res.options.map((o, i) => `<div class="ex">
-        <div class="spread"><b>${i === 0 ? 'Best option' : 'Option ' + (i + 1)}</b><span class="pill ${o.check.fits ? 'good' : 'warn'}">${o.check.fits ? 'Fits' : 'Closest'}</span></div>
-        <ul style="margin:0;padding-left:1.1em">${line(o.meal1, 'meal')}${line(o.meal2, 'meal')}${o.snacks.map(s => line(s, 'snack')).join('')}${fixedLines}</ul>
-        <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small" data-mi="use" data-i="${i}">Plan this day</button></div>
-        <p class="muted mi-sub">${esc(o.check.verdict)}</p>
-      </div>`).join('')}`;
+    const line = (it, kind, i) => `<li><span class="nm">${gradeOf(it, kind, T)} ${esc(it.name)} <span class="muted num" style="font-size:.85rem">${r0(it.kcal)} kcal · ${r0(it.p)} P</span>${it.needsCheck ? ' <span class="pill warn">unconfirmed</span>' : ''}</span>${i === 0 ? `<button class="btn ghost small mi-no" data-mi="notthis" data-n="${esc(it.name)}" aria-label="Not ${esc(it.name)}, pick something else">Not this</button>` : ''}</li>`;
+    const fixedLines = (res.fixed || []).map(x => `<li class="muted"><span class="nm">${esc(x.name)} <span class="num" style="font-size:.85rem">${r0(x.kcal)} kcal · ${r0(x.p)} P${x.estimate ? ' (estimate)' : ''}</span></span></li>`).join('');
+    const opt = (o, i) => `<div class="ex${i === 0 ? ' best' : ''}">
+        <div class="spread"><b>${i === 0 ? 'Best for ' + esc((PRIORITIES[res.priority] || PRIORITIES.balanced).label.toLowerCase()) : 'Option ' + (i + 1)}</b><span class="pill ${o.check.fits ? 'good' : 'warn'}">${o.check.fits ? 'Fits' : 'Closest'}</span></div>
+        <ul class="mi-res" style="margin:0;padding-left:1.1em">${line(o.meal1, 'meal', i)}${line(o.meal2, 'meal', i)}${o.snacks.map(x => line(x, 'snack', i)).join('')}${i === 0 ? fixedLines : ''}</ul>
+        ${o.why && o.why.length ? `<ul class="mi-why-list">${(i === 0 ? o.why : o.why.slice(0, 1)).map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+        <div class="row"><span class="num" style="font-size:.9rem">Total ${r0(o.totals.kcal)} kcal · ${r0(o.totals.p)} P · ${r0(o.totals.c)} C · ${r0(o.totals.f)} F</span><button class="btn small${i === 0 ? '' : ' ghost'}" data-mi="use" data-i="${i}">Plan this day</button></div>
+        ${o.check.notes && o.check.notes.length && !o.check.fits ? `<p class="muted mi-sub">${esc(o.check.verdict)}</p>` : ''}
+      </div>`;
+    return `${res.error ? `<p class="note">${esc(res.error)}</p>` : ''}
+      ${res.options.length ? opt(res.options[0], 0) : ''}
+      ${res.options.length > 1 ? `<span class="mi-lbl">Other options</span>${res.options.slice(1).map((o, i) => opt(o, i + 1)).join('')}` : ''}
+      ${res.notes.length ? `<p class="muted mi-sub">${res.notes.map(esc).join(' ')}</p>` : ''}
+      ${res.skipped.length ? `<p class="muted mi-sub">Left out: ${res.skipped.map(x => `${esc(x.name)} (${esc(x.reason)})`).join(', ')}</p>` : ''}`;
+  }
+
+  function pickControls() {
+    const sugg = avoidSuggestions(ST.items, ST.opts.avoid);
+    return `<span class="mi-lbl">Pick for</span>
+      <div class="mi-chips" role="group" aria-label="Pick for">${Object.keys(PRIORITIES).map(k => `<button type="button" class="chip" data-mi="pri" data-k="${k}" aria-pressed="${ST.opts.priority === k}">${esc(PRIORITIES[k].label)}</button>`).join('')}</div>
+      <span class="mi-lbl">Leave out</span>
+      <div class="mi-chips">${ST.opts.avoid.map(w => `<button type="button" class="chip" data-mi="avoid" data-w="${esc(w)}" aria-pressed="true" aria-label="Stop leaving out ${esc(w)}">No ${esc(w)} ✕</button>`).join('')}${sugg.slice(0, 8).map(w => `<button type="button" class="chip" data-mi="avoid" data-w="${esc(w)}" aria-pressed="false">No ${esc(w)}</button>`).join('')}</div>
+      <div class="mi-avoidrow"><input class="mi-in" id="miAvoid" type="text" placeholder="Something else to leave out, e.g. mushrooms" aria-label="Leave out"><button type="button" class="btn ghost small" data-mi="avoidadd">Add</button></div>`;
   }
 
   function html(date) {
@@ -749,27 +896,33 @@
     const bans = H.dislikes();
     const accept = 'application/pdf,.pdf' + (ST.canImage === false ? '' : ',image/*');
     const T = H.engine.targetsFrom ? H.engine.targetsFrom(H.targets ? H.targets(date) : null) : H.engine.TARGETS;
-    return `<div class="card mi">
-      <div class="spread"><h3>Plan my day from a menu</h3><span class="muted" style="font-size:.85rem">2 meals + 2 snacks${ST.opts.adonis ? ' + Adonis' : ''}</span></div>
-      <p class="muted mi-sub">Upload a restaurant or meal-prep menu as a PDF${ST.canImage === false ? '' : ' or screenshots'}, or paste its text. The best combo for ~${T.kcal.toLocaleString('en-US')} kcal and ${T.proteinMin}–${T.proteinMax} g protein is picked from it; never-pick foods are left out.</p>
+    const has = ST.items && ST.items.length;
+    if (has && !ST.result && !ST.busy) { try { runOptimizer(); } catch (e) { ST.result = null; } }
+    const flagged = has ? ST.items.filter(it => it.needsCheck && !it.skip).length : 0;
+    return `<div class="card mi" id="menuPicker">
+      <div class="spread"><h3>Pick from a menu</h3><span class="muted" style="font-size:.85rem">2 meals + 2 snacks${ST.opts.adonis ? ' + Adonis' : ''}</span></div>
+      ${has ? '' : `<p class="muted mi-sub">Upload the Nutreeze meal-prep menu as a PDF${ST.canImage === false ? '' : ' or screenshots'}. It picks the best day for your ${T.kcal.toLocaleString('en-US')} kcal budget the way you choose (most protein, lower fat…), says why, and leaves out what you don't want.</p>`}
       <div class="mi-drop">
-        <label class="btn mi-file">${ST.items ? 'Upload another menu' : 'Upload menu'}<input type="file" id="miFile" accept="${accept}" multiple${ST.busy ? ' disabled' : ''}></label>
+        <label class="btn ${has ? 'ghost small ' : ''}mi-file">${has ? 'New menu' : 'Upload menu'}<input type="file" id="miFile" accept="${accept}" multiple${ST.busy ? ' disabled' : ''}></label>
         <button class="btn ghost small" data-mi="paste">${ST.showText ? 'Hide text box' : 'Paste text'}</button>
-        ${ST.items ? `<button class="btn ghost small" data-mi="clear">Clear menu</button>` : ''}
+        ${has ? `<button class="btn ghost small" data-mi="clear">Clear</button>` : ''}
       </div>
       ${ST.showText ? `<textarea id="miText" rows="5" style="width:100%;margin-top:8px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:8px;padding:8px;font-family:var(--mono);font-size:.85rem" placeholder="Snacks&#10;Name  kcal  protein  carbs  fat&#10;or the Menu Reader's Copy JSON">${esc(ST.text)}</textarea><div class="row"><button class="btn small" data-mi="readtext">Read this text</button></div>` : ''}
       ${ST.busy ? `<p class="muted mi-sub" aria-live="polite">${esc(ST.busy)} ${ST.ctl ? '<button class="btn ghost small" data-mi="stop">Stop</button>' : ''}</p>` : ''}
       ${ST.error ? `<p class="note">${esc(ST.error)}</p>` : ''}
       ${ST.warnings.length ? `<p class="muted mi-sub">${ST.warnings.map(esc).join(' ')}</p>` : ''}
-      ${ST.items && ST.items.length ? `${itemsTable(ST.items, bans, T)}
-        <div class="row" style="flex-wrap:wrap;gap:12px">
-          <label class="mi-sub"><input type="checkbox" id="miAdonis"${ST.opts.adonis ? ' checked' : ''}> Adonis cookie dough</label>
-          <label class="mi-sub"><input type="checkbox" id="miConfirmed"${ST.opts.onlyConfirmed ? ' checked' : ''}> Only use checked numbers</label>
-          <button class="btn" data-mi="go">Find the best combo</button>
-        </div>
-        ${resultHtml(ST.result, T)}` : ''}
+      ${has ? `${pickControls()}
+        ${flagged ? `<p class="mi-sub" style="margin-top:10px"><b>${flagged} item${flagged > 1 ? 's' : ''} to check</b> in the menu list below; picks using them are marked unconfirmed.</p>` : ''}
+        <div style="margin-top:10px">${resultHtml(ST.result, T)}</div>
+        <details class="mi-menu"${flagged ? ' open' : ''}><summary>Menu items (${ST.items.length}) and settings</summary>
+          ${itemsTable(ST.items, bans, T)}
+          <div class="row" style="flex-wrap:wrap;gap:12px">
+            <label class="mi-sub"><input type="checkbox" id="miAdonis"${ST.opts.adonis ? ' checked' : ''}> Adonis cookie dough</label>
+            <label class="mi-sub"><input type="checkbox" id="miConfirmed"${ST.opts.onlyConfirmed ? ' checked' : ''}> Only use checked numbers</label>
+          </div>
+        </details>` : ''}
     </div>`;
   }
 
-  return { SECTIONS, makeBanned, containsPhrase, parseText, linesFromTextContent, textFromPdf, pdfPageImages, readPrompt, parseRead, check, annotate, optimize, toRecord, fromRecord, errorText, css, bind, html, _state: ST };
+  return { SECTIONS, PRIORITIES, explain, avoidSuggestions, makeBanned, containsPhrase, parseText, linesFromTextContent, textFromPdf, pdfPageImages, readPrompt, parseRead, check, annotate, optimize, toRecord, fromRecord, errorText, css, bind, html, _state: ST };
 });

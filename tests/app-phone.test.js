@@ -170,6 +170,37 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("menu picker sits on the Food page above Food check: most protein by default, leave out fries, reasons shown, plan adds planned items", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "food");
+      const order = await page.evaluate(() => { const m = document.getElementById("menuPicker"), f = [...document.querySelectorAll("#main details, #main .fold, #main [data-fold]")].find(e => /Food check/.test(e.textContent)); return { has: !!m, before: !!(m && f && (m.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
+      assert.ok(order.has, "menu picker card is on the Food page");
+      assert.ok(order.before, "menu picker comes before Food check");
+      await page.click('#menuPicker [data-mi="paste"]');
+      await page.fill("#miText", ["Main Meals", "Item  Calories  Protein  Carbs  Fat", "French Tacos Chicken  650  55  60  20", "Buffalo Chicken with Sweet Potato  496  65  41  8",
+        "Chicken Masala with Rice  607  67  60  11", "Grilled Steak with Potato  560  52  45  18", "Chicken Burger with Fries  600  70  50  14", "Snacks", "Greek Yogurt Berry Cup  150  15  18  2",
+        "Protein Brownie  210  14  22  7", "Fresh Fruit Cup  90  1  22  0"].join("\n"));
+      await page.click('#menuPicker [data-mi="readtext"]');
+      await page.waitForSelector("#menuPicker .ex.best");
+      const pressed = await page.$eval('#menuPicker [data-mi="pri"][aria-pressed="true"]', e => e.textContent);
+      assert.strictEqual(pressed, "Most protein");
+      assert.match(await page.$eval("#menuPicker .ex.best .mi-why-list", e => e.textContent), /Most protein of the \d+ meal pairs that fit your 2,000 kcal budget/);
+      assert.ok(/Chicken Burger with Fries/.test(await page.$eval("#menuPicker .ex.best", e => e.textContent)), "the highest-protein meal is picked first");
+      await page.click('#menuPicker [data-mi="avoid"][data-w="fries"]');
+      const best = await page.$eval("#menuPicker .ex.best", e => e.textContent);
+      assert.ok(!/Fries/.test(best), "no fries after leaving them out");
+      assert.match(best, /Nothing with fries, as you asked/);
+      assert.deepStrictEqual(await page.evaluate(() => S.docs.prefs.main.menuPick), { priority: "protein", avoid: ["fries"] }, "remembered for the next menu");
+      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(wide <= 1, "no sideways scroll at 360 px");
+      if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT, fullPage: true });
+      await page.click('#menuPicker .ex.best [data-mi="use"]');
+      const planned = await page.evaluate(() => getDay(TODAY).food.filter(i => !i.eaten).map(i => i.name));
+      assert.ok(planned.length >= 4, "the picked day is added as planned food");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("quick log: Strong-style rows, ticking a set fills it from the plan and starts the rest timer, kg/lb per exercise converts what is shown and keeps what was logged", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], today => { const d = seed(today); d.workouts = { [today]: { date: today, session: "Push A", idx: 0, sets: {} } }; return d; });
       await page.evaluate(() => { view.tab = "train"; view.trainMode = "quick"; render(); });

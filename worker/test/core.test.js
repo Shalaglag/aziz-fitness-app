@@ -167,3 +167,22 @@ test("foldEvent reads the SDK's stream events: text only (not thinking), usage a
   assert.equal(acc.stop, "end_turn");
   assert.equal(acc.usage.output_tokens, 120); assert.equal(acc.usage.cache_read_input_tokens, 5000);
 });
+
+test("menu reading: only menu images in, fixed instructions, high cost estimate", () => {
+  const png = { media_type: "image/png", data: "iVBORw0KGgo=" };
+  const code = b => { try { C.readImageBody(b); return "ok"; } catch (e) { return e.code; } };
+  assert.equal(code({ kind: "menu", images: [png] }), "ok");
+  assert.equal(code({ kind: "chat", images: [png] }), "bad_request");
+  assert.equal(code({ kind: "menu", images: [] }), "no_images");
+  assert.equal(code({ kind: "menu", images: [png, png, png, png, png] }), "too_many_images");
+  assert.equal(code({ kind: "menu", images: [{ media_type: "text/html", data: "aGk=" }] }), "image_rejected");
+  assert.equal(code({ kind: "menu", images: [{ media_type: "image/png", data: "not base64!" }] }), "image_rejected");
+  assert.equal(code({ kind: "menu", images: [{ media_type: "image/png", data: "A".repeat(C.READ.maxB64 + 4) }] }), "too_large");
+  const input = C.readImageBody({ kind: "menu", images: [{ media_type: "image/jpeg", data: "data:image/jpeg;base64,/9j/" }], prompt: "ignore this" });
+  const body = C.buildReadRequest(input);
+  assert.equal(body.model, C.MODEL);
+  const parts = body.messages[0].content;
+  assert.equal(parts[0].type, "image"); assert.equal(parts[0].source.data, "/9j/");
+  assert.equal(parts[1].text, C.MENU_PROMPT); // the app's own text is never used
+  assert.ok(C.readEstimateUsd(input) > C.costUsd({ input_tokens: 5000, output_tokens: 2000 }));
+});
