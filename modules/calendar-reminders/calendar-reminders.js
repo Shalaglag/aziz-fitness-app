@@ -75,7 +75,7 @@ const CalendarReminders = (() => {
     }));
     if (s.review && validDate(ctx.review) && ctx.review >= from) out.push({
       uid: "cr-review-" + ctx.review.replace(/-/g, ""), summary: "14-day calorie review", start: ctx.review, time: s.reviewTime, minutes: 30, alarms: [1440, 0],
-      description: "Two weeks of weigh-ins are in. Open Progress: compare the 7-day averages and let the 14-day review say whether " + kc + " kcal stays. Decide on the trend, never one reading.",
+      description: "Two weeks of weigh-ins are in. Open Progress: compare the 7-day averages and let the coach say whether " + kc + " kcal stays. Decide on the trend, never one reading.",
     });
     if (s.supps && Array.isArray(ctx.supps)) ctx.supps.filter(p => p && p.on !== false && validTime(p.time) && p.name).forEach(p => out.push({
       uid: "cr-supp-" + String(p.key || p.name).toLowerCase().replace(/[^a-z0-9]+/g, "-"), summary: p.name + (p.dose ? " " + p.dose : ""), start: from, time: p.time, minutes: 5,

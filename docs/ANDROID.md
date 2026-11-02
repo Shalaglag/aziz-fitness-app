@@ -87,5 +87,5 @@ Changing the key means the next APK cannot install over the old one (export data
   (`READ_HYDRATION`, `READ_STEPS`); both refresh when the app is opened or resumed. Background reads would need
   `READ_HEALTH_DATA_IN_BACKGROUND` plus a WorkManager job and are not started.
 - Home-screen widgets and biometric lock are not started.
-- Claude AI coach needs its backend (see `netlify/functions/coach.mjs`); the app shows the offline/unavailable state
-  until that is live.
+- Ask Claude calls the Mizan coach service (`worker/`, Cloudflare Workers, HTTPS) whose address is set in Ask Claude → ⚙
+  AI settings; until it is set up the app answers the quick questions only. Setup steps: `worker/README.md`.

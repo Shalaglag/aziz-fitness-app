@@ -1,0 +1,16 @@
+{
+  "name": "mizan-coach",
+  "private": true,
+  "type": "module",
+  "description": "Mizan's Ask Claude service: Cloudflare Worker + spending ledger (Durable Object)",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run --outdir dist"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0"
+  }
+}

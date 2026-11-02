@@ -1,8 +1,6 @@
-# 14-day progress review + patterns (Coach)
+# AI coach + 14-day progress review (Coach)
 
-Two rule-based cards on Progress → Reviews: a **14-day review** that says whether the plan is working, and **Patterns in your logs**. Plain JS, no imports, no network, no Claude, no API key. Global `Coach` (name kept so saved data and wiring stay the same).
-
-**The AI coach was removed on Nov 2, 2026** (Aziz: hard to run and little use). The "Ask Claude" button and chat panel, quick questions, Claude context/prompt, proposed actions and the `/api/coach` server function are gone. Old chat history in `chats/main` is left in the data and backups, untouched.
+Two cards that connect the whole app: a **14-day review** that says whether the cut is working, and **Ask your coach**, which answers questions from the logs. Plain JS, no imports, no network of its own. Global `Coach`. Claude is reached only through the `sample` capability the host passes in (the app already declares it for PhotoFood).
 
 ## What it reads
 `S.docs` as the app has it: `weights/{date}.kg`, `days/{date}.food[]` (only `eaten:true` items count; `est` items are flagged), `days/{date}.sleep`, `.steps`, `workouts/{date}` (`session`, `sets`, `effort`, `deload`), `lb_workouts` + `lb_exercises` from the full logger, `prefs/main.profile`, `prefs/main.dietBreak`, `prefs/main.dislikes`.
@@ -13,37 +11,55 @@ Per the gap audit: targets come from **AppTargets** (pass `targets: AppTargets.r
 - **Window:** the latest finished 14-day block; while the first block is running it shows "day X of 14". Today is left out (half-logged). Arrows step through earlier blocks.
 - **Checks:** weight pace (least-squares slope on raw weigh-ins, % of body weight a week, week-1 vs week-2 averages), calories (days within ±band of the day's target, Fridays left out of adherence but their average shown), protein (avg, days at the minimum), training (sessions, working sets, avg effort), strength (best Epley e1RM in week 2 vs the 7 days before it; up > +1%, down < −2%), sleep.
 - **Needs** 6+ weigh-ins with 2+ in each week and 7+ days with food eaten; otherwise it lists what's missing.
-- **Goal plan:** pass `plan` (`prefs/main.goalSetup` from GoalSetup). The review then judges the pace in the plan's direction: a cut or gain plan sets the band to 0.6–1.5 × the chosen % of body weight a week (clamped 0.2–1.2; `rules.paceLo/paceHi` still override), a maintain plan uses ±0.3 kg a week (`on-track` steady, `drift` → *suggest* a 50–100 kcal nudge when eating was on target, `adherence` otherwise). A gain that is too fast suggests fewer calories; a stalled gain suggests more. Every review carries `basis`: "Based on your plan (…), N kcal and 14 days of logs: n weigh-ins, n food days, n sessions" (or "your targets" without a plan), shown under the card.
+- **Goal plan:** pass `plan` (`prefs/main.goalSetup` from GoalSetup). The review then judges the pace in the plan's direction: a cut or gain plan sets the band to 0.6–1.5 × the chosen % of body weight a week (clamped 0.2–1.2; `rules.paceLo/paceHi` still override), a maintain plan uses ±0.3 kg a week (`on-track` steady, `drift` → *suggest* a 50–100 kcal nudge when eating was on target, `adherence` otherwise). A gain that is too fast suggests fewer calories; a stalled gain suggests more. Every review carries `basis`: "Based on your plan (…), N kcal and 14 days of logs: n weigh-ins, n food days, n sessions" (or "your targets" without a plan), shown under the card and sent to Claude as `context.basis` and `context.plan`.
 - **Verdicts:** `on-track` (pace within 0.5–1%/wk → keep), `slow` (0.25–0.5% → hold one more period), `stalled` (< 0.25% with ≥70% on-target days and ≥70% days logged → *suggest* −150 kcal, not below `rules.floor`, or more steps), `adherence` (low pace but adherence is the issue → no calorie change), `too-fast` (> 1%: first two weeks = water, keep; later → *suggest* +150), `diet-break` (4+ break days in the block), `not-enough-data`.
 - **Tips** with their evidence: protein short, several lifts dropping, EffortDeload nudge (pass `effort`), sleep under 7 h, many estimated foods.
 - **Never silently changes targets.** A change recommendation carries `change: {key:"profile.cutKcal", from, to}`; the card shows a "Use N kcal" button only if the host passes `onApply`, and the module calls it only on a tap.
 
+## Ask Claude (chat panel)
+- A floating **Ask Claude** button on every screen opens a chat panel (bottom sheet on phones, side panel on desktop) with suggested questions for the current tab (`Coach.suggestions(tab)`), streaming answers, Stop, Clear and stored history (`opts.chats.load/save`; the app keeps `chats/main`). Mount it once with `Coach.mountPanel(el, opts)`; it owns its own DOM so answers stream without re-rendering the app. `Coach.chatHtml()` is now a compact card that opens the panel.
+- Transports, in order: `opts.endpoint` (a URL or getter) = the Mizan coach service (`worker/`, Claude Haiku 5.5, owner-only, monthly spending cap; see `worker/README.md`), used wherever it is set up; else the page's `sample` capability (inside Claude, free); else the quick questions only, with a note. Nothing goes to the service until the person turns the AI chat on (`opts.consent()` / `opts.setConsent(bool)`); the consent card lists what is sent. The service streams NDJSON; `Coach.partialAnswer` shows the answer as it arrives and each answer shows what it cost. ⚙ AI settings shows the month's spending against the cap (warning at 80 %, stop at the cap), lets the cap be changed and holds the service address (`opts.setService(url)`). Only the data sections a question needs are sent (`Coach.trimContext`); `Coach.langOf` / `Coach.effortFor` pick the reply language hint and low or medium effort. Offline, cap reached, out of credit, not allowed and outages each show a plain message and never keep a half answer.
+
 ## Patterns in your logs (insights)
-`Coach.insights(docs, opts)` works out up to 3 insights locally, each only with enough data: new PRs this week, strength falling on 2+ lifts (3 sessions down), protein under the minimum on half the logged days, effort 4–5 on 3 of the last 4 sessions, lifts after short sleep vs full nights (3+ each, 8 weeks), weight-loss pace slowing (14 vs 14 days), recovery check-ins improving, volume imbalance (from `opts.strength`), protein on rest vs training days (28 days), and the weekday that runs over target. `opts.seen` (`{id: date}`) hides an id for `repeatDays` (7). `Coach.insightsHtml` renders the card; dismiss calls `opts.onDismiss(id)` (the app stores `prefs/main.coachSeen`),
+`Coach.insights(docs, opts)` works out up to 3 insights locally, each only with enough data: new PRs this week, strength falling on 2+ lifts (3 sessions down), protein under the minimum on half the logged days, effort 4–5 on 3 of the last 4 sessions, lifts after short sleep vs full nights (3+ each, 8 weeks), weight-loss pace slowing (14 vs 14 days), recovery check-ins improving, volume imbalance (from `opts.strength`), protein on rest vs training days (28 days), and the weekday that runs over target. `opts.seen` (`{id: date}`) hides an id for `repeatDays` (7). `Coach.insightsHtml` renders the card; dismiss calls `opts.onDismiss(id)` (the app stores `prefs/main.coachSeen`), "Ask Claude about this" opens the chat with a question.
+
+## Safe actions (proposed, confirmed, applied)
+Claude may propose at most 2 actions per answer, only from `Coach.ACTIONS`: `set_calorie_target {kcal}`, `add_saved_meal {name}`, `add_menu_item {name}`, `swap_exercise {from, to}`, `show_exercise {name}` (view only). `Coach.cleanActions` drops anything else. The host (`opts.actionHost`) checks each one against the real data (`check(a) -> {ok, change|error}`); the chat shows the exact change with Confirm / Not now, and `apply(a)` runs only after Confirm, after a fresh check, and the card shows whether it worked. A blocked action shows why and has no button. History keeps the outcome; an action still "proposed" when the chat reloads becomes expired, and one interrupted mid-apply is reported, never retried. The app's host enforces the 1,800 kcal floor, steps of at most 150 kcal, today's session only, and the avoid/hurt lists; added food is planned, not eaten.
+
+## Ask your coach
+- Quick questions ("Is my cut working?", "Why isn't my weight moving?", "Am I eating enough protein?", "Which lifts are stalling?", "What's left today?") are answered **from the numbers, without Claude**, so they always work.
+- Free-form questions go to Claude with `Coach.context()` (targets, 7/14/30-day weight averages, last 30 weigh-ins, 14 days of eaten kcal/protein with unlogged days marked `logged:false`, last 14 days of sessions, the review, sleep, dislikes, plus TrendTDEE/EffortDeload results if passed). The prompt forbids inventing numbers, foods or workouts, tells it it can only propose the actions above (never claim a change is done), and asks for JSON `{answer, evidence[], missing[], suggestion}`; the card shows the evidence under each answer. If `sample` is unavailable the input is replaced by a note and the quick questions keep working.
 
 ## API
 ```js
 Coach.css
 Coach.targets(docs, opts)              // resolved targets + coaching rules
 Coach.periods(docs, {today, targets})  // [{from, end, to, partial}]
-Coach.review(docs, opts)               // {period, verdict, headline, checks[], recs[], missing[], numbers, basis}
+Coach.review(docs, opts)               // {period, verdict, headline, checks[], recs[], missing[], numbers}
 Coach.reviewHtml(docs, opts)           // Progress card
 Coach.summary(review)                  // copyable text
-Coach.liftHistory(docs, today)         // per-lift recent sessions, best e1RM, PR flag
-Coach.insights(docs, opts) / Coach.insightsHtml(docs, opts)
-Coach.bind(document, { getDocs, render, today, targets, rules, plan, kcalTarget, onApply, onDismiss })
+Coach.context(docs, opts) / Coach.prompt(q, ctx, history) / Coach.parseAnswer(v)
+Coach.localAnswer(topic, docs, opts)
+Coach.chatHtml(docs, opts)             // "Ask your coach" card (chat state lives in the module)
+Coach.bind(document, { getDocs, getSample, render, today, targets, rules, plan, effort, tdee, kcalTarget, onApply })
 ```
-`opts`: `today`, `targets` (AppTargets object), `rules` (`{floor, step, band, paceLo, paceHi}`; defaults 1800 / 150 / 150 / 0.5 / 1.0), `kcalTarget(date)` (the app's per-day target, e.g. diet-break days), `plan` (the saved goal plan `{answers, result, at}`), `effort` (EffortDeload.analyze result), `tdee` (TrendTDEE.estimate result), `strength` (StrengthAnalytics.analyze, for the balance insight), `seen` (insight ids → date), `from` (a block start).
+`opts`: `today`, `targets` (AppTargets object), `rules` (`{floor, step, band, paceLo, paceHi}`; defaults 1500 / 150 / 150 / 0.5 / 1.0), `kcalTarget(date)` (the app's per-day target, e.g. diet-break days), `plan` (the saved goal plan `{answers, result, at}`), `effort` (EffortDeload.analyze result), `tdee` (TrendTDEE.estimate result), `from` (a block start).
 
 ## Wiring in the app
 ```js
-Coach.bind(document, { getDocs: () => S.docs, render, today: () => TODAY, targets: () => APPT, rules: () => ({ floor: KCAL_FLOOR }), kcalTarget,
-  plan: () => S.docs.prefs.main?.goalSetup || null,
-  onDismiss: id => { /* prefs/main.coachSeen[id] = TODAY */ },
-  onApply: ch => { /* two taps, then prefs/main.profile.cutKcal = ch.to */ } });
-// Progress → Reviews:
-html += Coach.insightsHtml(S.docs, { ...coachOpts(), seen: S.docs.prefs.main?.coachSeen || {} }) + Coach.reviewHtml(S.docs, coachOpts());
+document.head.insertAdjacentHTML("beforeend", "<style>" + Coach.css + "</style>");
+const coachOpts = () => ({ today: TODAY, targets: APP_TARGETS, rules: { floor: 1800 }, kcalTarget,
+  effort: window.EffortDeload ? EffortDeload.analyze(S.docs.workouts, { today: TODAY, dismissedAt: S.docs.prefs.main?.deloadDismissedAt }) : undefined,
+  tdee: window.TrendTDEE ? TrendTDEE.estimate(S.docs, { today: TODAY }) : undefined });
+Coach.bind(document, { getDocs: () => S.docs, render, today: () => TODAY, targets: () => APP_TARGETS, rules: () => ({ floor: 1800 }), kcalTarget,
+  effort: () => coachOpts().effort, tdee: () => coachOpts().tdee,
+  getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(() => null) : Promise.resolve(null),
+  onApply: ch => { if (confirm(`Change your calorie target from ${ch.from} to ${ch.to}?`)) { /* write prefs/main.profile.cutKcal = ch.to, re-resolve targets */ } } });
+// Progress tab, top (before the weekly report):
+html += Coach.reviewHtml(S.docs, coachOpts());
+// Today tab (or Progress, under the review):
+html += Coach.chatHtml(S.docs, coachOpts());
 ```
 `S.docs` must include `lb_workouts` and `lb_exercises` for the logger's sessions to count. Only wire `onApply` if `profile.cutKcal` actually drives the day target; otherwise leave it out and the suggestion shows without a button.
 
-Tests: `node --test modules/coach/coach.test.js` (22 cases).
+Tests: `node --test modules/coach/coach.test.js` (20 cases). Preview with example data: `preview.html`.
