@@ -66,3 +66,36 @@ test("rest notification uses the rest channel with the GymSounds ding", async ()
   assert.equal(A.channelFor("../x").id, "rest_v1", "odd ids fall back to the bell");
   delete global.document; global.window = {};
 });
+
+test("back press walks the tab history before going to Today", () => {
+  delete require.cache[require.resolve("./android-shell.js")];
+  const A = require("./android-shell.js");
+  let tab = "today"; const went = [];
+  global.window = {};
+  A.init({ isHome: () => tab === "today", goHome: () => { tab = "today"; A.visit(tab); went.push("home"); },
+    setTab: (t, y) => { tab = t; A.visit(t, 0); went.push(t + "@" + y); } });
+  A.visit("today", 0); A.visit("train", 120); A.visit("train", 300); A.visit("food", 50);
+  assert.equal(A.backPress(fakeDoc(["closeSheet"])), "sheet"); // a sheet still closes first
+  assert.equal(A.backPress(fakeDoc([])), "tab"); assert.equal(tab, "train");
+  assert.equal(A.backPress(fakeDoc([])), "tab"); assert.equal(tab, "today");
+  assert.deepEqual(went, ["train@50", "today@120"]);
+  assert.equal(A.backPress(fakeDoc([])), "exit");
+  // opening on a non-home tab with no history still goes to Today first
+  A.visit("progress", 0); A.backPress(fakeDoc([])); // back to today via history
+  assert.equal(tab, "today");
+  delete global.window;
+});
+
+test("going Today from a tab with no history clears it, then exits", () => {
+  delete require.cache[require.resolve("./android-shell.js")];
+  const A = require("./android-shell.js");
+  let tab = "food";
+  global.window = {};
+  A.init({ isHome: () => tab === "today", goHome: () => { tab = "today"; A.visit(tab); }, setTab: (t) => { tab = t; A.visit(t); } });
+  A.visit("food", 0);
+  assert.equal(A.backPress(fakeDoc([])), "home");
+  A.visit("train", 0); // today -> train
+  assert.equal(A.backPress(fakeDoc([])), "tab"); assert.equal(tab, "today");
+  assert.equal(A.backPress(fakeDoc([])), "exit");
+  delete global.window;
+});
