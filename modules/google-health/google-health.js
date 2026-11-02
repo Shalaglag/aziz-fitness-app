@@ -22,7 +22,9 @@ const GoogleHealthWater = (() => {
   const SCOPE = "https://www.googleapis.com/auth/googlehealth.nutrition.readonly";
   const PATH = "v4/users/me/dataTypes/hydration-log/dataPoints";
   const FIRST_DAYS = 14, NEXT_DAYS = 3;          // first sync back-fills two weeks; later ones re-check 3 days
-  const AUTO_GAP_MS = 10 * 60 * 1000;            // open / resume sync at most every 10 minutes
+  const AUTO_GAP_MS = 15 * 1000;                 // open / resume / online sync at most every 15 s
+  const LIVE_GAP_MS = 15 * 1000;                 // while the app is on screen: today's log every 15 s
+  const ERROR_GAP_MS = 5 * 60 * 1000;            // after a non-network error, auto and live back off to 5 min
   const TOKEN_MS = 50 * 60 * 1000;               // Google access tokens last ~60 min
 
   const HC = typeof HealthConnectSync !== "undefined" ? HealthConnectSync
@@ -186,28 +188,32 @@ const GoogleHealthWater = (() => {
       return syncNow({ reason: "manual" });
     }
 
-    async function syncNow({ reason = "manual" } = {}) {
+    async function syncNow({ reason = "manual", days } = {}) {
       if (busy) return busy;
       busy = (async () => {
         if (!plugin) return { error: "no-plugin" };
         if (!st.connected) return { error: "not-connected" };
         let r;
-        try { r = await pull(st.synced ? NEXT_DAYS : FIRST_DAYS, reason === "manual"); }
+        try { r = await pull(days || (st.synced ? NEXT_DAYS : FIRST_DAYS), reason === "manual"); }
         catch (e) { r = { error: "Sync failed: " + String(e && e.message || e) }; }
-        if (r.error) { if (r.status !== 0 || !st.lastError) st.lastError = r.error; }
-        else { st.lastError = null; st.synced = true; st.lastSyncAt = now().toISOString(); st.lastResult = { seen: r.seen, imported: r.imported, removed: r.removed, todayMl: r.todayMl }; }
+        if (r.error) { if (r.status !== 0 || !st.lastError) { st.lastError = r.error; st.lastErrorStatus = r.status == null ? -1 : r.status; } }
+        else { st.lastError = null; st.lastErrorStatus = null; st.synced = true; st.lastSyncAt = now().toISOString(); st.lastResult = { seen: r.seen, imported: r.imported, removed: r.removed, todayMl: r.todayMl }; }
         save(); emit();
         return r;
       })();
       try { return await busy; } finally { busy = null; }
     }
 
-    async function autoSync() {
-      if (!plugin || !st.connected) return { skipped: true };
+    // autoSync() on open / resume re-checks 3 days; autoSync({live:true}) is the on-screen poll and reads
+    // today only. Both are silent (never open Google's consent sheet) and back off after a real error.
+    async function autoSync({ live = false } = {}) {
+      if (!plugin || !st.connected || busy) return { skipped: true };
       const t = now().getTime();
-      if (t - lastAuto < AUTO_GAP_MS) return { skipped: true };
+      const failing = st.lastError && st.lastErrorStatus !== 0;
+      const gap = failing ? ERROR_GAP_MS : live ? LIVE_GAP_MS : AUTO_GAP_MS;
+      if (t - lastAuto < gap) return { skipped: true };
       lastAuto = t;
-      return syncNow({ reason: "auto" });
+      return syncNow({ reason: "auto", days: live && st.synced ? 1 : undefined });
     }
 
     function disconnect() { st = {}; tok = null; save(); emit(); }

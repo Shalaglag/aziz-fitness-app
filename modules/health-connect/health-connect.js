@@ -131,7 +131,10 @@ const HealthConnectSync = (() => {
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
   // ---- the live sync object ---------------------------------------------------------------
-  function create({ plugin, getDay, put, storage, now = () => new Date(), lookbackDays = DEFAULT_LOOKBACK_DAYS, ownPackage, onChange } = {}) {
+  // yieldTo(day) → true leaves that day's bottle figure alone (the shell passes "Fitbit is connected",
+  // so two auto sources never overwrite each other's records).
+  function create({ plugin, getDay, put, storage, now = () => new Date(), lookbackDays = DEFAULT_LOOKBACK_DAYS, ownPackage, onChange, yieldTo } = {}) {
+    const yields = d => { try { return !!(yieldTo && yieldTo(d)); } catch (e) { return false; } };
     let st = readState(storage);
     let hc = { status: null, granted: null };   // what the plugin last told us
     let busy = null, lastAuto = 0;
@@ -191,6 +194,7 @@ const HealthConnectSync = (() => {
       let imported = 0, removed = 0, days = 0;
       for (const d of Object.keys(byDay).sort()) {
         const before = getDay(d);
+        if (yields(before)) continue;
         const beforeIds = Object.keys(currentRecords(before));
         let day = applyRecords(before, byDay[d].up, { now: t, ownPackage });
         day = removeRecords(day, byDay[d].del, { now: t });
@@ -311,6 +315,7 @@ const HealthConnectSync = (() => {
       else if (s.state === "not-supported") head = line("warn", "Health Connect is not supported on this phone (needs Android 9 or newer).");
       else if (s.state === "needs-permission") head = line("warn", "Health Connect: hydration access not allowed yet.");
       else if (s.state === "error") head = line("bad", `Health Connect: ${esc(s.lastError)}`);
+      else if (s.state === "ready" && yields(day)) head = line("off", "Health Connect water is paused while Fitbit is connected (Fitbit is used instead).");
       else if (s.state === "ready") head = line("ok", `Health Connect connected${n ? ` · ${n} water record${n === 1 ? "" : "s"} today (${(ml / 1000).toFixed(2)} L)` : " · no water records for today yet"}`);
       else head = line("off", "Checking Health Connect…");
       const lr = s.lastResult;

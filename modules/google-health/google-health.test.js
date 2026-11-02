@@ -185,3 +185,34 @@ test("a rejected filter (400) falls back to an unfiltered newest-first read and 
   assert.ok(G.calls.every(c => !c.query.filter), "remembers to skip the filter");
   assert.match(GH.errorText(500, '{"error":{"code":500,"message":"Backend broke","status":"INTERNAL"}}'), /error 500: Backend broke/);
 });
+
+test("live poll: today only, every 15 s, picks up a new sip; backs off 5 min after a real error but not when offline", async () => {
+  const G = fakeGoogle(); G.points = [dp("a", 194, 1, 8)];
+  let clock = NOW.getTime();
+  const days = {}, store = {};
+  const getDay = d => Object.assign({ date: d, food: [], water: 0, supps: {} }, days[d]);
+  const storage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = v; } };
+  const S = GH.create({ plugin: G, getDay, put: (c, id, d) => { days[id] = d; }, storage, now: () => new Date(clock) });
+  await S.connect();
+  G.calls = [];
+  G.points.push(dp("b", 250, 1, 12));
+  clock += 16000;
+  const r = await S.autoSync({ live: true });
+  assert.equal(r.imported, 1); assert.equal(r.todayMl, 444);
+  assert.equal(getDay("2026-11-01").waterh.ml, 444);
+  assert.match(G.calls[0].query.filter, /civil_start_time >= "2026-11-01"/, "live reads today only");
+  clock += 5000;
+  assert.equal((await S.autoSync({ live: true })).skipped, true, "within 15 s");
+  clock += 11000;
+  G.status = 403; G.errBody = "PERMISSION_DENIED";
+  await S.autoSync({ live: true });
+  clock += 60000;
+  assert.equal((await S.autoSync({ live: true })).skipped, true, "backs off after a real error");
+  clock += 5 * 60000;
+  G.status = 200;
+  assert.ok(!(await S.autoSync({ live: true })).skipped, "retries after 5 min");
+  G.throwNet = true; clock += 16000;
+  await S.autoSync({ live: true });
+  G.throwNet = false; clock += 16000;
+  assert.ok(!(await S.autoSync({ live: true })).skipped, "offline does not trigger the long back-off");
+});
