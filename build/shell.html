@@ -1010,6 +1010,7 @@ function render(){
   try{ autoFoodsTick(); }catch(e){ console.error("[auto foods]", e); }
   applyAccent(currentAccent());
   if(S.mode!=="loading"){ applyTheme(S.docs.prefs.main?.theme); applyNav(S.docs.prefs.main?.nav); }
+  if(window.AndroidShell && AndroidShell.visit) AndroidShell.visit(view.tab, window.scrollY);
   document.querySelectorAll("#tabs button, #bottomNav button").forEach(b=>b.setAttribute("aria-current", b.dataset.tab===view.tab?"page":"false"));
   document.getElementById("dateLabel").textContent = fmt(view.date) + (view.date===TODAY?" · today":"");
   document.getElementById("goToday").hidden = view.date===TODAY;
@@ -1848,7 +1849,7 @@ function vSettings(){
 // Android app (modules/android-shell): back button closes sheets, then returns to Today, then minimises.
 // In-app updates (modules/app-update): Settings card + Today banner; reads the public releases repo (no key), private release with a key as a fallback.
 if(window.AppUpdate){ try{ const st=document.createElement("style"); st.textContent=AppUpdate.css; document.head.appendChild(st); AppUpdate.bind({ render, toast }); }catch(e){} }
-if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
+if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", setTab:(t,y)=>{ view.tab=t; try{localStorage.setItem("aziz-cut-tab",t)}catch(_){} render(); window.scrollTo(0,y||0); }, goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
 function openDrawer(on){ const d=document.getElementById("drawer"); d.hidden=!on; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
 document.getElementById("menuBtn").onclick=()=>openDrawer(true);
 document.getElementById("drawerClose").onclick=()=>openDrawer(false);
