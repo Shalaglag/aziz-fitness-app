@@ -259,6 +259,16 @@
 :root[data-nav="back"]::view-transition-new(fit-screen) { animation-name: fit-slide-in-l; }
 @keyframes fit-out { to { opacity: 0; } }
 
+/* ---- Tab switch (Nov 2): the new screen fades in and drifts 14px from the side of the tab you tapped.
+   Cards skip their own rise here so it reads as one calm move; rings and bars still fill. ---- */
+@keyframes fit-tab-r { from { opacity: 0; transform: translateX(14px); } }
+@keyframes fit-tab-l { from { opacity: 0; transform: translateX(-14px); } }
+@keyframes fit-fade-in { from { opacity: 0; } }
+@keyframes fit-fade-out { to { opacity: 0; } }
+.tab-in-r { animation: fit-tab-r 240ms var(--ease-out) backwards; }
+.tab-in-l { animation: fit-tab-l 240ms var(--ease-out) backwards; }
+.tab-in-r > .anim-rise, .tab-in-l > .anim-rise { animation: none; }
+
 /* ---- Bottom sheet (add food, log weight) ---- */
 .sheet {
   transform: translateY(100%);
@@ -349,8 +359,14 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background
 .menubtn{font-size:1.25rem}
 .drawer-wrap{position:fixed;inset:0;z-index:45;display:flex}
 .drawer-wrap .scrim{position:absolute;inset:0;background:var(--overlay)}
-nav.drawer{position:relative;width:min(300px,82vw);height:100%;background:var(--surface);display:flex;flex-direction:column;padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(16px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));box-shadow:var(--shadow-2);animation:fit-drawer-in var(--dur-ui) var(--ease-out);overflow-y:auto}
-@keyframes fit-drawer-in{from{transform:translateX(-30px);opacity:0}}
+nav.drawer{position:relative;width:min(300px,82vw);height:100%;background:var(--surface);display:flex;flex-direction:column;padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(16px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));box-shadow:var(--shadow-2);animation:fit-drawer-in 300ms var(--ease-out);overflow-y:auto}
+@keyframes fit-drawer-in{from{transform:translateX(-100%)}}
+@keyframes fit-drawer-out{to{transform:translateX(-100%)}}
+/* Menu slides in over 300 ms with the dim fading in, and slides back out when closed (Nov 2) */
+.drawer-wrap .scrim{animation:fit-fade-in 300ms var(--ease-out)}
+.drawer-wrap.closing{pointer-events:none}
+.drawer-wrap.closing nav.drawer{animation:fit-drawer-out 200ms var(--ease-in-out) forwards}
+.drawer-wrap.closing .scrim{animation:fit-fade-out 200ms var(--ease-in-out) forwards}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px 14px}
 nav.drawer button[data-tab]{display:flex;align-items:center;gap:12px;width:100%;border:0;background:none;padding:14px 12px;border-radius:12px;cursor:pointer;font-family:var(--display);font-size:1.3rem;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);text-align:left;min-height:52px}
 nav.drawer button[data-tab] .ico{width:26px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
@@ -578,9 +594,9 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .mealgrp .item .nm b{font-weight:600}
 .mealgrp .item .nm button{all:unset;cursor:pointer;display:block}
 .mealgrp .madd{display:block;width:100%;border:0;background:none;color:var(--accent);font-weight:700;text-align:left;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;font-size:.95rem}
-.sheet-wrap{position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;background:var(--overlay)}
-.fsheet{width:100%;max-width:640px;max-height:92%;background:var(--bg);border-radius:18px 18px 0 0;display:flex;flex-direction:column;animation:fit-sheet-up var(--dur-ui) var(--ease-out)}
-@keyframes fit-sheet-up{from{transform:translateY(40px);opacity:0}}
+.sheet-wrap{position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;background:var(--overlay);animation:fit-fade-in 260ms var(--ease-out)}
+.fsheet{width:100%;max-width:640px;max-height:92%;background:var(--bg);border-radius:18px 18px 0 0;display:flex;flex-direction:column;animation:fit-sheet-up 260ms var(--ease-out)}
+@keyframes fit-sheet-up{from{transform:translateY(48px);opacity:0}}
 .sheet-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
 .sheet-head h2{font-size:1.2rem;text-align:center}
 .sheet-body{overflow-y:auto;padding:12px 16px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
@@ -1008,6 +1024,12 @@ function currentAccent(){ return S.docs.prefs.main?.accent || "coral"; }
 function applyAccent(a){ if(["coral","red","white","green","yellow","blue"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
 let lastTab=null;
 let lastWaterLvl=0; // Water fluid rises from the last level drawn
+// Tab switch motion: slide from the side of the tapped tab (bar order), class removed when done so no transform lingers.
+const TAB_ORDER=["today","train","food","progress","friends","guide","settings"];
+function tabMotion(from,to){
+  const cls = TAB_ORDER.indexOf(to) < TAB_ORDER.indexOf(from) ? "tab-in-l" : "tab-in-r";
+  [main, document.getElementById("lbHost")].forEach(el=>{ if(!el || el.hidden) return; el.classList.remove("tab-in-l","tab-in-r"); void el.offsetWidth; el.classList.add(cls); clearTimeout(el._tabT); el._tabT=setTimeout(()=>el.classList.remove(cls), 300); });
+}
 function render(){
   renderPending=false;
   applyTargets();
@@ -1022,7 +1044,7 @@ function render(){
   const tabFn = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,friends:vFriends,guide:vGuide,settings:vSettings})[view.tab] || vToday;
   main.innerHTML = safe(view.tab+" tab", tabFn);
   [["Workout logger",syncLogger],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
-  if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); lastTab=view.tab; }
+  if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); if(lastTab) tabMotion(lastTab, view.tab); lastTab=view.tab; }
   applyFlash();
   window.scrollTo(0,y);
   if(frInst) frInst.schedulePublish();
@@ -1858,7 +1880,9 @@ function vSettings(){
 // In-app updates (modules/app-update): Settings card + Today banner; reads the public releases repo (no key), private release with a key as a fallback.
 if(window.AppUpdate){ try{ const st=document.createElement("style"); st.textContent=AppUpdate.css; document.head.appendChild(st); AppUpdate.bind({ render, toast }); }catch(e){} }
 if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", setTab:(t,y)=>{ view.tab=t; try{localStorage.setItem("aziz-cut-tab",t)}catch(_){} render(); window.scrollTo(0,y||0); }, goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
-function openDrawer(on){ const d=document.getElementById("drawer"); d.hidden=!on; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
+function openDrawer(on){ const d=document.getElementById("drawer"); clearTimeout(d._closeT);
+  if(!on){ if(d.hidden) return; d.classList.add("closing"); d._closeT=setTimeout(()=>{ d.hidden=true; d.classList.remove("closing"); }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200); return; }
+  d.classList.remove("closing"); d.hidden=false; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
 document.getElementById("menuBtn").onclick=()=>openDrawer(true);
 document.getElementById("drawerClose").onclick=()=>openDrawer(false);
 main.addEventListener("change",e=>{ const el=e.target.closest("[data-fr-change]"); if(el && frInst){ try{ frInst.change(el); }catch(err){} } });

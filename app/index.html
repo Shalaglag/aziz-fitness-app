@@ -259,6 +259,16 @@
 :root[data-nav="back"]::view-transition-new(fit-screen) { animation-name: fit-slide-in-l; }
 @keyframes fit-out { to { opacity: 0; } }
 
+/* ---- Tab switch (Nov 2): the new screen fades in and drifts 14px from the side of the tab you tapped.
+   Cards skip their own rise here so it reads as one calm move; rings and bars still fill. ---- */
+@keyframes fit-tab-r { from { opacity: 0; transform: translateX(14px); } }
+@keyframes fit-tab-l { from { opacity: 0; transform: translateX(-14px); } }
+@keyframes fit-fade-in { from { opacity: 0; } }
+@keyframes fit-fade-out { to { opacity: 0; } }
+.tab-in-r { animation: fit-tab-r 240ms var(--ease-out) backwards; }
+.tab-in-l { animation: fit-tab-l 240ms var(--ease-out) backwards; }
+.tab-in-r > .anim-rise, .tab-in-l > .anim-rise { animation: none; }
+
 /* ---- Bottom sheet (add food, log weight) ---- */
 .sheet {
   transform: translateY(100%);
@@ -349,8 +359,14 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background
 .menubtn{font-size:1.25rem}
 .drawer-wrap{position:fixed;inset:0;z-index:45;display:flex}
 .drawer-wrap .scrim{position:absolute;inset:0;background:var(--overlay)}
-nav.drawer{position:relative;width:min(300px,82vw);height:100%;background:var(--surface);display:flex;flex-direction:column;padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(16px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));box-shadow:var(--shadow-2);animation:fit-drawer-in var(--dur-ui) var(--ease-out);overflow-y:auto}
-@keyframes fit-drawer-in{from{transform:translateX(-30px);opacity:0}}
+nav.drawer{position:relative;width:min(300px,82vw);height:100%;background:var(--surface);display:flex;flex-direction:column;padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(16px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));box-shadow:var(--shadow-2);animation:fit-drawer-in 300ms var(--ease-out);overflow-y:auto}
+@keyframes fit-drawer-in{from{transform:translateX(-100%)}}
+@keyframes fit-drawer-out{to{transform:translateX(-100%)}}
+/* Menu slides in over 300 ms with the dim fading in, and slides back out when closed (Nov 2) */
+.drawer-wrap .scrim{animation:fit-fade-in 300ms var(--ease-out)}
+.drawer-wrap.closing{pointer-events:none}
+.drawer-wrap.closing nav.drawer{animation:fit-drawer-out 200ms var(--ease-in-out) forwards}
+.drawer-wrap.closing .scrim{animation:fit-fade-out 200ms var(--ease-in-out) forwards}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px 14px}
 nav.drawer button[data-tab]{display:flex;align-items:center;gap:12px;width:100%;border:0;background:none;padding:14px 12px;border-radius:12px;cursor:pointer;font-family:var(--display);font-size:1.3rem;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);text-align:left;min-height:52px}
 nav.drawer button[data-tab] .ico{width:26px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
@@ -578,9 +594,9 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .mealgrp .item .nm b{font-weight:600}
 .mealgrp .item .nm button{all:unset;cursor:pointer;display:block}
 .mealgrp .madd{display:block;width:100%;border:0;background:none;color:var(--accent);font-weight:700;text-align:left;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;font-size:.95rem}
-.sheet-wrap{position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;background:var(--overlay)}
-.fsheet{width:100%;max-width:640px;max-height:92%;background:var(--bg);border-radius:18px 18px 0 0;display:flex;flex-direction:column;animation:fit-sheet-up var(--dur-ui) var(--ease-out)}
-@keyframes fit-sheet-up{from{transform:translateY(40px);opacity:0}}
+.sheet-wrap{position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;background:var(--overlay);animation:fit-fade-in 260ms var(--ease-out)}
+.fsheet{width:100%;max-width:640px;max-height:92%;background:var(--bg);border-radius:18px 18px 0 0;display:flex;flex-direction:column;animation:fit-sheet-up 260ms var(--ease-out)}
+@keyframes fit-sheet-up{from{transform:translateY(48px);opacity:0}}
 .sheet-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
 .sheet-head h2{font-size:1.2rem;text-align:center}
 .sheet-body{overflow-y:auto;padding:12px 16px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
@@ -4234,7 +4250,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   function closeSheet() {
     const sh = sheets.pop(); if (!sh) return;
     sh.o.onClose && sh.o.onClose();
-    sh.el.classList.remove('open'); setTimeout(() => sh.el.remove(), 180);
+    sh.el.classList.remove('open'); sh.el.classList.add('closing'); setTimeout(() => sh.el.remove(), 240);
     if (!sheets.length) renderMain();
   }
   const topSheet = () => sheets[sheets.length - 1];
@@ -4272,12 +4288,16 @@ Power Clean (Barbell)|Other|Barbell|`;
 
   // ---------- Main views ----------
   const TABS = [['workout', 'Workout'], ['history', 'History'], ['exercises', 'Exercises'], ['progress', 'Progress'], ['tools', 'Tools']];
+  let shownTab = null, enterSel = null;
   function renderMain() {
     if (!root) return;
     if (!S.ready) { root.innerHTML = '<div class="lb-empty">Loading your workouts…</div>'; return; }
     const body = { workout: viewWorkout, history: viewHistory, exercises: viewExercises, progress: viewProgress, tools: viewTools }[tab]();
     const tabs = TABS.filter(([k]) => k === tab || !(S.opts.hideTabs || []).includes(k));
     root.innerHTML = (S.opts.title ? '<h1 class="lb-screen-title">' + esc(S.opts.title) + '</h1>' : '') + '<nav class="lb-subnav" aria-label="Workout sections">' + tabs.map(([k, l]) => '<button data-a="tab" data-k="' + k + '" class="' + (k === tab ? 'on' : '') + '" aria-current="' + (k === tab) + '">' + l + '</button>').join('') + '</nav>' + activeBanner() + '<div class="lb-view">' + body + '</div>';
+    // Short entry motion (CSS lb-in): the section fades in when you switch Workout/History/…, or the card that changed (e.g. Skip to the next session).
+    const sel = tab !== shownTab ? '.lb-view' : enterSel; shownTab = tab; enterSel = null;
+    const anim = sel && root.querySelector(sel); if (anim) anim.classList.add('lb-in');
     const q = root.querySelector('#lb-exq'); if (q && exFilter.focus) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
   }
   on('tab', t => { tab = t.dataset.k; renderMain(); });
@@ -4310,7 +4330,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     const last = workouts().find(w => w.templateId === t.id);
     return '<button class="lb-card lb-tpl" data-a="tplPreview" data-id="' + t.id + '"><div class="lb-tpl-top"><b>' + esc(t.name) + '</b><span class="lb-muted small">' + (last ? relDay(last.start) : 'Not done yet') + '</span></div><p>' + esc(t.exercises.map(e => getEx(e.exId).name.replace(/ \(.*\)$/, '')).join(', ')) + '</p></button>';
   }
-  on('rotSkip', () => { const r = rotationInfo(); S.settings.rotOverride = { idx: (r.idx + 1) % ROTATION.length, at: Date.now() }; saveSettings(); bump(); renderMain(); });
+  on('rotSkip', () => { const r = rotationInfo(); S.settings.rotOverride = { idx: (r.idx + 1) % ROTATION.length, at: Date.now() }; saveSettings(); bump(); enterSel = '.lb-next'; renderMain(); });
   on('loadProgram', () => { buildProgram().forEach(t => { if (!S.data.templates[t.id]) put('templates', t); }); toast('Loaded 6 templates'); renderMain(); });
   on('tplPreview', t => {
     const tpl = S.data.templates[t.dataset.id]; if (!tpl) return;
@@ -4944,6 +4964,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (!liveEl) { liveEl = document.createElement('section'); liveEl.className = 'lb-live'; liveEl.setAttribute('role', 'dialog'); liveEl.setAttribute('aria-label', 'Workout'); overlay.appendChild(liveEl); }
     liveEl.innerHTML = '<header class="lb-live-head"></header><div class="lb-live-body"></div><div class="lb-rest" hidden></div>';
     liveEl.hidden = false; document.documentElement.classList.add('lb-noscroll');
+    liveEl.classList.remove('lb-live-in'); void liveEl.offsetWidth; liveEl.classList.add('lb-live-in'); clearTimeout(liveEl._inT); liveEl._inT = setTimeout(() => liveEl.classList.remove('lb-live-in'), 320);
     renderEditor(); renderRest(); startTick();
     liveEl.querySelector('.lb-live-body').scrollTop = 0;
     renderMain();
@@ -5673,10 +5694,10 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-overlay{position:fixed;inset:0;pointer-events:none;z-index:1000}
 .lb-overlay > *{pointer-events:auto}
 .lb-sheet-wrap{position:fixed;inset:0;display:flex;align-items:flex-end;justify-content:center;z-index:20}
-.lb-scrim{position:absolute;inset:0;background:rgba(10,12,16,.45);opacity:0;transition:opacity .18s}
-.lb-sheet{position:relative;width:100%;max-width:640px;max-height:88%;display:flex;flex-direction:column;background:var(--lb-bg);color:var(--lb-ink);border-radius:18px 18px 0 0;transform:translateY(30px);opacity:0;transition:transform .2s,opacity .2s;padding-bottom:env(safe-area-inset-bottom,0px)}
+.lb-scrim{position:absolute;inset:0;background:rgba(10,12,16,.45);opacity:0;transition:opacity .24s cubic-bezier(.2,.8,.2,1)}
+.lb-sheet{position:relative;width:100%;max-width:640px;max-height:88%;display:flex;flex-direction:column;background:var(--lb-bg);color:var(--lb-ink);border-radius:18px 18px 0 0;transform:translateY(40px);opacity:0;transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .22s cubic-bezier(.2,.8,.2,1);padding-bottom:env(safe-area-inset-bottom,0px)}
 .lb-sheet.full{height:94%;max-height:94%}
-.lb-sheet-wrap.open .lb-scrim{opacity:1} .lb-sheet-wrap.open .lb-sheet{transform:none;opacity:1}
+.lb-sheet-wrap.closing{pointer-events:none} .lb-sheet-wrap.open .lb-scrim{opacity:1} .lb-sheet-wrap.open .lb-sheet{transform:none;opacity:1}
 .lb-sheet-head{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:12px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--lb-line)}
 .lb-sheet-head h2{margin:0;font-family:var(--lb-display);font-size:1.2rem;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lb-sheet-right{min-width:3rem;display:flex;justify-content:flex-end}
@@ -5685,6 +5706,10 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-option.danger{color:var(--lb-bad)}
 .lb-copy{font-family:var(--lb-mono);font-size:.8rem}
 .lb-live{position:fixed;inset:0;z-index:10;background:var(--lb-bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.lb-live.lb-live-in{animation:lb-live-in .28s cubic-bezier(.2,.8,.2,1) backwards}
+@keyframes lb-live-in{from{opacity:0;transform:translateY(28px)}}
+.lb-in{animation:lb-in .22s cubic-bezier(.2,.8,.2,1) backwards}
+@keyframes lb-in{from{opacity:0;transform:translateY(6px)}}
 .lb-live-head{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--lb-line);background:var(--lb-surface)}
 .lb-live-head > b,.lb-elapsed{text-align:center;font-weight:700}
 .lb-elapsed{font-size:1.1rem}
@@ -27148,6 +27173,12 @@ function currentAccent(){ return S.docs.prefs.main?.accent || "coral"; }
 function applyAccent(a){ if(["coral","red","white","green","yellow","blue"].includes(a)) document.documentElement.setAttribute("data-accent",a); }
 let lastTab=null;
 let lastWaterLvl=0; // Water fluid rises from the last level drawn
+// Tab switch motion: slide from the side of the tapped tab (bar order), class removed when done so no transform lingers.
+const TAB_ORDER=["today","train","food","progress","friends","guide","settings"];
+function tabMotion(from,to){
+  const cls = TAB_ORDER.indexOf(to) < TAB_ORDER.indexOf(from) ? "tab-in-l" : "tab-in-r";
+  [main, document.getElementById("lbHost")].forEach(el=>{ if(!el || el.hidden) return; el.classList.remove("tab-in-l","tab-in-r"); void el.offsetWidth; el.classList.add(cls); clearTimeout(el._tabT); el._tabT=setTimeout(()=>el.classList.remove(cls), 300); });
+}
 function render(){
   renderPending=false;
   applyTargets();
@@ -27162,7 +27193,7 @@ function render(){
   const tabFn = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,friends:vFriends,guide:vGuide,settings:vSettings})[view.tab] || vToday;
   main.innerHTML = safe(view.tab+" tab", tabFn);
   [["Workout logger",syncLogger],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
-  if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); lastTab=view.tab; }
+  if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); if(lastTab) tabMotion(lastTab, view.tab); lastTab=view.tab; }
   applyFlash();
   window.scrollTo(0,y);
   if(frInst) frInst.schedulePublish();
@@ -27998,7 +28029,9 @@ function vSettings(){
 // In-app updates (modules/app-update): Settings card + Today banner; reads the public releases repo (no key), private release with a key as a fallback.
 if(window.AppUpdate){ try{ const st=document.createElement("style"); st.textContent=AppUpdate.css; document.head.appendChild(st); AppUpdate.bind({ render, toast }); }catch(e){} }
 if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", setTab:(t,y)=>{ view.tab=t; try{localStorage.setItem("aziz-cut-tab",t)}catch(_){} render(); window.scrollTo(0,y||0); }, goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
-function openDrawer(on){ const d=document.getElementById("drawer"); d.hidden=!on; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
+function openDrawer(on){ const d=document.getElementById("drawer"); clearTimeout(d._closeT);
+  if(!on){ if(d.hidden) return; d.classList.add("closing"); d._closeT=setTimeout(()=>{ d.hidden=true; d.classList.remove("closing"); }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200); return; }
+  d.classList.remove("closing"); d.hidden=false; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
 document.getElementById("menuBtn").onclick=()=>openDrawer(true);
 document.getElementById("drawerClose").onclick=()=>openDrawer(false);
 main.addEventListener("change",e=>{ const el=e.target.closest("[data-fr-change]"); if(el && frInst){ try{ frInst.change(el); }catch(err){} } });
