@@ -2375,6 +2375,9 @@ try{
     endpoint:()=>window.claude ? null : (S.docs.prefs.main?.coachService || (window.FITNESS_CLOUD_CONFIG||{}).coachEndpoint || null),
     // Nothing goes to Anthropic until the person turns the AI chat on (the panel lists what is sent).
     consent:()=>!!(S.docs.prefs.main?.coachAI?.consent),
+    showCost:()=>!!(S.docs.prefs.main?.coachAI?.showCost),
+    setShowCost:on=>{ const m=clone(S.docs.prefs.main||{}); m.coachAI={...(m.coachAI||{}), showCost:!!on}; put("prefs","main",m,{quiet:true}); },
+    speech:()=>window.VoiceLog ? VoiceLog.speech : null, speechError:code=>window.VoiceLog ? VoiceLog.errorText(code) : "",
     setConsent:on=>{ const m=clone(S.docs.prefs.main||{}); m.coachAI={...(m.coachAI||{}), consent:on?TODAY:null}; put("prefs","main",m,{quiet:true}); },
     setService:url=>{ const m=clone(S.docs.prefs.main||{}); if(url) m.coachService=url; else delete m.coachService; put("prefs","main",m,{quiet:true}); },
     getToken:()=>window.CloudStore && CloudStore.idToken ? CloudStore.idToken() : Promise.resolve(null),
