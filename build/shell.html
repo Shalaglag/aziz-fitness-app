@@ -1085,7 +1085,7 @@ function ccTargets(){ return APPT || {kcal:TARGET.kcal, carbsLo:TARGET.cMin, car
 function ccTarget(d){ try{ return window.CalorieCycling && ccState().on ? CalorieCycling.target(ccTargets(), d, ccState(), ccOpts()) : null; }catch(e){ return null; } }
 // Reverse diet (back to maintenance after the goal): manual start, like diet breaks.
 function rdState(){ return {...(S.docs.prefs.main?.reverseDiet||{}), auto:false}; }
-function tdeeOpts(){ return {today:TODAY, kcal:TARGET.kcal, floor:KCAL_FLOOR, review:STRICT.to}; }
+function tdeeOpts(){ return {today:TODAY, kcal:TARGET.kcal, floor:KCAL_FLOOR, review:STRICT.to, start:START.date}; }
 function rdOpts(){ let tdee=null; try{ if(window.TrendTDEE){ const E=TrendTDEE.estimate(S.docs,tdeeOpts()); if(E&&E.ready) tdee={kcal:E.tdee, lo:E.tdeeLo, hi:E.tdeeHi}; } }catch(e){} return {today:TODAY, profile:dbProfile(), tdee, trend:trendSeries()}; }
 function reverseTarget(d){ try{ return window.ReverseDiet ? ReverseDiet.target(dbDocs(), rdState(), d, rdOpts()) : null; }catch(e){ return null; } }
 function kcalTarget(d){
@@ -1175,6 +1175,12 @@ function offerGoalSetup(kg, fromSettings){
   const base = gs && gs.answers && gs.answers.kg ? ` (${(kg-gs.answers.kg>0?"+":"")+(kg-gs.answers.kg).toFixed(1)} kg since your plan)` : "";
   undoToast(`${kg.toFixed(1)} kg${base}. Update your plan?`, ()=>openGoalSetup({kg}), "Update", 9000);
 }
+/* Plan check (modules/plan-check): every two weeks, compare the estimated burn from the logs with the plan; apply only on a tap. */
+function planCheck(){ if(!window.PlanCheck) return null; const gs=S.docs.prefs.main?.goalSetup; if(!gs||!gs.result) return null; let E=null; try{ E=window.TrendTDEE?TrendTDEE.estimate(S.docs,tdeeOpts()):null; }catch(e){} try{ return PlanCheck.recheck(S.docs,{today:TODAY, plan:gs, targets:APPT, tdee:E, compute:window.GoalSetup?GoalSetup.compute:null}); }catch(e){ console.error("[plan check]",e); return null; } }
+function planWeekLine(){ if(!window.PlanCheck) return null; const gs=S.docs.prefs.main?.goalSetup; if(!gs||!gs.result) return null; try{ return PlanCheck.weekLine(S.docs,{today:TODAY, plan:gs, trend:trendSeries()}); }catch(e){ return null; } }
+function planCheckNudge(){ const R=planCheck(); if(!R||R.status!=="ready") return ""; return `<p class="note info" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Your two-week plan check is ready: estimated maintenance ${fkc(R.estimate.kcal)} kcal.</span><button class="btn small" type="button" data-act="pcgo">See it</button></p>`; }
+function planDecide(decision){ const R=planCheck(); const gs=S.docs.prefs.main?.goalSetup; if(!R||!gs) return; const out=PlanCheck.decide(gs,R,decision,TODAY); const p=clone(S.docs.prefs.main||{}); p.goalSetup=out.plan; if(out.profile) p.profile={...(p.profile||{}),...out.profile}; put("prefs","main",p);
+  toast(decision==="apply"?`Calories are now ${fkc(out.profile.cutKcal)} kcal, protein ${out.profile.protein} g. Next check in two weeks.`:decision==="keep"?"Kept your numbers. Next check in two weeks.":"OK, asking again in a week."); }
 // Weight units per exercise (prefs/main.exUnits) on top of the plan's unit. Quick-log sets record the unit they were typed in,
 // so switching an exercise to lb later converts what is shown and never rewrites what was logged.
 const LBKG=0.45359237;
@@ -1336,6 +1342,7 @@ function vToday(){
   ${ddGlance(d)}
   ${window.AppUpdate?AppUpdate.bannerHTML():""}
   ${backupNudge()}
+  ${planCheckNudge()}
   <div class="card hero">
     <div class="spread"><span class="label">${DAYTYPE_LABEL[type]}</span>${strictDay>=1&&strictDay<=14?`<span class="pill info">Strict tracking · day ${strictDay} of 14</span>`:""}</div>
     ${sesCard}
@@ -1771,9 +1778,10 @@ function vProgress(){
     + fold("runp","Runs","", safeMod("RunTracker",()=>RunTracker.progressHTML(S.docs, {today:TODAY})))
     + fold("rfp","Recovery and fatigue","", rfSafe(()=>RecoveryFatigue.html(S.docs, rfOpts())));
   else if(pt==="food") body = caloriesEatenCard();
-  else body = coachSafe(()=>Coach.insightsHtml(S.docs, {...co, seen:S.docs.prefs.main?.coachSeen||{}}))
+  else body = safeMod("PlanCheck",()=>PlanCheck.html(planCheck()))
+    + coachSafe(()=>Coach.insightsHtml(S.docs, {...co, seen:S.docs.prefs.main?.coachSeen||{}}))
     + coachSafe(()=>Coach.reviewHtml(S.docs, co))
-    + fold("wr","Weekly report","Weight, food, lifts", safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, view.wrWeek==null?{}:{week:view.wrWeek})))
+    + fold("wr","Weekly report","Weight, food, lifts", safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, Object.assign({planLine:planWeekLine()}, view.wrWeek==null?{}:{week:view.wrWeek}))))
     + fold("mr","Monthly recap","", safeMod("MonthlyRecap",()=>MonthlyRecap.html(S.docs, mrOpts())))
     + coachSafe(()=>Coach.chatHtml(S.docs, co));
   return tabHead("Progress") + nav + body;
@@ -2022,6 +2030,7 @@ main.addEventListener("click",e=>{
       }).catch(()=>toast("Couldn't make the image here.")).finally(()=>{ mr.disabled=false; }); }
     return;
   }
+  const pc=e.target.closest("[data-pc]"); if(pc){ planDecide(pc.dataset.pc); return; }
   const el=e.target.closest("[data-act]"); if(!el) return;
   const a=el.dataset.act, d=view.date;
   if(a==="caldate"){ view.date=el.dataset.d; view.calYm=null; render(); window.scrollTo(0,0); return; }
@@ -2046,6 +2055,7 @@ main.addEventListener("click",e=>{
     if(a==="setdone" && s.done){ setDoneSound(); if(S.docs.prefs.main?.restAuto!==false) startTimer(restSec()); try{ const c=main.querySelector(`[data-act="setdone"][data-n="${CSS.escape(n)}"][data-i="${i}"]`); if(c && window.FitMotion) FitMotion.pop(c); }catch(_){} }
     return; }
   if(a==="goalsetup"){ openGoalSetup(); return; }
+  if(a==="pcgo"){ view.tab="progress"; view.pTab="reviews"; try{localStorage.setItem("aziz-cut-tab","progress")}catch(_){} render(); window.scrollTo(0,0); return; }
   if(a==="foodadd"){ const keep=view.foodSheet && !view.foodSheet.edit ? view.foodSheet.tab : "add"; view.foodSheet={tab:keep||"add", slot:el.dataset.slot||"Meal 1"}; render(); requestAnimationFrame(()=>{ const f=document.getElementById("fname"); if(f) f.focus({preventScroll:true}); }); return; }
   if(a==="foodedit"){ view.foodSheet={tab:"add", edit:el.dataset.id}; render(); return; }
   if(a==="foodclose"){ view.foodSheet=null; render(); return; }
@@ -2317,7 +2327,7 @@ document.getElementById("timer").addEventListener("click",e=>{
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget,

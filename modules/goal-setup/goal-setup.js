@@ -6,7 +6,8 @@
  * Plain JS, no imports, no network. Browser global (window.GoalSetup) or CommonJS.
  * Generic: nothing here knows the host's plan numbers. The host decides when to apply a result.
  *
- *   GoalSetup.compute(answers, {today})        -> result (see below), never throws, result.ok false with errors
+ *   GoalSetup.compute(answers, {today, maintenance}) -> result (see below), never throws, result.ok false with errors;
+ *                                              `maintenance` replaces the formula's TDEE with a measured estimate
  *   GoalSetup.validate(answers)                -> {clean, errors:[{field,msg}]}
  *   GoalSetup.needsRerun(saved, kg)            -> true when `kg` is 1+ kg away from the weight the plan was built on
  *   GoalSetup.compactHtml(saved, {today, kg})  -> one line "Bulk to 95 kg · about Mar 12" for gain/maintain goals
@@ -139,7 +140,8 @@
     const v = validate(answers);
     if (v.errors.length) return { ok: false, errors: v.errors };
     const a = v.clean, warnings = [], notes = [];
-    const bmr = Math.round(bmrOf(a)), act = activityOf(a.activity), tdee = Math.round(bmr * act.f);
+    // opts.maintenance: a measured estimate (Plan check) replaces the formula's maintenance; the formula stays visible as bmr × factor.
+    const bmr = Math.round(bmrOf(a)), act = activityOf(a.activity), tdee = isNum(opts && opts.maintenance) ? Math.round(+opts.maintenance) : Math.round(bmr * act.f);
     const dir = a.goal === 'cut' ? -1 : a.goal === 'maintain' ? 0 : 1;
     const floor = Math.max(FLOOR[a.sex], Math.round(tdee * (1 - MAX_DEFICIT)));
     const diffKg = a.targetKg != null ? Math.abs(a.targetKg - a.kg) : null;
@@ -201,7 +203,7 @@
     if (dir === 0) notes.push('Maintenance is an estimate. After two weeks of logging, the Trend weight card shows your real burn; adjust by 100 kcal if the trend drifts.');
 
     const profile = { start: today, startKg: a.kg, goalKg: a.targetKg != null ? a.targetKg : a.kg, cutKcal: kcal, maintenance: tdee, protein, fat, kcalFloor: floor };
-    return { ok: true, errors: [], today, bmr, tdee, activity: act.id, activityFactor: act.f, goal: a.goal, direction: dir, pace: paceId, mode: a.mode,
+    return { ok: true, errors: [], today, bmr, tdee, tdeeSource: isNum(opts && opts.maintenance) ? 'measured' : 'formula', activity: act.id, activityFactor: act.f, goal: a.goal, direction: dir, pace: paceId, mode: a.mode,
       ratePct: r2(ratePct), rateKgWk: r2(rateKgWk), kcal, floor, floored, deficit, protein, fat, carbs, proteinPerKg, proteinKg, bmi: r1(bmi),
       weeks, endDate, milestones, warnings, notes, profile, answers: a };
   }
