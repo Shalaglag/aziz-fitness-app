@@ -2260,7 +2260,7 @@ function mountLabelScan(){
 }
 // A FIXED quick-add item with the label Aziz scanned (prefs/main.labels, LabelScan) in place of the plan's estimate.
 function fixedItem(k){ const f=FIXED.find(x=>x.key===k); if(!f) return f; try{ return window.LabelScan ? LabelScan.fixedOverride(f,(S.docs.prefs.main||{}).labels) : f; }catch(e){ return f; } }
-let ppInst=null, ppMounting=false, ppTab=null;
+var ppInst=null, ppMounting=false, ppTab=null; // var: render() can run before this line on native start-up
 async function syncPhotos(){
   const host=document.getElementById("ppHost"), show=view.tab==="progress" && (view.pTab||"weight")==="weight";
   host.hidden=!show;
