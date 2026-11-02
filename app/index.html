@@ -1962,7 +1962,10 @@ window.HealthConnectSync = (() => {
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
   // ---- the live sync object ---------------------------------------------------------------
-  function create({ plugin, getDay, put, storage, now = () => new Date(), lookbackDays = DEFAULT_LOOKBACK_DAYS, ownPackage, onChange } = {}) {
+  // yieldTo(day) → true leaves that day's bottle figure alone (the shell passes "Fitbit is connected",
+  // so two auto sources never overwrite each other's records).
+  function create({ plugin, getDay, put, storage, now = () => new Date(), lookbackDays = DEFAULT_LOOKBACK_DAYS, ownPackage, onChange, yieldTo } = {}) {
+    const yields = d => { try { return !!(yieldTo && yieldTo(d)); } catch (e) { return false; } };
     let st = readState(storage);
     let hc = { status: null, granted: null };   // what the plugin last told us
     let busy = null, lastAuto = 0;
@@ -2022,6 +2025,7 @@ window.HealthConnectSync = (() => {
       let imported = 0, removed = 0, days = 0;
       for (const d of Object.keys(byDay).sort()) {
         const before = getDay(d);
+        if (yields(before)) continue;
         const beforeIds = Object.keys(currentRecords(before));
         let day = applyRecords(before, byDay[d].up, { now: t, ownPackage });
         day = removeRecords(day, byDay[d].del, { now: t });
@@ -2142,6 +2146,7 @@ window.HealthConnectSync = (() => {
       else if (s.state === "not-supported") head = line("warn", "Health Connect is not supported on this phone (needs Android 9 or newer).");
       else if (s.state === "needs-permission") head = line("warn", "Health Connect: hydration access not allowed yet.");
       else if (s.state === "error") head = line("bad", `Health Connect: ${esc(s.lastError)}`);
+      else if (s.state === "ready" && yields(day)) head = line("off", "Health Connect water is paused while Fitbit is connected (Fitbit is used instead).");
       else if (s.state === "ready") head = line("ok", `Health Connect connected${n ? ` · ${n} water record${n === 1 ? "" : "s"} today (${(ml / 1000).toFixed(2)} L)` : " · no water records for today yet"}`);
       else head = line("off", "Checking Health Connect…");
       const lr = s.lastResult;
@@ -2203,7 +2208,9 @@ window.GoogleHealthWater = (() => {
   const SCOPE = "https://www.googleapis.com/auth/googlehealth.nutrition.readonly";
   const PATH = "v4/users/me/dataTypes/hydration-log/dataPoints";
   const FIRST_DAYS = 14, NEXT_DAYS = 3;          // first sync back-fills two weeks; later ones re-check 3 days
-  const AUTO_GAP_MS = 10 * 60 * 1000;            // open / resume sync at most every 10 minutes
+  const AUTO_GAP_MS = 15 * 1000;                 // open / resume / online sync at most every 15 s
+  const LIVE_GAP_MS = 15 * 1000;                 // while the app is on screen: today's log every 15 s
+  const ERROR_GAP_MS = 5 * 60 * 1000;            // after a non-network error, auto and live back off to 5 min
   const TOKEN_MS = 50 * 60 * 1000;               // Google access tokens last ~60 min
 
   const HC = typeof HealthConnectSync !== "undefined" ? HealthConnectSync
@@ -2367,28 +2374,32 @@ window.GoogleHealthWater = (() => {
       return syncNow({ reason: "manual" });
     }
 
-    async function syncNow({ reason = "manual" } = {}) {
+    async function syncNow({ reason = "manual", days } = {}) {
       if (busy) return busy;
       busy = (async () => {
         if (!plugin) return { error: "no-plugin" };
         if (!st.connected) return { error: "not-connected" };
         let r;
-        try { r = await pull(st.synced ? NEXT_DAYS : FIRST_DAYS, reason === "manual"); }
+        try { r = await pull(days || (st.synced ? NEXT_DAYS : FIRST_DAYS), reason === "manual"); }
         catch (e) { r = { error: "Sync failed: " + String(e && e.message || e) }; }
-        if (r.error) { if (r.status !== 0 || !st.lastError) st.lastError = r.error; }
-        else { st.lastError = null; st.synced = true; st.lastSyncAt = now().toISOString(); st.lastResult = { seen: r.seen, imported: r.imported, removed: r.removed, todayMl: r.todayMl }; }
+        if (r.error) { if (r.status !== 0 || !st.lastError) { st.lastError = r.error; st.lastErrorStatus = r.status == null ? -1 : r.status; } }
+        else { st.lastError = null; st.lastErrorStatus = null; st.synced = true; st.lastSyncAt = now().toISOString(); st.lastResult = { seen: r.seen, imported: r.imported, removed: r.removed, todayMl: r.todayMl }; }
         save(); emit();
         return r;
       })();
       try { return await busy; } finally { busy = null; }
     }
 
-    async function autoSync() {
-      if (!plugin || !st.connected) return { skipped: true };
+    // autoSync() on open / resume re-checks 3 days; autoSync({live:true}) is the on-screen poll and reads
+    // today only. Both are silent (never open Google's consent sheet) and back off after a real error.
+    async function autoSync({ live = false } = {}) {
+      if (!plugin || !st.connected || busy) return { skipped: true };
       const t = now().getTime();
-      if (t - lastAuto < AUTO_GAP_MS) return { skipped: true };
+      const failing = st.lastError && st.lastErrorStatus !== 0;
+      const gap = failing ? ERROR_GAP_MS : live ? LIVE_GAP_MS : AUTO_GAP_MS;
+      if (t - lastAuto < gap) return { skipped: true };
       lastAuto = t;
-      return syncNow({ reason: "auto" });
+      return syncNow({ reason: "auto", days: live && st.synced ? 1 : undefined });
     }
 
     function disconnect() { st = {}; tok = null; save(); emit(); }
@@ -26932,9 +26943,9 @@ let hcSync=null;
 try{
   if(window.HealthConnectSync){
     const plugin=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.HealthConnect)||null;
-    hcSync=HealthConnectSync.create({plugin, getDay, put, storage:window.localStorage, ownPackage:"com.azizfitness.app", onChange:()=>{ renderPending=true; }});
+    hcSync=HealthConnectSync.create({plugin, getDay, put, storage:window.localStorage, ownPackage:"com.azizfitness.app", onChange:()=>{ renderPending=true; }, yieldTo:()=>!!(ghSync && ghSync.status().connected)});
     if(plugin){
-      const hcAuto=()=>{ hcSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)) { render(); toast(`WaterH: ${r.imported} new record${r.imported===1?"":"s"} from Health Connect`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
+      const hcAuto=()=>{ if(ghSync && ghSync.status().connected) return; hcSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)) { render(); toast(`WaterH: ${r.imported} new record${r.imported===1?"":"s"} from Health Connect`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
       document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") hcAuto(); });
       window.addEventListener("focus",hcAuto);
       window.addEventListener("pageshow",hcAuto);
@@ -26967,7 +26978,12 @@ try{
       const ghAuto=()=>{ ghSync.autoSync().then(r=>{ if(r && (r.imported||r.removed)){ render(); toast(`Fitbit: ${r.imported} new water log${r.imported===1?"":"s"}`); } else if(renderPending){ renderPending=false; render(); } }).catch(()=>{}); };
       document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") ghAuto(); });
       window.addEventListener("online",ghAuto);
+      window.addEventListener("focus",ghAuto);
       setTimeout(ghAuto, 2500);
+      // Live: while the app is on screen, re-read today's Fitbit water every 15 s (the module throttles and backs off on errors).
+      // Only a real change re-renders, so typing elsewhere is never interrupted by a quiet poll.
+      setInterval(()=>{ if(document.visibilityState!=="visible" || !ghSync.status().connected) return;
+        ghSync.autoSync({live:true}).then(r=>{ if(r && (r.imported||r.removed)){ renderPending=false; render(); toast(`Water: ${((r.todayMl||0)/1000).toFixed(2)} L today from Fitbit`); } }).catch(()=>{}); }, 5000);
     }
   }
 }catch(e){ console.warn("GoogleHealthWater", e); }
