@@ -684,7 +684,7 @@ const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:
 const START = {date:"2026-10-25", kg:91.9}; let GOAL_KG = 80;
 // Plan defaults; "Your numbers" (prefs/main.profile) overrides them through AppTargets.
 // Lowest calories the app ever suggests or accepts for a cut (the plan: never 1,500–1,700). Coach, trend TDEE and the weekly report share it.
-const KCAL_FLOOR = 1800;
+let KCAL_FLOOR = 1800;   // or the questionnaire's safe minimum (prefs.main.profile.kcalFloor)
 const fkc = n => Math.round(+n||0).toLocaleString("en-US");
 const PLAN = {kcal:2000, kcalLo:1850, kcalHi:2150, proteinMin:160, proteinMax:170, fatLo:55, fatHi:70, carbsLo:180, carbsHi:220, goalKg:80, start:"2026-10-25"};
 const PLAN_START_KG = 91.9;
@@ -700,6 +700,7 @@ function applyTargets(){
   GOAL_KG = t.goalKg ?? PLAN.goalKg;
   START.date = t.start || PLAN.start;
   START.kg = +prof.startKg || PLAN_START_KG;
+  KCAL_FLOOR = +prof.kcalFloor>0 ? Math.round(+prof.kcalFloor) : 1800;
   let rw=null; try{ rw = APPT && AppTargets.reviewWindow(APPT, TODAY); }catch(e){}
   STRICT.from = rw ? rw.from : START.date; STRICT.to = rw ? rw.to : addDays(START.date,13); STRICT.firstAvg = addDays(STRICT.from,6);
   syncModuleTargets();
@@ -931,7 +932,7 @@ const r0 = n => Math.round(n), r1 = n => Math.round(n*10)/10;
 const uid = () => Math.random().toString(36).slice(2,9);
 function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2600); }
 let undoToastEl=null;
-function undoToast(msg, onUndo){ if(undoToastEl) undoToastEl.remove(); const t=document.createElement("div"); t.className="toast"; t.setAttribute("role","status"); const b=document.createElement("button"); b.type="button"; b.className="undo"; b.textContent="Undo"; t.append(document.createTextNode(msg), b); document.body.appendChild(t); undoToastEl=t; const done=()=>{ clearTimeout(tm); t.remove(); if(undoToastEl===t) undoToastEl=null; }; const tm=setTimeout(done,5000); b.onclick=()=>{ done(); try{ onUndo(); }catch(e){ toast("Could not undo: "+(e.message||e)); } }; }
+function undoToast(msg, onUndo, label, ms){ if(undoToastEl) undoToastEl.remove(); const t=document.createElement("div"); t.className="toast"; t.setAttribute("role","status"); const b=document.createElement("button"); b.type="button"; b.className="undo"; b.textContent=label||"Undo"; t.append(document.createTextNode(msg), b); document.body.appendChild(t); undoToastEl=t; const done=()=>{ clearTimeout(tm); t.remove(); if(undoToastEl===t) undoToastEl=null; }; const tm=setTimeout(done,ms||5000); b.onclick=()=>{ done(); try{ onUndo(); }catch(e){ toast("Could not undo: "+(e.message||e)); } }; }
 function totalWater(day){ return window.WaterH ? WaterH.totalWater(day) : (day.water||0); }
 function getDay(d){ const day=Object.assign({date:d,food:[],water:0,supps:{},treadmill:false}, clone(S.docs.days[d])); try{ return window.SuppDrinks ? SuppDrinks.migrateDay(day, S.docs.prefs.main||{}) : day; }catch(e){ return day; } }
 function dayFluid(day){ try{ return window.SuppDrinks ? SuppDrinks.totalFluid(day) : totalWater(day); }catch(e){ return totalWater(day); } }
@@ -1059,6 +1060,7 @@ function render(){
   applyFlash();
   window.scrollTo(0,y);
   if(frInst) frInst.schedulePublish();
+  try{ maybeFirstRunSetup(); }catch(e){ console.error("[goal setup]", e); }
 }
 // Micro-animations after a change: flash("food") makes the macro bars glow and the remaining number tick,
 // flash("water") ripples the water card. Set before render(); applied once and cleared.
@@ -1132,6 +1134,47 @@ function safeMod(name, fn){ return window[name] ? safe(name.replace(/([a-z])([A-
 // A one-line row that expands on tap, so every card stays reachable without all of them stacking on the screen.
 function fold(key, title, sub, html){ if(!html) return ""; const k="f:"+key; return `<details class="fold" data-keep="${k}" ${view.open[k]?"open":""}><summary><span>${title}</span>${sub?`<small>${sub}</small>`:""}<i class="chev"></i></summary><div class="fold-body">${html}</div></details>`; }
 function tabHead(title, right){ return `<div class="tabhead"><h1>${title}</h1>${right||""}</div>`; }
+/* Goal setup (modules/goal-setup): the questionnaire. Results are applied only when the person taps "Use these numbers". */
+let gsOpen=null, gsOfferedKg=null, gsFirstRunChecked=false;
+// Auto foods plan rows into today on first open; only real entries (weigh-ins, eaten or typed food, water, workouts) count as data.
+function hasRealEntries(){ return !!(Object.keys(S.docs.weights).length || Object.keys(S.docs.workouts||{}).length || Object.values(S.docs.days).some(dd=>dd && ((dd.food||[]).some(i=>!i.auto||i.eaten) || dd.water>0))); }
+function goalLine(kind){
+  const gs=S.docs.prefs.main?.goalSetup;
+  if(window.GoalSetup && gs && gs.result && gs.result.ok && gs.result.direction>=0) return safeMod("GoalSetup",()=>GoalSetup.compactHtml(gs,{today:TODAY, kg:latestKg()}));
+  return safeMod("GoalDate",()=>GoalDate[kind](S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}));
+}
+function openGoalSetup(over){
+  if(!window.GoalSetup || gsOpen) return;
+  const m=S.docs.prefs.main||{}, gs=m.goalSetup||{}, prof=m.profile||{};
+  const answers={...(gs.answers||{})}; const kg=(over&&over.kg)||latestKg()||prof.startKg; if(kg) answers.kg=kg;
+  if(answers.targetKg==null && prof.goalKg) answers.targetKg=prof.goalKg;
+  const existing = (prof.cutKcal||prof.goalKg||gs.result||hasRealEntries()) ? {profile:prof, targets:APPT} : null;
+  gsOpen = GoalSetup.open({ answers, today:TODAY, existing, firstRun:!!(over&&over.firstRun),
+    onBack: window.AndroidShell ? fn=>AndroidShell.onBack(fn) : null,
+    onApply:(r,a)=>{ const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), ...r.profile}; p.goalSetup={answers:a, result:r, at:new Date().toISOString()}; put("prefs","main",p); toast(`Plan set: ${fkc(r.kcal)} kcal, ${r.protein} g protein${r.endDate?", goal around "+fmt(r.endDate,{month:"short",day:"numeric",year:"numeric"}):""}.`); },
+    onSkip:()=>{ const p=clone(S.docs.prefs.main||{}); p.goalSetup={skipped:true, at:new Date().toISOString()}; put("prefs","main",p,{quiet:true}); toast("You can set your goal any time in Settings → Your numbers."); },
+    onClose:()=>{ gsOpen=null; } });
+}
+// New user: no entries and no plan yet → the questionnaire opens first. Once per install; Skip is remembered.
+function maybeFirstRunSetup(){
+  if(gsFirstRunChecked || gsOpen || !window.GoalSetup || S.mode==="loading") return;
+  if(S.mode==="sync" && !(S.synced.has("prefs") && S.synced.has("weights") && S.synced.has("days"))) return;
+  gsFirstRunChecked=true;
+  const m=S.docs.prefs.main||{};
+  if(m.goalSetup || (m.profile && (m.profile.cutKcal||m.profile.goalKg)) || hasRealEntries()) return;
+  if(document.querySelector(".cs-overlay")) { gsFirstRunChecked=false; return; }   // sign-in sheet first
+  openGoalSetup({firstRun:true});
+}
+// After a weigh-in (or a new start weight in Settings): offer to rebuild the plan when the weight moved a kilo or more.
+function offerGoalSetup(kg, fromSettings){
+  if(!window.GoalSetup || gsOpen) return;
+  const gs=S.docs.prefs.main?.goalSetup;
+  const moved = gs && gs.answers ? GoalSetup.needsRerun(gs, kg) : fromSettings;
+  if(!moved || gsOfferedKg===kg) return;
+  gsOfferedKg=kg;
+  const base = gs && gs.answers && gs.answers.kg ? ` (${(kg-gs.answers.kg>0?"+":"")+(kg-gs.answers.kg).toFixed(1)} kg since your plan)` : "";
+  undoToast(`${kg.toFixed(1)} kg${base}. Update your plan?`, ()=>openGoalSetup({kg}), "Update", 9000);
+}
 // Weight units per exercise (prefs/main.exUnits) on top of the plan's unit. Quick-log sets record the unit they were typed in,
 // so switching an exercise to lb later converts what is shown and never rewrites what was logged.
 const LBKG=0.45359237;
@@ -1306,7 +1349,7 @@ function vToday(){
         ${w?`<button class="btn ghost small" type="button" data-act="delweight">Remove</button>`:""}
       </form>
       ${w?`<p class="muted" style="font-size:.88rem">${prev?`<span class="num">${(w.kg-prev.kg>0?"+":"")+(w.kg-prev.kg).toFixed(1)}</span> kg vs last weigh-in`:"First weigh-in"}${a7?` · 7-day avg <span class="num">${a7.toFixed(1)}</span>`:""} · <button class="unitbtn" style="text-transform:none" data-act="gotab" data-tab="progress">Progress</button></p>`:`<p class="muted" style="font-size:.9rem">Weigh after the bathroom, before food or water. The weekly average is what counts.</p>`}
-      ${safeMod("GoalDate",()=>GoalDate.compact(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}))}
+      ${goalLine("compact")}
       ${dayType(d)==="saturday"?`<p class="note">Saturday weigh-ins often run high after Friday's salty shrimp. Don't react to it.</p>`:""}
     </div>
     <div class="card" id="waterCard">
@@ -1685,7 +1728,7 @@ function weightHero(){
     </div>
     ${rate!==null?`<p class="${rate<=-0.4&&rate>=-1?"muted":"note"}" style="font-size:.88rem">Expected at ${fkc(TARGET.kcal)} kcal: about −0.5 to −0.8 kg a week. ${rate>-0.3?"Slower than expected, but judge it over 2 weeks before changing calories.":rate<-1.0?"Faster than expected. Normal in week 1 (water and glycogen).":"Right on track."}</p>`:`<p class="muted" style="font-size:.88rem">Expected at ${fkc(TARGET.kcal)} kcal: about −0.5 to −0.8 kg a week. Week 1 usually drops faster from water and glycogen.</p>`}
     ${weightChart()}
-    ${safeMod("GoalDate",()=>GoalDate.html(S.docs.weights,{today:TODAY, trend:trendSeries(), goal:GOAL_KG}))}
+    ${goalLine("html")}
     <details data-keep="wlog" ${view.open.wlog?"open":""}><summary>Weight log${TODAY<=addDays(STRICT.to,7)?" and 14-day tracking":""}</summary>
       ${TODAY<=addDays(STRICT.to,7)?`<div class="spread" style="margin-top:8px"><h3>14-day strict tracking</h3><span class="muted">${fmt(STRICT.from,{month:"short",day:"numeric"})} → ${fmt(STRICT.to,{month:"short",day:"numeric"})}</span></div>
       <div class="days14">${strictDays.map(d=>`<span class="${S.docs.weights[d]?"has":""} ${d===TODAY?"today":""}" title="${fmt(d)}">${parse(d).getDate()}</span>`).join("")}</div>
@@ -1737,8 +1780,15 @@ function vProgress(){
 }
 /* ---------- GUIDE ---------- */
 function crCtx(){ const p=S.docs.prefs.main||{}; return {from:TODAY, review:STRICT.to, kcal:TARGET.kcal, supps: window.SuppDrinks?SuppDrinks.plan(p):[], now:new Date()}; }
+function goalSetupRow(){
+  if(!window.GoalSetup) return "";
+  const gs=S.docs.prefs.main?.goalSetup, r=gs&&gs.result, g=r&&GoalSetup.GOALS.find(x=>x.id===r.goal);
+  const sub = r ? `${g?g.label:r.goal} · ${fkc(r.kcal)} kcal · set ${fmt(gs.at.slice(0,10),{month:"short",day:"numeric"})}` : "Sex, age, height, weight, activity, goal and pace → calories, macros and a date";
+  return `<div class="set-row" style="padding:0 0 4px"><span><span>Goal setup</span><small>${sub}</small></span><button class="btn small" type="button" data-act="goalsetup">${r?"Redo":"Start"}</button></div>`;
+}
 function yourNumbersCard(){
   return `<div class="card" id="g-numbers"><h3>Your numbers</h3>
+    ${goalSetupRow()}
     <p class="muted" style="font-size:.9rem">Calorie, protein, fat and goal-weight targets across the app come from these. Leave a box empty to keep your plan's value (${PLAN.kcal.toLocaleString("en-US")} kcal, ${PLAN.proteinMin} g protein, ${PLAN.goalKg} kg goal, start ${fmt(PLAN.start)}). Maintenance is worked out from your logs when empty. Changing these never touches your history.</p>
     <form data-form="profile" style="display:flex;flex-direction:column;gap:10px">
       <div class="row">${[["start","Start date","date",""],["startKg","Start weight (kg)","number","0.1"],["goalKg","Goal weight (kg)","number","0.1"],["cutKcal","Cut calories","number","10"],["maintenance","Maintenance kcal","number","10"],["protein","Protein (g)","number","1"],["fat","Fat (g)","number","1"]].map(([k,l,t,st])=>`<label class="field"><span class="label">${l}</span><input type="${t}" id="pf_${k}" ${st?`step="${st}"`:""} value="${esc((S.docs.prefs.main?.profile||{})[k]??"")}" placeholder="${k==="cutKcal"?TARGET.kcal:"auto"}" style="${t==="date"?"":"width:7em"}"></label>`).join("")}</div>
@@ -1995,6 +2045,7 @@ main.addEventListener("click",e=>{
     arr[i]=s; w.sets[n]=arr; put("workouts",d,w,{quiet:true}); render();
     if(a==="setdone" && s.done){ setDoneSound(); if(S.docs.prefs.main?.restAuto!==false) startTimer(restSec()); try{ const c=main.querySelector(`[data-act="setdone"][data-n="${CSS.escape(n)}"][data-i="${i}"]`); if(c && window.FitMotion) FitMotion.pop(c); }catch(_){} }
     return; }
+  if(a==="goalsetup"){ openGoalSetup(); return; }
   if(a==="foodadd"){ const keep=view.foodSheet && !view.foodSheet.edit ? view.foodSheet.tab : "add"; view.foodSheet={tab:keep||"add", slot:el.dataset.slot||"Meal 1"}; render(); requestAnimationFrame(()=>{ const f=document.getElementById("fname"); if(f) f.focus({preventScroll:true}); }); return; }
   if(a==="foodedit"){ view.foodSheet={tab:"add", edit:el.dataset.id}; render(); return; }
   if(a==="foodclose"){ view.foodSheet=null; render(); return; }
@@ -2093,7 +2144,7 @@ main.addEventListener("submit",e=>{
   e.preventDefault(); const f=e.target.dataset.form, d=view.date;
   if(f==="weight"){ const kg=parseFloat(document.getElementById("wkg").value); if(!(kg>30&&kg<250)){ toast("Enter your weight in kg, e.g. 91.4"); return; } const kg1=Math.round(kg*10)/10, out=weightOutlier(d,kg1);
     if(out && !(weightPending && weightPending.date===d && weightPending.kg===kg1 && Date.now()-weightPending.at<15000)){ weightPending={date:d,kg:kg1,at:Date.now()}; toast(`${kg1.toFixed(1)} kg is ${Math.abs(out.pct).toFixed(0)}% ${out.pct>0?"above":"below"} your 7-day average (${out.avg.toFixed(1)} kg). Check the number, then tap again to save.`); return; }
-    weightPending=null; document.activeElement.blur(); put("weights",d,{date:d,kg:kg1}); }
+    weightPending=null; document.activeElement.blur(); put("weights",d,{date:d,kg:kg1}); if(d===TODAY) offerGoalSetup(kg1, false); }
   else if(f==="food"){ flash("food");
     const name=document.getElementById("fname").value.trim(); if(!name) return;
     const item={name,slot:document.getElementById("fslot").value,kcal:+document.getElementById("fk").value||0,p:+document.getElementById("fp").value||0,c:+document.getElementById("fc").value||0,f:+document.getElementById("ff").value||0,eaten:document.getElementById("featen").checked};
@@ -2106,7 +2157,9 @@ main.addEventListener("submit",e=>{
   else if(f==="meal-save"){ const nm=document.getElementById("mealName").value; const m=SavedMeals.fromItems(getDay(d).food,{name:nm,existing:S.docs.meals}); if(!m) return; document.activeElement.blur(); put("meals",m.id,m); toast("Saved "+m.name+". Add it to any day with one tap."); }
   else if(f==="profile"){ const p=Object.assign({},clone(S.docs.prefs.main)); const pr={}; ["start","startKg","goalKg","cutKcal","maintenance","protein","fat"].forEach(k=>{ const v=document.getElementById("pf_"+k).value.trim(); if(v) pr[k]= k==="start"?v:+v; }); let v=null; try{ v=window.AppTargets?AppTargets.validate(pr):null; }catch(e){}
     if(v && v.errors && v.errors.length){ toast(v.errors.map(x=>x.msg).join(". ")); return; }
-    p.profile = v && v.clean ? v.clean : pr; document.activeElement.blur(); put("prefs","main",p); toast("Saved. Targets updated across the app."); }
+    const wasKg=+(p.profile||{}).startKg||null, keep={}; if(p.profile && p.profile.kcalFloor) keep.kcalFloor=p.profile.kcalFloor;
+    p.profile = {...keep, ...(v && v.clean ? v.clean : pr)}; document.activeElement.blur(); put("prefs","main",p); toast("Saved. Targets updated across the app.");
+    if(pr.startKg && pr.startKg!==wasKg) setTimeout(()=>offerGoalSetup(pr.startKg, true), 400); }
   else if(f==="dislike"){ const v=document.getElementById("dislike").value.trim(); if(!v) return; const p=Object.assign({dislikes:[]},clone(S.docs.prefs.main)); p.dislikes=[...(p.dislikes||[]),v]; document.activeElement.blur(); put("prefs","main",p); }
 });
 
@@ -2264,7 +2317,7 @@ document.getElementById("timer").addEventListener("click",e=>{
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget,

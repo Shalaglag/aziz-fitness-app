@@ -30,7 +30,7 @@ function seed(today) {
 // The bottom bar is the default since Nov 1; its More button opens the same drawer when ☰ is hidden.
 async function go(page, tab) { await page.evaluate(() => { const m = document.getElementById("menuBtn"); (getComputedStyle(m).display === "none" ? document.querySelector("#bottomNav button[data-more]") : m).click(); }); await page.click(tab === "settings" ? "#openSettings" : `#tabs button[data-tab="${tab}"]`); await page.waitForTimeout(150); }
 
-async function openApp(browser, phone, data) {
+async function openApp(browser, phone, data, opts = {}) {
   const page = await browser.newPage({ viewport: { width: phone.width, height: phone.height }, isMobile: true, hasTouch: true });
   const errors = [];
   page.on("pageerror", e => errors.push(e.message));
@@ -44,6 +44,8 @@ async function openApp(browser, phone, data) {
     await page.reload();
   }
   await page.waitForFunction(() => document.querySelector("#main").children.length > 0);
+  // A brand-new install opens the goal questionnaire first; most checks here want the plain app.
+  if (!opts.keepSetup) await page.evaluate(() => { const b = document.querySelector('.gs-wrap [data-gs="skip"]'); if (b) b.click(); });
   return { page, errors };
 }
 
@@ -444,6 +446,56 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.ok(lg.tog > 0 && lg.before === 0 && lg.after === 1, "demos start collapsed and one opens on tap: " + JSON.stringify(lg));
       assert.deepStrictEqual(errors, []);
       await page.close();
+    });
+
+    await t.test("goal setup: opens first for a new install, Skip is remembered, Settings reruns it, the result applies only on confirm", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], null, { keepSetup: true });
+      assert.ok(await page.$('.gs-wrap[role="dialog"]'), "a fresh install starts on the questionnaire");
+      assert.ok(await page.$('.gs-wrap [data-gs="skip"]'), "a new user can skip it");
+      await page.click('.gs-wrap [data-gs="skip"]');
+      await page.waitForFunction(() => !document.querySelector(".gs-wrap"));
+      await page.reload(); await page.waitForFunction(() => document.querySelector("#main").children.length > 0); await page.waitForTimeout(200);
+      assert.strictEqual(await page.$(".gs-wrap"), null, "Skip is remembered across opens");
+      const seeded = await openApp(browser, PHONES[0], seed, { keepSetup: true });
+      assert.strictEqual(await seeded.page.$(".gs-wrap"), null, "someone with entries (Aziz) is never interrupted");
+      await go(seeded.page, "settings");
+      await seeded.page.click('#main [data-act="goalsetup"]');
+      const p2 = seeded.page, before = await p2.evaluate(() => kcalTarget(TODAY));
+      const wide = async () => p2.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(await p2.$(".gs-wrap"), "Settings → Your numbers → Start opens it");
+      assert.ok(await p2.$(".gs-wrap svg.gs-art"), "each step has an illustration");
+      await p2.click('.gs-wrap [data-gs="next"]');
+      assert.ok(await p2.$(".gs-wrap .gs-err"), "empty answers show what is missing");
+      await p2.click('.gs-wrap [data-gs="pick"][data-v="male"]');
+      await p2.fill('.gs-wrap [data-gs-f="age"]', "29"); await p2.fill('.gs-wrap [data-gs-f="heightCm"]', "172");
+      assert.strictEqual(await p2.$eval('.gs-wrap [data-gs-f="kg"]', i => i.value), "90.1", "weight is prefilled from the latest weigh-in");
+      await p2.click('.gs-wrap [data-gs="next"]'); assert.ok((await wide()) <= 1, "activity step fits the phone");
+      await p2.click('.gs-wrap [data-gs="pick"][data-v="moderate"]'); await p2.click('.gs-wrap [data-gs="next"]');
+      await p2.click('.gs-wrap [data-gs="pick"][data-v="cut"]'); await p2.click('.gs-wrap [data-gs="next"]');
+      await p2.click('.gs-wrap [data-gs="pick"][data-v="regular"]'); await p2.fill('.gs-wrap [data-gs-f="targetKg"]', "80"); await p2.click('.gs-wrap [data-gs="next"]');
+      await p2.waitForSelector(".gs-wrap .gs-hero");
+      assert.ok((await wide()) <= 1, "result step fits the phone");
+      const r = await p2.evaluate(() => ({ hero: document.querySelector(".gs-hero").textContent, ms: document.querySelectorAll(".gs-ms div").length, cmp: !!document.querySelector(".gs-cmp"), kcal: kcalTarget(TODAY) }));
+      assert.match(r.hero, /Maintenance about/); assert.ok(r.ms >= 2, "milestones with dates"); assert.ok(r.cmp, "existing numbers are compared, not overwritten");
+      assert.strictEqual(r.kcal, before, "nothing changes before confirm");
+      await p2.click('.gs-wrap [data-gs="apply"]');
+      await p2.waitForFunction(() => !document.querySelector(".gs-wrap"));
+      const after = await p2.evaluate(() => ({ kcal: kcalTarget(TODAY), prof: S.docs.prefs.main.profile, gs: S.docs.prefs.main.goalSetup, floor: KCAL_FLOOR }));
+      assert.ok(after.kcal !== before && after.kcal === after.prof.cutKcal, "confirm applies the calories everywhere");
+      assert.strictEqual(after.prof.goalKg, 80); assert.strictEqual(after.gs.answers.goal, "cut"); assert.strictEqual(after.floor, after.prof.kcalFloor);
+      // Logging a weight a kilo away from the plan's weight offers an update; closer does not.
+      await go(p2, "today");
+      await p2.fill("#wkg", "90.6"); await p2.click('form[data-form="weight"] button[type=submit]');
+      assert.strictEqual(await p2.$(".toast .undo"), null, "0.5 kg moves nothing");
+      await p2.fill("#wkg", "89.0"); await p2.click('form[data-form="weight"] button[type=submit]'); await p2.waitForTimeout(100);
+      await p2.fill("#wkg", "89.0"); await p2.click('form[data-form="weight"] button[type=submit]');     // outlier guard asks for a second tap
+      await p2.waitForSelector(".toast .undo");
+      assert.match(await p2.$eval(".toast:has(.undo)", t => t.textContent), /Update your plan/);
+      await p2.click(".toast .undo");
+      assert.ok(await p2.$(".gs-wrap"), "Update reopens the questionnaire");
+      assert.strictEqual(await p2.$eval('.gs-wrap [data-gs-f="kg"]', i => i.value), "89", "with the new weight");
+      assert.deepStrictEqual(errors, []); assert.deepStrictEqual(seeded.errors, []);
+      await page.close(); await p2.close();
     });
 
     for (const phone of PHONES) {
