@@ -4,9 +4,11 @@
  *   restDone: a bright ding-ding-DING when the rest timer reaches 0 (the default rest sound)
  *   finish:   a rising four-note chime when you press Finish
  *   REST_SOUNDS: every sound the rest timer can end with, [{ id, label }], picked in Settings
+ *   check:    Aziz's own recorded "set done" chime (clips.js), the default when a set is ticked
+ *   SET_SOUNDS: every sound a ticked set can make, [{ id, label }] ('off' is the logger's own choice)
  *
  *   GymSounds.prime()          call from a tap (set tick, timer start) so Android lets audio play later
- *   GymSounds.play(name)       'restDone' | 'finish'; returns true if it played
+ *   GymSounds.play(name)       any NAMES id, 'check' or 'custom'; returns true if it played (a clip still decoding plays when ready)
  *   GymSounds.render(name, sr) Float32Array of samples (the same sound the app plays)
  *   GymSounds.wav(name, sr)    Uint8Array, a 16-bit mono WAV (used for the Android notification sound)
  *   GymSounds.rawName(id)      Android res/raw file for a rest sound ("rest_done.wav", "rest_boxing.wav", …)
@@ -42,6 +44,10 @@
     whistle: { len: 1.0, notes: [{ t: 0, kind: 'tone', f: 2850, a: 0.9, hold: 0.14, vib: [32, 70], air: 0.06 }, { t: 0.24, kind: 'tone', f: 2850, a: 1, hold: 0.55, vib: [32, 70], air: 0.06 }] },
     gong: { len: 2.4, notes: [{ t: 0, f: 196, a: 1, d: 1.1, p: 'GONG' }, { t: 0, f: 392, a: 0.25, d: 1.6, p: 'BELL' }] },
     doubleDing: { len: 1.0, notes: strikes([0, 0.19], { f: 743, a: 1, d: 4.4, p: 'DOUBLE' }) },
+    // Short set-done ticks (SET_SOUNDS), not used for rest.
+    tap: { len: 0.3, notes: [{ t: 0, f: 1100, a: 1, d: 30, p: 'WOOD' }] },
+    blip: { len: 0.4, notes: [{ t: 0, kind: 'tone', f: 1320, a: 0.8, hold: 0.05 }, { t: 0.08, kind: 'tone', f: 1980, a: 1, hold: 0.08 }] },
+    ping: { len: 0.7, notes: [{ t: 0, f: 2093, a: 1, d: 6 }] },
     knock: { len: 0.8, notes: strikes([0, 0.16, 0.32], { f: 820, a: 1, d: 38, p: 'WOOD' }) },
     // Anime-style pack: original effects, no voices or clips from any show.
     powerup: { len: 2.1, notes: [{ t: 0, kind: 'tone', f: 110, f1: 880, h: 'SAW', a: 0.7, hold: 1.3, grow: 2, trem: [18, 0.35] }, { t: 0, kind: 'noise', a: 0.35, lp: 0.08, hold: 1.25, grow: 2, d: 30 }, { t: 1.3, f: 1760, a: 1, d: 2.4 }, { t: 1.3, kind: 'noise', a: 0.5, lp: 0.25, d: 9 }] },
@@ -57,6 +63,12 @@
     { id: 'beeps', label: 'Watch beeps' }, { id: 'whistle', label: 'Coach whistle' }, { id: 'gong', label: 'Gong' }, { id: 'knock', label: 'Wood knock' },
     { id: 'powerup', label: 'Power-up', pack: 'anime' }, { id: 'blast', label: 'Energy blast', pack: 'anime' }, { id: 'aura', label: 'Aura charge', pack: 'anime' },
     { id: 'scouter', label: 'Scouter', pack: 'anime' }, { id: 'teleport', label: 'Teleport', pack: 'anime' }, { id: 'impact', label: 'Big hit', pack: 'anime' }
+  ];
+  // Recorded clips (clips.js, base64 MP3). 'check' is Aziz's own set-done sound.
+  const CLIPS = root.GymSoundClips || (typeof require === 'function' ? require('./clips.js') : {});
+  const SET_SOUNDS = [
+    { id: 'check', label: 'Check (yours)' }, { id: 'tap', label: 'Soft tap' }, { id: 'blip', label: 'Blip' }, { id: 'ping', label: 'Ping' },
+    { id: 'knock', label: 'Wood knock' }, { id: 'doubleDing', label: 'Double ding' }
   ];
   const rawName = id => (id === 'restDone' ? 'rest_done' : 'rest_' + String(id).toLowerCase()) + '.wav';
 
@@ -131,7 +143,21 @@
     if (ctx.state === 'suspended' && ctx.resume) ctx.resume().catch(() => {});
     return ctx;
   }
-  function prime() { try { return !!context(); } catch (e) { return false; } }
+  function prime() { try { const ok = !!context(); if (ok) loadClip('check'); return ok; } catch (e) { return false; } }
+  // Decodes a recorded clip once; resolves the AudioBuffer (or null if this phone can't decode it).
+  const clipWait = {};
+  function clipBytes(name) {
+    const b64 = CLIPS[name]; if (!b64) return null;
+    if (typeof atob === 'function') { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
+    const b = Buffer.from(b64, 'base64'); return b.buffer.slice(b.byteOffset, b.byteOffset + b.length);
+  }
+  function loadClip(name) {
+    if (buffers[name]) return Promise.resolve(buffers[name]);
+    if (clipWait[name]) return clipWait[name];
+    const bytes = clipBytes(name); if (!bytes) return Promise.resolve(null);
+    clipWait[name] = decode(bytes).then(buf => (buffers[name] = buf), () => { delete clipWait[name]; return null; });
+    return clipWait[name];
+  }
   // ---- The user's own sound (IndexedDB, this device only; never synced or backed up) ----
   const DB = 'gym-sounds', STORE = 'custom', MAX_BYTES = 3 * 1024 * 1024, MAX_SECONDS = 20;
   let custom = null; // { name, seconds, bytes: ArrayBuffer }
@@ -178,6 +204,12 @@
         const src = c.createBufferSource(); src.buffer = b; src.connect(c.destination); src.start(0, 0, Math.min(b.duration, MAX_SECONDS));
         return true;
       }
+      if (CLIPS[name]) {
+        const c = context(); if (!c) return false;
+        const go = b => { if (!b) return; const src = c.createBufferSource(); src.buffer = b; src.connect(c.destination); src.start(); };
+        if (buffers[name]) go(buffers[name]); else loadClip(name).then(go, () => {});
+        return true;
+      }
       const c = context(); if (!c || !SOUNDS[name]) return false;
       if (!buffers[name]) { const x = render(name, c.sampleRate), buf = c.createBuffer(1, x.length, c.sampleRate); buf.getChannelData(0).set(x); buffers[name] = buf; }
       const src = c.createBufferSource(); src.buffer = buffers[name]; src.connect(c.destination); src.start();
@@ -185,7 +217,7 @@
     } catch (e) { return false; }
   }
 
-  const GymSounds = { NAMES, REST_SOUNDS, rawName, prime, play, render, wav, setCustom, loadCustom, clearCustom, customInfo };
+  const GymSounds = { NAMES, REST_SOUNDS, SET_SOUNDS, CLIPS: Object.keys(CLIPS), rawName, prime, play, render, wav, setCustom, loadCustom, clearCustom, customInfo };
   if (root.indexedDB && (root.AudioContext || root.webkitAudioContext)) loadCustom();
   root.GymSounds = GymSounds;
   if (typeof module !== 'undefined' && module.exports) module.exports = GymSounds;

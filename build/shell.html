@@ -1814,6 +1814,7 @@ function vSettings(){
       return row("Sound when rest ends","Tap one to hear it. A locked phone rings the same sound.",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.REST_SOUNDS.filter(s=>!s.pack).map(s=>chip(s.id,s.label)).join("")}</span>`)
         +row("Anime-style pack","Original power-up and battle effects",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.REST_SOUNDS.filter(s=>s.pack==="anime").map(s=>chip(s.id,s.label)).join("")}</span>`)
         +row("Your own sound", mine?`${esc(mine.name)} · ${mine.seconds} s. Kept on this phone only. A locked phone rings the bell instead.`:"Any MP3, M4A or WAV on your phone, up to 3 MB. Kept on this phone only.",`<span class="row" style="gap:6px;justify-content:flex-end">${mine?chip("custom","Use my sound")+`<button type="button" class="btn ghost small" data-act="lbsndclear">Remove</button>`:""}<label class="btn ghost small" style="cursor:pointer">${mine?"Replace":"Add your own sound"}<input type="file" id="restSoundFile" accept="audio/*" hidden></label></span>`); })():""}
+    ${lb&&window.GymSounds&&GymSounds.SET_SOUNDS?(()=>{ const cur=lb.setSound||"check"; return row("Sound when you tick a set","Check is your own sound. Tap one to hear it.",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.SET_SOUNDS.concat([{id:"off",label:"Off"}]).map(s=>`<button type="button" class="chip" data-act="lbpick" data-s="setSound" data-k="${s.id}" aria-pressed="${cur===s.id}">${esc(s.label)}</button>`).join("")}</span>`); })():""}
     ${lb?row("Play a sound when rest ends","",sw("lbtog",lb.sound,"Play a sound when rest ends",'data-s="sound"'))+row("Vibrate when rest ends","",sw("lbtog",lb.vibrate,"Vibrate when rest ends",'data-s="vibrate"'))+row("Buzz at 3, 2, 1","One short buzz for each of the last three seconds",sw("lbtog",lb.countBuzz!==false,"Buzz at 3, 2 and 1 seconds left",'data-s="countBuzz"'))+row("Keep the screen on","During a workout",sw("lbtog",lb.wake,"Keep the screen on during a workout",'data-s="wake"')):""}
   </div></div>
   <div class="card"><h3>Units</h3><div class="set-list">
@@ -1945,7 +1946,7 @@ main.addEventListener("click",e=>{
     else if(s.done){ delete s.done; }
     else { if(!s.w && el.dataset.w) s.w=el.dataset.w; if(!s.r && el.dataset.r) s.r=el.dataset.r; s.unit=exUnit(n); s.done=true; }
     arr[i]=s; w.sets[n]=arr; put("workouts",d,w,{quiet:true}); render();
-    if(a==="setdone" && s.done){ if(S.docs.prefs.main?.restAuto!==false) startTimer(restSec()); try{ const c=main.querySelector(`[data-act="setdone"][data-n="${CSS.escape(n)}"][data-i="${i}"]`); if(c && window.FitMotion) FitMotion.pop(c); }catch(_){} }
+    if(a==="setdone" && s.done){ setDoneSound(); if(S.docs.prefs.main?.restAuto!==false) startTimer(restSec()); try{ const c=main.querySelector(`[data-act="setdone"][data-n="${CSS.escape(n)}"][data-i="${i}"]`); if(c && window.FitMotion) FitMotion.pop(c); }catch(_){} }
     return; }
   if(a==="foodadd"){ const keep=view.foodSheet && !view.foodSheet.edit ? view.foodSheet.tab : "add"; view.foodSheet={tab:keep||"add", slot:el.dataset.slot||"Meal 1"}; render(); requestAnimationFrame(()=>{ const f=document.getElementById("fname"); if(f) f.focus({preventScroll:true}); }); return; }
   if(a==="foodedit"){ view.foodSheet={tab:"add", edit:el.dataset.id}; render(); return; }
@@ -1956,7 +1957,7 @@ main.addEventListener("click",e=>{
   if(a==="rest"){ const p=clone(S.docs.prefs.main); p.restSec=+el.dataset.k; put("prefs","main",p); return; }
   if(a==="restauto"){ const p=clone(S.docs.prefs.main); p.restAuto=!(p.restAuto!==false); put("prefs","main",p); return; }
   if(a==="lbset"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings(k==="gym" ? {gym:v==="gym"} : k==="unit" ? {unit:v} : {[k]:+v}); if(k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=+v; put("prefs","main",p); } else render(); return; }
-  if(a==="lbpick"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings({[k]:v}); if(k==="restSound"&&window.GymSounds){ GymSounds.prime(); GymSounds.play(v); } render(); return; }
+  if(a==="lbpick"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings({[k]:v}); if((k==="restSound"||k==="setSound")&&v!=="off"&&window.GymSounds){ GymSounds.prime(); GymSounds.play(v); } render(); return; }
   if(a==="lbsndclear"){ if(!window.GymSounds) return; GymSounds.clearCustom().then(()=>{ if(lbSettings()&&lbSettings().restSound==="custom") WorkoutLogger.setSettings({restSound:"restDone"}); toast("Your sound was removed"); render(); }); return; }
   if(a==="lbtry"){ if(window.WorkoutLogger&&WorkoutLogger.previewRest){ if(window.GymSounds) GymSounds.prime(); WorkoutLogger.previewRest(10); } return; }
   if(a==="lbtog"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, cur=lbSettings()||{}; WorkoutLogger.setSettings({[k]:!cur[k]}); render(); return; }
@@ -2195,6 +2196,7 @@ function tickTimer(){
 // Quick log uses the logger's "Beep / Vibrate when rest ends" settings, and the same lb:rest events so
 // the Android shell schedules the locked-screen "Rest is over" notification for it too.
 function lbPref(k){ try{ return !(window.WorkoutLogger && WorkoutLogger.settings && WorkoutLogger.settings()[k]===false); }catch(_){ return true; } }
+function setDoneSound(){ const s=lbSettings(), v=(s&&s.setSound)||"check"; if(v!=="off"&&window.GymSounds){ GymSounds.prime(); GymSounds.play(v); } }
 function lbRestSound(){ const s=lbSettings(); return (s&&s.restSound)||"restDone"; }
 function restCue(kind){ try{ window.dispatchEvent(new CustomEvent("lb:"+kind, {detail:{end:tEnd, total:tTotal, sound:lbRestSound()}})); }catch(_){} }
 function startTimer(sec){ const el=document.getElementById("timer"); tEnd=Date.now()+sec*1000; tTotal=sec; tBuzz=0; clearInterval(tInt); el.hidden=false; if(window.GymSounds) GymSounds.prime(); restCue("rest"); tickTimer(); tInt=setInterval(tickTimer,500); }

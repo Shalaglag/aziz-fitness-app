@@ -5,7 +5,7 @@ const fs = require("fs"), path = require("path");
 const G = require("./gym-sounds.js");
 
 test("every sound renders, peaks under clipping, ends in silence", () => {
-  assert.deepEqual(G.NAMES, ["restDone", "finish", "boxing", "dingdong", "beeps", "whistle", "gong", "doubleDing", "knock", "powerup", "blast", "aura", "scouter", "teleport", "impact"]);
+  assert.deepEqual(G.NAMES, ["restDone", "finish", "boxing", "dingdong", "beeps", "whistle", "gong", "doubleDing", "tap", "blip", "ping", "knock", "powerup", "blast", "aura", "scouter", "teleport", "impact"]);
   for (const name of G.NAMES) {
     const x = G.render(name, 22050);
     let peak = 0; for (const v of x) peak = Math.max(peak, Math.abs(v));
@@ -69,4 +69,37 @@ test("double ding: two strikes 0.19 s apart", () => {
   const sr = 22050, x = G.render("doubleDing", sr);
   const loud = t => { let m = 0; for (let i = Math.round(t * sr); i < Math.round((t + 0.02) * sr); i++) m = Math.max(m, Math.abs(x[i])); return m; };
   assert.ok(loud(0.19) > loud(0.165) * 1.3, "second strike at 0.19 s");
+});
+
+test("set sounds: Check (Aziz's recording) is first, the rest are short synths", () => {
+  assert.equal(G.SET_SOUNDS[0].id, "check");
+  assert.deepEqual(G.CLIPS, ["check"]);
+  for (const { id, label } of G.SET_SOUNDS.slice(1)) {
+    assert.ok(G.NAMES.includes(id) && label, id);
+    assert.ok(G.render(id, 22050).length / 22050 <= 1.0, id + " is a short tick");
+  }
+});
+
+test("check clip: clips.js is the current check.mp3 and is a small MP3", () => {
+  const C = require("./clips.js"), mp3 = fs.readFileSync(path.join(__dirname, "check.mp3"));
+  assert.equal(C.check, mp3.toString("base64"), "run node modules/gym-sounds/make-clips.js");
+  assert.equal(fs.readFileSync(path.join(__dirname, "clips.js"), "utf8"), require("./make-clips.js").source());
+  assert.ok(mp3.length < 20000, "under 20 KB");
+  assert.ok(mp3.slice(0, 3).toString() === "ID3" || (mp3[0] === 0xff && (mp3[1] & 0xe0) === 0xe0), "MP3 header");
+});
+
+test("check clip plays through Web Audio once decoded (fake AudioContext)", async () => {
+  const started = [];
+  globalThis.AudioContext = class {
+    constructor() { this.state = "running"; this.destination = {}; this.sampleRate = 44100; }
+    decodeAudioData(bytes, ok) { assert.ok(bytes.byteLength > 1000); setTimeout(() => ok({ duration: 0.9 }), 0); }
+    createBufferSource() { return { connect() {}, start() { started.push(this.buffer); } }; }
+  };
+  try {
+    assert.equal(G.play("check"), true, "first tap: decodes, then plays");
+    await new Promise(r => setTimeout(r, 10));
+    assert.equal(started.length, 1);
+    assert.equal(G.play("check"), true);
+    assert.equal(started.length, 2, "second tap plays straight away");
+  } finally { delete globalThis.AudioContext; }
 });

@@ -1,6 +1,6 @@
 # Gym sounds
 
-Strong-style workout cues, synthesised in code (original sounds, not Strong's files; no audio assets in the web app).
+Strong-style workout cues, synthesised in code (original sounds, not Strong's files), plus Aziz's own recorded Check sound.
 
 - `restDone`: ding-ding-DING (two quick G6 bell strikes, then a longer C7), when a rest timer reaches 0.
 - `finish`: a rising C6-E6-G6-C7 chime over a soft C5, when a workout is finished and saved.
@@ -8,6 +8,8 @@ Strong-style workout cues, synthesised in code (original sounds, not Strong's fi
 - Rest sounds (`GymSounds.REST_SOUNDS`, picked in Settings → Workout → Sound when rest ends): `restDone` Bell (Strong-style, default), `boxing` Boxing bell, `dingdong` Ding-dong, `beeps` Watch beeps, `whistle` Coach whistle, `gong` Gong, `knock` Wood knock.
 - Anime-style pack (`pack: 'anime'`, its own row in Settings): `powerup` Power-up, `blast` Energy blast, `aura` Aura charge, `scouter` Scouter, `teleport` Teleport, `impact` Big hit. Original effects; no voices or clips from any show (that audio is copyrighted).
 - Your own sound: `setCustom(file)` keeps one audio file (≤ 3 MB, plays up to 20 s) in IndexedDB `gym-sounds` on this device only, never in backups or sync. Settings → "Add your own sound" saves it and picks `restSound: 'custom'`. Android can't ring an imported file from a notification, so a locked phone rings the bell for it.
+
+- Set done (`GymSounds.SET_SOUNDS`, picked in Settings → Workout → Sound when you tick a set; logger setting `setSound`, default `check`, or `off`): `check` Check (yours) is Aziz's own recording (Nov 2, 2026), trimmed to the chime, denoised and normalised into `check.mp3` (12 KB) and embedded as base64 in `clips.js` (run `node modules/gym-sounds/make-clips.js` after changing the mp3; the test fails if it is stale). Others: `tap` Soft tap, `blip` Blip, `ping` Ping, `knock` Wood knock, `doubleDing` Double ding. The clip is decoded on the first `prime()`; a play before that decodes and plays as soon as it is ready.
 
 ## API
 ```js
