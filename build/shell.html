@@ -874,6 +874,9 @@ async function remove(col,id){
 }
 const clone = o => JSON.parse(JSON.stringify(o||{}));
 
+// True once initStore has decided between device-only and cloud sync. Until then the local cache may be empty on a
+// signed-in phone, so nothing that reads "no data yet" as "new user" may run (the goal questionnaire, milestones).
+let storeReady=false;
 async function initStore(){
   loadLocal(); S.mode="local"; render();
   let db = null;
@@ -882,7 +885,8 @@ async function initStore(){
   if(!db && !window.claude && window.CloudStore && (await CloudStore.loadConfig()) && CloudStore.configured()){
     try{ db = await CloudStore.connect({mount:document.body}); }catch(e){ toast("Couldn't reach your account. Saving on this device for now."); }
   }
-  if(!db){ setSync(); return; }
+  if(!db){ storeReady=true; setSync(); render(); return; }
+  storeReady=true;
   let localOnly = {}; COLS.forEach(c=>localOnly[c]=S.docs[c]||{});
   S.db = db; S.mode="sync"; COLS.forEach(c=>S.docs[c]={});
   COLS.forEach(c=>{
@@ -1162,7 +1166,7 @@ function milestonesR(){ if(!window.Milestones) return null; try{ let lifts=[]; t
 function milestonesCard(){ const R=milestonesR(); if(!R||(!R.all.length&&!R.next.length)) return ""; return fold("ms","Milestones", R.all.length? R.all.length+" reached":"", Milestones.html(R,{today:TODAY})); }
 let msChecked=false;
 function celebrateMilestones(){
-  if(!window.Milestones || S.mode==="loading") return;
+  if(!window.Milestones || S.mode==="loading" || !storeReady) return;
   if(S.mode==="sync" && !(S.synced.has("prefs")&&S.synced.has("weights")&&S.synced.has("days")&&S.synced.has("workouts"))) return;
   const R=milestonesR(); if(!R||!R.unseen.length) return;
   if(R.fresh.length) toast(Milestones.toastText(R.fresh[0])+(R.fresh.length>1?" (+"+(R.fresh.length-1)+" more)":""));
@@ -1170,7 +1174,7 @@ function celebrateMilestones(){
 }
 // New user: no entries and no plan yet → the questionnaire opens first. Once per install; Skip is remembered.
 function maybeFirstRunSetup(){
-  if(gsFirstRunChecked || gsOpen || !window.GoalSetup || S.mode==="loading") return;
+  if(gsFirstRunChecked || gsOpen || !window.GoalSetup || S.mode==="loading" || !storeReady) return;
   if(S.mode==="sync" && !(S.synced.has("prefs") && S.synced.has("weights") && S.synced.has("days"))) return;
   gsFirstRunChecked=true;
   const m=S.docs.prefs.main||{};

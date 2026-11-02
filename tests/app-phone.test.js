@@ -451,6 +451,11 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
     await t.test("goal setup: opens first for a new install, Skip is remembered, Settings reruns it, the result applies only on confirm", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], null, { keepSetup: true });
       assert.ok(await page.$('.gs-wrap[role="dialog"]'), "a fresh install starts on the questionnaire");
+      // Regression (Aziz, Nov 2): on a signed-in phone the local cache is empty until the cloud answers, and the
+      // questionnaire opened on every launch. Before the store has decided, an empty cache must not count as "new user".
+      const early = await page.evaluate(() => { document.querySelector(".gs-wrap").remove(); gsOpen = null; gsFirstRunChecked = false; storeReady = false; render(); const opened = !!document.querySelector(".gs-wrap"); storeReady = true; render(); return { opened, later: !!document.querySelector(".gs-wrap") }; });
+      assert.strictEqual(early.opened, false, "nothing opens while the store is still deciding");
+      assert.strictEqual(early.later, true, "and it opens once the store has settled with no data");
       assert.ok(await page.$('.gs-wrap [data-gs="skip"]'), "a new user can skip it");
       await page.click('.gs-wrap [data-gs="skip"]');
       await page.waitForFunction(() => !document.querySelector(".gs-wrap"));
