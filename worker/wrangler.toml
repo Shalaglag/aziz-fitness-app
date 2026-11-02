@@ -1,0 +1,21 @@
+# Mizan coach service (Cloudflare Workers, free plan). Deployed by Cloudflare's GitHub integration
+# (Workers Builds: root directory "worker", deploy command "npx wrangler deploy").
+# Secrets and the owner list are set in the Cloudflare dashboard, never here:
+#   ANTHROPIC_API_KEY (secret), ALLOWED_EMAILS (variable). keep_vars keeps them across deploys.
+name = "mizan-coach"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+keep_vars = true
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT_ID = "aziz-fitness"
+COACH_TZ = "Asia/Kuwait"
+
+[[durable_objects.bindings]]
+name = "LEDGER"
+class_name = "CoachLedger"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CoachLedger"]

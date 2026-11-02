@@ -668,6 +668,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 </nav>
 <div class="wrap err-banner" id="errBanner" hidden role="alert"></div>
 <main class="wrap" id="main"></main>
+<div id="coachHost"></div>
 <div class="wrap" id="lbHost" hidden></div>
 <div class="wrap" id="ppHost" hidden></div>
 <div class="wrap" id="dioHost" hidden></div>
@@ -35624,27 +35625,52 @@ window.RecoveryFatigue = (() => {
 if (typeof module !== "undefined") module.exports = { RecoveryFatigue };
 </script>
 <script>
-/* 14-day progress review + "Patterns in your logs" for the Mizan app (global Coach, name kept for
- * data and wiring compatibility). Rule-based only: no Claude, no network, no API key. The AI chat
- * ("Ask Claude" panel, server endpoint, proposed actions) was removed on Nov 2, 2026.
+/* AI coach + 14-day progress review for the Aziz Cut Tracker.
+ * Plain JS, no imports, no network of its own. Claude is reached through the page's `sample`
+ * capability, which the host passes in (the app already declares {sample: {images: true}}).
  * Reads the app's own collections (S.docs):
  *   weights/{date}.kg, days/{date}.food[{kcal,p,eaten,est}] (+ sleep, steps, water, waterh.ml),
- *   workouts/{date}{session, sets:{name:[{w,r}]}, effort, deload}, lb_workouts, prefs.main{profile, dietBreak}
+ *   workouts/{date}{session, sets:{name:[{w,r}]}, effort, deload}, prefs.main{profile, dietBreak, dislikes}
  * API:
  *   Coach.css                                   -> string, inject once (uses the app's tokens)
  *   Coach.targets(docs, opts)                   -> {kcal, proteinMin, proteinMax, band, floor, paceLo, paceHi, start}
- *   Coach.periods(docs, {today})                -> [{from, to, end, partial}] 14-day blocks from the start
+ *   Coach.periods(docs, {today})                -> [{from, to, end, partial}] 14-day blocks from the cut start
  *   Coach.review(docs, {today, from?, effort?}) -> the 14-day review (verdict, checks, recommendations)
  *   Coach.reviewHtml(docs, opts)                -> Progress card: the review, with period arrows
- *   Coach.summary(review)                       -> plain text of a review
+ *   Coach.summary(review)                       -> plain text of a review, to copy into a chat
+ *   Coach.context(docs, opts)                   -> the facts the coach is allowed to use (JSON-able); with
+ *        opts.strength (StrengthAnalytics.analyze), recoveryText (RecoveryFatigue.summary), cardioText
+ *        (Cardio.summary), planToday {session, exercises:[{name,w,reps,sets,unit}]}, exerciseNames[],
+ *        exercise(name) -> form-guide entry + demo, and question (to attach the exercise asked about)
  *   Coach.liftHistory(docs, today)              -> per-lift last 5 sessions, best e1RM, PR flag
- *   Coach.insights(docs, opts)                  -> up to 3 local insights [{id, kind, title, text, evidence}];
+ *   Coach.insights(docs, opts)                  -> up to 3 local insights [{id, kind, title, text, evidence, ask}];
  *        opts.seen {id: date} hides ones shown in the last opts.repeatDays (7); opts.strength adds balance
- *   Coach.insightsHtml(docs, opts)              -> "Patterns in your logs" card
- *   Coach.bind(root, opts)                      -> wire the cards once (delegated on root)
- *        opts = { getDocs, render, today?, targets?, rules?, plan?, kcalTarget?,
+ *   Coach.ACTIONS / Coach.cleanActions(list)   -> the only actions Claude may propose; opts.actionHost
+ *        {check(a) -> {ok, change|error}, apply(a) -> Promise<{ok, message}>} shows the exact change and
+ *        applies it after a Confirm tap (show_exercise opens without changing data)
+ *   Coach.trimContext(ctx, q) / langOf(q) / effortFor(q, history) -> what the coach service receives: only the data
+ *        sections a question needs, "ar"/"en", and low or medium effort. opts.endpoint (URL or getter) = the
+ *        Mizan coach service (worker/); opts.consent()/setConsent(bool), opts.setService(url) from the host
+ *   Coach.insightsHtml(docs, opts)              -> "Patterns in your logs" card; opts.onDismiss(id) via bind
+ *   Coach.exerciseIn(question, names)           -> the exercise name a question mentions, or null
+ *   Coach.prompt(question, ctx, history)        -> the instruction sent to Claude
+ *   Coach.parseAnswer(value)                    -> {answer, evidence[], missing[], suggestion|null}
+ *   Coach.localAnswer(topic, docs, opts)        -> same shape, worked out without Claude
+ *   Coach.chatHtml()                            -> compact "Ask Claude" card (opens the panel)
+ *   Coach.panelHtml() / Coach.mountPanel(el, opts) -> floating "Ask Claude" button + chat panel; mount once
+ *                                                  outside the re-rendered area, the panel owns its DOM
+ *   Coach.open(true|false)                      -> open or close the panel
+ *   Coach.suggestions(tab)                      -> suggested questions for a screen (today/train/food/progress/guide)
+ *   Coach.partialAnswer(text)                   -> the "answer" text inside a partly streamed JSON reply
+ *   Coach.bind(root, opts)                      -> wire the cards and the panel once (delegated on root)
+ *        opts = { getDocs: () => S.docs, getSample: () => Promise<sample|null>, render: () => void,
+ *                 today?: () => "YYYY-MM-DD", effort?: () => EffortDeload result, tdee?: () => TrendTDEE result,
  *                 onApply?: change => void,    // only called on a tap; omit it and no "Use" button is shown
- *                 onDismiss?: id => void }     // an insight was dismissed
+ *                 tab?: () => "today"|..., chats?: {load: () => msgs[], save: msgs => void},
+ *                 endpoint?: "/api/coach", getToken?: () => Promise<idToken|null> }
+ * Transports, in order: the page's `sample` capability (inside the Claude app, free); else POST `endpoint`
+ * with the Firebase ID token (the website; the server holds the API key and streams the reply); else the
+ * quick questions only, with a note. Chat history goes through opts.chats (the host stores it).
  * Rules: only food marked eaten counts; nothing is assumed for days without logs; a target change is only
  * ever a suggestion with its reasons, and is applied by the host after an explicit tap.
  */
@@ -35771,7 +35797,7 @@ window.Coach = (() => {
     T.plan = null;
     if (gp) {
       const r = gp.result, a = gp.answers || {}, pct = pos(r.ratePct) || 0;
-      T.plan = { goal: r.goal, direction: r.direction, ratePct: pct, rateKgWk: pos(r.rateKgWk) || 0, pace: r.pace || null, activity: r.activity || a.activity || null,
+      T.plan = { goals: Array.isArray(r.goals) && r.goals.length ? r.goals.slice(0, 4) : Array.isArray(a.goals) && a.goals.length ? a.goals.slice(0, 4) : [r.goal || a.goal].filter(Boolean), label: typeof r.label === "string" ? r.label.slice(0, 60) : null, goal: r.goal, direction: r.direction, ratePct: pct, rateKgWk: pos(r.rateKgWk) || 0, pace: r.pace || null, activity: r.activity || a.activity || null,
         sex: a.sex || null, age: pos(a.age), heightCm: pos(a.heightCm), kg: pos(a.kg), targetKg: pos(r.profile && r.profile.goalKg), endDate: isDate(r.endDate) ? r.endDate : null, kcal: pos(r.kcal), since: isDate(r.today) ? r.today : null };
       if (r.direction === 0) { T.paceLo = 0; T.paceHi = 0; }
       else if (pct) { T.paceLo = Math.round(Math.max(0.2, pct * 0.6) * 100) / 100; T.paceHi = Math.round(Math.min(1.2, pct * 1.5) * 100) / 100; }
@@ -35970,6 +35996,7 @@ window.Coach = (() => {
     return R;
   }
 
+  /* ---------- coach context + Claude ---------- */
   // Per-lift history from the logs: last sessions (top set, est. 1RM) and the all-time best, for lifts
   // trained in the last 8 weeks. The coach can answer "did I get stronger" and "how much should I lift".
   function liftHistory(docs, today, limit = 14) {
@@ -35988,6 +36015,246 @@ window.Coach = (() => {
         return { name, last5: h.slice(-5), bestE1rm: best.e1rm, bestOn: best.date, latestIsPR: best === last && h.length > 1, vsPrevious: prev ? sgn((last.e1rm / prev.e1rm - 1) * 100, 0) + "%" : null };
       });
   }
+  // The exercise a question is about, matched against names the app knows (logs + plan + guide).
+  const plain = s => String(s || "").toLowerCase().replace(/\(.*?\)/g, " ").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  function exerciseIn(question, names) {
+    const q = " " + plain(question) + " ";
+    if (q.trim().length < 3) return null;
+    let hit = null, hitLen = 0;
+    (names || []).forEach(n => {
+      const p = plain(n); if (!p) return;
+      const words = p.split(" ");
+      const forms = [p, words.slice(0, 2).join(" ")].concat(words[0].length >= 5 ? [words[0]] : []);
+      forms.forEach(fm => { const k = " " + fm + " "; if (fm && q.includes(k) && (fm.length > hitLen || (fm.length === hitLen && p.length < plain(hit).length))) { hit = n; hitLen = fm.length; } });
+    });
+    return hit;
+  }
+
+  function context(docs, opts = {}) {
+    docs = docs || {};
+    const today = isDate(opts.today) ? opts.today : localToday();
+    const T = targets(docs, opts), rv = opts.review || review(docs, Object.assign({}, opts, { today }));
+    const ws = weighIns(docs.weights).filter(w => w.date <= today);
+    const avgOf = n => { const xs = ws.filter(w => w.date > add(today, -n)); return xs.length ? { avg: +f1(mean(xs.map(w => w.kg))), weighIns: xs.length } : null; };
+    const d0 = (docs.days || {})[today] || {}, e0 = eaten(d0);
+    const recent = sessions(workoutList(docs), add(today, -13), today).map(w => ({
+      date: w.date, session: w.session || null, effort: w.effort != null ? w.effort : null,
+      bestSetKg: Object.values(bestLifts([w], w.date, w.date)).length ? Object.entries(bestLifts([w], w.date, w.date)).map(([n, b]) => n + " " + b.w + "x" + b.r) : [],
+    }));
+    const food14 = dates(add(today, -13), add(today, -1)).map(d => { const e = eaten((docs.days || {})[d]); return e ? { date: d, kcal: Math.round(e.kcal), protein: Math.round(e.p) } : { date: d, logged: false }; });
+    const ctx = {
+      today, weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow(today)],
+      targets: { kcal: T.kcal, proteinMin: T.proteinMin, proteinMax: T.proteinMax, pacePctPerWeek: [T.paceLo, T.paceHi], cutStart: T.start },
+      plan: T.plan ? { goals: T.plan.goals, label: T.plan.label, goal: T.plan.goal, direction: T.plan.direction, pace: T.plan.pace, ratePctPerWeek: T.plan.ratePct, rateKgPerWeek: T.plan.rateKgWk, activity: T.plan.activity, sex: T.plan.sex, age: T.plan.age, heightCm: T.plan.heightCm, startKg: T.plan.kg, targetKg: T.plan.targetKg, projectedEnd: T.plan.endDate, since: T.plan.since, note: "From the goal questionnaire. Judge pace against this plan, not a generic cut." } : null,
+      basis: rv.basis || null,
+      weight: { latest: ws.length ? ws[ws.length - 1] : null, avg7: avgOf(7), avg14: avgOf(14), avg30: avgOf(30), last30: ws.filter(w => w.date > add(today, -30)).map(w => [w.date, w.kg]) },
+      todaySoFar: e0 ? { eatenKcal: Math.round(e0.kcal), eatenProtein: Math.round(e0.p), plannedNotEaten: e0.planned, kcalLeft: T.kcal != null ? Math.round(T.kcal - e0.kcal) : null, proteinLeft: T.proteinMin != null ? Math.max(0, Math.round(T.proteinMin - e0.p)) : null } : { logged: false },
+      food14,
+      workouts14: recent,
+      review: rv.period ? {
+        from: rv.period.from, to: rv.period.to, partial: rv.period.partial, verdict: rv.verdict, headline: rv.headline,
+        checks: rv.checks.map(c => c.label + ": " + c.value + " (" + c.detail + ")"),
+        lifts: rv.numbers.lifts.map(l => l.name + " " + sgn(l.change * 100, 0) + "% e1RM"),
+        suggestions: rv.recs.map(r => r.title + ": " + r.why),
+        missing: rv.missing,
+      } : null,
+      sleepLast7: dates(add(today, -7), add(today, -1)).map(d => num(((docs.days || {})[d] || {}).sleep)).filter(h => h != null),
+      dislikes: ((((docs.prefs || {}).main || {}).dislikes) || []).slice(0, 30),
+    };
+    // ---- phase 4: training, nutrition and recovery detail ----
+    const prefsMain = (docs.prefs || {}).main || {};
+    ctx.lifts = liftHistory(docs, today);
+    if (opts.planToday) ctx.planToday = opts.planToday;
+    if (opts.strength) {
+      const st = opts.strength;
+      ctx.strength = {
+        lifts: (st.lifts || []).slice(0, 14).map(l => ({ name: l.name, sessions: l.sessions, bestE1rm: l.best && Math.round(l.best.e1rm), lastE1rm: l.last && Math.round(l.last.e1rm), change28: l.change28 != null ? sgn(l.change28 * 100, 0) + "%" : null, cut: l.cut && l.cut.pct != null ? sgn(l.cut.pct * 100, 0) + "%" : null })),
+        weeklySetsPerMuscle: (st.muscles || []).map(m => ({ muscle: m.label, thisWeek: Math.round(m.thisWeek), avg4: Math.round(m.avg4 * 10) / 10, daysPerWeek: m.freq4, status: m.status })),
+        balance: (st.balance || []).filter(b => b.ratio != null).map(b => ({ pair: b.label, ratio: Math.round(b.ratio * 100) / 100, lean: b.lean || null })),
+      };
+    }
+    if (opts.recoveryText) ctx.recovery = String(opts.recoveryText).slice(0, 1200);
+    ctx.readiness7 = dates(add(today, -6), today).map(d => { const r = ((docs.days || {})[d] || {}).readiness; return r ? { date: d, quality: r.quality, soreness: r.soreness, energy: r.energy, joints: Object.keys(r.joints || {}).filter(j => r.joints[j]) } : null; }).filter(Boolean);
+    ctx.steps7 = dates(add(today, -6), today).map(d => { const v = num(((docs.days || {})[d] || {}).steps); return v != null ? [d, Math.round(v)] : null; }).filter(Boolean);
+    if (prefsMain.stepGoal) ctx.stepGoal = num(prefsMain.stepGoal);
+    if (opts.cardioText) ctx.cardio = String(opts.cardioText).slice(0, 800);
+    else { const cd = docs.cardio || {}; ctx.cardio14 = dates(add(today, -13), today).map(d => cd[d] && Array.isArray(cd[d].sessions) ? { date: d, sessions: cd[d].sessions.map(x => [x.kind, x.min, x.speed, x.incline].filter(v => v != null).join(" ")) } : null).filter(Boolean); }
+    const planned = ((d0.food || [])).filter(x => x && x.eaten === false).map(x => ({ name: x.name, slot: x.slot, kcal: Math.round(num(x.kcal) || 0), p: Math.round(num(x.p) || 0) }));
+    if (planned.length) ctx.plannedToday = planned.slice(0, 20);
+    const eatenItems = ((d0.food || [])).filter(x => x && x.eaten === true).map(x => ({ name: x.name, slot: x.slot, kcal: Math.round(num(x.kcal) || 0), p: Math.round(num(x.p) || 0), est: x.est ? true : undefined }));
+    if (eatenItems.length) ctx.eatenToday = eatenItems.slice(0, 30);
+    if (eatenItems.length) { const ef = (d0.food || []).filter(x => x && x.eaten === true); ctx.todaySoFar.eatenCarbs = Math.round(ef.reduce((a, x) => a + (num(x.c) || 0), 0)); ctx.todaySoFar.eatenFat = Math.round(ef.reduce((a, x) => a + (num(x.f) || 0), 0)); }
+    if (T.carbsLo != null || T.carbsHi != null) ctx.targets.carbs = [T.carbsLo, T.carbsHi]; if (T.fatLo != null || T.fatHi != null) ctx.targets.fat = [T.fatLo, T.fatHi];
+    const meals = Object.values(docs.meals || {}).filter(m => m && m.name && Array.isArray(m.items));
+    if (meals.length) ctx.savedMeals = meals.sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 12).map(m => ({ name: m.name, kcal: Math.round(m.items.reduce((s_, i) => s_ + (num(i.kcal) || 0), 0)), protein: Math.round(m.items.reduce((s_, i) => s_ + (num(i.p) || 0), 0)) }));
+    const menu = (docs.menus || {})[today];
+    if (menu && Array.isArray(menu.items)) ctx.menuToday = menu.items.filter(i => i && i.name && !i.skip).slice(0, 40).map(i => ({ name: i.name, kcal: num(i.kcal), protein: num(i.p != null ? i.p : i.protein) }));
+    if (opts.kcalTarget) { const kt = num(opts.kcalTarget(today)); if (kt != null && kt !== T.kcal) ctx.targets.kcalToday = Math.round(kt); }
+    if (prefsMain.cycling && prefsMain.cycling.on) ctx.calorieCycling = { on: true, deltaKcal: num(prefsMain.cycling.delta) };
+    if (prefsMain.dietBreak && prefsMain.dietBreak.started) ctx.dietBreak = { started: prefsMain.dietBreak.started, until: prefsMain.dietBreak.until || null };
+    const hurt = ((docs.prefs || {}).swaps || {}).hurt || {};
+    const hurtNames = Object.values(hurt).filter(h => h && h.name).map(h => h.name + (h.note ? " (" + clip(h.note, 60) + ")" : ""));
+    if (hurtNames.length) ctx.exercisesThatHurt = hurtNames.slice(0, 10);
+    const swapped = {}; dates(add(today, -27), today).forEach(d => { const w = (docs.workouts || {})[d]; if (w && w.swapped) Object.entries(w.swapped).forEach(([used, plan]) => { swapped[used] = plan; }); });
+    if (Object.keys(swapped).length) ctx.recentSwaps = Object.entries(swapped).map(([used, plan]) => used + " instead of " + plan).slice(0, 10);
+    if (opts.question && opts.exercise) {
+      const names = ctx.lifts.map(l => l.name).concat((opts.planToday && opts.planToday.exercises || []).map(x => x.name), opts.exerciseNames || []);
+      const hit = exerciseIn(opts.question, names);
+      const ex = hit && opts.exercise(hit);
+      if (ex) ctx.exerciseAsked = { name: ex.name || hit, setup: (ex.setup || []).slice(0, 6), cues: (ex.cues || []).slice(0, 6), mistakes: (ex.mistakes || []).slice(0, 6), muscles: { primary: ex.primary || [], secondary: ex.secondary || [] }, demoVideo: ex.demo ? "verified demo available in the app (the app opens it; do not give a URL)" : "no verified demo yet", logged: ctx.lifts.find(l => l.name === hit) || null };
+    }
+    if (opts.tdee && opts.tdee.ready) ctx.calorieBurn = { kcal: Math.round(opts.tdee.tdee), lo: Math.round(opts.tdee.tdeeLo), hi: Math.round(opts.tdee.tdeeHi), trendRateKgWk: +f1(opts.tdee.rateKgWk) };
+    if (opts.effort) ctx.deloadCheck = { nudge: !!opts.effort.nudge, reason: opts.effort.reason || null };
+    return ctx;
+  }
+
+  function prompt(question, ctx, history) {
+    const past = (history || []).slice(-4).map(h => "Q: " + h.q + "\nA: " + h.a).join("\n");
+    return [
+      "You are the personal fitness coach inside the user's own tracking app. DATA.plan.goals lists every goal from the user's goal questionnaire (for example cut + muscle = lose fat while building muscle); judge advice against those goals. With no plan, assume a fat-loss cut.",
+      "Answer the question using ONLY the DATA below, which is everything the app has logged.",
+      "Rules:",
+      "- Never invent numbers, foods, nutrition values, workouts or dates. If something you need isn't in DATA, say it isn't logged and what to log.",
+      "- Days marked logged:false have no food data; do not treat them as zero or as on target.",
+      "- Explain WHY: tie each point to specific values from DATA and put those values in evidence.",
+      "- You cannot change targets or settings. You may suggest a change and give the reason; the user decides in the app.",
+      "- Judge weight by averages and trends, never by one weigh-in.",
+      "- For pain, injury or medical questions, give general guidance and suggest seeing a professional.",
+      "- Lifting advice: base loads on lifts.last5 and planToday; suggest at most one small step (2.5 kg, or one rep) when the last session hit its reps with effort 3 or less, hold when effort was 4-5 or readiness is low, and name the set. Never suggest exercises listed in exercisesThatHurt.",
+      "- Food advice: pick only from plannedToday, savedMeals, menuToday or foods already in the logs, and respect dislikes; say what fits kcalLeft and proteinLeft.",
+      "- Exercise technique: use exerciseAsked only. Say the app has a verified demo when demoVideo says so; never give a video link.",
+      "- You may propose at most 2 actions in \"actions\", only from this list and only when the user asks for a change or it clearly helps: set_calorie_target {kcal} (at most 150 kcal from the current target per step), add_saved_meal {name} (a name from savedMeals), add_menu_item {name} (a name from menuToday), swap_exercise {from, to} (from = an exercise in planToday, to = a similar exercise not in exercisesThatHurt), show_exercise {name}. Give each a short \"why\". The app shows the exact change and the user must confirm it, so never say a change is done; otherwise use [].",
+      "- If something you need is missing, ask one short clarifying question in answer instead of guessing.",
+      "- Reply in the language of the question; for Arabic use simple Modern Standard Arabic with numbers as digits.",
+      "- Plain, friendly language, under 120 words in answer. No markdown headings.",
+      past ? "Earlier in this chat:\n" + past : "",
+      "DATA:\n" + JSON.stringify(ctx),
+      "Question: " + JSON.stringify(String(question || "").slice(0, 600)),
+      "Reply with only JSON in this shape:",
+      '{"answer":"...","evidence":["Weight 7-day avg 90.8 kg vs 91.6 kg the week before"],"missing":["what isn\'t logged that would help"],"suggestion":null,"actions":[]}',
+      'suggestion is null or {"title":"short action","why":"one sentence"}.',
+    ].filter(Boolean).join("\n");
+  }
+
+  const clip = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+  // ---------- Safe actions: Claude proposes, the person confirms, the host applies ----------
+  // Only these types exist. Anything else in a reply is dropped. The host (opts.actionHost) checks each
+  // one against the real data, shows the exact change, and applies it only after a tap on Confirm.
+  const ACTIONS = {
+    set_calorie_target: { fields: { kcal: "num" }, label: "Change your calorie target" },
+    add_saved_meal: { fields: { name: "str" }, label: "Add a saved meal to today" },
+    add_menu_item: { fields: { name: "str" }, label: "Add a menu item to today" },
+    swap_exercise: { fields: { from: "str", to: "str" }, label: "Swap an exercise today" },
+    show_exercise: { fields: { name: "str" }, label: "Show how to do it", view: true },
+  };
+  function cleanActions(list) {
+    return (Array.isArray(list) ? list : []).slice(0, 4).map(a => {
+      if (!a || typeof a !== "object" || !Object.prototype.hasOwnProperty.call(ACTIONS, a.type)) return null;
+      const out = { type: a.type };
+      for (const [k, t] of Object.entries(ACTIONS[a.type].fields)) {
+        const v = t === "num" ? num(a[k]) : clip(a[k], 80);
+        if (v == null || v === "") return null;
+        out[k] = t === "num" ? Math.round(v) : v;
+      }
+      out.why = clip(a.why, 200);
+      return out;
+    }).filter(Boolean).slice(0, 2);
+  }
+  // Ask the host whether an action can be done right now and what exactly it would change.
+  function checkAction(a) {
+    if (!O || !O.actionHost || !O.actionHost.check) return { ok: false, error: "Changes from the chat aren't available here." };
+    try { const r = O.actionHost.check(a) || {}; return r.ok ? { ok: true, change: String(r.change || ""), view: !!(ACTIONS[a.type] && ACTIONS[a.type].view) } : { ok: false, error: String(r.error || "This can't be done right now.") }; }
+    catch (e) { return { ok: false, error: "This can't be done right now." }; }
+  }
+  function prepareActions(m) {
+    (m.actions || []).forEach(a => { const c = checkAction(a); a.status = c.ok ? "proposed" : "blocked"; a.change = c.change || ""; a.error = c.error || ""; a.view = !!c.view; });
+  }
+  async function runAction(a) {
+    if (!a || a.status !== "proposed") return;
+    const c = checkAction(a); // the data may have changed since the answer arrived
+    if (!c.ok) { a.status = "failed"; a.result = c.error; return; }
+    a.status = "applying"; renderPanel();
+    try {
+      const r = await Promise.resolve(O.actionHost.apply(a));
+      a.status = r && r.ok ? "done" : "failed";
+      a.result = (r && r.message) || (a.status === "done" ? "Done." : "That didn't work. Nothing was changed.");
+    } catch (e) { a.status = "failed"; a.result = "That didn't work. Nothing was changed."; }
+  }
+  function actionHtml(a, mi, ai) {
+    const spec = ACTIONS[a.type] || {}, key = mi + ":" + ai;
+    const why = a.why ? '<p class="co-act-why">' + esc(a.why) + "</p>" : "";
+    let body;
+    if (a.status === "blocked") body = '<p class="co-act-res co-warn">Can\'t do this: ' + esc(a.error) + "</p>";
+    else if (a.status === "proposed") body = '<p class="co-act-change">' + esc(a.change) + "</p>" + why + '<div class="co-act-btns">' +
+      (a.view ? '<button class="co-btn" style="margin:0" data-coach-act="' + key + '">Show</button>'
+        : '<button class="co-btn" style="margin:0" data-coach-act="' + key + '">Confirm</button><button class="co-btn co-ghost" style="margin:0" data-coach-skip="' + key + '">Not now</button>') + "</div>";
+    else if (a.status === "applying") body = '<p class="co-act-change">' + esc(a.change) + '</p><p class="co-act-res">Applying…</p>';
+    else if (a.status === "done") body = '<p class="co-act-change">' + esc(a.change) + '</p><p class="co-act-res co-good">✓ ' + esc(a.result || "Done.") + "</p>";
+    else if (a.status === "failed") body = '<p class="co-act-change">' + esc(a.change) + '</p><p class="co-act-res co-bad">✗ ' + esc(a.result || "Nothing was changed.") + "</p>";
+    else body = '<p class="co-act-change">' + esc(a.change) + '</p><p class="co-act-res co-muted">Not applied.</p>';
+    return '<div class="co-act"><div class="co-kind">' + (a.view ? "Exercise" : "Proposed change") + '</div><b>' + esc(spec.label || a.type) + "</b>" + body + "</div>";
+  }
+
+  function parseAnswer(value) {
+    let v = value;
+    if (typeof v === "string") { try { v = JSON.parse(v); } catch (e) { v = { answer: v }; } }
+    if (!v || typeof v !== "object" || !clip(v.answer, 1)) return { answer: "", evidence: [], missing: [], suggestion: null, error: "Claude's answer couldn't be read. Try again." };
+    const list = x => (Array.isArray(x) ? x : []).map(s => clip(s, 200)).filter(Boolean).slice(0, 6);
+    const sg = v.suggestion && typeof v.suggestion === "object" && clip(v.suggestion.title, 1) ? { title: clip(v.suggestion.title, 100), why: clip(v.suggestion.why, 300) } : null;
+    return { answer: String(v.answer).trim().slice(0, 1500), evidence: list(v.evidence), missing: list(v.missing), suggestion: sg, actions: cleanActions(v.actions) };
+  }
+
+  const TOPICS = [
+    { id: "progress", label: "Is my cut working?" },
+    { id: "plateau", label: "Why isn't my weight moving?" },
+    { id: "protein", label: "Am I eating enough protein?" },
+    { id: "lifts", label: "Which lifts are stalling?" },
+    { id: "today", label: "What's left today?" },
+  ];
+
+  // Answers the quick questions from the numbers alone, so they work without Claude.
+  function localAnswer(topic, docs, opts = {}) {
+    const rv = opts.review || review(docs, opts), N = rv.numbers, T = rv.targets;
+    const out = (answer, evidence, missing, suggestion) => ({ answer, evidence: (evidence || []).filter(Boolean), missing: missing || [], suggestion: suggestion || null, local: true });
+    const head = r => r ? { title: r.title, why: r.why } : null;
+    if (!rv.period) return out(rv.headline, [], ["Weigh-ins", "Food marked eaten"]);
+    const per = short(rv.period.from) + "–" + short(rv.period.to);
+    switch (topic) {
+      case "progress":
+        return out(rv.headline + " (" + per + ")", rv.checks.filter(c => c.status !== "none").map(c => c.label + ": " + c.value).concat(rv.basis ? [rv.basis] : []), rv.missing, head(rv.recs[0]));
+      case "plateau": {
+        if (N.rateKgWk == null) return out("There aren't enough weigh-ins in " + per + " to measure a pace yet.", [], rv.missing);
+        if (N.progressPctWk != null && N.progressPctWk >= T.paceLo) return out("It is moving: " + sgn(N.rateKgWk) + " kg a week on the trend, inside your plan. Day-to-day jumps are water, salt and food weight.", [rv.checks[0] && rv.checks[0].detail]);
+        const why = [];
+        if (N.adherence != null && N.adherence < 0.7) why.push("only " + N.onTarget + " of " + N.coreDays + " days were within ±" + T.band + " kcal of target");
+        if (N.unlogged.length) why.push(plural(N.unlogged.length, "day") + " have no food logged, so intake may be higher than it looks");
+        if (N.breakDays) why.push(plural(N.breakDays, "diet-break day") + " at maintenance");
+        if (N.fridayAvg != null && N.fridayAvg > T.kcal + 500) why.push("Fridays averaged " + fint(N.fridayAvg) + " kcal");
+        if (!why.length && N.adherence != null) why.push("intake looks on target, so your burn is likely lower than " + fint(T.kcal) + " kcal assumes");
+        return out("Weight changed " + sgn(N.rateKgWk) + " kg a week in " + per + ". Likely reasons: " + why.join("; ") + ".", [rv.checks[0] && rv.checks[0].value, rv.checks[1] && rv.checks[1].detail], rv.missing, head(rv.recs.find(r => r.kind !== "tip")));
+      }
+      case "protein":
+        if (T.proteinMin == null) return out(N.proteinAvg == null ? "No food is marked eaten in " + per + "." : "You averaged " + Math.round(N.proteinAvg) + " g a day in " + per + ". Set a protein target in Your numbers and I can tell you if that's enough.", [], ["Protein target"]);
+        if (N.proteinAvg == null) return out("No food is marked eaten in " + per + ", so protein can't be checked.", [], ["Food marked eaten"]);
+        return out(N.proteinAvg >= T.proteinMin ? "Yes. You averaged " + Math.round(N.proteinAvg) + " g, above your " + T.proteinMin + " g minimum." : "Not quite. You averaged " + Math.round(N.proteinAvg) + " g, " + Math.round(T.proteinMin - N.proteinAvg) + " g under your " + T.proteinMin + " g minimum.",
+          [N.proteinHit + " of " + N.foodDays + " logged days reached " + T.proteinMin + " g (" + per + ")"]);
+      case "lifts": {
+        if (!N.lifts.length) return out("No lift has a logged set in both weeks of " + per + " yet, so nothing can be compared.", [], ["The same exercise logged in both weeks"]);
+        const dn = N.lifts.filter(l => l.status !== "up");
+        return out(dn.length ? dn.map(l => l.name + " (" + sgn(l.change * 100, 0) + "%)").join(", ") + (dn.length === 1 ? " is" : " are") + " not improving. Holding strength on a cut is a win; a drop of more than a few percent across lifts is the warning sign." : "Every compared lift went up. Nice.",
+          N.lifts.map(l => l.name + ": " + l.before.w + "x" + l.before.r + " → " + l.after.w + "x" + l.after.r + " (est. 1RM " + sgn(l.change * 100, 0) + "%)"), [], null);
+      }
+      case "today": {
+        const today = rv.today, e = eaten(((docs || {}).days || {})[today]);
+        if (T.kcal == null || T.proteinMin == null) return out(e ? "So far today: " + fint(e.kcal) + " kcal and " + Math.round(e.p) + " g protein eaten. Set your targets in Your numbers to see what's left." : "Nothing is marked eaten today yet.", [], ["Calorie and protein targets"]);
+        if (!e) return out("Nothing is marked eaten today yet. Target: " + fint(T.kcal) + " kcal and " + T.proteinMin + " g protein.", [], []);
+        return out("You have " + fint(Math.max(0, T.kcal - e.kcal)) + " kcal and " + Math.max(0, Math.round(T.proteinMin - e.p)) + " g protein left today" + (e.kcal > T.kcal ? " (over by " + fint(e.kcal - T.kcal) + " kcal)" : "") + ".",
+          ["Eaten so far: " + fint(e.kcal) + " kcal, " + Math.round(e.p) + " g protein", e.planned ? plural(e.planned, "planned item") + " not marked eaten yet (not counted)" : null]);
+      }
+    }
+    return out("", [], []);
+  }
+
   /* ---------- rendering ---------- */
   const VERDICT = {
     "on-track": ["good", "Working"], "slow": ["warn", "Slow"], "stalled": ["bad", "Stalled"], "too-fast": ["warn", "Too fast"],
@@ -36013,7 +36280,9 @@ window.Coach = (() => {
 .co-rec details{margin-top:6px;font-size:.82rem;color:var(--muted)}
 .co-rec ul{margin:4px 0 0;padding-left:18px}
 .co-btn{margin-top:8px;border:0;background:var(--accent);color:var(--accent-ink);border-radius:var(--r);padding:8px 12px;font-weight:600;cursor:pointer}
+.co-ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
 .co-miss{font-size:.85rem;color:var(--muted);margin:6px 0 0;padding-left:18px}
+.co-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 .co-ins{border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:var(--r);padding:10px 12px;background:var(--sunk)}
 .co-ins+.co-ins{margin-top:8px}
 .co-ins-good{border-left-color:var(--good)}.co-ins-warn{border-left-color:var(--warn)}.co-ins-info{border-left-color:var(--accent)}
@@ -36021,10 +36290,53 @@ window.Coach = (() => {
 .co-ins p{margin:4px 0 0;font-size:.9rem;color:var(--ink)}
 .co-ins details{margin-top:6px;font-size:.8rem;color:var(--muted)}
 .co-ins ul{margin:4px 0 0;padding-left:18px}
+.co-act{margin-top:10px;border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--surface)}
+.co-act b{display:block;margin-top:2px}
+.co-act-change{margin:6px 0 0;font-size:.88rem;color:var(--ink)}
+.co-act-why{margin:4px 0 0;font-size:.8rem;color:var(--muted)}
+.co-act-res{margin:6px 0 0;font-size:.85rem;font-weight:600}
+.co-act-btns{display:flex;gap:8px;margin-top:8px}
+.co-list{margin:6px 0 0;padding-left:18px;font-size:.85rem;color:var(--ink)}
+.co-month{margin-top:6px}
+.co-bar{height:6px;border-radius:999px;background:var(--line);overflow:hidden}
+.co-bar i{display:block;height:100%;background:var(--good)}
+.co-bar i.co-warn{background:var(--warn)}.co-bar i.co-bad{background:var(--bad)}
+.co-settings select{margin-left:6px;font:inherit;padding:4px 6px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 .co-x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:.9rem;padding:0 2px}
+.co-chip{margin-top:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.85rem;cursor:pointer}
+.co-chips button{border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.85rem;cursor:pointer}
+.co-ask{display:flex;gap:6px;margin-top:6px}
+.co-ask input{flex:1;min-width:0;padding:10px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);font:inherit}
+.co-msgs{display:grid;gap:10px;margin-top:10px}
+.co-q{justify-self:end;max-width:85%;min-width:0;overflow-wrap:anywhere;background:var(--accent);color:var(--accent-ink);padding:8px 12px;border-radius:14px 14px 4px 14px;font-size:.9rem}
+.co-a{max-width:95%;min-width:0;overflow-wrap:anywhere;background:var(--sunk);border:1px solid var(--line);padding:10px 12px;border-radius:14px 14px 14px 4px;font-size:.9rem;color:var(--ink)}
+.co-a details{margin-top:6px;color:var(--muted);font-size:.8rem}
+.co-a ul{margin:4px 0 0;padding-left:18px}
 .co-src{font-size:.7rem;color:var(--muted);margin-top:6px}
+.co-err{color:var(--bad);font-size:.85rem;margin-top:6px}
+@media (prefers-reduced-motion:no-preference){.co-new{animation:co-in .25s ease-out}@keyframes co-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
+/* Ask Claude: floating button + panel (bottom sheet on phones, side panel on desktop) */
+.co-fab{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:30;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;padding:11px 15px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:700;box-shadow:0 6px 18px rgb(0 0 0/.16);cursor:pointer}
+.co-fab .co-fab-i{font-size:1.1rem;line-height:1}
+.co-fab:active{transform:scale(.97)}
+@media (min-width:721px){.co-fab{bottom:24px;right:24px}}
+.co-scrim{position:fixed;inset:0;z-index:31;background:rgb(0 0 0/.35)}
+.co-panel{position:fixed;z-index:32;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);box-shadow:0 -10px 40px rgb(0 0 0/.25);left:0;right:0;bottom:0;max-height:min(86vh,860px);border-radius:18px 18px 0 0;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);visibility:hidden}
+.co-panel.co-open{transform:none;visibility:visible}
+@media (min-width:721px){.co-panel{left:auto;top:0;width:min(440px,92vw);max-height:none;border-radius:0;border-width:0 0 0 1px;transform:translateX(102%);box-shadow:-10px 0 40px rgb(0 0 0/.25)}}
+.co-ph{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.co-ph b{font-family:var(--display);font-size:1.25rem;letter-spacing:.02em;text-transform:uppercase}
+.co-body{flex:1;overflow:auto;overflow-x:hidden;padding:12px 16px;overscroll-behavior:contain;min-width:0}
+.co-panel{max-width:100vw;box-sizing:border-box}
+.co-pf{padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--surface)}
+.co-pf .co-ask{margin-top:0}
+.co-note{margin:0 0 8px}
+.co-live{white-space:pre-wrap;overflow-wrap:anywhere}
+.co-cursor{display:inline-block;width:.5em;height:1em;vertical-align:-.15em;margin-left:2px;background:var(--accent);animation:co-blink 1s steps(2) infinite}
+@keyframes co-blink{to{opacity:0}}
+@media (prefers-reduced-motion:reduce){.co-panel{transition:none}.co-cursor{animation:none}}
 `;
-  const S = { from: null };
+  const S = { from: null, msgs: [], busy: false, error: "", ctl: null, draft: "", hidden: false, noClaude: false, noClaudeWhy: "", open: false, stream: "", loaded: false, consentQ: null, month: null, monthErr: "", monthAt: 0, settings: false, capMsg: "" };
   let O = null;
 
   // ---------- Insights: patterns in the logs, worked out locally (no Claude, no cost) ----------
@@ -36125,8 +36437,8 @@ window.Coach = (() => {
     if (!list.length) return "";
     const items = list.map(i => '<div class="co-ins co-ins-' + i.kind + '" data-coach-insight="' + esc(i.id) + '"><div class="co-ins-head"><b>' + esc(i.title) + '</b><button class="co-x" data-coach-dismiss="' + esc(i.id) + '" aria-label="Dismiss">✕</button></div><p>' + esc(i.text) + "</p>" +
       (i.evidence.length ? '<details><summary>Based on</summary><ul>' + i.evidence.map(e => "<li>" + esc(e) + "</li>").join("") + "</ul></details>" : "") +
-      "</div>").join("");
-    return '<div class="card co-insights"><h3>Patterns in your logs</h3><p class="co-src" style="margin-top:0">Worked out from your logs. Each shows once a week at most.</p>' + items + "</div>";
+      (i.ask ? '<button class="co-chip" data-coach-ask="' + esc(i.ask) + '">Ask Claude about this</button>' : "") + "</div>").join("");
+    return '<div class="card co-insights"><h3>Patterns in your logs</h3><p class="co-src" style="margin-top:0">Worked out from your logs, no Claude needed. Each shows once a week at most.</p>' + items + "</div>";
   }
 
   function recHtml(r, canApply) {
@@ -36159,18 +36471,343 @@ window.Coach = (() => {
     return lines.join("\n");
   }
 
+  function answerHtml(m, mi) {
+    const nw = m.seen ? "" : " co-new";
+    if (m.pending) return '<div class="co-a">Thinking…</div>';
+    const ev = m.evidence && m.evidence.length ? "<details open><summary>Based on</summary><ul>" + m.evidence.map(e => "<li>" + esc(e) + "</li>").join("") + "</ul></details>" : "";
+    const ms_ = m.missing && m.missing.length ? "<details><summary>Not logged yet</summary><ul>" + m.missing.map(e => "<li>" + esc(e) + "</li>").join("") + "</ul></details>" : "";
+    const sg = m.suggestion ? '<p style="margin:8px 0 0"><b>Suggestion:</b> ' + esc(m.suggestion.title) + (m.suggestion.why ? " — " + esc(m.suggestion.why) : "") + "</p>" : "";
+    const acts = (m.actions || []).length && mi != null ? m.actions.map((a, ai) => actionHtml(a, mi, ai)).join("") : "";
+    return '<div class="co-a' + nw + '" dir="auto">' + esc(m.answer) + sg + acts + ev + ms_ + '<div class="co-src">' + (m.local ? "Worked out from your logs" : "Claude, from your logs only" + (m.costUsd != null ? " · " + money(m.costUsd) : "")) + "</div></div>";
+  }
+
+  // ---------- What gets sent to the coach service ----------
+  const langOf = q => /[\u0600-\u06FF]/.test(String(q || "")) ? "ar" : "en";
+  // Harder, personal "why / should I / plan" questions get medium effort; everything else low (cheaper, faster).
+  const DEEP = /\b(why|should i|should we|plan|compare|explain|how come|what if|adjust|change my)\b|لماذا|ليش|ليه|هل يجب|هل لازم|خطة|خطتي|قارن|اشرح|وش اسوي|ماذا أفعل/i;
+  const effortFor = (q, history) => DEEP.test(String(q || "")) || (history || []).length >= 3 ? "medium" : "low";
+  // Only the parts of the data pack a question needs. Unclear questions keep everything.
+  const SECTIONS = {
+    weight: { re: /weigh|scale|kg\b|trend|plateau|stall|pace|loss|losing|gain|body|fat|وزن|الميزان|كيلو|نزول|ثبات|دهون|جسم/i, keys: ["weight", "review", "calorieBurn", "dietBreak", "food14"] },
+    food: { re: /eat|food|meal|protein|calor|kcal|carb|fat\b|snack|menu|dinner|lunch|breakfast|hungry|diet|اكل|أكل|وجبة|بروتين|سعرات|كارب|دهون|عشاء|غداء|فطور|جوع|سناك|منيو/i, keys: ["todaySoFar", "food14", "plannedToday", "eatenToday", "savedMeals", "menuToday", "dislikes", "calorieCycling", "dietBreak", "review"] },
+    training: { re: /train|lift|bench|squat|deadlift|press|row|curl|set|rep|gym|workout|exercise|muscle|strong|deload|swap|form|تمرين|تمارين|جيم|عضل|قوة|بنش|سكوات|ديدلفت|مجموعة|عدات|تبديل/i, keys: ["lifts", "planToday", "strength", "workouts14", "exercisesThatHurt", "recentSwaps", "exerciseAsked", "deloadCheck", "readiness7"] },
+    recovery: { re: /sleep|tired|sore|rest|recover|fatigue|energy|steps|cardio|walk|run|نوم|تعب|إرهاق|ارهاق|راحة|استشفاء|طاقة|خطوات|كارديو|مشي|جري/i, keys: ["sleepLast7", "readiness7", "recovery", "steps7", "stepGoal", "cardio", "cardio14", "deloadCheck", "workouts14"] },
+  };
+  const CORE = ["today", "weekday", "targets", "plan", "basis", "todaySoFar"];
+  function trimContext(ctx, question) {
+    const hits = Object.values(SECTIONS).filter(sec => sec.re.test(String(question || "")));
+    if (!hits.length || hits.length === Object.keys(SECTIONS).length) return ctx;
+    const keep = new Set(CORE.concat(...hits.map(h => h.keys)));
+    const out = {}; Object.keys(ctx).forEach(k => { if (keep.has(k)) out[k] = ctx[k]; });
+    if (ctx.weight && !keep.has("weight")) out.weight = { latest: ctx.weight.latest, avg7: ctx.weight.avg7 };
+    return out;
+  }
+
+  function errorText(code) {
+    switch (code) {
+      case "not_granted": case "sampling_disabled": case "not_declared": case "capability_disabled": case "capability_removed":
+        return "Claude isn't available on this page right now. The quick questions still work.";
+      case "rate_limited": return "Claude is busy for a moment. Wait a minute and try again.";
+      case "session_expired": return "You've been signed out. Reload the page and try again.";
+      case "refused": return "Claude couldn't answer that one. Try asking it another way.";
+      case "invalid_json": case "empty_completion": return "Claude's answer couldn't be read. Try again.";
+      case "prompt_too_large": return "Too much data to send at once. Try a shorter question.";
+      case "not_signed_in": return "Sign in to ask Claude. The quick questions still work.";
+      case "daily_cap": return "You've reached today's question limit. It resets at midnight; the quick questions still work.";
+      case "no_key": return "The coach service is running but has no API key yet. The quick questions still work.";
+      case "no_endpoint": return "The coach service isn't set up yet. Add its address in AI settings. The quick questions still work.";
+      case "offline": return "You're offline. Logging works; Claude needs a connection.";
+      case "not_allowed": return "This account isn't allowed to use the AI chat. Only the owner's account can spend the API credit.";
+      case "cap_reached": return "This month's AI spending cap is reached, so no new questions are sent. Raise the cap in AI settings, or use the quick questions.";
+      case "out_of_credit": return "The Anthropic API credit has run out. Add credit in the Claude Console to keep using the AI chat.";
+      case "daily_limit": return "You've asked a lot today, so the AI chat is paused until tomorrow. The quick questions still work.";
+      case "busy": return "One answer is still on its way. Wait for it, then ask again.";
+      case "upstream_busy": return "Claude is busy right now. Try again in a minute.";
+      case "upstream_unreachable": case "stream_broken": return "The answer was cut off. Try again; only what was used is counted.";
+      case "timeout": return "Claude took too long to answer. Try again or ask something shorter.";
+      case "bad_key": return "The API key in the coach service isn't valid. Check it in Cloudflare (see the setup steps).";
+      case "too_large": return "Too much data to send at once. Try a shorter question.";
+      case "no_consent": return "Turn on the AI chat first. The quick questions work without it.";
+      default: return "Something went wrong reaching Claude. Try again.";
+    }
+  }
+
+  // ---------- Ask Claude: the chat panel ----------
+  // Suggested questions per screen. `topic` = answered from the numbers without Claude.
+  const SUGGEST = {
+    today: [{ q: "What's left today?", topic: "today" }, { q: "Should I take a rest day?" }, { q: "How am I doing this week?" }],
+    train: [{ q: "What should I train today?" }, { q: "Did I get stronger this week?" }, { q: "Which lifts are stalling?", topic: "lifts" }, { q: "Should I increase my bench press weight?" }],
+    food: [{ q: "Am I eating enough protein?", topic: "protein" }, { q: "What should I eat today?" }, { q: "How many calories have I eaten today?" }],
+    progress: [{ q: "Is my plan working?", topic: "progress" }, { q: "Why isn't my weight moving?", topic: "plateau" }, { q: "Is my pace right for my goal?" }],
+    guide: [{ q: "Explain my calorie target" }, { q: "What's left today?", topic: "today" }],
+  };
+  function suggestions(tab) { return SUGGEST[tab] || SUGGEST.today; }
+
+  // While Claude streams its JSON reply, show the text of "answer" as it grows.
+  function partialAnswer(text) {
+    const m = /"answer"\s*:\s*"/.exec(text || "");
+    if (!m) return "";
+    let out = "", i = m.index + m[0].length;
+    for (; i < text.length; i++) {
+      const c = text[i];
+      if (c === "\\") { const n = text[i + 1]; if (n === undefined) break; out += n === "n" ? "\n" : n === "t" ? " " : n === "u" ? "" : n; i += n === "u" ? 5 : 1; continue; }
+      if (c === '"') break;
+      out += c;
+    }
+    return out;
+  }
+
+  // The compact card (Progress tab): opens the panel.
+  function chatHtml() {
+    const chips = suggestions("progress").slice(0, 3).map(s => '<button data-coach-ask="' + esc(s.q) + '"' + (s.topic ? ' data-coach-topic="' + s.topic + '"' : "") + ">" + esc(s.q) + "</button>").join("");
+    return '<div class="card co-chat"><div class="co-head"><h3>Ask Claude</h3><button class="co-btn co-ghost" style="margin:0" data-coach-open>Open chat</button></div>' +
+      '<p class="co-src" style="margin-top:0">Your coach answers from what you\'ve logged. Nothing changes unless you confirm it.</p><div class="co-chips">' + chips + "</div></div>";
+  }
+
+  function transportNote() {
+    if (S.noClaude) return S.noClaudeWhy || "Free-form questions need Claude, which isn't available here. The suggested questions still work.";
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return "You're offline. Logging works; Claude needs a connection. The quick questions still work.";
+    return "";
+  }
+
+  const money = usd => usd == null ? "" : usd < 0.01 ? "under $0.01" : "$" + (usd < 10 ? usd.toFixed(2) : usd.toFixed(0));
+  const SENT = ["your question and the last few questions and answers in this chat",
+    "the goal questionnaire answers (goals, pace, sex, age, height, weights) and your targets",
+    "summaries the question needs: weight averages, food totals and today's food, workouts and lifts, sleep, readiness, steps and cardio"];
+  const NOT_SENT = "Not sent: your name, email, password, photos, friends, notes from other screens or the full log history.";
+  function consentHtml() {
+    return '<div class="co-act co-consent"><b>Turn on the AI chat?</b><p class="co-act-change">To answer, Mizan sends this to Anthropic (the company behind Claude) through your own coach service:</p><ul class="co-list">' +
+      SENT.map(x => "<li>" + esc(x) + "</li>").join("") + '</ul><p class="co-act-why">' + esc(NOT_SENT) + " Each answer costs a fraction of a cent from your API credit; the spending cap stops it at your limit. You can turn it off any time in AI settings.</p>" +
+      '<div class="co-act-btns"><button class="co-btn" style="margin:0" data-coach-consent="yes">Turn on and ask</button><button class="co-btn co-ghost" style="margin:0" data-coach-consent="no">Not now</button></div></div>';
+  }
+  function monthHtml() {
+    const mo = S.month;
+    if (!mo) return S.monthErr ? '<p class="co-src co-warn">' + esc(S.monthErr) + "</p>" : '<p class="co-src">Spending: loading…</p>';
+    const spent = mo.usedUsd + mo.pendingUsd, pct = mo.capUsd ? Math.min(100, Math.round(spent / mo.capUsd * 100)) : 100;
+    const cls = mo.stopped ? "co-bad" : mo.warn ? "co-warn" : "co-good";
+    return '<div class="co-month"><div class="co-bar"><i class="' + cls + '" style="width:' + Math.max(2, pct) + '%"></i></div>' +
+      '<p class="co-src" style="margin:4px 0 0"><b>' + money(mo.usedUsd) + "</b> of your $" + mo.capUsd + " cap this month (" + mo.requests + " answer" + (mo.requests === 1 ? "" : "s") + ")" +
+      (mo.pendingUsd ? " · " + money(mo.pendingUsd) + " on its way" : "") + (mo.unsettledUsd ? " · " + money(mo.unsettledUsd) + " counted at its estimate (answer lost)" : "") + "</p>" +
+      (mo.stopped ? '<p class="co-src co-bad">Cap reached: new questions are stopped until next month or until you raise the cap.</p>' : mo.warn ? '<p class="co-src co-warn">Over 80 % of the cap is used.</p>' : "") +
+      '<p class="co-src" style="margin:2px 0 0">Counted from the tokens Anthropic reports, at Claude Haiku 5.5 list prices. Since setup: ' + money(mo.allTimeUsd) + ". Your Claude Console shows the actual bill.</p></div>";
+  }
+  function settingsHtml() {
+    const url = serviceUrl() || "", mo = S.month, caps = [5, 10, 20, 50, 100];
+    return '<div class="co-act co-settings"><b>AI settings</b>' +
+      (url && consented() ? monthHtml() + '<div class="co-act-btns" style="flex-wrap:wrap;align-items:center"><label class="co-src" style="margin:0">Monthly cap <select data-coach-capsel>' +
+        caps.map(c => '<option value="' + c + '"' + (mo && mo.capUsd === c ? " selected" : "") + ">$" + c + "</option>").join("") + '</select></label><button class="co-btn co-ghost" style="margin:0" data-coach-capsave>Save cap</button><button class="co-btn co-ghost" style="margin:0" data-coach-refresh>Refresh</button></div>' +
+        (S.capMsg ? '<p class="co-src">' + esc(S.capMsg) + "</p>" : "") : "") +
+      '<form data-coach-svcform class="co-ask" style="margin-top:8px"><input data-coach-svc placeholder="https://mizan-coach.….workers.dev" value="' + esc(url) + '" inputmode="url" autocomplete="off"><button class="co-btn co-ghost" style="margin:0">Save address</button></form>' +
+      '<p class="co-src">Coach service address (from the setup steps). It is not a secret; the API key stays in the service.</p>' +
+      (consented() ? '<button class="co-btn co-ghost" style="margin:6px 0 0" data-coach-consent="off">Turn off the AI chat</button>' : "") + "</div>";
+  }
+  function panelHtml() {
+    const tab = O && O.tab ? O.tab() : "today";
+    const sugg = suggestions(tab);
+    const chips = '<div class="co-chips">' + sugg.map(s => '<button data-coach-ask="' + esc(s.q) + '"' + (s.topic ? ' data-coach-topic="' + s.topic + '"' : "") + ">" + esc(s.q) + "</button>").join("") + "</div>";
+    const note = transportNote();
+    const live = S.busy && S.stream ? '<div class="co-q" dir="auto">' + esc(S.msgs[S.msgs.length - 1].q) + '</div><div class="co-a co-live" dir="auto">' + esc(S.stream) + '<span class="co-cursor"></span></div>' : "";
+    const msgs = S.msgs.map((m, i) => (m.pending && live) ? "" : (m.q ? '<div class="co-q" dir="auto">' + esc(m.q) + "</div>" : "") + answerHtml(m, i)).join("") + live;
+    S.msgs.forEach(m => { m.seen = true; });
+    const form = '<form class="co-ask" data-coach-form><input data-coach-input dir="auto" placeholder="Ask about training, food or weight · اسأل بالعربي" value="' + esc(S.draft) + '" maxlength="600"' + (S.busy ? " disabled" : "") + ' autocomplete="off"><button class="co-btn" style="margin:0"' + (S.busy ? " disabled" : "") + ">Ask</button>" + (S.busy ? '<button type="button" class="co-btn co-ghost" style="margin:0" data-coach-stop>Stop</button>' : "") + "</form>";
+    return '<button class="co-fab" data-coach-open aria-label="Ask the coach" title="Ask the coach"><span class="co-fab-i">✦</span><span class="co-fab-t">Coach</span></button>' +
+      '<div class="co-scrim" data-coach-close' + (S.open ? "" : " hidden") + '></div>' +
+      '<section class="co-panel' + (S.open ? " co-open" : "") + '" role="dialog" aria-label="Ask Claude" aria-hidden="' + (S.open ? "false" : "true") + '">' +
+      '<header class="co-ph"><div><b>Ask Claude</b><div class="co-src" style="margin:0">' + (serviceUrl() ? "Claude Haiku 5.5 · answers use only what you\'ve logged" : "Answers use only what you\'ve logged") + '</div></div><div class="co-nav">' +
+      '<button data-coach-settings title="AI settings" aria-label="AI settings"' + (S.settings ? ' aria-pressed="true"' : "") + ">⚙</button>" +
+      (S.msgs.length ? '<button data-coach-clear title="Clear chat">⌫</button>' : "") + '<button data-coach-close aria-label="Close">✕</button></div></header>' +
+      '<div class="co-body" data-coach-body>' + (S.settings ? settingsHtml() : "") + (S.msgs.length ? "" : '<p class="co-src">Try one of these, or type your own question.</p>') + chips +
+      (S.msgs.length ? '<div class="co-msgs">' + msgs + "</div>" : "") + (S.consentQ ? consentHtml() : "") + (S.error && !S.noClaude ? '<p class="co-err">' + esc(S.error) + "</p>" : "") + "</div>" +
+      '<footer class="co-pf">' + (note ? '<p class="co-src co-note">' + esc(note) + "</p>" : "") + form + "</footer></section>";
+  }
+
+  let host = null;
+  function renderPanel() {
+    if (!host) return;
+    const body = host.querySelector("[data-coach-body]"), atBottom = body ? body.scrollTop + body.clientHeight >= body.scrollHeight - 40 : true;
+    const active = typeof document !== "undefined" && document.activeElement && document.activeElement.matches && document.activeElement.matches("[data-coach-input]");
+    host.innerHTML = panelHtml();
+    const nb = host.querySelector("[data-coach-body]");
+    if (nb && (atBottom || S.busy)) nb.scrollTop = nb.scrollHeight;
+    if (active && S.open && !S.busy) { const inp = host.querySelector("[data-coach-input]"); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }
+  }
+  function loadHistory() {
+    if (S.loaded || !O || !O.chats) return;
+    S.loaded = true;
+    try { const h = O.chats.load(); if (Array.isArray(h)) S.msgs = h.filter(m => m && m.q && m.answer).slice(-40).map(m => Object.assign({ seen: true }, m, { actions: (m.actions || []).map(a => Object.assign({}, a, a.status === "applying" ? { status: "failed", result: "Interrupted. Check the screen before trying again." } : a.status === "proposed" ? { status: "expired" } : {})) })); } catch (e) {}
+  }
+  function saveHistory() {
+    if (!O || !O.chats) return;
+    try { O.chats.save(S.msgs.filter(m => m.q && m.answer).slice(-40).map(m => ({ q: m.q, answer: m.answer, evidence: m.evidence || [], missing: m.missing || [], suggestion: m.suggestion || null, local: !!m.local, at: m.at || Date.now(), costUsd: m.costUsd != null ? m.costUsd : undefined, actions: (m.actions || []).map(a => Object.assign({}, a)) }))); } catch (e) {}
+  }
+  function openPanel(on) {
+    loadHistory();
+    S.open = on !== false;
+    renderPanel();
+    if (S.open) refreshMonth(false);
+    if (S.open) { const inp = host && host.querySelector("[data-coach-input]"); if (inp && window.matchMedia && !window.matchMedia("(max-width:720px)").matches) inp.focus(); }
+  }
+  // Mount once, outside the host's re-rendered area. The panel keeps its own DOM.
+  function mountPanel(el, opts) {
+    if (opts) O = Object.assign(O || {}, opts);
+    host = el;
+    renderPanel();
+    if (typeof window !== "undefined") { window.addEventListener("online", renderPanel); window.addEventListener("offline", renderPanel); }
+  }
+
+  const call = k => { try { return O[k] ? O[k]() : undefined; } catch (e) { return undefined; } };
+  const oo = () => ({ today: call("today"), effort: call("effort"), tdee: call("tdee"), targets: call("targets"), rules: call("rules"), plan: call("plan"), kcalTarget: O.kcalTarget,
+    strength: call("strength"), recoveryText: call("recoveryText"), cardioText: call("cardioText"), planToday: call("planToday"), exerciseNames: call("exerciseNames"), exercise: O.exercise });
+  const rerender = () => { renderPanel(); if (O.render && !host) O.render(); };
+
+  // Transport 2: the app's own server endpoint (website build). Streams the model text back.
+  const serviceUrl = () => { if (!O) return null; const u = typeof O.endpoint === "function" ? O.endpoint() : O.endpoint; return u ? String(u).replace(/\/+$/, "") : null; };
+  const consented = () => !!(O && O.consent && O.consent());
+  const errOf = code => { const x = new Error(code); x.code = code; return x; };
+  async function service(path, init) {
+    const token = O.getToken ? await O.getToken().catch(() => null) : null;
+    if (!token) throw errOf("not_signed_in");
+    if (typeof navigator !== "undefined" && navigator.onLine === false) throw errOf("offline");
+    let res;
+    try { res = await fetch(serviceUrl() + path, Object.assign({}, init, { headers: Object.assign({ authorization: "Bearer " + token }, init && init.body ? { "content-type": "application/json" } : {}) })); }
+    catch (e) { if (e && e.name === "AbortError") throw e; throw errOf(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "upstream_unreachable"); }
+    if ((res.headers.get("content-type") || "").toLowerCase().includes("text/html")) throw errOf("no_endpoint");
+    if (!res.ok) {
+      let j = {}; try { j = await res.json(); } catch (_) {}
+      const x = errOf(j.error || (res.status === 401 ? "not_signed_in" : "http_" + res.status));
+      if (j.month) S.month = j.month;
+      if (j.uid) x.uid = j.uid;
+      throw x;
+    }
+    return res;
+  }
+  async function askEndpoint(question, ctx, history, signal, onDelta) {
+    const body = JSON.stringify({ question, ctx, history: history.slice(-4).map(h => ({ q: String(h.q).slice(0, 600), a: String(h.a).slice(0, 1200) })), effort: effortFor(question, history), lang: langOf(question) });
+    const res = await service("/v1/chat", { method: "POST", body, signal });
+    let text = "", done = null, buf = "";
+    const take = line => { if (!line.trim()) return; let o; try { o = JSON.parse(line); } catch (e) { return; }
+      if (o.t === "d") { text += o.text; onDelta(text); } else if (o.t === "done") done = o; else if (o.t === "error") { if (o.month) S.month = o.month; const x = errOf(o.error); x.costUsd = o.costUsd; throw x; } };
+    if (res.body && res.body.getReader) {
+      const rd = res.body.getReader(), dec = new TextDecoder();
+      for (;;) { const { value, done: end } = await rd.read(); if (end) break; buf += dec.decode(value, { stream: true }); let k; while ((k = buf.indexOf("\n")) >= 0) { take(buf.slice(0, k)); buf = buf.slice(k + 1); } }
+    } else (await res.text()).split("\n").forEach(take);
+    take(buf);
+    if (!done) throw errOf("stream_broken");
+    if (done.month) { S.month = done.month; S.monthAt = Date.now(); }
+    if (done.stop === "refusal") throw errOf("refused");
+    return { text, costUsd: done.costUsd, usage: done.usage };
+  }
+  // One read of this month's spending when the panel opens (never polled).
+  async function refreshMonth(force) {
+    if (!serviceUrl() || !consented() || (!force && Date.now() - S.monthAt < 60e3)) return;
+    S.monthAt = Date.now();
+    try { const r = await service("/v1/usage", { method: "GET" }); S.month = await r.json(); S.monthErr = ""; }
+    catch (e) { S.monthErr = errorText(e && e.code) + (e && e.uid ? " Account id: " + e.uid : ""); }
+    renderPanel();
+  }
+  async function setCap(usd) {
+    S.capMsg = "Saving…"; renderPanel();
+    try { const r = await service("/v1/cap", { method: "POST", body: JSON.stringify({ capUsd: usd }) }); S.month = await r.json(); S.capMsg = "Cap saved: $" + S.month.capUsd + " a month."; }
+    catch (e) { S.capMsg = "Couldn't save the cap: " + errorText(e && e.code); }
+    renderPanel();
+  }
+
+  async function ask(q) {
+    q = String(q || "").trim();
+    if (!q || S.busy) return;
+    loadHistory();
+    const useService = !!serviceUrl();
+    if (useService && !consented()) { S.consentQ = q; S.draft = q; renderPanel(); return; }
+    const sample = useService ? null : O.getSample ? await O.getSample() : null;
+    if (!sample && !useService) { S.noClaude = true; S.error = errorText("no_endpoint"); rerender(); return; }
+    const history = S.msgs.filter(m => m.q && m.answer && !m.local).slice(-4).map(m => ({ q: m.q, a: m.answer }));
+    const m = { q, pending: true, at: Date.now() };
+    S.msgs.push(m); S.busy = true; S.error = ""; S.draft = ""; S.stream = ""; S.ctl = typeof AbortController === "function" ? new AbortController() : null; rerender();
+    try {
+      const full = context(O.getDocs(), Object.assign(oo(), { question: q }));
+      const ctx = useService ? trimContext(full, q) : full;
+      let v;
+      if (sample) v = await sample.json(prompt(q, ctx, history), { signal: S.ctl && S.ctl.signal, modelTier: "default" });
+      else {
+        const timer = setTimeout(() => { if (S.ctl) { S.ctl.timedOut = true; S.ctl.abort(); } }, 75000);
+        try { const r = await askEndpoint(q, ctx, history, S.ctl && S.ctl.signal, t => { S.stream = partialAnswer(t); renderPanel(); }); v = r.text; m.costUsd = r.costUsd; }
+        finally { clearTimeout(timer); }
+      }
+      const a = parseAnswer(v);
+      if (a.error) { S.msgs.pop(); S.error = a.error; } else { Object.assign(m, a, { pending: false }); prepareActions(m); saveHistory(); }
+    } catch (e) {
+      S.msgs.pop();
+      const code = e && e.code;
+      if (S.ctl && S.ctl.timedOut) S.error = errorText("timeout");
+      else if (code !== "cancelled" && !(e && e.name === "AbortError")) {
+        S.error = errorText(code) + (e && e.uid ? " Account id: " + e.uid : "");
+        if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed", "no_key", "no_endpoint"].includes(code)) { S.noClaude = true; S.noClaudeWhy = code === "no_key" ? "Claude isn't connected to this website yet (no API key configured). The quick questions still work." : ""; }
+      }
+    }
+    S.busy = false; S.ctl = null; S.stream = ""; rerender();
+  }
+
+  function askLocal(topic) {
+    loadHistory();
+    const t = TOPICS.find(x => x.id === topic);
+    if (!t) return;
+    S.msgs.push(Object.assign({ q: t.label, at: Date.now() }, localAnswer(t.id, O.getDocs(), oo())));
+    saveHistory();
+    rerender();
+  }
+
   function bind(root, opts) {
     O = Object.assign(O || {}, opts);
     root.addEventListener("click", e => {
-      const t = e.target.closest("[data-coach-period],[data-coach-apply],[data-coach-dismiss]");
+      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask],[data-coach-dismiss],[data-coach-act],[data-coach-skip],[data-coach-consent],[data-coach-settings],[data-coach-refresh],[data-coach-capsave]");
       if (!t) return;
+      if (t.dataset.coachAct || t.dataset.coachSkip) {
+        const [mi, ai] = String(t.dataset.coachAct || t.dataset.coachSkip).split(":").map(Number), msg = S.msgs[mi], a = msg && msg.actions && msg.actions[ai];
+        if (!a || a.status !== "proposed") return;
+        if (t.dataset.coachSkip) { a.status = "skipped"; saveHistory(); renderPanel(); return; }
+        runAction(a).then(() => { saveHistory(); renderPanel(); if (O.render) O.render(); });
+        return;
+      }
+      if (t.dataset.coachConsent) {
+        const v = t.dataset.coachConsent, q = S.consentQ; S.consentQ = null;
+        if (v === "yes") { if (O.setConsent) O.setConsent(true); S.monthAt = 0; refreshMonth(true); if (q) { S.draft = ""; ask(q); return; } }
+        else if (v === "off") { if (O.setConsent) O.setConsent(false); S.month = null; }
+        renderPanel(); return;
+      }
+      if (t.hasAttribute("data-coach-settings")) { S.settings = !S.settings; S.capMsg = ""; renderPanel(); if (S.settings) refreshMonth(true); return; }
+      if (t.hasAttribute("data-coach-refresh")) { refreshMonth(true); return; }
+      if (t.hasAttribute("data-coach-capsave")) { const sel = host && host.querySelector("[data-coach-capsel]"); if (sel) setCap(+sel.value); return; }
       if (t.dataset.coachDismiss) { if (O.onDismiss) O.onDismiss(t.dataset.coachDismiss); const box = t.closest("[data-coach-insight]"); if (box) box.remove(); return; }
-      if (t.dataset.coachPeriod !== undefined) { if (t.dataset.coachPeriod) { S.from = t.dataset.coachPeriod; if (O.render) O.render(); } }
+      if (t.hasAttribute("data-coach-open")) openPanel(true);
+      else if (t.hasAttribute("data-coach-close")) openPanel(false);
+      else if (t.dataset.coachAsk !== undefined) {
+        if (!host) { /* no panel mounted: answer inline on the card */ }
+        else if (!S.open) openPanel(true);
+        if (t.dataset.coachTopic) askLocal(t.dataset.coachTopic); else ask(t.dataset.coachAsk);
+      }
+      else if (t.dataset.coachTopic) askLocal(t.dataset.coachTopic);
+      else if (t.dataset.coachPeriod !== undefined) { if (t.dataset.coachPeriod) { S.from = t.dataset.coachPeriod; O.render(); } }
       else if (t.dataset.coachApply) { try { const ch = JSON.parse(t.dataset.coachApply); if (O.onApply) O.onApply(ch); } catch (err) {} }
+      else if (t.hasAttribute("data-coach-clear")) { S.msgs = []; S.error = ""; saveHistory(); rerender(); }
+      else if (t.hasAttribute("data-coach-stop")) { if (S.ctl) S.ctl.abort(); }
     });
+    root.addEventListener("input", e => { if (e.target.matches && e.target.matches("[data-coach-input]")) S.draft = e.target.value; });
+    root.addEventListener("submit", e => {
+      if (e.target.matches && e.target.matches("[data-coach-svcform]")) {
+        e.preventDefault();
+        const v = String((e.target.querySelector("[data-coach-svc]") || {}).value || "").trim().replace(/\/+$/, "");
+        if (v && !/^https:\/\/[a-z0-9.-]+(:\d+)?(\/[\w\-./]*)?$/i.test(v)) { S.capMsg = "The address must start with https://"; renderPanel(); return; }
+        if (O.setService) O.setService(v || null); S.month = null; S.monthAt = 0; S.noClaude = false; S.error = ""; S.capMsg = v ? "Address saved." : "Address removed."; renderPanel(); refreshMonth(true); return;
+      }
+      if (!e.target.matches || !e.target.matches("[data-coach-form]")) return;
+      e.preventDefault();
+      const inp = e.target.querySelector("[data-coach-input]");
+      ask(inp ? inp.value : S.draft);
+    });
+    root.addEventListener("keydown", e => { if (e.key === "Escape" && S.open) openPanel(false); });
   }
 
-  return { css, targets, periods, review, reviewHtml, summary, liftHistory, insights, insightsHtml, bind, _state: S };
+  return { css, targets, periods, review, reviewHtml, summary, context, prompt, parseAnswer, localAnswer, chatHtml, panelHtml, mountPanel, open: openPanel, suggestions, partialAnswer, liftHistory, exerciseIn, insights, insightsHtml, ACTIONS, cleanActions, trimContext, langOf, effortFor, bind, errorText, TOPICS, _state: S };
 })();
 if (typeof module !== "undefined") module.exports = Coach;
 </script>
@@ -39626,7 +40263,7 @@ window.DataIO = (() => {
     days: "Days (food, water, steps, sleep)", weights: "Weigh-ins", workouts: "Workouts", prefs: "Settings",
     meals: "Saved meals", barcodes: "Scanned foods", photos: "Progress photo records", menus: "Imported menus",
     lb_workouts: "Full-logger workouts", lb_templates: "Workout templates", lb_exercises: "Custom exercises",
-    lb_measures: "Body measurements", lb_meta: "Logger settings", cardio: "Cardio sessions", markers: "Health markers", runs: "GPS runs (routes)", chats: "Coach chat (old)",
+    lb_measures: "Body measurements", lb_meta: "Logger settings", cardio: "Cardio sessions", markers: "Health markers", runs: "GPS runs (routes)", chats: "Coach chat",
   };
   const DATE_KEYED = ["days", "weights", "workouts", "cardio", "runs"];
 
@@ -40653,7 +41290,7 @@ window.CalendarReminders = (() => {
     }));
     if (s.review && validDate(ctx.review) && ctx.review >= from) out.push({
       uid: "cr-review-" + ctx.review.replace(/-/g, ""), summary: "14-day calorie review", start: ctx.review, time: s.reviewTime, minutes: 30, alarms: [1440, 0],
-      description: "Two weeks of weigh-ins are in. Open Progress: compare the 7-day averages and let the 14-day review say whether " + kc + " kcal stays. Decide on the trend, never one reading.",
+      description: "Two weeks of weigh-ins are in. Open Progress: compare the 7-day averages and let the coach say whether " + kc + " kcal stays. Decide on the trend, never one reading.",
     });
     if (s.supps && Array.isArray(ctx.supps)) ctx.supps.filter(p => p && p.on !== false && validTime(p.time) && p.name).forEach(p => out.push({
       uid: "cr-supp-" + String(p.key || p.name).toLowerCase().replace(/[^a-z0-9]+/g, "-"), summary: p.name + (p.dose ? " " + p.dose : ""), start: from, time: p.time, minutes: 5,
@@ -41883,8 +42520,8 @@ window.CloudStore = (() => {
     return scoped(fs, who.uid);
   }
   function currentEmail() { return state.user ? state.user.email : null; }
-  // Firebase ID token of the signed-in person (null when nobody is signed in), for any server call
-  // that needs to know who is asking (none uses it since the AI coach was removed).
+  // Firebase ID token of the signed-in person (null when nobody is signed in). The coach endpoint
+  // checks it server-side before calling Claude.
   function idToken() { return state.user && state.user.getIdToken ? state.user.getIdToken().catch(() => null) : Promise.resolve(null); }
   async function signOut() { if (state.auth) await state.auth.signOut(); state.user = null; }
   // The unscoped Firestore handle and uid, for the shared Friends collections (modules/friends), whose
@@ -43478,9 +44115,101 @@ function tcOpts(){ // Compare trends: reuse the trend line and the lift e1RM ser
 let coachPending=null, weightPending=null;
 // >5% off the average of the last 7 days of weigh-ins (needs 3+) needs a second tap. Catches 91.9 typed as 99.1 or 81.9.
 function weightOutlier(date,kg){ const ws=weightsSorted().filter(w=>w.date!==date && w.date<=date && diffDays(w.date,date)<=7); if(ws.length<3) return null; const avg=ws.reduce((a,w)=>a+w.kg,0)/ws.length; const pct=(kg-avg)/avg*100; return Math.abs(pct)>5 ? {avg,pct} : null; }
-let coachCache=null; // one computation per tick: the Reviews cards share it
+// Exercise knowledge for the coach: form guide entry + whether a verified demo exists (never a URL).
+let coachFC=null, coachDemos=null;
+function coachExercise(name){
+  try{
+    if(coachFC===null) coachFC=(window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE,{demoLinks:false}) : false;
+    if(coachDemos===null) coachDemos=(window.ExerciseDemos && window.EXERCISE_DEMOS && window.WorkoutLogger) ? ExerciseDemos.create(window.EXERCISE_DEMOS,{library:WorkoutLogger.library}) : false;
+    const e=coachFC ? coachFC.find(name) : null, demo=coachDemos ? coachDemos.best(name) : null;
+    if(!e && !demo) return null;
+    return {name:(e&&e.name)||name, setup:e?e.setup:[], cues:e?e.cues:[], mistakes:e?e.mistakes:[], primary:e?e.primary:[], secondary:e?e.secondary:[], demo:demo||null};
+  }catch(err){ return null; }
+}
+function coachPlanToday(){ const sf=sessionFor(TODAY); const ex=(programEff()[sf.session]||[]).map(t=>({name:t[0], w:t[1], reps:t[2], sets:t[3], unit:t[4]||"kg"})); return {session:sf.session, chosen:!!sf.chosen, exercises:ex}; }
+const coachNorm = s => String(s||"").toLowerCase().replace(/\(.*?\)/g," ").replace(/[^a-z0-9]+/g," ").trim();
+const coachFmt = n => Math.round(n).toLocaleString("en-US");
+let coachAnim=null;
+function coachMeal(name){ const k=coachNorm(name); return Object.values(S.docs.meals||{}).find(m=>m && Array.isArray(m.items) && coachNorm(m.name)===k) || null; }
+function coachMenuItem(name){ const mn=(S.docs.menus||{})[TODAY], k=coachNorm(name); return mn && Array.isArray(mn.items) ? mn.items.find(i=>i && i.name && !i.skip && coachNorm(i.name)===k) || null : null; }
+function coachPlanName(name){ const w=workoutDoc(TODAY), k=coachNorm(name); return (PROGRAM[w.session]||[]).map(e=>e[0]).find(n=>coachNorm(n)===k) || null; }
+const coachActions = {
+  check(a){
+    if(a.type==="set_calorie_target"){
+      const cur=APPT && APPT.kcal, to=Math.round(+a.kcal);
+      if(!(to>0)) return {ok:false, error:"No calorie number was given."};
+      if(to<KCAL_FLOOR) return {ok:false, error:"That is below the "+fkc(KCAL_FLOOR)+" kcal safety floor."};
+      if(cur && Math.abs(to-cur)>150) return {ok:false, error:"Changes go in steps of up to 150 kcal; that would be "+coachFmt(Math.abs(to-cur))+"."};
+      if(cur===to) return {ok:false, error:"That is already your target."};
+      return {ok:true, change:"Daily calorie target "+(cur?coachFmt(cur)+" → ":"")+coachFmt(to)+" kcal (Settings, Your numbers). Diet-break and lift-day adjustments still apply on top."};
+    }
+    if(a.type==="add_saved_meal"){
+      const m=coachMeal(a.name); if(!m) return {ok:false, error:"There is no saved meal called \""+a.name+"\"."};
+      const k=m.items.reduce((t,i)=>t+(+i.kcal||0),0), p=m.items.reduce((t,i)=>t+(+i.p||0),0);
+      return {ok:true, change:"Add \""+m.name+"\" to today as planned, not eaten: "+m.items.length+" item"+(m.items.length===1?"":"s")+", "+coachFmt(k)+" kcal, "+Math.round(p)+" g protein."};
+    }
+    if(a.type==="add_menu_item"){
+      const it=coachMenuItem(a.name); if(!it) return {ok:false, error:"\""+a.name+"\" isn't on today's imported menu."};
+      if(it.kcal==null) return {ok:false, error:"Its calories weren't readable on the menu, so it can't be added from the chat."};
+      return {ok:true, change:"Add \""+it.name+"\" from today's menu as planned, not eaten: "+coachFmt(it.kcal)+" kcal"+(it.protein!=null?", "+Math.round(it.protein)+" g protein":"")+"."};
+    }
+    if(a.type==="swap_exercise"){
+      if(!window.ExerciseSwap) return {ok:false, error:"Exercise swaps aren't available here."};
+      const w=workoutDoc(TODAY), from=coachPlanName(a.from), to=String(a.to||"").trim();
+      if(!w.session || w.session==="Rest") return {ok:false, error:"Today is a rest day."};
+      if(!from) return {ok:false, error:"\""+a.from+"\" isn't in today's "+w.session+" session."};
+      if(!to || coachNorm(to)===coachNorm(from)) return {ok:false, error:"No replacement was given."};
+      if(ExerciseSwap.isAvoided(to)) return {ok:false, error:to+" is on your avoid list."};
+      if(ExerciseSwap.hurtInfo(swapState(), to)) return {ok:false, error:"You marked "+to+" as hurting."};
+      return {ok:true, change:"Today ("+w.session+"): do "+to+" instead of "+from+". Its sets count for the "+from+" slot; Back to plan on Train undoes it."};
+    }
+    if(a.type==="show_exercise"){
+      const ex=coachExercise(a.name); if(!ex) return {ok:false, error:"\""+a.name+"\" isn't in the exercise guide yet."};
+      return {ok:true, change:"Open how to do "+ex.name+": cues, common mistakes and the built-in demo where there is one."};
+    }
+    return {ok:false, error:"Unknown action."};
+  },
+  async apply(a){
+    const c=coachActions.check(a); if(!c.ok) return {ok:false, message:c.error};
+    if(a.type==="set_calorie_target"){
+      const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), cutKcal:Math.round(+a.kcal)}; await put("prefs","main",p);
+      return {ok:+(S.docs.prefs.main?.profile?.cutKcal)===Math.round(+a.kcal), message:"Calorie target is now "+coachFmt(+a.kcal)+" kcal. Change it any time in Settings, Your numbers."};
+    }
+    if(a.type==="add_saved_meal"){
+      const m=coachMeal(a.name); const r=SavedMeals.applyToDay(getDay(TODAY),m,{uid});
+      if(!r.added.length) return {ok:false, message:"Everything in "+m.name+" is already on today."};
+      saveDay(r.day); put("meals",m.id,SavedMeals.markUsed(m),{quiet:true});
+      return {ok:true, message:"Added "+r.added.length+" item"+(r.added.length===1?"":"s")+" to Food. Tick them as you eat."};
+    }
+    if(a.type==="add_menu_item"){
+      const it=coachMenuItem(a.name), day=getDay(TODAY);
+      if(day.food.some(x=>coachNorm(x.name)===coachNorm(it.name) && !x.eaten)) return {ok:false, message:it.name+" is already planned for today."};
+      day.food=day.food.concat([{id:uid(), name:it.name, slot:it.slot||it.meal||"Meal", kcal:+it.kcal, p:+it.protein||0, c:+it.carbs||0, f:+it.fat||0, eaten:false}]); saveDay(day);
+      return {ok:true, message:"Added "+it.name+" to Food as planned. Tick it when you eat it."};
+    }
+    if(a.type==="swap_exercise"){
+      const from=coachPlanName(a.from); doSwap(from, String(a.to).trim(), "coach", TODAY);
+      return {ok:!!usedFor(S.docs.workouts[TODAY], from), message:"Today's "+from+" is now "+String(a.to).trim()+" on Train."};
+    }
+    if(a.type==="show_exercise"){
+      const ex=coachExercise(a.name);
+      try{
+        if(window.ExerciseAnim && window.ExerciseDemos && window.EXERCISE_DEMOS && window.WorkoutLogger){
+          coachAnim=coachAnim||ExerciseAnim.create(); const id=ExerciseDemos.create(window.EXERCISE_DEMOS,{library:WorkoutLogger.library}).id(ex.name);
+          if(id && coachAnim.has(id)){ coachAnim.info=()=>({title:ex.name, cues:ex.cues||[], steps:ex.setup||[], video:null}); coachAnim.open(id); return {ok:true, message:"Opened the demo for "+ex.name+". Cues: "+(ex.cues||[]).slice(0,3).join("; ")+"."}; }
+        }
+      }catch(e){}
+      return {ok:true, message:(ex.cues&&ex.cues.length?"Cues: "+ex.cues.slice(0,4).join("; ")+". ":"")+(ex.mistakes&&ex.mistakes.length?"Watch for: "+ex.mistakes.slice(0,2).join(" "):"")};
+    }
+    return {ok:false, message:"Unknown action."};
+  }
+};
+let coachCache=null; // one computation per tick: the panel's getters all ask within the same call
 function coachOpts(){ if(coachCache) return coachCache; const o={today:TODAY, targets:APPT, rules:{floor:KCAL_FLOOR}, kcalTarget, plan:S.docs.prefs.main?.goalSetup||null}; coachCache=o; setTimeout(()=>{ coachCache=null; },0);
   try{ if(window.StrengthAnalytics) o.strength=StrengthAnalytics.analyze(S.docs, strengthOpts()); }catch(e){}
+  try{ if(window.RecoveryFatigue && RecoveryFatigue.summary) o.recoveryText=RecoveryFatigue.summary(S.docs, {today:TODAY, ...rfOpts()}); }catch(e){}
+  try{ if(window.Cardio && Cardio.summary) o.cardioText=Cardio.summary(S.docs, {today:TODAY}); }catch(e){}
+  try{ o.planToday=coachPlanToday(); o.exerciseNames=Object.values(PROGRAM).flat().map(t=>t[0]); o.exercise=coachExercise; }catch(e){}
   try{ if(window.EffortDeload) o.effort=EffortDeload.analyze(S.docs.workouts,{today:TODAY, dismissedAt:S.docs.prefs.main?.deloadDismissedAt}); }catch(e){}
   try{ if(window.TrendTDEE) o.tdee=TrendTDEE.estimate(S.docs,tdeeOpts()); }catch(e){}
   return o; }
@@ -43951,7 +44680,8 @@ function vProgress(){
     + coachSafe(()=>Coach.insightsHtml(S.docs, {...co, seen:S.docs.prefs.main?.coachSeen||{}}))
     + coachSafe(()=>Coach.reviewHtml(S.docs, co))
     + fold("wr","Weekly report","Weight, food, lifts", safeMod("WeeklyReport", ()=>WeeklyReport.html(S.docs, Object.assign({planLine:planWeekLine()}, view.wrWeek==null?{}:{week:view.wrWeek}))))
-    + fold("mr","Monthly recap","", safeMod("MonthlyRecap",()=>MonthlyRecap.html(S.docs, mrOpts())));
+    + fold("mr","Monthly recap","", safeMod("MonthlyRecap",()=>MonthlyRecap.html(S.docs, mrOpts())))
+    + coachSafe(()=>Coach.chatHtml(S.docs, co));
   return tabHead("Progress") + nav + body;
 }
 /* ---------- GUIDE ---------- */
@@ -44502,12 +45232,28 @@ try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css
 ["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
-  // 14-day review + Patterns in your logs (rule-based; the AI coach chat was removed Nov 2, 2026).
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget, plan:()=>S.docs.prefs.main?.goalSetup||null,
+    effort:()=>coachOpts().effort, tdee:()=>coachOpts().tdee, tab:()=>view.tab,
+    strength:()=>coachOpts().strength, recoveryText:()=>coachOpts().recoveryText, cardioText:()=>coachOpts().cardioText,
+    planToday:coachPlanToday, exerciseNames:()=>Object.values(PROGRAM).flat().map(t=>t[0]), exercise:coachExercise,
+    actionHost:coachActions,
     onDismiss:id=>{ const m=clone(S.docs.prefs.main||{}); m.coachSeen={...(m.coachSeen||{}), [id]:TODAY}; put("prefs","main",m,{quiet:true}); },
+    // Inside Claude: the page's sample capability (free, no API credit). Everywhere else (the Android app, any website copy):
+    // the Mizan coach service (worker/, a Cloudflare Worker holding the API key, Claude Haiku 5.5, the spending cap).
+    // Its address comes from AI settings (prefs/main.coachService) or cloud-config's coachEndpoint; none = quick questions only.
+    getSample:()=>window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
+    endpoint:()=>window.claude ? null : (S.docs.prefs.main?.coachService || (window.FITNESS_CLOUD_CONFIG||{}).coachEndpoint || null),
+    // Nothing goes to Anthropic until the person turns the AI chat on (the panel lists what is sent).
+    consent:()=>!!(S.docs.prefs.main?.coachAI?.consent),
+    setConsent:on=>{ const m=clone(S.docs.prefs.main||{}); m.coachAI={...(m.coachAI||{}), consent:on?TODAY:null}; put("prefs","main",m,{quiet:true}); },
+    setService:url=>{ const m=clone(S.docs.prefs.main||{}); if(url) m.coachService=url; else delete m.coachService; put("prefs","main",m,{quiet:true}); },
+    getToken:()=>window.CloudStore && CloudStore.idToken ? CloudStore.idToken() : Promise.resolve(null),
+    // Chat history: chats/main {msgs}, synced like everything else (DataIO backs it up, Clear chat empties it).
+    chats:{ load:()=>((S.docs.chats||{}).main||{}).msgs||[], save:msgs=>put("chats","main",{id:"main",msgs,at:Date.now()},{quiet:true}) },
     onApply: ch=>{ if(!ch || ch.key!=="profile.cutKcal" || !(+ch.to>0)) return;
       if(!coachPending || coachPending.to!==ch.to || Date.now()-coachPending.at>10000){ coachPending={to:ch.to, at:Date.now()}; toast(`Tap again to change your calorie target from ${Math.round(ch.from).toLocaleString("en-US")} to ${Math.round(ch.to).toLocaleString("en-US")} kcal.`); return; }
       coachPending=null; const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), cutKcal:+ch.to}; put("prefs","main",p); toast(`Calorie target is now ${Math.round(ch.to).toLocaleString("en-US")} kcal. Change it any time in Settings, Your numbers.`); } });
+  if(window.Coach && Coach.mountPanel) safe("coach panel", ()=>Coach.mountPanel(document.getElementById("coachHost")));
   if(window.MacroTarget){ const mst=document.createElement("style"); mst.textContent=MacroTarget.css; document.head.appendChild(mst);
     MacroTarget.bind(document, { date: () => view.date, render, onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items.map(it=>({id:uid(),eaten:false,...it}))); saveDay(day); toast("Added "+items[0].name+(items[0].eaten?"":". Tick it when you eat it.")); } }); }
   PhotoFood.bind(document, {
