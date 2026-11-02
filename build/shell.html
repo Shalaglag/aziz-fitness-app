@@ -1151,10 +1151,12 @@ function openGoalSetup(over){
   const existing = (prof.cutKcal||prof.goalKg||gs.result||hasRealEntries()) ? {profile:prof, targets:APPT} : null;
   gsOpen = GoalSetup.open({ answers, today:TODAY, existing, firstRun:!!(over&&over.firstRun), cycling:{available:!!window.CalorieCycling, on:!!ccState().on},
     onBack: window.AndroidShell ? fn=>AndroidShell.onBack(fn) : null,
-    onApply:(r,a)=>{ const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), ...r.profile}; p.goalSetup={answers:a, result:r, at:new Date().toISOString()}; if(window.CalorieCycling && typeof a.cycling==="boolean" && !!(p.cycling||{}).on!==a.cycling) p.cycling={...(p.cycling||{}), on:a.cycling}; put("prefs","main",p); toast(`Plan set: ${fkc(r.kcal)} kcal, ${r.protein} g protein${r.endDate?", goal around "+fmt(r.endDate,{month:"short",day:"numeric",year:"numeric"}):""}.`); },
+    onApply:(r,a)=>{ const p=clone(S.docs.prefs.main||{}); p.profile={...(p.profile||{}), ...r.profile}; p.goalSetup={answers:a, result:r, at:new Date().toISOString()}; if(window.CalorieCycling && typeof a.cycling==="boolean" && !!(p.cycling||{}).on!==a.cycling) p.cycling={...(p.cycling||{}), on:a.cycling}; put("prefs","main",p); logPlanMarkers(a); toast(`Plan set: ${fkc(r.kcal)} kcal, ${r.protein} g protein${r.endDate?", goal around "+fmt(r.endDate,{month:"short",day:"numeric",year:"numeric"}):""}.`); },
     onSkip:()=>{ const p=clone(S.docs.prefs.main||{}); p.goalSetup={skipped:true, at:new Date().toISOString()}; put("prefs","main",p,{quiet:true}); toast("You can set your goal any time in Settings → Your numbers."); },
     onClose:()=>{ gsOpen=null; } });
 }
+// Body fat and waist typed in the questionnaire become Health markers entries (editable there), one per measured date.
+function logPlanMarkers(a){ if(!window.HealthMarkers || !a) return; [["bodyfat", a.bodyFatPct, a.bodyFatAt],["waist", a.waistCm, a.waistAt]].forEach(([preset,v,date])=>{ try{ if(v==null||!date) return; let doc=Object.values(S.docs.markers||{}).find(m=>m&&m.preset===preset); if(!doc){ const n=HealthMarkers.newMarker({preset},{uid}); if(!n.ok) return; doc=n.doc; } if((doc.entries||[]).some(e=>e.date===date && +e.v===+v)) return; const r=HealthMarkers.addEntry(doc,{date, value:String(v), note:"from goal setup"},{uid}); if(r.ok) put("markers", r.doc.id, r.doc, {quiet:true}); }catch(e){ console.error("[plan markers]",e); } }); }
 // New user: no entries and no plan yet → the questionnaire opens first. Once per install; Skip is remembered.
 function maybeFirstRunSetup(){
   if(gsFirstRunChecked || gsOpen || !window.GoalSetup || S.mode==="loading") return;

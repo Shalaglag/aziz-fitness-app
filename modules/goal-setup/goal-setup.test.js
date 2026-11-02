@@ -141,3 +141,31 @@ test('open(): walks the steps in a DOM, validates each, and only calls onApply o
   assert.equal(doc.querySelector('.gs-wrap'), null);
   h.close();
 });
+
+test('body fat (optional): lean-mass formula averaged in, labelled with the method\'s error band; protein from lean mass; nothing predicted', () => {
+  const r = run({ bodyFatPct: 22, bodyFatMethod: 'scale', bodyFatAt: '2026-11-01' });
+  assert.equal(r.tdeeSource, 'bodyfat');
+  assert.equal(r.body.leanKg, 71.7); assert.equal(r.body.fatKg, 20.2); assert.equal(r.body.pm, 6); assert.equal(r.body.at, '2026-11-01');
+  const katch = Math.round(370 + 21.6 * 71.7);
+  assert.equal(r.body.bmrKatch, katch); assert.equal(r.tdee, Math.round((1854 + katch) / 2 * 1.55));
+  assert.ok(r.body.tdeeLo <= r.tdee && r.tdee <= r.body.tdeeHi, JSON.stringify([r.body.tdeeLo, r.tdee, r.body.tdeeHi]));
+  assert.ok(r.notes.some(n => /smart scale \(bia\) \(usually within ±6 points, measured Nov 1\)/.test(n) && /treat it as a range, not a reading/.test(n)));
+  assert.equal(r.protein, 185, '2.6 g × 71.7 kg lean = 186 → 185');
+  assert.ok(r.notes.some(n => /lean mass \(2\.6 g per kg/.test(n)));
+  assert.ok(!r.notes.concat(r.warnings).some(n => /body fat will|will be \d+ %/.test(n)), 'no future body-fat promise');
+  const dexa = run({ bodyFatPct: 22, bodyFatMethod: 'dexa' });
+  assert.equal(dexa.body.pm, 3); assert.ok(dexa.body.tdeeHi - dexa.body.tdeeLo < r.body.tdeeHi - r.body.tdeeLo, 'a scan narrows the band');
+  assert.equal(run({ bodyFatPct: 22 }).body.method, 'scale', 'method defaults to the least certain');
+  assert.equal(run({}).body, null); assert.equal(run({}).tdeeSource, 'formula');
+});
+
+test('waist (optional): ratio to height with the health note, never a body-fat claim or a formula change', () => {
+  const r = run({ waistCm: 95, waistAt: '2026-11-01' });
+  assert.equal(r.tdeeSource, 'formula'); assert.equal(r.tdee, Math.round(1854 * 1.55));
+  assert.equal(r.body.whtr, 0.55); assert.equal(r.body.waistAt, '2026-11-01');
+  assert.ok(r.notes.some(n => /Waist 95 cm is 0\.55 of your height \(over 0\.5/.test(n) && /not a body-fat measurement/.test(n)));
+  assert.ok(run({ waistCm: 80 }).notes.some(n => /under 0\.5, the usual healthy marker/.test(n)));
+  const e = G.compute(Object.assign({}, AZIZ, { bodyFatPct: 70, waistCm: 30 })).errors;
+  assert.ok(e.some(x => x.field === 'bodyFatPct') && e.some(x => x.field === 'waistCm'));
+  assert.equal(G.compute(Object.assign({}, AZIZ, { bodyFatPct: '' , waistCm: undefined })).ok, true, 'blank optional fields are fine');
+});
