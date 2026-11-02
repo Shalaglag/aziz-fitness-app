@@ -46,3 +46,16 @@ test('engine poses each exercise with the hands on the handle and the fingers cl
   assert.ok(curl.every(d => d > 90), 'fingers wrap the handle: ' + curl.map(Math.round));
   assert.ok(g.thumbGapMm < 12, 'thumb closes on the handle: ' + g.thumbGapMm.toFixed(1) + ' mm');
 });
+
+test('both hands on one spot (goblet squat, landmine) keep the equipment in place', async () => {
+  const THREE = await import(R + 'app/vendor/three-r160/three.module.min.js');
+  const { GLTFLoader } = await import(R + 'app/vendor/three-r160/GLTFLoader.js');
+  const buf = fs.readFileSync(R + 'app/3d/body.glb');
+  const gltf = await new GLTFLoader().parseAsync(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length), '');
+  const e = X.core(THREE, gltf, META, { data: { exercises: {} } });
+  for (const id of ['goblet-squat-dumbbell', 'landmine-press']) {
+    const cur = e.setExercise(id);
+    assert.ok(Number.isFinite(cur.radius) && Number.isFinite(cur.center.x), id + ' framing');
+    for (const sh of cur.shapes) for (const k of ['a', 'b', 'c']) if (sh[k]) assert.ok(sh[k].every(Number.isFinite), id + ' equipment point ' + k);
+  }
+});

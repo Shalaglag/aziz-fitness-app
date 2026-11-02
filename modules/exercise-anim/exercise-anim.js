@@ -2173,9 +2173,10 @@
     }
     function close() { if (typeof document === 'undefined') return; document.querySelectorAll('.ea-full').forEach(n => n.remove()); }
 
-    // List picture (Nov 1): a small still of the clip (tools/clip-thumbs/make-thumbs.js -> <base>thumbs/<id>.webp),
-    // else a still of the 3D demo (make-3d-thumbs.js -> <base>thumbs3d/<id>.webp), else null and the logger shows a letter circle.
-    const thumb = id => { const b = clipData().base || 'clips/'; return clipFor(id) ? b + 'thumbs/' + id + '.webp' : DEFS[id] ? b + 'thumbs3d/' + id + '.webp' : null; };
+    // List picture (Nov 2, Aziz's pick): a still of the shared 3D body (Studio A look, Extreme build) for every exercise
+    // (tools/clip-thumbs/make-3d-thumbs.js -> <base>thumbs3d/<id>.webp), else null and the logger shows a letter circle.
+    // The old clip stills (<base>thumbs/) stay on disk but are no longer shown.
+    const thumb = id => DEFS[id] ? (clipData().base || 'clips/') + 'thumbs3d/' + id + '.webp' : null;
     return Object.assign(api, { has, cardHtml, attach, open, close, thumb, ids: () => Object.keys(DEFS), css });
   }
 

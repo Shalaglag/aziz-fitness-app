@@ -414,7 +414,9 @@
       // equipment: shapes held in the hands move with them; cable and lever ends attach to the handle ends
       const both = held.L && held.R && held.L.hd.i === held.R.hd.i;
       const offAt = q => {
-        if (both) { const a = held.L.hd.p, b = held.R.hd.p, d = b.clone().sub(a), u0 = q.clone().sub(a).dot(d) / d.lengthSq(); if (a.clone().addScaledVector(d, u0).distanceTo(q) > 0.04) return null; const u = Math.max(0, Math.min(1, u0)); return held.L.off.clone().lerp(held.R.off, u); }   // only points on the bar's line (bar, sleeves, plates)
+        if (both) { const a = held.L.hd.p, b = held.R.hd.p, d = b.clone().sub(a);
+          if (d.lengthSq() < 1e-8) return a.distanceTo(q) > 0.3 ? null : held.L.off.clone().lerp(held.R.off, 0.5);   // both hands at one spot (goblet, landmine): move the implement with them
+          const u0 = q.clone().sub(a).dot(d) / d.lengthSq(); if (a.clone().addScaledVector(d, u0).distanceTo(q) > 0.04) return null; const u = Math.max(0, Math.min(1, u0)); return held.L.off.clone().lerp(held.R.off, u); }   // only points on the bar's line (bar, sleeves, plates)
         for (const s of SIDES) if (held[s]) { const H2 = held[s].hd, d = H2.B.clone().sub(H2.A), L = d.length(); d.normalize(); const t2 = Math.max(-0.25, Math.min(L + 0.25, q.clone().sub(H2.A).dot(d))); if (H2.A.clone().addScaledVector(d, t2).distanceTo(q) < 0.04) { const hh = held[s]; if (!hh.rot) return hh.off; const p2 = q.clone().add(hh.off); return p2.sub(hh.gp).applyQuaternion(hh.rot).add(hh.gp).sub(q); } }
         return null;
       };

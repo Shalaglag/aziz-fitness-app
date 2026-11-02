@@ -1,0 +1,3857 @@
+{
+"_comment": "List-picture data for tools/clip-thumbs/make-3d-thumbs.js: muscles per exercise from the exercise research (exercise-muscles.csv, 37-muscle vocabulary) and a grip type guessed from the name. Only used to render the stills; not reviewed.",
+"exercises": {
+"bench-press-barbell": {
+"primary": [
+"chest_mid",
+"chest_lower"
+],
+"secondary": [
+"chest_upper",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"incline-bench-press-dumbbell": {
+"primary": [
+"chest_upper"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"gundam-chest-press-machine": {
+"primary": [
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front",
+"chest_upper",
+"chest_lower"
+],
+"gripType": "overhand"
+},
+"cable-crossover": {
+"primary": [
+"chest_mid"
+],
+"secondary": [
+"chest_upper",
+"chest_lower",
+"delt_front",
+"biceps_short"
+],
+"gripType": "overhand"
+},
+"seated-overhead-press-dumbbell": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"delt_side",
+"triceps_long",
+"triceps_lateral",
+"traps_upper",
+"chest_upper",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"lateral-raise-cable": {
+"primary": [
+"delt_side"
+],
+"secondary": [
+"delt_front",
+"traps_upper",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"lateral-raise-dumbbell": {
+"primary": [
+"delt_side"
+],
+"secondary": [
+"delt_front",
+"traps_upper",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"standing-lateral-raise-machine": {
+"primary": [
+"delt_side"
+],
+"secondary": [
+"delt_front",
+"traps_upper",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"front-raise-dumbbell": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"chest_upper",
+"delt_side",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"reverse-fly-machine": {
+"primary": [
+"delt_rear"
+],
+"secondary": [
+"rhomboids",
+"traps_mid",
+"delt_side",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"triceps-extension-cable": {
+"primary": [
+"triceps_long"
+],
+"secondary": [
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"triceps-pushdown-straight-bar": {
+"primary": [
+"triceps_lateral"
+],
+"secondary": [
+"triceps_long",
+"forearm_extensors"
+],
+"gripType": "overhand"
+},
+"triceps-rope-pushdown-cable": {
+"primary": [
+"triceps_lateral"
+],
+"secondary": [
+"triceps_long"
+],
+"gripType": "neutral"
+},
+"lat-pulldown-wide-grip-cable": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"rhomboids",
+"traps_mid",
+"traps_lower",
+"biceps_short",
+"brachialis",
+"delt_rear"
+],
+"gripType": "overhand"
+},
+"lat-pulldown-single-arm-cable": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"biceps_long",
+"brachialis",
+"obliques",
+"rhomboids"
+],
+"gripType": "overhand"
+},
+"seated-row-cable": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major",
+"erector_spinae"
+],
+"gripType": "neutral"
+},
+"pullover-machine": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"chest_lower",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"t-bar-row": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"erector_spinae",
+"hamstrings"
+],
+"gripType": "overhand"
+},
+"iso-lateral-low-row-plate-loaded": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major"
+],
+"gripType": "neutral"
+},
+"shrug-machine": {
+"primary": [
+"traps_upper"
+],
+"secondary": [
+"traps_mid",
+"forearm_flexors"
+],
+"gripType": "neutral"
+},
+"bicep-curl-dumbbell": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "underhand"
+},
+"seated-bicep-curl-machine": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "underhand"
+},
+"standing-bicep-curl-cable": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "underhand"
+},
+"hack-squat-machine": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"squat-smith-machine": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"leg-extension-machine": {
+"primary": [
+"quads_vasti",
+"rectus_femoris"
+],
+"secondary": [],
+"gripType": "overhand"
+},
+"lying-leg-curl-machine": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"calves_gastrocnemius"
+],
+"gripType": "underhand"
+},
+"hip-adductor-machine": {
+"primary": [
+"adductors"
+],
+"secondary": [
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"hip-abductor-machine": {
+"primary": [
+"glute_med"
+],
+"secondary": [
+"glute_max"
+],
+"gripType": "overhand"
+},
+"standing-calf-raise-machine": {
+"primary": [
+"calves_gastrocnemius"
+],
+"secondary": [
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"calf-press-leg-press": {
+"primary": [
+"calves_gastrocnemius"
+],
+"secondary": [
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"seated-abs-machine": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"obliques"
+],
+"gripType": "overhand"
+},
+"treadmill-incline-walk": {
+"primary": [
+"glute_max",
+"quads_vasti",
+"calves_gastrocnemius"
+],
+"secondary": [
+"hamstrings",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"incline-bench-press-barbell": {
+"primary": [
+"chest_upper"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"decline-bench-press-barbell": {
+"primary": [
+"chest_lower",
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"close-grip-bench-press-barbell": {
+"primary": [
+"triceps_long",
+"triceps_lateral",
+"chest_mid"
+],
+"secondary": [
+"delt_front",
+"chest_lower",
+"chest_upper"
+],
+"gripType": "overhand"
+},
+"bench-press-dumbbell": {
+"primary": [
+"chest_mid",
+"chest_lower"
+],
+"secondary": [
+"chest_upper",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"bench-press-smith-machine": {
+"primary": [
+"chest_mid",
+"chest_lower"
+],
+"secondary": [
+"chest_upper",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"incline-bench-press-smith-machine": {
+"primary": [
+"chest_upper"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"chest-press-machine": {
+"primary": [
+"chest_mid",
+"chest_lower"
+],
+"secondary": [
+"chest_upper",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"incline-chest-press-machine": {
+"primary": [
+"chest_upper"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"chest-fly-dumbbell": {
+"primary": [
+"chest_mid"
+],
+"secondary": [
+"chest_upper",
+"chest_lower",
+"delt_front",
+"biceps_short"
+],
+"gripType": "neutral"
+},
+"pec-deck-machine": {
+"primary": [
+"chest_mid"
+],
+"secondary": [
+"chest_upper",
+"chest_lower",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"low-to-high-cable-fly": {
+"primary": [
+"chest_upper"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"biceps_short"
+],
+"gripType": "neutral"
+},
+"push-up": {
+"primary": [
+"chest_mid",
+"chest_lower"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front",
+"chest_upper",
+"serratus_anterior",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"chest-dip": {
+"primary": [
+"chest_lower",
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"lat-pulldown-close-grip-cable": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"rhomboids",
+"traps_mid",
+"biceps_long",
+"biceps_short",
+"brachialis"
+],
+"gripType": "overhand"
+},
+"lat-pulldown-machine": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"rhomboids",
+"traps_mid",
+"traps_lower",
+"biceps_short",
+"brachialis",
+"delt_rear"
+],
+"gripType": "overhand"
+},
+"pull-up": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"rhomboids",
+"traps_lower",
+"biceps_short",
+"brachialis",
+"delt_rear",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"chin-up": {
+"primary": [
+"lats",
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"teres_major",
+"brachialis",
+"rhomboids",
+"traps_lower",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"assisted-pull-up-machine": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"biceps_short",
+"brachialis",
+"rhomboids",
+"traps_lower"
+],
+"gripType": "overhand"
+},
+"seated-row-machine": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major",
+"erector_spinae"
+],
+"gripType": "neutral"
+},
+"iso-lateral-high-row-plate-loaded": {
+"primary": [
+"lats",
+"teres_major"
+],
+"secondary": [
+"traps_mid",
+"rhomboids",
+"biceps_long",
+"brachialis",
+"delt_rear",
+"traps_lower"
+],
+"gripType": "neutral"
+},
+"bent-over-row-barbell": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"erector_spinae",
+"hamstrings",
+"teres_major"
+],
+"gripType": "overhand"
+},
+"one-arm-row-dumbbell": {
+"primary": [
+"lats"
+],
+"secondary": [
+"rhomboids",
+"traps_mid",
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major"
+],
+"gripType": "overhand"
+},
+"chest-supported-row-machine": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major"
+],
+"gripType": "overhand"
+},
+"straight-arm-pulldown-cable": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"triceps_long",
+"chest_lower",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"shrug-dumbbell": {
+"primary": [
+"traps_upper"
+],
+"secondary": [
+"traps_mid",
+"forearm_flexors"
+],
+"gripType": "neutral"
+},
+"shrug-barbell": {
+"primary": [
+"traps_upper"
+],
+"secondary": [
+"traps_mid",
+"forearm_flexors"
+],
+"gripType": "neutral"
+},
+"deadlift-barbell": {
+"primary": [
+"glute_max",
+"hamstrings",
+"erector_spinae"
+],
+"secondary": [
+"quads_vasti",
+"adductors",
+"traps_upper",
+"traps_mid",
+"lats",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"romanian-deadlift-barbell": {
+"primary": [
+"hamstrings",
+"glute_max"
+],
+"secondary": [
+"erector_spinae",
+"adductors",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"romanian-deadlift-dumbbell": {
+"primary": [
+"hamstrings",
+"glute_max"
+],
+"secondary": [
+"erector_spinae",
+"adductors",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"back-extension": {
+"primary": [
+"erector_spinae"
+],
+"secondary": [
+"glute_max",
+"hamstrings"
+],
+"gripType": "overhand"
+},
+"overhead-press-barbell": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"delt_side",
+"triceps_long",
+"triceps_lateral",
+"traps_upper",
+"chest_upper",
+"serratus_anterior",
+"abs_rectus",
+"obliques"
+],
+"gripType": "overhand"
+},
+"shoulder-press-machine": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"delt_side",
+"triceps_long",
+"triceps_lateral",
+"traps_upper",
+"chest_upper",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"arnold-press-dumbbell": {
+"primary": [
+"delt_front",
+"delt_side"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"traps_upper",
+"chest_upper"
+],
+"gripType": "overhand"
+},
+"lateral-raise-machine": {
+"primary": [
+"delt_side"
+],
+"secondary": [
+"delt_front",
+"traps_upper",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"front-raise-cable": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"chest_upper",
+"delt_side",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"reverse-fly-dumbbell": {
+"primary": [
+"delt_rear"
+],
+"secondary": [
+"rhomboids",
+"traps_mid",
+"delt_side",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"face-pull-cable": {
+"primary": [
+"delt_rear",
+"rotator_cuff"
+],
+"secondary": [
+"traps_mid",
+"rhomboids",
+"traps_lower"
+],
+"gripType": "overhand"
+},
+"upright-row-cable": {
+"primary": [
+"delt_side",
+"traps_upper"
+],
+"secondary": [
+"delt_front",
+"biceps_long",
+"brachialis"
+],
+"gripType": "overhand"
+},
+"bicep-curl-barbell": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "underhand"
+},
+"hammer-curl-dumbbell": {
+"primary": [
+"brachialis",
+"brachioradialis"
+],
+"secondary": [
+"biceps_long",
+"biceps_short",
+"forearm_extensors"
+],
+"gripType": "neutral"
+},
+"incline-curl-dumbbell": {
+"primary": [
+"biceps_long"
+],
+"secondary": [
+"biceps_short",
+"brachialis",
+"brachioradialis"
+],
+"gripType": "underhand"
+},
+"preacher-curl-machine": {
+"primary": [
+"biceps_short",
+"brachialis"
+],
+"secondary": [
+"biceps_long",
+"brachioradialis"
+],
+"gripType": "underhand"
+},
+"preacher-curl-ez-bar": {
+"primary": [
+"biceps_short",
+"brachialis"
+],
+"secondary": [
+"biceps_long",
+"brachioradialis"
+],
+"gripType": "underhand"
+},
+"bayesian-curl-cable": {
+"primary": [
+"biceps_long"
+],
+"secondary": [
+"biceps_short",
+"brachialis",
+"brachioradialis"
+],
+"gripType": "underhand"
+},
+"concentration-curl-dumbbell": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis"
+],
+"gripType": "underhand"
+},
+"single-arm-pushdown-cable": {
+"primary": [
+"triceps_lateral"
+],
+"secondary": [
+"triceps_long",
+"forearm_extensors"
+],
+"gripType": "overhand"
+},
+"skull-crusher-ez-bar": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [],
+"gripType": "overhand"
+},
+"overhead-triceps-extension-dumbbell": {
+"primary": [
+"triceps_long"
+],
+"secondary": [
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"triceps-dip-machine": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [
+"chest_lower",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"wrist-curl-dumbbell": {
+"primary": [
+"forearm_flexors"
+],
+"secondary": [],
+"gripType": "underhand"
+},
+"reverse-curl-ez-bar": {
+"primary": [
+"brachioradialis",
+"brachialis"
+],
+"secondary": [
+"forearm_extensors",
+"biceps_long",
+"biceps_short"
+],
+"gripType": "overhand"
+},
+"squat-barbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"front-squat-barbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"pendulum-squat-machine": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"leg-press-machine": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings"
+],
+"gripType": "overhand"
+},
+"bulgarian-split-squat-dumbbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"walking-lunge-dumbbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"glute_med",
+"rectus_femoris",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"goblet-squat-dumbbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"seated-leg-curl-machine": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"calves_gastrocnemius"
+],
+"gripType": "underhand"
+},
+"standing-leg-curl-machine": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"calves_gastrocnemius"
+],
+"gripType": "underhand"
+},
+"nordic-curl": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"calves_gastrocnemius",
+"glute_max"
+],
+"gripType": "underhand"
+},
+"glute-ham-raise": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"calves_gastrocnemius",
+"glute_max",
+"erector_spinae"
+],
+"gripType": "overhand"
+},
+"hip-thrust-barbell": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"quads_vasti",
+"adductors",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"hip-thrust-machine": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"quads_vasti",
+"adductors",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"reverse-hyper-machine": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"erector_spinae"
+],
+"gripType": "overhand"
+},
+"cable-pull-through": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"erector_spinae"
+],
+"gripType": "overhand"
+},
+"glute-kickback-cable": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"glute_med",
+"erector_spinae"
+],
+"gripType": "overhand"
+},
+"glute-kickback-machine": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"glute_med",
+"erector_spinae"
+],
+"gripType": "overhand"
+},
+"seated-calf-raise-machine": {
+"primary": [
+"calves_soleus"
+],
+"secondary": [
+"calves_gastrocnemius"
+],
+"gripType": "overhand"
+},
+"cable-crunch": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"obliques"
+],
+"gripType": "overhand"
+},
+"decline-crunch": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"obliques"
+],
+"gripType": "overhand"
+},
+"hanging-leg-raise": {
+"primary": [
+"abs_rectus",
+"hip_flexors"
+],
+"secondary": [
+"obliques",
+"rectus_femoris",
+"forearm_flexors",
+"lats"
+],
+"gripType": "overhand"
+},
+"ab-wheel-rollout": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"lats",
+"obliques",
+"delt_front",
+"hip_flexors",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"russian-twist": {
+"primary": [
+"obliques"
+],
+"secondary": [
+"abs_rectus",
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"plank": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"obliques",
+"delt_front",
+"serratus_anterior",
+"glute_max",
+"quads_vasti"
+],
+"gripType": "overhand"
+},
+"treadmill-run": {
+"primary": [
+"quads_vasti",
+"glute_max",
+"calves_gastrocnemius"
+],
+"secondary": [
+"hamstrings",
+"calves_soleus",
+"hip_flexors",
+"tibialis_anterior",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"stationary-bike": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"calves_gastrocnemius",
+"rectus_femoris",
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"elliptical": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"calves_gastrocnemius",
+"delt_front",
+"lats"
+],
+"gripType": "overhand"
+},
+"rowing-machine": {
+"primary": [
+"quads_vasti",
+"glute_max",
+"lats"
+],
+"secondary": [
+"hamstrings",
+"traps_mid",
+"rhomboids",
+"biceps_long",
+"delt_rear",
+"erector_spinae",
+"calves_gastrocnemius"
+],
+"gripType": "overhand"
+},
+"stair-climber": {
+"primary": [
+"glute_max",
+"quads_vasti"
+],
+"secondary": [
+"hamstrings",
+"calves_gastrocnemius"
+],
+"gripType": "overhand"
+},
+"decline-bench-press-dumbbell": {
+"primary": [
+"chest_lower",
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"incline-chest-fly-dumbbell": {
+"primary": [
+"chest_upper"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"biceps_short"
+],
+"gripType": "neutral"
+},
+"chest-fly-cable": {
+"primary": [
+"chest_mid"
+],
+"secondary": [
+"chest_upper",
+"chest_lower",
+"delt_front",
+"biceps_short"
+],
+"gripType": "neutral"
+},
+"incline-cable-fly": {
+"primary": [
+"chest_upper"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"biceps_short"
+],
+"gripType": "neutral"
+},
+"chest-press-plate-loaded": {
+"primary": [
+"chest_mid",
+"chest_lower"
+],
+"secondary": [
+"chest_upper",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"pullover-dumbbell": {
+"primary": [
+"lats",
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"teres_major",
+"serratus_anterior",
+"chest_lower"
+],
+"gripType": "overhand"
+},
+"weighted-dip": {
+"primary": [
+"chest_lower",
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"bench-dip": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [
+"chest_lower",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"triceps-dip": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [
+"chest_lower",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"triceps-extension-machine": {
+"primary": [
+"triceps_lateral",
+"triceps_long"
+],
+"secondary": [],
+"gripType": "overhand"
+},
+"triceps-kickback-dumbbell": {
+"primary": [
+"triceps_lateral",
+"triceps_long"
+],
+"secondary": [
+"delt_rear"
+],
+"gripType": "overhand"
+},
+"triceps-pushdown-v-bar": {
+"primary": [
+"triceps_lateral"
+],
+"secondary": [
+"triceps_long",
+"forearm_extensors"
+],
+"gripType": "neutral"
+},
+"lat-pulldown-reverse-grip": {
+"primary": [
+"lats",
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"teres_major",
+"brachialis",
+"rhomboids",
+"traps_lower"
+],
+"gripType": "underhand"
+},
+"lat-pulldown-v-bar": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"rhomboids",
+"traps_mid",
+"biceps_long",
+"biceps_short",
+"brachialis"
+],
+"gripType": "neutral"
+},
+"lat-pulldown-neutral-grip": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"brachialis",
+"brachioradialis",
+"biceps_long",
+"rhomboids",
+"traps_lower"
+],
+"gripType": "neutral"
+},
+"pull-up-wide-grip": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"rhomboids",
+"traps_mid",
+"traps_lower",
+"delt_rear",
+"brachialis",
+"biceps_short"
+],
+"gripType": "overhand"
+},
+"pull-up-neutral-grip": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"brachialis",
+"brachioradialis",
+"biceps_long",
+"rhomboids",
+"traps_lower"
+],
+"gripType": "neutral"
+},
+"pull-up-weighted": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"rhomboids",
+"traps_lower",
+"biceps_short",
+"brachialis",
+"delt_rear",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"seated-row-wide-grip-cable": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major",
+"erector_spinae"
+],
+"gripType": "neutral"
+},
+"seated-row-single-arm-cable": {
+"primary": [
+"lats"
+],
+"secondary": [
+"rhomboids",
+"traps_mid",
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major"
+],
+"gripType": "neutral"
+},
+"seated-row-neutral-grip-cable": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major",
+"erector_spinae"
+],
+"gripType": "neutral"
+},
+"bent-over-row-dumbbell": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"erector_spinae",
+"hamstrings",
+"teres_major"
+],
+"gripType": "overhand"
+},
+"chest-supported-row-dumbbell": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major"
+],
+"gripType": "overhand"
+},
+"chest-supported-t-bar-row-machine": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major"
+],
+"gripType": "overhand"
+},
+"high-row-machine": {
+"primary": [
+"lats",
+"teres_major"
+],
+"secondary": [
+"traps_mid",
+"rhomboids",
+"biceps_long",
+"brachialis",
+"delt_rear",
+"traps_lower"
+],
+"gripType": "overhand"
+},
+"low-row-machine": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major"
+],
+"gripType": "overhand"
+},
+"sumo-deadlift-barbell": {
+"primary": [
+"glute_max",
+"adductors",
+"quads_vasti"
+],
+"secondary": [
+"hamstrings",
+"erector_spinae",
+"traps_upper",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"trap-bar-deadlift": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"erector_spinae",
+"traps_upper",
+"forearm_flexors",
+"adductors"
+],
+"gripType": "overhand"
+},
+"stiff-leg-deadlift-barbell": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"glute_max",
+"erector_spinae",
+"adductors",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"good-morning-barbell": {
+"primary": [
+"hamstrings",
+"glute_max"
+],
+"secondary": [
+"erector_spinae",
+"adductors"
+],
+"gripType": "overhand"
+},
+"single-leg-romanian-deadlift-dumbbell": {
+"primary": [
+"hamstrings",
+"glute_max"
+],
+"secondary": [
+"glute_med",
+"erector_spinae",
+"adductors",
+"obliques"
+],
+"gripType": "overhand"
+},
+"overhead-press-dumbbell": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"delt_side",
+"triceps_long",
+"triceps_lateral",
+"traps_upper",
+"chest_upper",
+"serratus_anterior",
+"abs_rectus",
+"obliques"
+],
+"gripType": "overhand"
+},
+"seated-overhead-press-barbell": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"delt_side",
+"triceps_long",
+"triceps_lateral",
+"traps_upper",
+"chest_upper",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"overhead-press-smith-machine": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"delt_side",
+"triceps_long",
+"triceps_lateral",
+"traps_upper",
+"chest_upper",
+"serratus_anterior",
+"abs_rectus",
+"obliques"
+],
+"gripType": "overhand"
+},
+"shoulder-press-plate-loaded": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"delt_side",
+"triceps_long",
+"triceps_lateral",
+"traps_upper",
+"chest_upper",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"lateral-raise-single-arm-cable": {
+"primary": [
+"delt_side"
+],
+"secondary": [
+"delt_front",
+"traps_upper",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"reverse-fly-cable": {
+"primary": [
+"delt_rear"
+],
+"secondary": [
+"rhomboids",
+"traps_mid",
+"delt_side",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"bicep-curl-ez-bar": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "underhand"
+},
+"bicep-curl-cable": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "underhand"
+},
+"bicep-curl-single-arm-cable": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "underhand"
+},
+"bicep-curl-seated-dumbbell": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "underhand"
+},
+"hammer-curl-cable-rope": {
+"primary": [
+"brachialis",
+"brachioradialis"
+],
+"secondary": [
+"biceps_long",
+"biceps_short",
+"forearm_extensors"
+],
+"gripType": "neutral"
+},
+"preacher-curl-dumbbell": {
+"primary": [
+"biceps_short",
+"brachialis"
+],
+"secondary": [
+"biceps_long",
+"brachioradialis"
+],
+"gripType": "underhand"
+},
+"wrist-curl-barbell": {
+"primary": [
+"forearm_flexors"
+],
+"secondary": [],
+"gripType": "underhand"
+},
+"squat-dumbbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"squat-machine": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"lunge-dumbbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"glute_med",
+"rectus_femoris",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"lunge-barbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"glute_med",
+"rectus_femoris",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"reverse-lunge-dumbbell": {
+"primary": [
+"glute_max",
+"quads_vasti"
+],
+"secondary": [
+"hamstrings",
+"adductors",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"split-squat-dumbbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"step-up-dumbbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"glute_med",
+"adductors",
+"calves_gastrocnemius"
+],
+"gripType": "overhand"
+},
+"bodyweight-squat": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"hip-thrust-smith-machine": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"quads_vasti",
+"adductors",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"calf-raise-smith-machine": {
+"primary": [
+"calves_gastrocnemius"
+],
+"secondary": [
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"crunch": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"obliques"
+],
+"gripType": "overhand"
+},
+"sit-up": {
+"primary": [
+"abs_rectus",
+"hip_flexors"
+],
+"secondary": [
+"obliques",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"lying-leg-raise": {
+"primary": [
+"abs_rectus",
+"hip_flexors"
+],
+"secondary": [
+"rectus_femoris",
+"obliques"
+],
+"gripType": "overhand"
+},
+"hanging-knee-raise": {
+"primary": [
+"abs_rectus",
+"hip_flexors"
+],
+"secondary": [
+"obliques",
+"rectus_femoris",
+"forearm_flexors",
+"lats"
+],
+"gripType": "overhand"
+},
+"captain-s-chair-leg-raise": {
+"primary": [
+"abs_rectus",
+"hip_flexors"
+],
+"secondary": [
+"obliques",
+"rectus_femoris",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"side-plank": {
+"primary": [
+"obliques"
+],
+"secondary": [
+"glute_med",
+"abs_rectus",
+"delt_side"
+],
+"gripType": "overhand"
+},
+"copenhagen-plank": {
+"primary": [
+"adductors"
+],
+"secondary": [
+"obliques",
+"abs_rectus",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"pallof-press-cable": {
+"primary": [
+"obliques"
+],
+"secondary": [
+"abs_rectus",
+"delt_front",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"cable-woodchop": {
+"primary": [
+"obliques"
+],
+"secondary": [
+"abs_rectus",
+"delt_front",
+"glute_max",
+"quads_vasti"
+],
+"gripType": "overhand"
+},
+"walking-outdoor": {
+"primary": [
+"glute_max",
+"quads_vasti",
+"calves_gastrocnemius"
+],
+"secondary": [
+"hamstrings",
+"tibialis_anterior",
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"running-outdoor": {
+"primary": [
+"quads_vasti",
+"glute_max",
+"calves_gastrocnemius"
+],
+"secondary": [
+"hamstrings",
+"calves_soleus",
+"hip_flexors",
+"tibialis_anterior",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"cycling-outdoor": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"calves_gastrocnemius",
+"rectus_femoris",
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"decline-bench-press-smith-machine": {
+"primary": [
+"chest_lower",
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"chest-press-cable": {
+"primary": [
+"chest_mid",
+"chest_lower"
+],
+"secondary": [
+"chest_upper",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"floor-press-barbell": {
+"primary": [
+"chest_mid",
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [
+"delt_front",
+"chest_lower",
+"chest_upper"
+],
+"gripType": "overhand"
+},
+"incline-chest-press-plate-loaded": {
+"primary": [
+"chest_upper"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"triceps_long",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"decline-chest-press-machine": {
+"primary": [
+"chest_lower",
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"incline-push-up": {
+"primary": [
+"chest_lower",
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"decline-push-up": {
+"primary": [
+"chest_upper",
+"chest_mid"
+],
+"secondary": [
+"delt_front",
+"triceps_long",
+"triceps_lateral",
+"serratus_anterior",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"diamond-push-up": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"chest_lower",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"triceps-kickback-cable": {
+"primary": [
+"triceps_lateral",
+"triceps_long"
+],
+"secondary": [
+"delt_rear"
+],
+"gripType": "overhand"
+},
+"triceps-pushdown-reverse-grip": {
+"primary": [
+"triceps_lateral"
+],
+"secondary": [
+"triceps_long",
+"forearm_extensors"
+],
+"gripType": "underhand"
+},
+"lying-triceps-extension-dumbbell": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [],
+"gripType": "overhand"
+},
+"skull-crusher-dumbbell": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [],
+"gripType": "overhand"
+},
+"skull-crusher-cable": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [],
+"gripType": "overhand"
+},
+"overhead-triceps-extension-ez-bar": {
+"primary": [
+"triceps_long"
+],
+"secondary": [
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"overhead-triceps-extension-single-arm-dumbbell": {
+"primary": [
+"triceps_long"
+],
+"secondary": [
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"close-grip-bench-press-smith-machine": {
+"primary": [
+"triceps_long",
+"triceps_lateral",
+"chest_mid"
+],
+"secondary": [
+"delt_front",
+"chest_lower",
+"chest_upper"
+],
+"gripType": "overhand"
+},
+"close-grip-push-up": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [
+"chest_mid",
+"delt_front",
+"chest_lower",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"lat-pulldown-plate-loaded": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"rhomboids",
+"traps_mid",
+"traps_lower",
+"biceps_short",
+"brachialis",
+"delt_rear"
+],
+"gripType": "overhand"
+},
+"chin-up-weighted": {
+"primary": [
+"lats",
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"teres_major",
+"brachialis",
+"rhomboids",
+"traps_lower",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"inverted-row": {
+"primary": [
+"traps_mid",
+"rhomboids",
+"lats"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"abs_rectus",
+"glute_max"
+],
+"gripType": "overhand"
+},
+"bent-over-row-reverse-grip-barbell": {
+"primary": [
+"lats"
+],
+"secondary": [
+"biceps_long",
+"biceps_short",
+"rhomboids",
+"traps_mid",
+"delt_rear",
+"erector_spinae"
+],
+"gripType": "underhand"
+},
+"pendlay-row-barbell": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"erector_spinae",
+"biceps_long",
+"brachialis",
+"hamstrings"
+],
+"gripType": "overhand"
+},
+"chest-supported-row-plate-loaded": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"teres_major"
+],
+"gripType": "overhand"
+},
+"row-smith-machine": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"erector_spinae",
+"hamstrings",
+"teres_major"
+],
+"gripType": "overhand"
+},
+"rear-delt-row-dumbbell": {
+"primary": [
+"delt_rear"
+],
+"secondary": [
+"traps_mid",
+"rhomboids",
+"brachialis",
+"biceps_long",
+"rotator_cuff"
+],
+"gripType": "overhand"
+},
+"pullover-cable": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"chest_lower",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"straight-arm-pulldown-rope": {
+"primary": [
+"lats"
+],
+"secondary": [
+"teres_major",
+"triceps_long",
+"chest_lower",
+"abs_rectus"
+],
+"gripType": "neutral"
+},
+"rack-pull-barbell": {
+"primary": [
+"erector_spinae",
+"glute_max",
+"traps_upper"
+],
+"secondary": [
+"hamstrings",
+"traps_mid",
+"lats",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"hyperextension-weighted": {
+"primary": [
+"erector_spinae"
+],
+"secondary": [
+"glute_max",
+"hamstrings"
+],
+"gripType": "overhand"
+},
+"shrug-smith-machine": {
+"primary": [
+"traps_upper"
+],
+"secondary": [
+"traps_mid",
+"forearm_flexors"
+],
+"gripType": "neutral"
+},
+"romanian-deadlift-smith-machine": {
+"primary": [
+"hamstrings",
+"glute_max"
+],
+"secondary": [
+"erector_spinae",
+"adductors",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"lying-leg-curl-single-leg": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"calves_gastrocnemius"
+],
+"gripType": "underhand"
+},
+"seated-overhead-press-smith-machine": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"delt_side",
+"triceps_long",
+"triceps_lateral",
+"traps_upper",
+"chest_upper",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"push-press-barbell": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"quads_vasti",
+"glute_max",
+"delt_side",
+"traps_upper",
+"calves_gastrocnemius"
+],
+"gripType": "overhand"
+},
+"lateral-raise-seated-dumbbell": {
+"primary": [
+"delt_side"
+],
+"secondary": [
+"delt_front",
+"traps_upper",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"lateral-raise-plate-loaded": {
+"primary": [
+"delt_side"
+],
+"secondary": [
+"delt_front",
+"traps_upper",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"front-raise-barbell": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"chest_upper",
+"delt_side",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"front-raise-rope-cable": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"chest_upper",
+"delt_side",
+"serratus_anterior"
+],
+"gripType": "neutral"
+},
+"reverse-fly-seated-dumbbell": {
+"primary": [
+"delt_rear"
+],
+"secondary": [
+"rhomboids",
+"traps_mid",
+"delt_side",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"reverse-fly-incline-dumbbell": {
+"primary": [
+"delt_rear"
+],
+"secondary": [
+"rhomboids",
+"traps_mid",
+"delt_side",
+"rotator_cuff"
+],
+"gripType": "neutral"
+},
+"upright-row-barbell": {
+"primary": [
+"delt_side",
+"traps_upper"
+],
+"secondary": [
+"delt_front",
+"biceps_long",
+"brachialis"
+],
+"gripType": "overhand"
+},
+"upright-row-dumbbell": {
+"primary": [
+"delt_side",
+"traps_upper"
+],
+"secondary": [
+"delt_front",
+"biceps_long",
+"brachialis"
+],
+"gripType": "overhand"
+},
+"rotator-cuff-external-rotation-cable": {
+"primary": [
+"rotator_cuff"
+],
+"secondary": [
+"delt_rear"
+],
+"gripType": "overhand"
+},
+"bicep-curl-rope-cable": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "neutral"
+},
+"hammer-curl-cross-body-dumbbell": {
+"primary": [
+"brachialis",
+"brachioradialis"
+],
+"secondary": [
+"biceps_long",
+"biceps_short",
+"forearm_extensors"
+],
+"gripType": "neutral"
+},
+"incline-hammer-curl-dumbbell": {
+"primary": [
+"brachialis",
+"brachioradialis"
+],
+"secondary": [
+"biceps_long",
+"biceps_short",
+"forearm_extensors"
+],
+"gripType": "neutral"
+},
+"preacher-curl-cable": {
+"primary": [
+"biceps_short",
+"brachialis"
+],
+"secondary": [
+"biceps_long",
+"brachioradialis"
+],
+"gripType": "underhand"
+},
+"preacher-curl-barbell": {
+"primary": [
+"biceps_short",
+"brachialis"
+],
+"secondary": [
+"biceps_long",
+"brachioradialis"
+],
+"gripType": "underhand"
+},
+"spider-curl-dumbbell": {
+"primary": [
+"biceps_short"
+],
+"secondary": [
+"biceps_long",
+"brachialis"
+],
+"gripType": "underhand"
+},
+"overhead-cable-curl": {
+"primary": [
+"biceps_short"
+],
+"secondary": [
+"biceps_long",
+"brachialis"
+],
+"gripType": "underhand"
+},
+"reverse-wrist-curl-dumbbell": {
+"primary": [
+"forearm_extensors"
+],
+"secondary": [
+"brachioradialis"
+],
+"gripType": "underhand"
+},
+"reverse-wrist-curl-barbell": {
+"primary": [
+"forearm_extensors"
+],
+"secondary": [
+"brachioradialis"
+],
+"gripType": "underhand"
+},
+"reverse-curl-barbell": {
+"primary": [
+"brachioradialis",
+"brachialis"
+],
+"secondary": [
+"forearm_extensors",
+"biceps_long",
+"biceps_short"
+],
+"gripType": "overhand"
+},
+"reverse-curl-cable": {
+"primary": [
+"brachioradialis",
+"brachialis"
+],
+"secondary": [
+"forearm_extensors",
+"biceps_long",
+"biceps_short"
+],
+"gripType": "overhand"
+},
+"sumo-squat-dumbbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"front-squat-smith-machine": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"abs_rectus",
+"erector_spinae",
+"traps_upper",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"belt-squat-machine": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"leg-press-single-leg": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"leg-press-horizontal": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings"
+],
+"gripType": "overhand"
+},
+"reverse-lunge-barbell": {
+"primary": [
+"glute_max",
+"quads_vasti"
+],
+"secondary": [
+"hamstrings",
+"adductors",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"split-squat-smith-machine": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"glute_med",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"bulgarian-split-squat-smith-machine": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"hamstrings",
+"glute_med",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"bulgarian-split-squat-barbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"step-up-barbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"glute_med",
+"adductors",
+"calves_gastrocnemius"
+],
+"gripType": "overhand"
+},
+"single-leg-extension-machine": {
+"primary": [
+"quads_vasti",
+"rectus_femoris"
+],
+"secondary": [],
+"gripType": "overhand"
+},
+"hip-thrust-dumbbell": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"quads_vasti",
+"adductors",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"single-leg-hip-thrust": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"glute_med",
+"hamstrings",
+"quads_vasti",
+"adductors"
+],
+"gripType": "overhand"
+},
+"glute-bridge-barbell": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"adductors",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"glute-bridge": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"adductors",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"hip-abduction-cable": {
+"primary": [
+"glute_med"
+],
+"secondary": [
+"glute_max"
+],
+"gripType": "overhand"
+},
+"hip-adduction-cable": {
+"primary": [
+"adductors"
+],
+"secondary": [
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"donkey-kick-cable": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"glute_med",
+"erector_spinae"
+],
+"gripType": "overhand"
+},
+"donkey-calf-raise-machine": {
+"primary": [
+"calves_gastrocnemius"
+],
+"secondary": [
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"calf-raise-dumbbell-single-leg": {
+"primary": [
+"calves_gastrocnemius"
+],
+"secondary": [
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"calf-raise-bodyweight": {
+"primary": [
+"calves_gastrocnemius"
+],
+"secondary": [
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"decline-sit-up": {
+"primary": [
+"abs_rectus",
+"hip_flexors"
+],
+"secondary": [
+"obliques",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"reverse-crunch": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"obliques",
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"bicycle-crunch": {
+"primary": [
+"abs_rectus",
+"obliques"
+],
+"secondary": [
+"hip_flexors",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"v-up": {
+"primary": [
+"abs_rectus",
+"hip_flexors"
+],
+"secondary": [
+"rectus_femoris",
+"obliques"
+],
+"gripType": "overhand"
+},
+"dead-bug": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"obliques",
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"bird-dog": {
+"primary": [
+"erector_spinae",
+"glute_max"
+],
+"secondary": [
+"abs_rectus",
+"obliques",
+"delt_front",
+"hamstrings",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"hollow-hold": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"hip_flexors",
+"obliques",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"mountain-climber": {
+"primary": [
+"abs_rectus",
+"hip_flexors"
+],
+"secondary": [
+"delt_front",
+"obliques",
+"quads_vasti",
+"chest_mid",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"side-bend-dumbbell": {
+"primary": [
+"obliques"
+],
+"secondary": [
+"erector_spinae",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"oblique-crunch-machine": {
+"primary": [
+"obliques"
+],
+"secondary": [
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"torso-rotation-machine": {
+"primary": [
+"obliques"
+],
+"secondary": [
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"back-extension-machine": {
+"primary": [
+"erector_spinae"
+],
+"secondary": [
+"glute_max",
+"hamstrings"
+],
+"gripType": "overhand"
+},
+"swimming": {
+"primary": [
+"lats",
+"delt_front"
+],
+"secondary": [
+"chest_mid",
+"triceps_long",
+"rotator_cuff",
+"abs_rectus",
+"glute_max",
+"quads_vasti"
+],
+"gripType": "overhand"
+},
+"jump-rope": {
+"primary": [
+"calves_gastrocnemius",
+"calves_soleus"
+],
+"secondary": [
+"quads_vasti",
+"glute_max",
+"delt_side",
+"forearm_flexors",
+"tibialis_anterior"
+],
+"gripType": "neutral"
+},
+"air-bike": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"delt_front",
+"chest_mid",
+"lats",
+"triceps_lateral",
+"biceps_long",
+"calves_gastrocnemius"
+],
+"gripType": "overhand"
+},
+"kettlebell-swing": {
+"primary": [
+"glute_max",
+"hamstrings"
+],
+"secondary": [
+"erector_spinae",
+"abs_rectus",
+"delt_front",
+"forearm_flexors",
+"quads_vasti"
+],
+"gripType": "overhand"
+},
+"goblet-squat-kettlebell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"abs_rectus",
+"erector_spinae",
+"traps_upper",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"landmine-press": {
+"primary": [
+"delt_front",
+"chest_upper"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"serratus_anterior",
+"obliques"
+],
+"gripType": "overhand"
+},
+"svend-press-plate": {
+"primary": [
+"chest_mid"
+],
+"secondary": [
+"chest_upper",
+"delt_front",
+"triceps_lateral"
+],
+"gripType": "overhand"
+},
+"wide-push-up": {
+"primary": [
+"chest_mid",
+"chest_lower"
+],
+"secondary": [
+"delt_front",
+"chest_upper",
+"triceps_lateral",
+"abs_rectus"
+],
+"gripType": "overhand"
+},
+"jm-press-barbell": {
+"primary": [
+"triceps_lateral",
+"triceps_long"
+],
+"secondary": [
+"chest_mid",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"triceps-dip-plate-loaded-machine": {
+"primary": [
+"triceps_long",
+"triceps_lateral"
+],
+"secondary": [
+"chest_lower",
+"delt_front"
+],
+"gripType": "overhand"
+},
+"standing-row-cable": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"abs_rectus",
+"erector_spinae"
+],
+"gripType": "overhand"
+},
+"landmine-row": {
+"primary": [
+"lats",
+"traps_mid",
+"rhomboids"
+],
+"secondary": [
+"delt_rear",
+"biceps_long",
+"brachialis",
+"erector_spinae",
+"hamstrings"
+],
+"gripType": "overhand"
+},
+"meadows-row": {
+"primary": [
+"lats"
+],
+"secondary": [
+"traps_mid",
+"rhomboids",
+"delt_rear",
+"biceps_long",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"deficit-deadlift-barbell": {
+"primary": [
+"glute_max",
+"hamstrings",
+"erector_spinae"
+],
+"secondary": [
+"quads_vasti",
+"adductors",
+"traps_upper",
+"lats",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"deadlift-smith-machine": {
+"primary": [
+"glute_max",
+"hamstrings",
+"erector_spinae"
+],
+"secondary": [
+"quads_vasti",
+"adductors",
+"traps_upper",
+"traps_mid",
+"lats",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"deadlift-dumbbell": {
+"primary": [
+"glute_max",
+"hamstrings",
+"erector_spinae"
+],
+"secondary": [
+"quads_vasti",
+"adductors",
+"traps_upper",
+"traps_mid",
+"lats",
+"forearm_flexors"
+],
+"gripType": "overhand"
+},
+"shrug-cable": {
+"primary": [
+"traps_upper"
+],
+"secondary": [
+"traps_mid",
+"forearm_flexors"
+],
+"gripType": "neutral"
+},
+"farmer-s-walk": {
+"primary": [
+"forearm_flexors",
+"traps_upper"
+],
+"secondary": [
+"obliques",
+"abs_rectus",
+"erector_spinae",
+"glute_med",
+"calves_gastrocnemius",
+"quads_vasti"
+],
+"gripType": "neutral"
+},
+"seated-leg-curl-single-leg": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"calves_gastrocnemius"
+],
+"gripType": "underhand"
+},
+"leg-curl-cable": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"calves_gastrocnemius"
+],
+"gripType": "underhand"
+},
+"leg-curl-plate-loaded": {
+"primary": [
+"hamstrings"
+],
+"secondary": [
+"calves_gastrocnemius"
+],
+"gripType": "underhand"
+},
+"landmine-shoulder-press": {
+"primary": [
+"delt_front",
+"chest_upper"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"serratus_anterior",
+"obliques"
+],
+"gripType": "overhand"
+},
+"front-raise-plate": {
+"primary": [
+"delt_front"
+],
+"secondary": [
+"chest_upper",
+"delt_side",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"y-raise-cable": {
+"primary": [
+"traps_lower",
+"delt_side"
+],
+"secondary": [
+"traps_mid",
+"delt_rear",
+"rotator_cuff"
+],
+"gripType": "overhand"
+},
+"zottman-curl-dumbbell": {
+"primary": [
+"biceps_long",
+"biceps_short",
+"brachioradialis"
+],
+"secondary": [
+"brachialis",
+"forearm_extensors"
+],
+"gripType": "underhand"
+},
+"drag-curl-barbell": {
+"primary": [
+"biceps_long"
+],
+"secondary": [
+"biceps_short",
+"brachialis",
+"delt_rear"
+],
+"gripType": "underhand"
+},
+"curl-smith-machine": {
+"primary": [
+"biceps_long",
+"biceps_short"
+],
+"secondary": [
+"brachialis",
+"brachioradialis",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "underhand"
+},
+"dead-hang": {
+"primary": [
+"forearm_flexors"
+],
+"secondary": [
+"lats",
+"teres_major",
+"rotator_cuff"
+],
+"gripType": "overhand"
+},
+"box-squat-barbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"overhead-squat-barbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"zercher-squat-barbell": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"adductors",
+"erector_spinae",
+"hamstrings",
+"rectus_femoris",
+"abs_rectus",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"hack-squat-barbell": {
+"primary": [
+"quads_vasti"
+],
+"secondary": [
+"glute_max",
+"adductors",
+"hamstrings",
+"forearm_flexors",
+"traps_upper"
+],
+"gripType": "overhand"
+},
+"reverse-lunge-smith-machine": {
+"primary": [
+"glute_max",
+"quads_vasti"
+],
+"secondary": [
+"hamstrings",
+"adductors",
+"glute_med"
+],
+"gripType": "overhand"
+},
+"sissy-squat": {
+"primary": [
+"quads_vasti",
+"rectus_femoris"
+],
+"secondary": [
+"abs_rectus",
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"wall-sit": {
+"primary": [
+"quads_vasti"
+],
+"secondary": [
+"glute_max",
+"rectus_femoris",
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"glute-kickback-smith-machine": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"glute_med",
+"erector_spinae"
+],
+"gripType": "overhand"
+},
+"frog-pump": {
+"primary": [
+"glute_max"
+],
+"secondary": [
+"glute_med",
+"adductors"
+],
+"gripType": "overhand"
+},
+"step-up-weighted-glute-focus": {
+"primary": [
+"quads_vasti",
+"glute_max"
+],
+"secondary": [
+"hamstrings",
+"glute_med",
+"adductors",
+"calves_gastrocnemius"
+],
+"gripType": "overhand"
+},
+"calf-raise-hack-squat": {
+"primary": [
+"calves_gastrocnemius"
+],
+"secondary": [
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"calf-raise-barbell": {
+"primary": [
+"calves_gastrocnemius"
+],
+"secondary": [
+"calves_soleus"
+],
+"gripType": "overhand"
+},
+"toes-to-bar": {
+"primary": [
+"abs_rectus",
+"hip_flexors"
+],
+"secondary": [
+"lats",
+"obliques",
+"forearm_flexors",
+"rectus_femoris"
+],
+"gripType": "overhand"
+},
+"cable-crunch-standing": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"obliques"
+],
+"gripType": "overhand"
+},
+"flutter-kick": {
+"primary": [
+"hip_flexors",
+"abs_rectus"
+],
+"secondary": [
+"rectus_femoris",
+"obliques"
+],
+"gripType": "overhand"
+},
+"dragon-flag": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"obliques",
+"hip_flexors",
+"lats",
+"glute_max"
+],
+"gripType": "overhand"
+},
+"russian-twist-weighted": {
+"primary": [
+"obliques"
+],
+"secondary": [
+"abs_rectus",
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"ab-wheel-rollout-standing": {
+"primary": [
+"abs_rectus"
+],
+"secondary": [
+"lats",
+"obliques",
+"delt_front",
+"hip_flexors",
+"serratus_anterior"
+],
+"gripType": "overhand"
+},
+"ski-erg": {
+"primary": [
+"lats",
+"abs_rectus"
+],
+"secondary": [
+"triceps_long",
+"teres_major",
+"glute_max",
+"hamstrings",
+"delt_rear"
+],
+"gripType": "overhand"
+},
+"stair-climber-stepmill": {
+"primary": [
+"glute_max",
+"quads_vasti"
+],
+"secondary": [
+"hamstrings",
+"calves_gastrocnemius"
+],
+"gripType": "overhand"
+},
+"turkish-get-up-kettlebell": {
+"primary": [
+"delt_front",
+"obliques"
+],
+"secondary": [
+"abs_rectus",
+"glute_max",
+"quads_vasti",
+"triceps_lateral",
+"rotator_cuff",
+"hamstrings"
+],
+"gripType": "overhand"
+},
+"burpee": {
+"primary": [
+"quads_vasti",
+"glute_max",
+"chest_mid"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_front",
+"abs_rectus",
+"calves_gastrocnemius",
+"hip_flexors"
+],
+"gripType": "overhand"
+},
+"thruster-barbell": {
+"primary": [
+"quads_vasti",
+"glute_max",
+"delt_front"
+],
+"secondary": [
+"triceps_long",
+"triceps_lateral",
+"delt_side",
+"abs_rectus",
+"traps_upper"
+],
+"gripType": "overhand"
+},
+"power-clean-barbell": {
+"primary": [
+"glute_max",
+"hamstrings",
+"quads_vasti",
+"traps_upper"
+],
+"secondary": [
+"erector_spinae",
+"calves_gastrocnemius",
+"delt_front",
+"forearm_flexors"
+],
+"gripType": "overhand"
+}
+}
+}
