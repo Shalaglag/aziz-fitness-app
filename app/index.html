@@ -4022,6 +4022,8 @@ Power Clean (Barbell)|Other|Barbell|`;
   let activeTimer = null;
   function saveActive(now) {
     try { localStorage.setItem('lb_active', JSON.stringify(S.active)); } catch (e) { }
+    // Friends: a "working out now" badge for connected people (modules/friends); name + start only.
+    try { window.dispatchEvent(new CustomEvent('lb:active', { detail: { workout: S.active ? { id: S.active.id, name: S.active.name, start: S.active.start } : null } })); } catch (e) { }
     clearTimeout(activeTimer);
     const go = () => queue('meta/active', () => S.storage.put('lb_meta', 'active', { id: 'active', workout: S.active ? clone(S.active) : null, at: Date.now() }));
     if (now) go(); else activeTimer = setTimeout(go, 1200);
@@ -41886,8 +41888,13 @@ window.Friends = (() => {
     { key: "strength", label: "Strength", sub: "Best set per exercise (kg), so the same lift can be compared" },
     { key: "nutrition", label: "Nutrition goals", sub: "Only whether you hit your calorie and protein targets, never meals" },
     { key: "weight", label: "Weight progress", sub: "Change over 30 days as kg or %, never your actual weight" },
-    { key: "plan", label: "Goal plan", sub: "Your goal (lose fat, maintain, gain), chosen pace and how far along you are as a %; never your weight, calories or dates" }
+    { key: "plan", label: "Goal plan", sub: "Your goal (lose fat, maintain, gain), chosen pace and how far along you are as a %; never your weight, calories or dates" },
+    { key: "live", label: "Working out now", sub: "A live badge while your workout runs, and a heads-up to friends when you start; the workout name only, never the sets", on: true }
   ];
+  const LIVE_MAX_H = 3;          // a workout left running longer than this no longer counts as live
+  // {name, start, min} when the share says the person is mid-workout right now, else null
+  function liveOf(sh, now) { const l = sh && sh.cats && sh.cats.live && sh.live; if (!l || !l.start) return null; const ms = (now || Date.now()) - l.start; if (ms < -60000 || ms > LIVE_MAX_H * 3600e3) return null; return { name: l.name || "Workout", start: l.start, min: Math.max(0, Math.round(ms / 60000)) }; }
+  const liveBadge = l => l ? `<span class="pill good fr-live">Working out now · ${l.min} min</span>` : "";
   const GOAL_WORDS = { cut: "Losing fat", maintain: "Maintaining", muscle: "Building muscle", bulk: "Gaining weight" };
   const CH_TYPES = [
     { key: "steps_total", label: "Most steps", unit: "steps", sub: "Whoever walks the most wins", target: false },
@@ -41911,7 +41918,7 @@ window.Friends = (() => {
     const a = p && p.avatar, bg = colorFor(p && p.uid), cls = "fr-av" + (size === "lg" ? " lg" : "");
     return a && a !== "initials" ? `<span class="${cls}" style="background:${bg}22">${esc(a)}</span>` : `<span class="${cls}" style="background:${bg};color:#fff">${esc(initials(p && p.name))}</span>`;
   }
-  function defaultSharing() { const o = {}; CATS.forEach(c => { o[c.key] = false; }); return o; }
+  function defaultSharing() { const o = {}; CATS.forEach(c => { o[c.key] = !!c.on; }); return o; }
   const stepCount = day => { const s = day && day.steps; return typeof s === "number" ? s : s && typeof s.count === "number" ? s.count : 0; };
 
   /* ---------- share doc: built from local data, only the categories switched on ---------- */
@@ -41923,6 +41930,7 @@ window.Friends = (() => {
     const on = k => !!(sharing && sharing[k]);
     const share = { uid: profile.uid, name: profile.name || "Someone", avatar: profile.avatar || "initials", updatedAt: ctx.now || Date.now(), cats: {} };
     CATS.forEach(c => { share.cats[c.key] = on(c.key); });
+    if (on("live")) share.live = ctx.live && ctx.live.start ? { name: String(ctx.live.name || "Workout").slice(0, 40), start: ctx.live.start } : null;
     if (on("steps")) {
       const map = {}; let at = 0, source = null;
       days.forEach(([d, day]) => { const n = stepCount(day); if (n > 0) { map[d] = n; const s = day.steps; if (s && typeof s === "object" && s.at) { const t = Date.parse(s.at); if (t > at) { at = t; source = s.source || null; } } } });
@@ -42146,6 +42154,10 @@ window.Friends = (() => {
 .fr-field input,.fr-field select{width:100%}
 .fr-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .fr-banner{background:var(--sunk);border-radius:12px;padding:10px 12px;font-size:.88rem}
+.fr-live{animation:fr-pulse 1.6s ease-in-out infinite}
+.fr-live-banner{border:1px solid var(--good)}
+@keyframes fr-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+@media (prefers-reduced-motion: reduce){.fr-live{animation:none}}
 `;
   const pill = (cls, t) => `<span class="pill ${cls}">${t}</span>`;
   const statusPill = r => r.status === "notShared" ? pill("", "Not sharing steps") : r.status === "notConnected" ? pill("warn", "Steps not connected") : r.status === "noData" ? pill("", "No steps yet") : r.status === "stale" ? pill("warn", "Updated " + r.ago) : "";
@@ -42163,7 +42175,7 @@ window.Friends = (() => {
         const ranked = r.status === "ok" || r.status === "stale"; if (ranked) rank++;
         const num = ranked ? `<div class="fr-num">${n0(r.total)}<small>${st.period === "today" ? (r.remaining ? n0(r.remaining) + " to go" : "Goal reached") : r.goalDays + " goal day" + (r.goalDays === 1 ? "" : "s")}</small></div>` : "";
         const sub = ranked ? `${Math.round(r.pct * 100)}% of ${st.period === "today" ? "goal" : "goal × " + lb.nDays + " day" + (lb.nDays === 1 ? "" : "s")}${r.diff != null ? " · " + (r.diff >= 0 ? "+" : "−") + n0(Math.abs(r.diff)) + " vs you" : ""}${r.status === "ok" ? " · updated " + r.ago : ""}` : r.me && r.status === "notShared" ? `<button class="btn ghost small" data-fr="sub" data-k="sharing">Share your steps</button>` : r.me && r.status === "notConnected" ? `<button class="btn ghost small" data-fr="gosteps">Connect Health Connect</button>` : "";
-        return `<div class="fr-row${r.me ? " fr-lead" : ""}" ${r.me ? "" : `data-fr="compare" data-k="${esc(r.uid)}" role="button" tabindex="0"`}><span class="fr-rank">${ranked ? rank : "–"}</span>${avatarHTML(r)}<div class="fr-main"><span class="fr-name">${esc(r.me ? "You" : r.name)} ${statusPill(r)}</span>${ranked ? `<div class="fr-bar${r.pct >= 1 ? " good" : ""}"><i style="width:${Math.round(r.pct * 100)}%"></i></div>` : ""}<span class="fr-sub">${sub}</span></div>${num}</div>`;
+        return `<div class="fr-row${r.me ? " fr-lead" : ""}" ${r.me ? "" : `data-fr="compare" data-k="${esc(r.uid)}" role="button" tabindex="0"`}><span class="fr-rank">${ranked ? rank : "–"}</span>${avatarHTML(r)}<div class="fr-main"><span class="fr-name">${esc(r.me ? "You" : r.name)} ${liveBadge(liveOf(shares[r.uid], ctx.now))}${statusPill(r)}</span>${ranked ? `<div class="fr-bar${r.pct >= 1 ? " good" : ""}"><i style="width:${Math.round(r.pct * 100)}%"></i></div>` : ""}<span class="fr-sub">${sub}</span></div>${num}</div>`;
       }).join("")}</div>
       <p class="muted" style="font-size:.8rem">Steps come from each person's phone through Health Connect when Mizan is opened; Samsung Health can take a few minutes to pass them on. Tap a friend to compare more.</p>`;
     }
@@ -42186,7 +42198,7 @@ window.Friends = (() => {
       ${st.requestsIn.map(r => `<div class="fr-row">${avatarHTML({ uid: r.from, name: r.fromName, avatar: r.fromAvatar })}<div class="fr-main"><span class="fr-name">${esc(r.fromName || "Someone")}</span><span class="fr-sub">wants to connect</span></div><button class="btn small" data-fr="accept" data-k="${esc(r.id)}">Accept</button><button class="btn ghost small" data-fr="decline" data-k="${esc(r.id)}">Decline</button></div>`).join("")}
       ${st.requestsOut.map(r => `<div class="fr-row">${avatarHTML({ uid: r.to, name: r.toName, avatar: r.toAvatar })}<div class="fr-main"><span class="fr-name">${esc(r.toName || "Someone")}</span><span class="fr-sub">Waiting for them to accept</span></div><button class="btn ghost small" data-fr="decline" data-k="${esc(r.id)}">Cancel</button></div>`).join("")}</div>` : "";
     const list = `<div class="card"><h3>Friends${st.friends.length ? " · " + st.friends.length : ""}</h3>
-      ${st.friends.length ? st.friends.map(f => { const sh = st.shares[f.uid]; const on = sh && sh.cats ? CATS.filter(c => sh.cats[c.key]).map(c => c.label) : []; return `<div class="fr-row">${avatarHTML({ uid: f.uid, name: (sh && sh.name) || f.name, avatar: sh && sh.avatar })}<div class="fr-main"><span class="fr-name">${esc((sh && sh.name) || f.name || "Friend")}</span><span class="fr-sub">${sh ? (on.length ? "Shares " + on.join(", ").toLowerCase() : "Shares nothing yet") : "Hasn't shared anything yet"}</span></div><button class="btn ghost small" data-fr="compare" data-k="${esc(f.uid)}">Compare</button><button class="iconbtn" data-fr="remove" data-k="${esc(f.pairId)}" data-name="${esc(f.name || "this friend")}" aria-label="Remove ${esc(f.name || "friend")}">✕</button></div>`; }).join("")
+      ${st.friends.length ? st.friends.map(f => { const sh = st.shares[f.uid]; const on = sh && sh.cats ? CATS.filter(c => sh.cats[c.key]).map(c => c.label) : []; return `<div class="fr-row">${avatarHTML({ uid: f.uid, name: (sh && sh.name) || f.name, avatar: sh && sh.avatar })}<div class="fr-main"><span class="fr-name">${esc((sh && sh.name) || f.name || "Friend")} ${liveBadge(liveOf(sh, ctx.now))}</span><span class="fr-sub">${sh ? (on.length ? "Shares " + on.join(", ").toLowerCase() : "Shares nothing yet") : "Hasn't shared anything yet"}</span></div><button class="btn ghost small" data-fr="compare" data-k="${esc(f.uid)}">Compare</button><button class="iconbtn" data-fr="remove" data-k="${esc(f.pairId)}" data-name="${esc(f.name || "this friend")}" aria-label="Remove ${esc(f.name || "friend")}">✕</button></div>`; }).join("")
       : `<div class="fr-empty"><span class="big">👋</span><p>No friends yet. Share your code above, or type theirs.</p></div>`}
       <p class="muted" style="font-size:.8rem">Removing a friend stops sharing in both directions straight away. They keep only what their phone already showed, and nothing new reaches them.</p></div>`;
     return profile + invite + reqs + list;
@@ -42259,6 +42271,8 @@ window.Friends = (() => {
     let banner = "";
     if (st.backendOff) banner = `<div class="fr-banner">Friends isn't switched on in the server yet: the Firestore rules in the repo (firestore.rules) still have to be published in the Firebase console. Everything else in Mizan works as before.</div>`;
     else if (st.offline) banner = `<div class="fr-banner">Offline: showing the last copy. Friends updates when you're back online.</div>`;
+    const lives = st.friends.map(f => ({ f, l: liveOf(st.shares[f.uid], ctx.now) })).filter(x => x.l);
+    if (lives.length) banner += `<div class="fr-banner fr-live-banner">🏋️ ${lives.map(x => `<b>${esc((st.shares[x.f.uid] && st.shares[x.f.uid].name) || x.f.name || "A friend")}</b> is working out now (${esc(x.l.name)}, ${x.l.min} min)`).join(" · ")}</div>`;
     const body = sub === "friends" ? friendsHTML(st, ctx) : sub === "challenges" ? challengesHTML(st, ctx) : sub === "sharing" ? sharingHTML(st) : leaderboardHTML(st, ctx);
     return nav + banner + body + (st.compareUid ? compareHTML(st, ctx) : "");
   }
@@ -42309,7 +42323,7 @@ window.Friends = (() => {
     // the friendship yet (the write is still in flight), so a refused share listener is retried a few times.
     function subscribeShare(u, attempt) {
       if (shareSubs[u] || !st.friends.some(f => f.uid === u)) return;
-      shareSubs[u] = fs.collection("shares").doc(u).onSnapshot(d => { if (d.exists) st.shares[u] = norm(Object.assign({ uid: u }, d.data())); else delete st.shares[u]; opts.render(); },
+      shareSubs[u] = fs.collection("shares").doc(u).onSnapshot(d => { if (d.exists) { st.shares[u] = norm(Object.assign({ uid: u }, d.data())); liveNotify(u, st.shares[u]); } else delete st.shares[u]; opts.render(); },
         e => { if (shareSubs[u]) { shareSubs[u](); delete shareSubs[u]; } delete st.shares[u]; opts.render(); if (e && e.code === "permission-denied" && attempt < 4) setTimeout(() => subscribeShare(u, attempt + 1), 1500 * (attempt + 1)); });
     }
     function subscribeEntries(id, attempt) {
@@ -42333,6 +42347,7 @@ window.Friends = (() => {
       if (!st.me) return;
       const ctx = opts.ctx(), sharing = sharingNow();
       const profile = { uid, name: st.me.name, avatar: st.me.avatar };
+      ctx.live = live;
       const share = buildShare(profile, sharing, ctx);
       const cmp = o => JSON.stringify(Object.assign({}, o, { updatedAt: 0 }));
       let changed = false;
@@ -42347,6 +42362,18 @@ window.Friends = (() => {
       if (changed) opts.render();
     }
     schedulePublish(1500);
+    // Heads-up when a friend starts a workout: once per workout, only while it is fresh (under 10 min old).
+    const NOTED_KEY = "fr-live-noted";
+    function liveNotify(u, sh) {
+      const l = liveOf(sh, Date.now()); if (!l || l.min > 10 || !opts.notify) return;
+      let noted = {}; try { noted = JSON.parse(localStorage.getItem(NOTED_KEY) || "{}"); } catch (e) {}
+      if (noted[u] === l.start) return;
+      noted[u] = l.start; try { localStorage.setItem(NOTED_KEY, JSON.stringify(noted)); } catch (e) {}
+      opts.notify((sh.name || "A friend") + " started working out", l.name + " · just now. Open Friends to see who's training.", u);
+    }
+    // The person's own live workout (from the logger's lb:active event): published straight away.
+    let live = null;
+    function setLive(w) { const next = w && w.start ? { name: w.name, start: w.start } : null; if (JSON.stringify(next) === JSON.stringify(live)) return; live = next; schedulePublish(0); }
 
     /* actions */
     async function sendRequest(codeRaw) {
@@ -42427,10 +42454,10 @@ window.Friends = (() => {
     function change(el) { if (el.getAttribute("data-fr-change") === "chtype" && st.chForm) { readChForm(); st.chForm.target = ""; opts.render(); return true; } return false; }
     function refreshSharing() { st.sharing = sharingNow(); }
     function destroy() { subs.forEach(f => f()); Object.values(shareSubs).forEach(f => f()); Object.values(entrySubs).forEach(f => f()); }
-    return { state: st, handle, change, schedulePublish, publish, refreshSharing, destroy, html: ctx => screenHTML(st, ctx) };
+    return { state: st, handle, change, schedulePublish, publish, refreshSharing, setLive, destroy, html: ctx => screenHTML(st, ctx) };
   }
 
-  return { CATS, CH_TYPES, AVATARS, DAYS_KEPT, STALE_H, pairId, reqId, newCode, cleanCode, initials, avatarHTML, defaultSharing, buildShare, buildEntry, periodRange, leaderboard, compare, challengeStatus, challengeProgress, validateChallenge, ago, screenHTML, signedOutHTML, mount, css };
+  return { CATS, CH_TYPES, AVATARS, DAYS_KEPT, STALE_H, LIVE_MAX_H, liveOf, pairId, reqId, newCode, cleanCode, initials, avatarHTML, defaultSharing, buildShare, buildEntry, periodRange, leaderboard, compare, challengeStatus, challengeProgress, validateChallenge, ago, screenHTML, signedOutHTML, mount, css };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = Friends;
 </script>
@@ -43946,7 +43973,11 @@ function mountFriends(){
   frInst = Friends.mount({ fs:r.fs, uid:r.uid, email:r.email, today:()=>TODAY, ctx:frCtx, getSharing:frSharing, setSharing:o=>put("prefs","friends",o,{quiet:true}),
     render:()=>{ if(view.tab==="friends") scheduleRender(); }, toast, confirm:m=>window.confirm(m), goSteps:()=>{ view.tab="today"; view.open["f:steps"]=true; render(); const el=document.querySelector('[data-keep="f:steps"]'); if(el) el.scrollIntoView({block:"start"}); },
     apkUrl: window.AppUpdate && AppUpdate.RELEASE_URL ? AppUpdate.RELEASE_URL : "https://github.com/Shalaglag/mizan-releases/releases/tag/android-latest",
-    share:text=>{ if(navigator.share) return navigator.share({text}).catch(()=>{}); return (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>toast("Invite copied. Paste it into WhatsApp or a message."),()=>toast(text)); } });
+    share:text=>{ if(navigator.share) return navigator.share({text}).catch(()=>{}); return (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>toast("Invite copied. Paste it into WhatsApp or a message."),()=>toast(text)); },
+    notify:(title,body,u)=>{ if(window.AndroidShell && AndroidShell.isNative() && AndroidShell.notifyAt){ const id=9000+([...String(u)].reduce((a,c)=>a+c.charCodeAt(0),0)%900); AndroidShell.notifyAt(id, Date.now()+500, title, body).then(ok=>{ if(!ok) toast(title); }); } else toast(title); } });
+  // the logger's live workout -> "Working out now" for friends (name + start only; off via Sharing › Working out now)
+  try{ const act=JSON.parse(localStorage.getItem("lb_active")||"null"); if(act && act.start && !act.end) frInst.setLive(act); }catch(e){}
+  window.addEventListener("lb:active", e=>{ try{ frInst.setLive(e.detail && e.detail.workout); }catch(err){} });
 }
 function vFriends(){
   const cloudReady = !window.claude && !!(window.CloudStore && CloudStore.configured && CloudStore.configured());
