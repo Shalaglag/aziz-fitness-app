@@ -176,6 +176,8 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       const order = await page.evaluate(() => { const m = document.getElementById("menuPicker"), f = [...document.querySelectorAll("#main details, #main .fold, #main [data-fold]")].find(e => /Food check/.test(e.textContent)); return { has: !!m, before: !!(m && f && (m.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
       assert.ok(order.has, "menu picker card is on the Food page");
       assert.ok(order.before, "menu picker comes before Food check");
+      // Centre the button first: a minimal scroll can leave it under the fixed bottom bar or header, which then intercept the tap.
+      await page.$eval('#menuPicker [data-mi="paste"]', e => e.scrollIntoView({ block: "center" })); await page.waitForTimeout(350);
       await page.click('#menuPicker [data-mi="paste"]');
       await page.fill("#miText", ["Main Meals", "Item  Calories  Protein  Carbs  Fat", "French Tacos Chicken  650  55  60  20", "Buffalo Chicken with Sweet Potato  496  65  41  8",
         "Chicken Masala with Rice  607  67  60  11", "Grilled Steak with Potato  560  52  45  18", "Chicken Burger with Fries  600  70  50  14", "Snacks", "Greek Yogurt Berry Cup  150  15  18  2",
