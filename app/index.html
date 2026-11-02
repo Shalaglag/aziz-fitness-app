@@ -2481,7 +2481,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = GoogleHeal
  *   VoiceLog.matchExercise(phrase, exercises, opts) -> { best, candidates:[{ex, score}] }
  *   VoiceLog.toSets(entry, exercise)  -> [{t:'n', w, r, km, min, sec, done:true}] in the logger's set shape
  *   VoiceLog.words(text)              -> text with number words turned into digits ("sixty for ten" -> "60 for 10")
- *   VoiceLog.speech.supported()       -> true when the browser has SpeechRecognition
+ *   VoiceLog.speech.supported()       -> true in the Android app (native Speech plugin) or when the browser has SpeechRecognition
+ *   VoiceLog.speech.native()          -> true when the Android app's native Speech plugin does the listening
  *   VoiceLog.speech.start({ onText(text, final), onEnd(), onError(code) }) -> { stop() }
  *   VoiceLog.open({ exercises, current, prefer, unit, onApply(entries) }) -> opens the "Log by voice" sheet (Train)
  *   VoiceLog.foodCardHtml()           -> Food tab card with the mic; VoiceLog.bindFood(root, { onText }) wires it once
@@ -2638,9 +2639,25 @@ window.VoiceLog = (() => {
 
   // ---------- speech ----------
   const SR = () => (typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition)) || null;
+  // Inside the Android app the WebView can't reach the mic, so the native Speech plugin (modules/voice-log/android/SpeechPlugin.kt)
+  // does the listening: it asks for the microphone permission the first time and streams partial text back.
+  const NATIVE = () => { try { const c = typeof window !== "undefined" && window.Capacitor; return (c && c.isNativePlatform && c.isNativePlatform() && c.Plugins && c.Plugins.Speech) || null; } catch (e) { return null; } };
+  function startNative(N, { onText, onEnd, onError, lang } = {}) {
+    let done = false, last = "", sub = null;
+    const drop = () => { const h = sub; sub = null; try { h && h.remove && h.remove(); } catch (e) { } };
+    try { Promise.resolve(N.addListener("partial", ev => { if (done) return; last = (ev && ev.text) || last; onText && onText(last, false); })).then(h => { sub = h; if (done) drop(); }, () => { }); } catch (e) { }
+    Promise.resolve().then(() => N.start({ lang: lang || "en-US" })).then(r => {
+      if (done) return; done = true; drop();
+      const t = String((r && r.text) || last || "").trim(); if (t) onText && onText(t, true); onEnd && onEnd();
+    }, err => { if (done) return; done = true; drop(); onError && onError((err && err.code) || "error"); });
+    return { stop() { try { Promise.resolve(N.stop()).catch(() => { }); } catch (e) { } } };
+  }
   const speech = {
-    supported: () => !!SR(),
-    start({ onText, onEnd, onError, lang } = {}) {
+    supported: () => !!NATIVE() || !!SR(),
+    native: () => !!NATIVE(),
+    start(opts = {}) {
+      const N = NATIVE(); if (N) return startNative(N, opts);
+      const { onText, onEnd, onError, lang } = opts;
       const R = SR(); if (!R) { onError && onError("unsupported"); return { stop() { } }; }
       const rec = new R(); rec.lang = lang || "en-US"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
       let finalText = "";
@@ -2652,7 +2669,9 @@ window.VoiceLog = (() => {
     }
   };
   const errorText = code => ({
-    "not-allowed": "The microphone is blocked here. Tap the box and use the mic on your keyboard instead.",
+    "not-allowed": NATIVE() ? "Mizan isn't allowed to use the microphone. Tap the mic again and choose Allow, or turn it on in Settings > Apps > Mizan > Permissions. The keyboard mic in the box works too."
+      : "The microphone is blocked here. Tap the box and use the mic on your keyboard instead.",
+    busy: "The phone's speech service is busy. Wait a second and tap the mic again.",
     "service-not-allowed": "Speech isn't available in this browser. Tap the box and use the mic on your keyboard instead.",
     unsupported: "This browser has no speech recognition. Tap the box and use the mic on your keyboard instead.",
     "no-speech": "Didn't catch anything. Try again, closer to the phone.",
