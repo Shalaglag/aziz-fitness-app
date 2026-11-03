@@ -166,6 +166,25 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.waitForTimeout(200);
       const it = await page.evaluate(() => getDay(TODAY).food.find(i => i.name === "Greek yoghurt"));
       assert.deepStrictEqual([it.kcal, it.p, it.slot, it.eaten], [300, 30, "Meal 2", true]);
+      // Typing survives a background re-render (sync snapshot, water/steps import, deferred render after a pad tap).
+      await page.click('.mealgrp:has(.mh span:text-is("Meal 2")) [data-act="foodadd"]');
+      await page.waitForSelector('#foodSheet[role="dialog"]');
+      await page.fill("#fname", "Oat bar"); await page.selectOption("#fslot", "Extra");
+      await page.click('[data-act="pad"][data-k="2"]'); await page.click('[data-act="pad"][data-k="1"]'); await page.click('[data-act="pad"][data-k="0"]');
+      await page.click('[data-act="padnext"]'); await page.click('[data-act="pad"][data-k="9"]');
+      await page.click("#fname"); await page.keyboard.press("End"); await page.keyboard.type("s");
+      await page.evaluate(() => { render(); render(); });
+      const kept = await page.evaluate(() => ({ name: document.getElementById("fname").value, slot: document.getElementById("fslot").value, k: document.getElementById("fk").value, p: document.getElementById("fp").value, active: document.querySelector(".fa-field.is-active input").id, focus: document.activeElement && document.activeElement.id, head: document.getElementById("fhead").textContent }));
+      assert.deepStrictEqual([kept.name, kept.slot, kept.k, kept.p, kept.active, kept.focus], ["Oat bars", "Extra", "210", "9", "fp", "fname"], "re-render keeps the typed food, its numbers, the active tile and the keyboard");
+      assert.ok(/210/.test(kept.head), "detail header shows the kept calories");
+      await page.click('[data-act="pad"][data-k="5"]'); await page.click('#foodSheet button[type="submit"]');
+      await page.waitForTimeout(200);
+      const bar = await page.evaluate(() => getDay(TODAY).food.find(i => i.name === "Oat bars"));
+      assert.deepStrictEqual([bar.kcal, bar.p, bar.slot, bar.eaten], [210, 95, "Extra", false]);
+      await page.click('.mealgrp [data-act="foodadd"]');
+      await page.waitForSelector('#foodSheet[role="dialog"]');
+      assert.strictEqual(await page.$eval("#fname", e => e.value), "", "a fresh sheet starts empty, not with the old draft");
+      await page.click('[data-act="foodclose"]');
       assert.deepStrictEqual(errors, []);
       await page.close();
     });
