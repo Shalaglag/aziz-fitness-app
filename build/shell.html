@@ -2563,7 +2563,8 @@ function tickTimer(){
 function lbPref(k){ try{ return !(window.WorkoutLogger && WorkoutLogger.settings && WorkoutLogger.settings()[k]===false); }catch(_){ return true; } }
 function setDoneSound(){ const s=lbSettings(), v=(s&&s.setSound)||"check"; if(v!=="off"&&window.GymSounds){ GymSounds.prime(); GymSounds.play(v); } }
 function lbRestSound(){ const s=lbSettings(); return (s&&s.restSound)||"restDone"; }
-function restCue(kind){ try{ window.dispatchEvent(new CustomEvent("lb:"+kind, {detail:{end:tEnd, total:tTotal, sound:lbRestSound()}})); }catch(_){} }
+function lbRestNotify(){ const s=lbSettings(); return (s&&s.restNotify)||"big"; }
+function restCue(kind){ try{ window.dispatchEvent(new CustomEvent("lb:"+kind, {detail:{end:tEnd, total:tTotal, sound:lbRestSound(), look:lbRestNotify()}})); }catch(_){} }
 function startTimer(sec){ const el=document.getElementById("timer"); tEnd=Date.now()+sec*1000; tTotal=sec; tBuzz=0; clearInterval(tInt); el.hidden=false; if(window.GymSounds) GymSounds.prime(); restCue("rest"); tickTimer(); tInt=setInterval(tickTimer,500); }
 function quickRestStop(){ clearInterval(tInt); tInt=null; restCue("rest-stop"); document.getElementById("timer").hidden=true; }
 function quickRestAdjust(dt){ tEnd=Math.max(Date.now(), tEnd+dt*1000); tTotal=Math.max(15, tTotal+dt); restCue("rest"); clearInterval(tInt); tInt=setInterval(tickTimer,500); tickTimer(); }

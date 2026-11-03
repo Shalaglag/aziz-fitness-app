@@ -14,10 +14,14 @@ still runs in a browser and inside Claude.
   (`setTab(tab, scrollY)`) → Today tab → minimise the app.
 - `AndroidShell.notifyAt(id, whenMs, title, body)` / `AndroidShell.cancel(id)` – local notifications
   (`@capacitor/local-notifications`, asks permission on first use).
-- Events consumed: `lb:rest` (`detail: {end, total, sound}`) and `lb:rest-stop`, fired on `window` by workout-logger
-  and the shell Quick log. Each `lb:rest` also starts the live countdown notification (`AndroidShell.liveRest(d)`,
-  Kotlin plugin `RestTimer` in `android/RestTimerPlugin.kt` + `android/notification_rest.xml`, copied into the
-  Android project; a test checks the copies match). Its **+15 s** / **Skip** buttons come back as `lb:rest-adjust`
+- Events consumed: `lb:workout` / `lb:workout-stop` (the running workout: `{name, start, exercise, set, next, done, total,
+  look}`, from workout-logger's `saveActive`) keep a persistent Strong-style workout notification (`AndroidShell.liveWorkout(d)`);
+  `lb:rest` (`detail: {end, total, sound, look}`) and `lb:rest-stop`, fired on `window` by workout-logger
+  and the shell Quick log, turn it into the live countdown (`AndroidShell.liveRest(d)`,
+  Kotlin plugin `RestTimer` in `android/RestTimerPlugin.kt` + the `android/notification_rest*.xml` layouts, copied into
+  the  Android project; a test checks the copies match). `detail.look` picks the look (`AndroidShell.LOOKS`: big, clock,
+  bar, plain, endsAt; the logger's `restNotify` setting). Buttons: **Next exercise** / **Rest** between rests
+  (`lb:workout-next`, `lb:rest-start`), **−15 s** / **+15 s** / **Skip** during one (`lb:rest-adjust` {d}, `lb:rest-skip`). Its **+15 s** / **Skip** buttons come back as `lb:rest-adjust`
   (`detail: {d}`) / `lb:rest-skip` on `window`.
 - `<html class="android-app">` is set inside the app; CSS can use it for native-only tweaks.
 

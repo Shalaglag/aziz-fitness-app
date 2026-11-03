@@ -117,36 +117,50 @@ test("a closed sheet that still has a size (aria-hidden / visibility:hidden) doe
   delete global.window; delete global.getComputedStyle;
 });
 
-test("live rest countdown: RestTimer plugin starts with the rest end, stops on rest-stop, buttons fire events", async () => {
+test("workout notification: shows the workout, turns into the rest countdown, buttons fire events", async () => {
   delete require.cache[require.resolve("./android-shell.js")];
-  const listeners = {}, rtListeners = {}, started = [], fired = [];
+  const listeners = {}, rtListeners = {}, shown = [], fired = [];
   let stops = 0;
   const LocalNotifications = { checkPermissions: async () => ({ display: "granted" }), createChannel: async () => {}, schedule: async () => {}, cancel: async () => {} };
-  const RestTimer = { start: async o => { started.push(o); return { shown: true }; }, stop: async () => { stops++; }, addListener: (k, fn) => { rtListeners[k] = fn; } };
+  const RestTimer = { show: async o => { shown.push(o); return { shown: true }; }, stop: async () => { stops++; }, addListener: (k, fn) => { rtListeners[k] = fn; } };
   global.CustomEvent = class { constructor(name, o) { this.type = name; this.detail = o && o.detail; } };
   global.window = { Capacitor: { isNativePlatform: () => true, Plugins: { LocalNotifications, RestTimer } }, addEventListener: (k, fn) => { listeners[k] = fn; }, dispatchEvent: e => fired.push(e) };
   global.document = { documentElement: { classList: { add() {} } }, body: {} };
   const A = require("./android-shell.js");
   assert.equal(A.init({}), true);
-  const end = Date.now() + 90000;
-  listeners["lb:rest"]({ detail: { end, total: 90, sound: "restDone" } });
+  // Workout starts: elapsed-time view with exercise, set and next
+  const start = Date.now() - 60000;
+  listeners["lb:workout"]({ detail: { name: "Push A", start, exercise: "Bench Press", set: "Set 2 of 4", next: "Incline Press", done: 3, total: 16, look: "clock" } });
   await new Promise(r => setTimeout(r, 10));
-  assert.equal(started.length, 1);
-  assert.equal(started[0].end, end);
-  assert.equal(started[0].total, 90);
-  assert.equal(started[0].title, "Rest timer");
-  assert.equal(started[0].body, "Rest 1:30");
+  assert.equal(shown.length, 1);
+  assert.deepEqual([shown[0].title, shown[0].body, shown[0].sub, shown[0].workout, shown[0].start, shown[0].end, shown[0].look], ["Push A", "Bench Press \u00b7 Set 2 of 4", "Next: Incline Press", true, start, 0, "clock"]);
+  // A rest inside the workout: countdown with the exercise kept
+  const end = Date.now() + 90000;
+  listeners["lb:rest"]({ detail: { end, total: 90, sound: "restDone", look: "bar" } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(shown.length, 2);
+  assert.deepEqual([shown[1].title, shown[1].end, shown[1].total, shown[1].workout, shown[1].look], ["Rest timer", end, 90, true, "bar"]);
+  // Rest ends: back to the workout view, not cancelled
   listeners["lb:rest-stop"]();
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(shown.length, 3); assert.equal(shown[2].end, 0); assert.equal(stops, 0);
+  // Workout ends: cleared
+  listeners["lb:workout-stop"]();
   assert.equal(stops, 1);
-  rtListeners.skip();
-  rtListeners.adjust({ seconds: 15 });
-  assert.deepEqual(fired.map(e => [e.type, e.detail]), [["lb:rest-skip", {}], ["lb:rest-adjust", { d: 15 }]]);
+  // A rest with no workout (Quick log): plain countdown, unknown look falls back to big
+  listeners["lb:rest"]({ detail: { end, total: 90, look: "../odd" } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.deepEqual([shown[3].workout, shown[3].body, shown[3].look], [false, "Rest 1:30", "big"]);
+  listeners["lb:rest-stop"]();
+  assert.equal(stops, 2);
+  rtListeners.skip(); rtListeners.adjust({ seconds: -15 }); rtListeners.next(); rtListeners.rest();
+  assert.deepEqual(fired.map(e => [e.type, e.detail]), [["lb:rest-skip", {}], ["lb:rest-adjust", { d: -15 }], ["lb:workout-next", {}], ["lb:rest-start", {}]]);
   delete global.document; delete global.CustomEvent; global.window = {};
 });
 
 test("RestTimerPlugin.kt and its layout are copied into the Android project unchanged", () => {
   const fs = require("fs"), path = require("path"), root = path.join(__dirname, "..", "..");
-  for (const [src, dst] of [["RestTimerPlugin.kt", "android/app/src/main/java/com/azizfitness/app/RestTimerPlugin.kt"], ["notification_rest.xml", "android/app/src/main/res/layout/notification_rest.xml"]]) {
+  for (const [src, dst] of [["RestTimerPlugin.kt", "android/app/src/main/java/com/azizfitness/app/RestTimerPlugin.kt"], ["notification_rest.xml", "android/app/src/main/res/layout/notification_rest.xml"], ["notification_rest_clock.xml", "android/app/src/main/res/layout/notification_rest_clock.xml"], ["notification_rest_bar.xml", "android/app/src/main/res/layout/notification_rest_bar.xml"]]) {
     assert.equal(fs.readFileSync(path.join(root, dst), "utf8"), fs.readFileSync(path.join(__dirname, "android", src), "utf8"), "copy modules/android-shell/android/" + src + " into " + dst);
   }
   const main = fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/MainActivity.java"), "utf8");

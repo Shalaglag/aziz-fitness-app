@@ -15,7 +15,8 @@
  *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
  * Rest timer look (settings.restStyle: bar | half | ring | fill | plates | blocks; ring and fill take the whole
- *   screen like Strong) and end sound (settings.restSound: a GymSounds.REST_SOUNDS id) are picked in Settings. A ticked set plays
+ * screen like Strong), notification countdown look (settings.restNotify: big | clock | bar | plain | endsAt, sent as
+ * `look` on lb:rest for the Android shell) *   screen like Strong) and end sound (settings.restSound: a GymSounds.REST_SOUNDS id) are picked in Settings. A ticked set plays
  *   settings.setSound (a GymSounds.SET_SOUNDS id, default 'check' = Aziz's recording, or 'off').
  * Live workouts open in Gym mode (one set at a time, big steppers, RIR, rest countdown with "up next");
  *   "List view" in the header switches to the full table. Sets may carry rir (0-4, 4 = 4+).
@@ -455,7 +456,7 @@ Power Clean (Barbell)|Other|Barbell|`;
 
   const DEFAULT_SETTINGS = {
     unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: false,
-    restStyle: 'bar', restSound: 'restDone', countBuzz: true, setSound: 'check',
+    restStyle: 'bar', restSound: 'restDone', restNotify: 'big', countBuzz: true, setSound: 'check',
     bar: 20, barLb: 45, platesKg: [25, 20, 15, 10, 5, 2.5, 1.25], platesLb: [45, 35, 25, 10, 5, 2.5],
     rotOverride: null, seeded: false
   };
@@ -526,6 +527,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     try { localStorage.setItem('lb_active', JSON.stringify(S.active)); } catch (e) { }
     // Friends: a "working out now" badge for connected people (modules/friends); name + start only.
     try { window.dispatchEvent(new CustomEvent('lb:active', { detail: { workout: S.active ? { id: S.active.id, name: S.active.name, start: S.active.start } : null } })); } catch (e) { }
+    workoutCue();
     clearTimeout(activeTimer);
     const go = () => queue('meta/active', () => S.storage.put('lb_meta', 'active', { id: 'active', workout: S.active ? clone(S.active) : null, at: Date.now() }));
     if (now) go(); else activeTimer = setTimeout(go, 1200);
@@ -1315,6 +1317,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   function restLookHtml() {
     const st = S.settings, chips = (k, list) => '<div class="lb-row tight lb-chips">' + list.map(([id, l]) => '<button class="lb-btn small' + (st[k] === id ? ' primary' : ' ghost') + '" data-a="setPick" data-k="' + k + '" data-v="' + id + '" aria-pressed="' + (st[k] === id) + '">' + esc(l) + '</button>').join('') + '</div>';
     return '<div class="lb-field"><span>Rest timer look</span>' + chips('restStyle', REST_STYLES) + '<button class="lb-link small" data-a="restTry">Try it (10 s)</button></div>' +
+      '<div class="lb-field"><span>Countdown in the notification</span>' + chips('restNotify', REST_NOTIFY) + '<small class="lb-muted">' + esc(REST_NOTIFY_HELP[restNotify()]) + '</small></div>' +
       '<div class="lb-field"><span>Sound when rest ends</span>' + chips('restSound', restSounds()) + '</div>' +
       '<div class="lb-field"><span>Sound when you tick a set</span>' + chips('setSound', setSounds()) + '</div>';
   }
@@ -1322,7 +1325,9 @@ Power Clean (Barbell)|Other|Barbell|`;
     const k = t.dataset.k, v = t.dataset.v;
     if (k === 'restStyle' && !REST_STYLES.some(r => r[0] === v)) return;
     if (k === 'restSound' && !restSounds().some(r => r[0] === v)) return;
+    if (k === 'restNotify' && !REST_NOTIFY.some(r => r[0] === v)) return;
     S.settings[k] = v; saveSettings();
+    if (k === 'restNotify' && rest) restCue(); // the live notification switches look at once
     if (k === 'setSound' && !setSounds().some(r => r[0] === v)) return;
     if ((k === 'restSound' || k === 'setSound') && v !== 'off' && GS()) { GS().prime(); GS().play(v); }
     if (k === 'restStyle' && rest) renderRest();
@@ -1800,6 +1805,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   // Returns false (and says why) when there's nothing to log.
   function completeSet(i, j, quiet) {
     primeAudio();
+    E.doc.focusEx = null; // a ticked set puts the shade's "current exercise" back on the resume point
     const e = E.doc.exercises[i], s = e.sets[j], ex = getEx(e.exId), f = fieldsFor(ex), prev = prevFor(e), p = prevMatch(prev, e, j);
     f.forEach(k => { const ph = phFor(prev, p, e, k); if ((s[k] === '' || s[k] == null) && ph !== '') s[k] = String(ph).replace(/,/g, ''); });
     if (f.every(k => s[k] === '' || s[k] == null)) { toast('Enter ' + (f[0] === 'w' ? 'weight and reps' : 'a value') + ' first'); return false; }
@@ -2072,10 +2078,56 @@ Power Clean (Barbell)|Other|Barbell|`;
   const setSounds = () => (GS() && GS().SET_SOUNDS ? GS().SET_SOUNDS.map(r => [r.id, r.label]) : []).concat([['off', 'Off']]);
   const restSounds = () => (GS() && GS().REST_SOUNDS ? GS().REST_SOUNDS.map(r => [r.id, r.label]).concat(GS().customInfo && GS().customInfo() ? [['custom', 'Your sound: ' + GS().customInfo().name]] : []) : [['restDone', 'Bell (Strong-style)']]);
   const restStyle = () => (REST_STYLES.some(r => r[0] === S.settings.restStyle) ? S.settings.restStyle : 'bar');
+  // Looks of the Android notification countdown (modules/android-shell RestTimerPlugin). Picked in Settings → Workout.
+  const REST_NOTIFY = [['big', 'Big clock'], ['clock', 'Clock only'], ['bar', 'Loading bar'], ['plain', 'Plain'], ['endsAt', 'Ends at']];
+  const REST_NOTIFY_HELP = { big: 'Rest timer on the left, the time counting down big on the right.', clock: 'Just the time, large and centred.', bar: 'A loading bar that empties under the time.', plain: 'A normal Android notification; the countdown sits in its corner.', endsAt: 'Shows the clock time your rest ends, with the countdown in the corner.' };
+  const restNotify = () => (REST_NOTIFY.some(r => r[0] === S.settings.restNotify) ? S.settings.restNotify : 'big');
+  // Persistent workout notification on Android (modules/android-shell RestTimerPlugin): what the shade shows between
+  // rests. `focusEx` (set by its "Next exercise" button) overrides the resume point until that exercise is done.
+  function workoutInfo() {
+    const w = S.active; if (!w) return null;
+    const exs = w.exercises || [];
+    let cur = null;
+    if (w.focusEx != null && exs[w.focusEx] && exs[w.focusEx].sets.some(x => !x.done)) cur = [w.focusEx, exs[w.focusEx].sets.findIndex(x => !x.done)];
+    else cur = resumePoint(exs);
+    const total = exs.reduce((n, e) => n + e.sets.length, 0), done = exs.reduce((n, e) => n + e.sets.filter(x => x.done).length, 0);
+    let exercise = null, set = null, next = null;
+    if (cur) {
+      const e = exs[cur[0]]; exercise = getEx(e.exId).name; set = setLabel(e, cur[1]);
+      for (let i = cur[0] + 1; i < exs.length; i++) if (exs[i].sets.some(x => !x.done)) { next = getEx(exs[i].exId).name; break; }
+    }
+    return { id: w.id, name: w.name, start: w.start, exercise, set, next, done, total, look: restNotify() };
+  }
+  let workoutCueT = null;
+  function workoutCue() {
+    clearTimeout(workoutCueT);
+    workoutCueT = setTimeout(() => { try { const i = workoutInfo(); window.dispatchEvent(new CustomEvent(i ? 'lb:workout' : 'lb:workout-stop', { detail: i || {} })); } catch (e) { } }, 150);
+  }
+  // "Next exercise" on the notification: move to the next exercise with sets left (wrapping round).
+  function nextExercise() {
+    const w = S.active; if (!w) return;
+    const exs = w.exercises || [], info = workoutInfo(), from = info && info.exercise ? exs.findIndex(e => getEx(e.exId).name === info.exercise) : -1;
+    let pick = -1;
+    for (let n = 1; n <= exs.length; n++) { const i = (from + n) % exs.length; if (exs[i] && exs[i].sets.some(x => !x.done)) { pick = i; break; } }
+    if (pick < 0) return;
+    w.focusEx = pick; w.updated = Date.now(); saveActive();
+    if (E && E.mode === 'live' && E.doc === w) {
+      if (E.view === 'gym') { const j = exs[pick].sets.findIndex(x => !x.done); gymGo(pick, j < 0 ? 0 : j); }
+      else { const el = liveEl && liveEl.querySelector('.lb-exblock[data-ei="' + pick + '"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+    }
+  }
+  // "Rest" on the notification: the current exercise's rest.
+  function restFromShade() {
+    if (rest) return;
+    const w = S.active, info = workoutInfo();
+    const e = w && info && info.exercise ? (w.exercises || []).find(x => getEx(x.exId).name === info.exercise) : null;
+    startRest(e ? restOf(e) : (S.settings.restIso || 90));
+  }
+  function restCue() { if (!rest) return; try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: rest.total, sound: S.settings.restSound || 'restDone', look: restNotify() } })); } catch (e) { } }
   // Plates per side, inner to outer; they come off outer first as the rest runs down.
   const REST_PLATES = [['20', 'b', 1], ['15', 'y', .86], ['10', 'g', .72], ['5', 'w', .56], ['2.5', 'r', .44]];
   const REST_BLOCKS = 10;
-  function startRest(sec, at) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false, at: at || null }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec, sound: S.settings.restSound || 'restDone' } })); } catch (e) { } }
+  function startRest(sec, at) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false, at: at || null }; persistRest(); renderRest(); startTick(); restCue(); }
   function previewRest(sec) { startRest(sec); }
   function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
@@ -2093,7 +2145,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (rest.end <= Date.now()) return stopRest();
     renderRest();
     // Re-arm the locked-phone end sound for the new end time (same notification id, so it replaces the old one).
-    try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: rest.total, sound: S.settings.restSound || 'restDone' } })); } catch (e) { }
+    restCue();
   }
   on('restAdj', t => restAdjust(+t.dataset.d));
   on('restSkip', () => stopRest());
@@ -2101,6 +2153,8 @@ Power Clean (Barbell)|Other|Barbell|`;
   try {
     window.addEventListener('lb:rest-skip', () => { if (rest) stopRest(); });
     window.addEventListener('lb:rest-adjust', e => restAdjust(+((e.detail || {}).d) || 15));
+    window.addEventListener('lb:workout-next', () => nextExercise());
+    window.addEventListener('lb:rest-start', () => restFromShade());
   } catch (e) { }
   on('restMini', () => { if (!rest) return; rest.mini = true; persistRest(); renderRest(); });
   on('restFull', () => { if (!rest) return; rest.mini = false; persistRest(); renderRest(); });
@@ -2519,6 +2573,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     if (!overlay.dataset.lbBound) { delegate(overlay); overlay.dataset.lbBound = '1'; }
     renderMain();
     S.readyP = loadAll(); await S.readyP;
+    if (S.active) workoutCue(); // a workout restored from the last session goes back into the Android shade
     try { const r = JSON.parse(localStorage.getItem('lb_rest') || 'null'); if (r && r.end > Date.now()) rest = r; } catch (e) { }
     renderMain();
     if (S.active || rest) startTick();
@@ -2530,7 +2585,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   // Host settings screen: read the logger's settings and change some of them (gym, unit, rest) without opening its Tools tab.
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
-  const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+  const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, restNotifyLooks: REST_NOTIFY, workoutInfo, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     parseRest, setRestOf,
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
     swipe: { swipeDecision } };
