@@ -28,6 +28,12 @@ const mock = http.createServer((req, res) => {
     seen.push({ key: req.headers["x-api-key"] || String(req.headers.authorization || "").replace(/^Bearer /, ""), body: JSON.parse(body) });
     if (mode === "busy") { res.writeHead(529, { "content-type": "application/json" }); return res.end('{"type":"error","error":{"type":"overloaded_error"}}'); }
     if (mode === "credit") { res.writeHead(400, { "content-type": "application/json" }); return res.end('{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}'); }
+    const b = JSON.parse(body);
+    if (!b.stream) { // messages.create (voice clean-up): one JSON message
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ id: "msg_t", type: "message", role: "assistant", model: "claude-haiku-5-5", stop_reason: "end_turn", stop_sequence: null,
+        content: [{ type: "text", text: "How much protein is left today?" }], usage: { input_tokens: 350, output_tokens: 20 } }));
+    }
     res.writeHead(200, { "content-type": "text/event-stream" });
     const ev = (e, d) => res.write("event: " + e + "\ndata: " + JSON.stringify(d) + "\n\n");
     ev("message_start", { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", model: "claude-haiku-5-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 400, cache_creation_input_tokens: 5000, cache_read_input_tokens: 0, output_tokens: 1 } } });
@@ -100,6 +106,21 @@ try {
     assert.equal((await fetch(base + "/v1/cap", { method: "POST", headers: H(owner), body: '{"capUsd":101}' })).status, 400);
     r = await fetch(base + "/v1/cap", { method: "POST", headers: H(owner), body: JSON.stringify({ capUsd: 100 }) }); assert.equal((await r.json()).capUsd, 100);
     r = await ask(owner, "q"); assert.equal(r.status, 200); await r.text();
+  });
+  await check("voice clean-up: owner only, fixed prompt, Haiku, text back, counted under the cap", async () => {
+    seen = []; mode = "ok";
+    const post = (who, b) => fetch(base + "/v1/tidy", { method: "POST", headers: H(who), body: JSON.stringify(b) });
+    assert.equal((await post(stranger, { text: "hi" })).status, 403);
+    assert.equal(seen.length, 0, "a stranger never reaches Claude");
+    const before = (await (await fetch(base + "/v1/usage", { headers: H(owner) })).json()).requests;
+    const r = await post(owner, { text: "um how much protein protein is left to day", lang: "en", hints: ["Bench Press (Barbell)"] });
+    assert.equal(r.status, 200); const j = await r.json();
+    assert.equal(j.text, "How much protein is left today?");
+    assert.equal(seen[0].body.model, "claude-haiku-5-5"); assert.match(seen[0].body.system, /Never answer the question/);
+    assert.match(seen[0].body.messages[0].content, /HINTS: Bench Press \(Barbell\)/); assert.ok(!seen[0].body.stream);
+    assert.equal((await (await fetch(base + "/v1/usage", { headers: H(owner) })).json()).requests, before + 1);
+    assert.equal((await post(owner, { text: "" })).status, 400);
+    assert.equal((await post(owner, { text: "x".repeat(2001) })).status, 413);
   });
   await check("upstream overloaded twice -> 503 upstream_busy, nothing charged", async () => {
     mode = "busy"; seen = []; const before = (await (await fetch(base + "/v1/usage", { headers: H(owner) })).json()).usedUsd;
