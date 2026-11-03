@@ -458,57 +458,90 @@
     return { THREE, scene, gltf, skinned, meta, K, BODY, setExercise, pose: t => { posePure(t); }, contacts, get current() { return cur; }, solveGrip, setMuscles, hand };
   }
 
-  // ---------- app part: lazy loader and card painter ----------
+  // ---------- app part: the reviewed recipe demos (app/3d/rx), lazy loader and card painter ----------
+  // Nov 3 2026: the Rotate view shows the recipe demos Aziz reviewed (the project's recipe viewer: engine.js, gear.js,
+  // gear_all.js, gymkit.js, recipes.json, body.glb), copied in by tools/exercise-3d/import_recipes.py. EXERCISE_3D.recipes
+  // lists them {app id: loop seconds}; exercises held back for a redo are not in it and keep the line mannequin.
   const DATA = () => root.EXERCISE_3D || { exercises: {} };
-  const has = id => !!(DATA().exercises || {})[id] && !!(root.ExerciseAnim && root.ExerciseAnim.defs[id]);
-  let loading = null, eng = null, gl = null, failed = false;
+  const RX = () => DATA().recipes || {};
+  const has = id => !!RX()[id] && !!(root.ExerciseAnim && root.ExerciseAnim.defs[id]);
+  const VOCAB_TO_MASK = { chest_upper: 'chest', chest_mid: 'chest', chest_lower: 'chest', serratus_anterior: 'chest', delt_front: 'front_delt', delt_side: 'side_delt', delt_rear: 'rear_delt', rotator_cuff: 'rear_delt',
+    traps_upper: 'upper_traps', traps_mid: 'mid_back', traps_lower: 'mid_back', rhomboids: 'mid_back', teres_major: 'lats', erector_spinae: 'lower_back', neck_front: 'neck', neck_back: 'neck',
+    biceps_long: 'biceps', biceps_short: 'biceps', brachialis: 'biceps', brachioradialis: 'forearms', forearm_flexors: 'forearms', forearm_extensors: 'forearms', triceps_long: 'triceps', triceps_lateral: 'triceps',
+    abs_rectus: 'abs', glute_max: 'glutes', quads_vasti: 'quads', rectus_femoris: 'quads', calves_gastrocnemius: 'calves', calves_soleus: 'calves', tibialis_anterior: 'tibialis' };
+  let loading = null, gl = null, failed = false;
   function load() {
     if (loading) return loading;
     const base = DATA().base || './';   // relative to the page; import() needs the ./ prefix
     loading = (async () => {
       const THREE = await import(base + 'vendor/three-r160/three.module.min.js');
       const { GLTFLoader } = await import(base + 'vendor/three-r160/GLTFLoader.js');
-      const [buf, meta] = await Promise.all([fetch(base + '3d/body.glb').then(r => { if (!r.ok) throw new Error('body ' + r.status); return r.arrayBuffer(); }), fetch(base + '3d/body_meta.json').then(r => r.json())]);
-      const gltf = await new GLTFLoader().parseAsync(buf, base + '3d/');
-      const normalMap = await new THREE.TextureLoader().loadAsync(base + '3d/normal_A.png').catch(() => null);
-      if (normalMap) { normalMap.flipY = false; normalMap.colorSpace = THREE.NoColorSpace; normalMap.anisotropy = 4; }
-      eng = core(THREE, gltf, meta, { normalMap });
+      const E = await import(base + '3d/rx/engine.js'), G = await import(base + '3d/rx/gear.js'); await import(base + '3d/rx/gear_all.js');
+      const get = (f, kind) => fetch(base + '3d/rx/' + f).then(r => { if (!r.ok) throw new Error(f + ' ' + r.status); return r[kind](); });
+      const [buf, meta, recipes, cache] = await Promise.all([get('body.glb', 'arrayBuffer'), get('body_meta.json', 'json'), get('recipes.json', 'json'), get('gripcache.json', 'json').catch(() => null)]);
+      const gltf = await new GLTFLoader().parseAsync(buf, base + '3d/rx/');
+      const rig = new E.Rig(gltf, meta);
+      if (cache && cache.verts === rig.mesh.geometry.attributes.position.count) rig.loadGripCache(cache.models);
+      rig.mesh.castShadow = rig.mesh.receiveShadow = true;
+      const RED = new THREE.Color('#d9392c'), AMBER = new THREE.Color('#f0a030');
+      const bodyMat = new THREE.MeshStandardMaterial({ color: '#c9ccd0', roughness: 0.62, vertexColors: true });
+      bodyMat.onBeforeCompile = sh => {
+        sh.uniforms.uRed = { value: RED }; sh.uniforms.uAmber = { value: AMBER };
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uRed; uniform vec3 uAmber;')
+          .replace('#include <color_fragment>', 'vec3 base = diffuseColor.rgb; base = mix(base, uRed, smoothstep(0.05,0.95,vColor.r)); base = mix(base, uAmber, smoothstep(0.05,0.95,vColor.g)); base = mix(base, vec3(0.62,0.64,0.67), vColor.b); diffuseColor.rgb = base;')
+          .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.48, max(vColor.r, vColor.g));');
+      };
+      rig.mesh.material = bodyMat;
       const canvas = document.createElement('canvas');
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
       renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
       renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.setClearColor(0x000000, 0);
-      const scene = new THREE.Scene(); scene.add(eng.scene);
-      try { const { RoomEnvironment } = await import(base + 'vendor/three-r160/RoomEnvironment.js'); const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(renderer), 0.04).texture; pm.dispose(); } catch (e) { }
+      const scene = new THREE.Scene(); scene.add(gltf.scene);
       scene.add(new THREE.HemisphereLight('#ffffff', '#9aa1a8', 1.15));
-      const key = new THREE.DirectionalLight('#ffffff', 2.3); key.position.set(1.6, 3.6, 2.2); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
-      Object.assign(key.shadow.camera, { left: -1.8, right: 1.8, top: 1.8, bottom: -1.8, near: 0.5, far: 9 }); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; scene.add(key); scene.add(key.target);
+      const key = new THREE.DirectionalLight('#ffffff', 2.3); key.position.set(1.8, 3.8, 2.4); key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+      Object.assign(key.shadow.camera, { left: -2, right: 2, top: 2.4, bottom: -1.2, near: 0.5, far: 10 }); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; scene.add(key);
       const rim = new THREE.DirectionalLight('#dfe8ff', 0.9); rim.position.set(-2.5, 2.2, -2.5); scene.add(rim);
-      const floor = new THREE.Mesh(new THREE.CircleGeometry(2.4, 48), new THREE.ShadowMaterial({ opacity: 0.2 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
-      const camera = new THREE.PerspectiveCamera(30, 1, 0.05, 40);
-      gl = { THREE, renderer, scene, camera, canvas, key };
-      return eng;
-    })().catch(e => { failed = true; if (root.console) console.warn('Exercise3D: 3D body unavailable', e); throw e; });
+      const floor = new THREE.Mesh(new THREE.CircleGeometry(7, 64), new THREE.ShadowMaterial({ opacity: 0.2 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+      const camera = new THREE.PerspectiveCamera(32, 1, 0.03, 40);
+      gl = { THREE, E, G, rig, masks: E.muscleMasks(rig), recipes, renderer, scene, camera, canvas, cur: null, poser: null, gear: [] };
+      return gl;
+    })().catch(e => { failed = true; if (root.console) console.warn('Exercise3D: 3D demos unavailable', e); throw e; });
     return loading;
   }
+  function setRecipe(id) {
+    if (gl.cur && gl.cur.id === id) return gl.cur;
+    const r = gl.recipes[id]; if (!r) return null;
+    for (const p of gl.gear) gl.scene.remove(p.group);
+    gl.cur = r; gl.poser = new gl.E.Poser(gl.rig, r); gl.gear = gl.G.buildGear(r, gl.scene);
+    // cable machines: sample the rep once so each weight stack knows the cable's shortest length (stack at rest)
+    for (const p of gl.gear) if (p.calib) { let mn = Infinity; for (let i = 0; i < 36; i++) { p.update(gl.poser.solve(i / 36 * gl.poser.period)); mn = Math.min(mn, p.calib.last); } p.calib.Lmin = mn; }
+    const toM = l => [...new Set((l || []).map(m => gl.masks[m] ? m : (VOCAB_TO_MASK[m] || m)))], pm = toM(r.muscles.primary);
+    gl.E.paintMuscles(gl.rig, gl.masks, pm, toM(r.muscles.secondary).filter(m => !pm.includes(m)));
+    return r;
+  }
   // Draw one frame of exercise id into a 2D canvas context. Returns false while loading or when unavailable.
+  // st.t is the loop phase (0..1); st.yaw / st.pitch (card drag, default 0.7 / 0.15) turn the recipe's own camera.
   function paint(ctx, w, h, id, st) {
     if (failed) return false;
-    if (!eng) { load().catch(() => { }); return false; }
-    const { THREE, renderer, scene, camera, canvas, key } = gl;
-    const cur = eng.setExercise(id); if (!cur) return false;
-    eng.pose(st.t || 0);
+    if (!gl) { load().catch(() => { }); return false; }
+    const { THREE, renderer, scene, camera, canvas } = gl;
+    const r = setRecipe(id); if (!r) return false;
+    const out = gl.poser.solve((st.t || 0) * gl.poser.period);
+    for (const p of gl.gear) p.update && p.update(out);
     const dpr = Math.min(2, root.devicePixelRatio || 1), W = Math.round(w * dpr), H = Math.round(h * dpr);
     if (canvas.width !== W || canvas.height !== H) renderer.setSize(W, H, false);
-    const yaw = st.yaw == null ? 0.7 : st.yaw, pitch = st.pitch == null ? 0.15 : st.pitch, D = 5.5, aspect = w / h;
-    const fit = 1.12 * cur.radius / D; camera.aspect = aspect; camera.fov = 2 * Math.atan(aspect >= 1 ? fit : fit / aspect) * 180 / Math.PI * (st.zoom || 1);
-    camera.position.set(cur.center.x + D * Math.sin(yaw) * Math.cos(pitch), cur.center.y + D * Math.sin(pitch), cur.center.z + D * Math.cos(yaw) * Math.cos(pitch));
-    camera.lookAt(cur.center); camera.updateProjectionMatrix();
-    key.position.copy(cur.center).add(new THREE.Vector3(1.6, 3.6, 2.2)); key.target.position.copy(cur.center);
+    const c = r.camera, tgt = new THREE.Vector3(...c.target), dir = new THREE.Vector3(...c.dir).normalize();
+    const yaw = (st.yaw == null ? 0.7 : st.yaw) - 0.7, pitch = (st.pitch == null ? 0.15 : st.pitch) - 0.15;
+    dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    const el = Math.max(-0.1, Math.min(1.35, Math.asin(Math.max(-1, Math.min(1, dir.y))) + pitch)), hz = Math.hypot(dir.x, dir.z) || 1;
+    dir.set(dir.x / hz * Math.cos(el), Math.sin(el), dir.z / hz * Math.cos(el));
+    camera.aspect = w / h; camera.fov = 32 / Math.min(1, camera.aspect) / (st.zoom || 1); camera.updateProjectionMatrix();
+    camera.position.copy(tgt).addScaledVector(dir, c.dist); camera.lookAt(tgt);
     renderer.render(scene, camera);
     ctx.drawImage(canvas, 0, 0, w, h);
     return true;
   }
-  const api = { core, has, load, paint, ids: () => Object.keys(DATA().exercises || {}).filter(has), status: () => (failed ? 'failed' : eng ? 'ready' : loading ? 'loading' : 'idle'), info: id => (DATA().exercises || {})[id] || null };
+  const api = { core, has, load, paint, ids: () => Object.keys(RX()).filter(has), dur: id => RX()[id] || null, status: () => (failed ? 'failed' : gl ? 'ready' : loading ? 'loading' : 'idle'), info: id => (DATA().exercises || {})[id] || null };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.Exercise3D = api;
 })(typeof window !== 'undefined' ? window : globalThis);

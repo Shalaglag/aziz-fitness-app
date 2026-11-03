@@ -2057,7 +2057,7 @@
         if (!el.isConnected) { cards.delete(el); return; }
         const id = el.dataset.ea, st = state(id);
         if (el.dataset.mode === 'clip') return;
-        if (st.playing && !seen.has(id)) { st.t = (st.t + dt * st.speed / DEFS[id].dur) % 1; if (DEFS[id].still && st.view === '3d') st.yaw += dt * 0.35 * st.speed; seen.add(id); }
+        if (st.playing && !seen.has(id)) { st.t = (st.t + dt * st.speed / ((root.Exercise3D && root.Exercise3D.has(id) && root.Exercise3D.dur && root.Exercise3D.dur(id)) || DEFS[id].dur)) % 1; if (DEFS[id].still && st.view === '3d') st.yaw += dt * 0.35 * st.speed; seen.add(id); }
         if (el._eaVis !== false) paint(el);
         if (st.playing && el._eaVis !== false) moving = true;
       });
