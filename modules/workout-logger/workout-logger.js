@@ -819,8 +819,12 @@ Power Clean (Barbell)|Other|Barbell|`;
   on('tab', t => { tab = t.dataset.k; renderMain(); });
   function activeBanner() {
     if (!S.active || E) return '';
-    return '<button class="lb-active-bar" data-a="resume"><span class="dot"></span><span><b>' + esc(S.active.name) + '</b> in progress</span><span class="lb-mono" data-clock="' + S.active.start + '">' + clock(Date.now() - S.active.start) + '</span><span class="lb-chev">Resume</span></button>';
+    return '<button class="lb-active-bar" data-a="resume"><span class="dot"></span><span><b>' + esc(S.active.name) + '</b> in progress</span><span class="lb-mono" data-clock="' + S.active.start + '">' + clock(Date.now() - S.active.start) + '</span><span class="lb-chev">Resume</span></button>' +
+      '<div class="lb-active-acts"><button class="lb-btn primary small" data-a="barFinish">Finish workout</button><button class="lb-btn ghost danger small" data-a="barEnd">End workout</button></div>';
   }
+  // Train page shortcuts while a workout is hidden: open it and go straight to Finish, or to the "Cancel this workout?" confirm.
+  on('barFinish', () => { actions.resume(); if (E && E.mode === 'live') actions.finish(); });
+  on('barEnd', () => { actions.resume(); if (E && E.mode === 'live') actions.askDiscard(); });
 
   // Workout tab
   function viewWorkout() {
@@ -1751,6 +1755,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (!s.done) html += '<button class="lb-gym-done" data-a="gDone">✓ Done</button>';
     else html += '<div class="lb-gym-pair"><button class="lb-btn ghost" data-a="gUndo">Undo</button>' + (nx ? '<button class="lb-gym-done" data-a="gNext">Next set ›</button>' : '<button class="lb-gym-done ok" data-a="finish">All sets done · Finish</button>') + '</div>';
     html += '<div class="lb-gym-nav"><button class="lb-btn ghost" data-a="gNav" data-d="-1"' + (ei ? '' : ' disabled') + '>‹ Prev</button><button class="lb-btn ghost" data-a="addEx">+ Exercise</button><button class="lb-btn ghost" data-a="gNav" data-d="1"' + (ei < d.exercises.length - 1 ? '' : ' disabled') + '>Next ›</button></div>';
+    html += '<button class="lb-btn wide ghost danger" data-a="askDiscard">Cancel workout</button>';
     return html + '</div>';
   }
   function gymRefresh() { const el = liveEl && liveEl.querySelector('#lb-gym-cmp'); if (el && E && E.cur) el.innerHTML = gymCmpHtml(gymCtx()); }
@@ -2036,12 +2041,19 @@ Power Clean (Barbell)|Other|Barbell|`;
       const n = Math.max(unchecked, fillable), what = unchecked ? unchecked + ' set' + (unchecked > 1 ? 's have' : ' has') + ' numbers but ' + (unchecked > 1 ? 'aren’t' : 'isn’t') + ' checked.' : fillable + ' set' + (fillable > 1 ? 's aren’t' : ' isn’t') + ' checked yet.';
       openSheet({ title: 'Finish workout?', body: () => '<p>' + what + ' Unchecked sets are not saved.</p><div class="lb-row">' +
         (fillable ? '<button class="lb-btn primary" data-a="finishCheckAll">Finish and check remaining (' + n + ')</button>' : '') +
-        '<button class="lb-btn ' + (fillable ? 'ghost' : 'primary') + '" data-a="finishConfirm">Finish anyway</button><button class="lb-btn ghost" data-a="closeSheet">Go back</button></div>' });
+        '<button class="lb-btn ' + (fillable ? 'ghost' : 'primary') + '" data-a="finishConfirm">Finish anyway</button><button class="lb-btn ghost" data-a="closeSheet">Go back</button></div>' +
+        '<div class="lb-row"><button class="lb-btn ghost danger wide" data-a="askDiscard">Cancel workout (save nothing)</button></div>' });
       return;
     }
     finishFlow();
   });
   on('cancelLiveFromSheet', () => { closeAllSheets(); actions.cancelLive(); });
+  // "Cancel workout" from the Finish sheet or Gym mode: confirm, then drop the live workout. Saved workouts are never touched.
+  on('askDiscard', () => {
+    if (!E || E.mode !== 'live') return;
+    const n = E.doc.exercises.reduce((k, e) => k + e.sets.filter(s => s.done).length, 0);
+    openSheet({ title: 'Cancel this workout?', body: () => '<p>' + esc(E.doc.name || 'This workout') + ' will be discarded' + (n ? ', including ' + n + ' checked set' + (n > 1 ? 's' : '') : '') + '. Nothing from it will be saved. Past workouts are not affected.</p><div class="lb-row"><button class="lb-btn danger" data-a="cancelLiveFromSheet">Discard workout</button><button class="lb-btn ghost" data-a="closeSheet">Keep going</button></div>' });
+  });
   on('finishConfirm', () => { closeSheet(); finishFlow(); });
   // "Finish and check remaining": tick every unchecked set that has numbers or can take last time's, flag records, then finish. No rest timer, no per-set sound.
   on('finishCheckAll', () => {
@@ -2310,6 +2322,7 @@ button.lb-card:hover{border-color:var(--lb-muted)}
 .lb-screen-title{font-family:var(--display,inherit);font-size:1.9rem;line-height:1;margin:2px 0 12px;font-weight:700}
 
 .lb-active-bar .lb-chev{margin-left:auto;font-weight:700}
+.lb-active-acts{display:flex;gap:8px;margin:-6px 0 12px}.lb-active-acts .lb-btn{flex:1}
 @keyframes lbpulse{50%{opacity:.3}}
 .lb-stats{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.85rem;color:var(--lb-muted);margin:.25rem 0 .4rem;font-variant-numeric:tabular-nums}
 .lb-hlines{list-style:none;margin:0;padding:0;font-size:.88rem}
