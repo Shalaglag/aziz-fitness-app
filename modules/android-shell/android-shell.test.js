@@ -136,6 +136,12 @@ test("live rest countdown: RestTimer plugin starts with the rest end, stops on r
   assert.equal(started[0].total, 90);
   assert.equal(started[0].title, "Rest timer");
   assert.equal(started[0].body, "Rest 1:30");
+  assert.equal(started[0].look, "big", "no look picked → big");
+  listeners["lb:rest"]({ detail: { end, total: 90, look: "bar" } });
+  listeners["lb:rest"]({ detail: { end, total: 90, look: "../odd" } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(started[1].look, "bar");
+  assert.equal(started[2].look, "big", "unknown looks fall back to big");
   listeners["lb:rest-stop"]();
   assert.equal(stops, 1);
   rtListeners.skip();
@@ -146,7 +152,7 @@ test("live rest countdown: RestTimer plugin starts with the rest end, stops on r
 
 test("RestTimerPlugin.kt and its layout are copied into the Android project unchanged", () => {
   const fs = require("fs"), path = require("path"), root = path.join(__dirname, "..", "..");
-  for (const [src, dst] of [["RestTimerPlugin.kt", "android/app/src/main/java/com/azizfitness/app/RestTimerPlugin.kt"], ["notification_rest.xml", "android/app/src/main/res/layout/notification_rest.xml"]]) {
+  for (const [src, dst] of [["RestTimerPlugin.kt", "android/app/src/main/java/com/azizfitness/app/RestTimerPlugin.kt"], ["notification_rest.xml", "android/app/src/main/res/layout/notification_rest.xml"], ["notification_rest_clock.xml", "android/app/src/main/res/layout/notification_rest_clock.xml"], ["notification_rest_bar.xml", "android/app/src/main/res/layout/notification_rest_bar.xml"]]) {
     assert.equal(fs.readFileSync(path.join(root, dst), "utf8"), fs.readFileSync(path.join(__dirname, "android", src), "utf8"), "copy modules/android-shell/android/" + src + " into " + dst);
   }
   const main = fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/MainActivity.java"), "utf8");

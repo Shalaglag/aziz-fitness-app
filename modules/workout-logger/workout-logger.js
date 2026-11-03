@@ -15,7 +15,8 @@
  *   spoken sets into the current workout (exported as WorkoutLogger.applyVoice for tests).
  * targets: optional AppTargets.resolve(...) object; the body-weight goal reads targets.goalKg.
  * Rest timer look (settings.restStyle: bar | half | ring | fill | plates | blocks; ring and fill take the whole
- *   screen like Strong) and end sound (settings.restSound: a GymSounds.REST_SOUNDS id) are picked in Settings. A ticked set plays
+ * screen like Strong), notification countdown look (settings.restNotify: big | clock | bar | plain | endsAt, sent as
+ * `look` on lb:rest for the Android shell) *   screen like Strong) and end sound (settings.restSound: a GymSounds.REST_SOUNDS id) are picked in Settings. A ticked set plays
  *   settings.setSound (a GymSounds.SET_SOUNDS id, default 'check' = Aziz's recording, or 'off').
  * Live workouts open in Gym mode (one set at a time, big steppers, RIR, rest countdown with "up next");
  *   "List view" in the header switches to the full table. Sets may carry rir (0-4, 4 = 4+).
@@ -455,7 +456,7 @@ Power Clean (Barbell)|Other|Barbell|`;
 
   const DEFAULT_SETTINGS = {
     unit: 'kg', restCompound: 150, restIso: 90, sound: true, vibrate: true, wake: true, rpe: false, rir: false, gym: false,
-    restStyle: 'bar', restSound: 'restDone', countBuzz: true, setSound: 'check',
+    restStyle: 'bar', restSound: 'restDone', restNotify: 'big', countBuzz: true, setSound: 'check',
     bar: 20, barLb: 45, platesKg: [25, 20, 15, 10, 5, 2.5, 1.25], platesLb: [45, 35, 25, 10, 5, 2.5],
     rotOverride: null, seeded: false
   };
@@ -1315,6 +1316,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   function restLookHtml() {
     const st = S.settings, chips = (k, list) => '<div class="lb-row tight lb-chips">' + list.map(([id, l]) => '<button class="lb-btn small' + (st[k] === id ? ' primary' : ' ghost') + '" data-a="setPick" data-k="' + k + '" data-v="' + id + '" aria-pressed="' + (st[k] === id) + '">' + esc(l) + '</button>').join('') + '</div>';
     return '<div class="lb-field"><span>Rest timer look</span>' + chips('restStyle', REST_STYLES) + '<button class="lb-link small" data-a="restTry">Try it (10 s)</button></div>' +
+      '<div class="lb-field"><span>Countdown in the notification</span>' + chips('restNotify', REST_NOTIFY) + '<small class="lb-muted">' + esc(REST_NOTIFY_HELP[restNotify()]) + '</small></div>' +
       '<div class="lb-field"><span>Sound when rest ends</span>' + chips('restSound', restSounds()) + '</div>' +
       '<div class="lb-field"><span>Sound when you tick a set</span>' + chips('setSound', setSounds()) + '</div>';
   }
@@ -1322,7 +1324,9 @@ Power Clean (Barbell)|Other|Barbell|`;
     const k = t.dataset.k, v = t.dataset.v;
     if (k === 'restStyle' && !REST_STYLES.some(r => r[0] === v)) return;
     if (k === 'restSound' && !restSounds().some(r => r[0] === v)) return;
+    if (k === 'restNotify' && !REST_NOTIFY.some(r => r[0] === v)) return;
     S.settings[k] = v; saveSettings();
+    if (k === 'restNotify' && rest) restCue(); // the live notification switches look at once
     if (k === 'setSound' && !setSounds().some(r => r[0] === v)) return;
     if ((k === 'restSound' || k === 'setSound') && v !== 'off' && GS()) { GS().prime(); GS().play(v); }
     if (k === 'restStyle' && rest) renderRest();
@@ -2072,10 +2076,15 @@ Power Clean (Barbell)|Other|Barbell|`;
   const setSounds = () => (GS() && GS().SET_SOUNDS ? GS().SET_SOUNDS.map(r => [r.id, r.label]) : []).concat([['off', 'Off']]);
   const restSounds = () => (GS() && GS().REST_SOUNDS ? GS().REST_SOUNDS.map(r => [r.id, r.label]).concat(GS().customInfo && GS().customInfo() ? [['custom', 'Your sound: ' + GS().customInfo().name]] : []) : [['restDone', 'Bell (Strong-style)']]);
   const restStyle = () => (REST_STYLES.some(r => r[0] === S.settings.restStyle) ? S.settings.restStyle : 'bar');
+  // Looks of the Android notification countdown (modules/android-shell RestTimerPlugin). Picked in Settings → Workout.
+  const REST_NOTIFY = [['big', 'Big clock'], ['clock', 'Clock only'], ['bar', 'Loading bar'], ['plain', 'Plain'], ['endsAt', 'Ends at']];
+  const REST_NOTIFY_HELP = { big: 'Rest timer on the left, the time counting down big on the right.', clock: 'Just the time, large and centred.', bar: 'A loading bar that empties under the time.', plain: 'A normal Android notification; the countdown sits in its corner.', endsAt: 'Shows the clock time your rest ends, with the countdown in the corner.' };
+  const restNotify = () => (REST_NOTIFY.some(r => r[0] === S.settings.restNotify) ? S.settings.restNotify : 'big');
+  function restCue() { if (!rest) return; try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: rest.total, sound: S.settings.restSound || 'restDone', look: restNotify() } })); } catch (e) { } }
   // Plates per side, inner to outer; they come off outer first as the rest runs down.
   const REST_PLATES = [['20', 'b', 1], ['15', 'y', .86], ['10', 'g', .72], ['5', 'w', .56], ['2.5', 'r', .44]];
   const REST_BLOCKS = 10;
-  function startRest(sec, at) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false, at: at || null }; persistRest(); renderRest(); startTick(); try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: sec, sound: S.settings.restSound || 'restDone' } })); } catch (e) { } }
+  function startRest(sec, at) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false, at: at || null }; persistRest(); renderRest(); startTick(); restCue(); }
   function previewRest(sec) { startRest(sec); }
   function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
@@ -2093,7 +2102,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (rest.end <= Date.now()) return stopRest();
     renderRest();
     // Re-arm the locked-phone end sound for the new end time (same notification id, so it replaces the old one).
-    try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: rest.total, sound: S.settings.restSound || 'restDone' } })); } catch (e) { }
+    restCue();
   }
   on('restAdj', t => restAdjust(+t.dataset.d));
   on('restSkip', () => stopRest());
@@ -2530,7 +2539,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   // Host settings screen: read the logger's settings and change some of them (gym, unit, rest) without opening its Tools tab.
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
-  const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
+  const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, restNotifyLooks: REST_NOTIFY, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     parseRest, setRestOf,
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
     swipe: { swipeDecision } };

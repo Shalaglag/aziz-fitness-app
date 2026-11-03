@@ -138,11 +138,12 @@ const AndroidShell = (function () {
   // Live countdown in the notification shade (Strong-style): RestTimerPlugin.kt posts an ongoing silent
   // notification whose chronometer counts down to d.end on its own, under the same id as "Rest is over",
   // so that one replaces it and rings. Its Skip / +15 s buttons come back as "skip" / "adjust" events.
+  const LOOKS = ["big", "clock", "bar", "plain", "endsAt"]; // RestTimerPlugin looks; the logger's restNotify setting
   function liveRest(d) {
     const rt = plugin("RestTimer"); if (!rt || !rt.start) return Promise.resolve(false);
     const left = Math.round((d.end - Date.now()) / 1000);
     const body = d.total ? "Rest " + mmss(d.total) + (left > 0 && left < d.total ? " \u00b7 " + mmss(left) + " left" : "") : "Next set when it hits 0:00";
-    return Promise.resolve(rt.start({ end: d.end, total: d.total || 0, title: d.title || "Rest timer", body })).then(r => !!(r && r.shown), () => false);
+    return Promise.resolve(rt.start({ end: d.end, total: d.total || 0, title: d.title || "Rest timer", body, look: LOOKS.includes(d.look) ? d.look : "big" })).then(r => !!(r && r.shown), () => false);
   }
   function liveRestStop() { const rt = plugin("RestTimer"); if (rt && rt.stop) try { rt.stop(); } catch (e) { } }
   function liveRestButtons() {
@@ -179,6 +180,6 @@ const AndroidShell = (function () {
     return true;
   }
 
-  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, liveRest, liveRestStop, _handlers: handlers };
+  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, liveRest, liveRestStop, LOOKS, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;
