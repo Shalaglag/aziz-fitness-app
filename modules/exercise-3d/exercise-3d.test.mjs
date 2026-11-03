@@ -59,3 +59,15 @@ test('both hands on one spot (goblet squat, landmine) keep the equipment in plac
     for (const sh of cur.shapes) for (const k of ['a', 'b', 'c']) if (sh[k]) assert.ok(sh[k].every(Number.isFinite), id + ' equipment point ' + k);
   }
 });
+
+test('reviewed recipe demos: app ids only, held exercises left out, files in place', () => {
+  const rx = DATA.recipes || {}, ids = Object.keys(rx);
+  assert.ok(ids.length >= 300, 'about 312 demos');
+  for (const id of ids) { assert.ok(window.ExerciseAnim.defs[id], id + ' is an app exercise with a card'); assert.ok(rx[id] > 1 && rx[id] < 20, id + ' loop seconds'); }
+  for (const id of DATA.recipesSource.held) assert.ok(!rx[id], id + ' is held back for a redo');
+  const recipes = JSON.parse(fs.readFileSync(R + 'app/3d/rx/recipes.json', 'utf8'));
+  assert.deepEqual(Object.keys(recipes).sort(), ids.sort(), 'recipes.json matches the list');
+  for (const f of ['engine.js', 'gear.js', 'gear_all.js', 'gymkit.js']) { const s = fs.readFileSync(R + 'app/3d/rx/' + f, 'utf8'); assert.ok(!/from 'three'/.test(s), f + ' imports the vendored three.js'); }
+  for (const f of ['body.glb', 'body_meta.json', 'gripcache.json']) assert.ok(fs.existsSync(R + 'app/3d/rx/' + f), f);
+  window.EXERCISE_3D = DATA; assert.ok(window.Exercise3D.has('bench-press-barbell') && !window.Exercise3D.has('elliptical'));
+});

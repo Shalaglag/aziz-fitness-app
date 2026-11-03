@@ -9,6 +9,9 @@ One skinned body (MakeHuman CC0, Extreme build reshaped to Aziz's Baki mesh, 200
 - It draws only while the card is on screen and playing (the card loop's IntersectionObserver), capped at 60 fps. There are no lower-detail versions: the app targets the S24 Ultra and newer (Aziz, Nov 1). Measured on the S24 Ultra: 120 fps steady with 200k, ~35%/h battery nonstop at 120 fps.
 - While loading, or if WebGL fails, the card keeps drawing the line mannequin.
 
+## Reviewed recipe demos (Nov 3, what the app shows)
+The Rotate view plays the recipe demos Aziz reviewed (the project's recipe viewer: `engine.js`, `gear.js`, `gear_all.js`, `gymkit.js`, `recipes.json`, `gripcache.json`, its body). `python3 tools/exercise-3d/import_recipes.py [viewer dir] [--hold=id,id]` copies them into `app/3d/rx/` (three.js import pointed at `app/vendor/three-r160`, body decoded to `body.glb`, only the app's exercises: recipe key `mz-<app id>`, keyed by app id) and writes `recipes` ({app id: loop seconds}) and `recipesSource` (recipes md5, held ids) into `exercises.json`. Held back after review (Nov 3, being redone): elliptical, chest-supported T-bar row machine, chest-supported row machine, reverse hyper machine; they keep the line mannequin until the fix lands, then re-run the import with `--hold=`. MoveKit-list recipes (`mk-…`) are not in the app's library, so they are not copied. `paint()` drives the recipe `Poser` with the card's loop phase and turns the recipe's own camera by the card drag; `dur(id)` gives the loop length the card plays at. The anim-based `core()` engine below is kept for its tests and tools but no longer drawn in the app.
+
 ## API (`window.Exercise3D`)
 - `has(id)`, `ids()`, `info(id)`, `status()` ('idle' | 'loading' | 'ready' | 'failed'), `load()` (Promise).
 - `paint(ctx, w, h, id, st)`: renders exercise `id` at `st.t` (0..1), `st.yaw`, `st.pitch`, `st.zoom` into a 2D canvas context. Returns false while not ready.
