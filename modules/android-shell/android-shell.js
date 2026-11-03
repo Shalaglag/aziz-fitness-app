@@ -14,7 +14,9 @@
  * Back button order: a registered handler → a visible sheet/dialog's close button → the previously visited tab
  * (opts.setTab(tab, scrollY), a history stack) → the Today tab → minimise the app.
  * Rest timer: the workout logger fires "lb:rest" {end,total,sound} and "lb:rest-stop" on window; a local
- * notification is scheduled 1 s after the end so the in-app beep (which cancels it) wins while the app is open.
+ * notification is scheduled 1 s after the end so the in-app beep (which cancels it) wins while the app is open,
+ * and the RestTimer plugin shows the live countdown in the shade meanwhile (Skip / +15 s buttons fire
+ * "lb:rest-skip" / "lb:rest-adjust" {d} on window, which the logger and Quick log handle).
  */
 const AndroidShell = (function () {
   const handlers = [];
@@ -133,6 +135,26 @@ const AndroidShell = (function () {
       return true;
     } catch (e) { return false; }
   }
+  // Live countdown in the notification shade (Strong-style): RestTimerPlugin.kt posts an ongoing silent
+  // notification whose chronometer counts down to d.end on its own, under the same id as "Rest is over",
+  // so that one replaces it and rings. Its Skip / +15 s buttons come back as "skip" / "adjust" events.
+  function liveRest(d) {
+    const rt = plugin("RestTimer"); if (!rt || !rt.start) return Promise.resolve(false);
+    const left = Math.round((d.end - Date.now()) / 1000);
+    const body = d.total ? "Rest " + mmss(d.total) + (left > 0 && left < d.total ? " \u00b7 " + mmss(left) + " left" : "") : "Next set when it hits 0:00";
+    return Promise.resolve(rt.start({ end: d.end, total: d.total || 0, title: d.title || "Rest timer", body })).then(r => !!(r && r.shown), () => false);
+  }
+  function liveRestStop() { const rt = plugin("RestTimer"); if (rt && rt.stop) try { rt.stop(); } catch (e) { } }
+  function liveRestButtons() {
+    const rt = plugin("RestTimer"); if (!rt || !rt.addListener) return;
+    try {
+      rt.addListener("skip", () => fire("lb:rest-skip", {}));
+      rt.addListener("adjust", d => fire("lb:rest-adjust", { d: (d && +d.seconds) || 15 }));
+    } catch (e) { }
+  }
+  function fire(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch (e) { } }
+  function mmss(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+
   async function cancel(id) { const ln = plugin("LocalNotifications"); if (!ln) return; try { await ln.cancel({ notifications: [{ id }] }); } catch (e) { } }
 
   function init(o) {
@@ -145,11 +167,18 @@ const AndroidShell = (function () {
     syncStatusBar(document);
     try { new MutationObserver(() => syncStatusBar(document)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) { }
     if (window.matchMedia) { try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => syncStatusBar(document)); } catch (e) { } }
-    window.addEventListener("lb:rest", e => { const d = (e && e.detail) || {}; if (!d.end) return; const ch = channelFor(restSound(d)); restChannel(plugin("LocalNotifications") || {}, ch).then(ok => notifyAt(REST_ID, d.end + 1000, "Rest is over", "Back to the next set.", ok ? { channelId: ch.id, sound: ch.sound } : null)); });
-    window.addEventListener("lb:rest-stop", () => cancel(REST_ID));
+    window.addEventListener("lb:rest", e => {
+      const d = (e && e.detail) || {}; if (!d.end) return;
+      const ch = channelFor(restSound(d));
+      restChannel(plugin("LocalNotifications") || {}, ch)
+        .then(ok => notifyAt(REST_ID, d.end + 1000, "Rest is over", "Back to the next set.", ok ? { channelId: ch.id, sound: ch.sound } : null))
+        .then(() => liveRest(d)); // after notifyAt, so the notification permission has been asked for
+    });
+    window.addEventListener("lb:rest-stop", () => { cancel(REST_ID); liveRestStop(); });
+    liveRestButtons();
     return true;
   }
 
-  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, _handlers: handlers };
+  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, liveRest, liveRestStop, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;

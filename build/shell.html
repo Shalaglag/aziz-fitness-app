@@ -2565,12 +2565,16 @@ function setDoneSound(){ const s=lbSettings(), v=(s&&s.setSound)||"check"; if(v!
 function lbRestSound(){ const s=lbSettings(); return (s&&s.restSound)||"restDone"; }
 function restCue(kind){ try{ window.dispatchEvent(new CustomEvent("lb:"+kind, {detail:{end:tEnd, total:tTotal, sound:lbRestSound()}})); }catch(_){} }
 function startTimer(sec){ const el=document.getElementById("timer"); tEnd=Date.now()+sec*1000; tTotal=sec; tBuzz=0; clearInterval(tInt); el.hidden=false; if(window.GymSounds) GymSounds.prime(); restCue("rest"); tickTimer(); tInt=setInterval(tickTimer,500); }
+function quickRestStop(){ clearInterval(tInt); tInt=null; restCue("rest-stop"); document.getElementById("timer").hidden=true; }
+function quickRestAdjust(dt){ tEnd=Math.max(Date.now(), tEnd+dt*1000); tTotal=Math.max(15, tTotal+dt); restCue("rest"); clearInterval(tInt); tInt=setInterval(tickTimer,500); tickTimer(); }
 document.getElementById("timer").addEventListener("click",e=>{
   const b=e.target.closest("button[data-t]"); if(!b) return;
-  if(b.dataset.t==="stop"){ clearInterval(tInt); tInt=null; restCue("rest-stop"); document.getElementById("timer").hidden=true; return; }
-  const dt=+b.dataset.t; tEnd=Math.max(Date.now(), tEnd+dt*1000); tTotal=Math.max(15, tTotal+dt);
-  restCue("rest"); clearInterval(tInt); tInt=setInterval(tickTimer,500); tickTimer();
+  if(b.dataset.t==="stop"){ quickRestStop(); return; }
+  quickRestAdjust(+b.dataset.t);
 });
+// Skip / +15 s on the Android rest-countdown notification, when Quick log owns the running rest.
+window.addEventListener("lb:rest-skip",()=>{ if(tInt) quickRestStop(); });
+window.addEventListener("lb:rest-adjust",e=>{ if(tInt) quickRestAdjust(+((e.detail||{}).d)||15); });
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:""); document.head.appendChild(st2); }catch(e){}
