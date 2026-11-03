@@ -290,9 +290,10 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.waitForFunction(() => played.includes("restDone"), null, { timeout: 4000 });
       assert.deepStrictEqual(await page.evaluate(() => cues), ["lb:rest", "lb:rest-stop"], "quick log tells the Android shell to schedule and cancel the rest notification");
       // Full logger: start a template, tick one set, Finish (through any confirm sheets)
+      // Tap the newest visible match (sheets stack on top of the logger)
+      const tapA = a => page.evaluate(a => { const b = [...document.querySelectorAll(`[data-a="${a}"]`)].filter(e => e.offsetParent).pop(); if (b) b.click(); return !!b; }, a);
       const finishOne = async () => {
-        // Tap the newest visible match (sheets stack on top of the logger)
-        const tap = a => page.evaluate(a => { const b = [...document.querySelectorAll(`[data-a="${a}"]`)].filter(e => e.offsetParent).pop(); if (b) b.click(); return !!b; }, a);
+        const tap = tapA;
         await tap("tplPreview"); await page.waitForTimeout(100);
         await tap("startTpl"); await page.waitForSelector('[data-a="check"]');
         await tap("check"); await page.waitForTimeout(100);
@@ -309,6 +310,18 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.evaluate(() => { played.length = 0; WorkoutLogger.setSettings({ setSound: "off" }); });
       await finishOne();
       assert.deepStrictEqual(await page.evaluate(() => played), [], "set sound Off: ticking is silent");
+      // Finish and check remaining: tick one set, leave the rest unchecked, choose the new option -> every fillable set is saved
+      await page.evaluate(() => { WorkoutLogger.setSettings({ sound: false }); });
+      await tapA("tplPreview"); await page.waitForTimeout(100);
+      await tapA("startTpl"); await page.waitForSelector('[data-a="check"]');
+      await tapA("check"); await page.waitForTimeout(100);
+      const before = await page.evaluate(() => document.querySelectorAll('[data-a="check"]').length);
+      await tapA("finish"); await page.waitForTimeout(150);
+      assert.ok(await page.evaluate(() => !![...document.querySelectorAll('[data-a="finishCheckAll"]')].find(e => e.offsetParent)), "finish sheet offers Finish and check remaining");
+      await tapA("finishCheckAll"); await page.waitForTimeout(150);
+      await tapA("finishSave"); await page.waitForTimeout(150);
+      const savedSets = await page.evaluate(() => { const w = S.docs.workouts[TODAY]; return w ? Object.values(w.sets).reduce((n, a) => n + a.length, 0) : -1; });
+      assert.ok(savedSets > 1 && savedSets <= before, `Finish and check remaining saved ${savedSets} sets (of ${before} rows), not just the one ticked`);
       await page.evaluate(() => WorkoutLogger.setSettings({ setSound: "check", sound: true }));
       // Quick log tick plays it too
       await page.evaluate(() => { played.length = 0; });

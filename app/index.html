@@ -5232,6 +5232,22 @@ Power Clean (Barbell)|Other|Barbell|`;
     toast('Logged ' + n + ' set' + (n > 1 ? 's' : '') + ': ' + [...new Set(names)].join(', '));
     return n;
   }
+  // Check every unchecked set whose fields have numbers or can be filled from last time (same rule as completeSet). Returns how many were ticked.
+  // onDone(e, s) runs for each newly ticked set. Pass a clone of the exercises to just count.
+  function fillRemaining(exs, fields, ex, ph, prev, match, onDone) {
+    let n = 0;
+    exs.forEach(e => {
+      const f = fields(ex(e.exId)), pv = prev(e);
+      e.sets.forEach((s, j) => {
+        if (s.done) return;
+        const p = match(pv, e, j);
+        f.forEach(k => { const v = ph(pv, p, e, k); if ((s[k] === '' || s[k] == null) && v !== '') s[k] = String(v).replace(/,/g, ''); });
+        if (f.every(k => s[k] === '' || s[k] == null)) return;
+        s.done = true; n++; if (onDone) onDone(e, s);
+      });
+    });
+    return n;
+  }
   function prevFor(e) {
     if (E.mode === 'template') { const s = sessions(e.exId)[0]; return { sets: s ? s.e.sets : [], src: 'last', unit: s ? s.e.unit : e.unit }; }
     const s = sessions(e.exId, E.doc.id)[0];
@@ -5662,11 +5678,25 @@ Power Clean (Barbell)|Other|Barbell|`;
     const unchecked = d.exercises.reduce((n, e) => n + e.sets.filter(s => !s.done && fieldsFor(getEx(e.exId)).some(k => s[k] !== '' && s[k] != null)).length, 0);
     const doneCount = d.exercises.reduce((n, e) => n + e.sets.filter(s => s.done).length, 0);
     if (!doneCount) { openSheet({ title: 'Nothing logged yet', body: () => '<p>Check off at least one set to save this workout, or cancel it.</p><div class="lb-row"><button class="lb-btn primary" data-a="closeSheet">Keep going</button><button class="lb-btn danger" data-a="cancelLiveFromSheet">Discard workout</button></div>' }); return; }
-    if (unchecked) { openSheet({ title: 'Finish workout?', body: () => '<p>' + unchecked + ' set' + (unchecked > 1 ? 's have' : ' has') + ' numbers but ' + (unchecked > 1 ? 'aren’t' : 'isn’t') + ' checked. Unchecked sets are not saved.</p><div class="lb-row"><button class="lb-btn primary" data-a="finishConfirm">Finish anyway</button><button class="lb-btn ghost" data-a="closeSheet">Go back</button></div>' }); return; }
+    const fillable = fillRemaining(clone(d.exercises), fieldsFor, getEx, phFor, prevFor, prevMatch);
+    if (unchecked || fillable) {
+      const n = Math.max(unchecked, fillable), what = unchecked ? unchecked + ' set' + (unchecked > 1 ? 's have' : ' has') + ' numbers but ' + (unchecked > 1 ? 'aren’t' : 'isn’t') + ' checked.' : fillable + ' set' + (fillable > 1 ? 's aren’t' : ' isn’t') + ' checked yet.';
+      openSheet({ title: 'Finish workout?', body: () => '<p>' + what + ' Unchecked sets are not saved.</p><div class="lb-row">' +
+        (fillable ? '<button class="lb-btn primary" data-a="finishCheckAll">Finish and check remaining (' + n + ')</button>' : '') +
+        '<button class="lb-btn ' + (fillable ? 'ghost' : 'primary') + '" data-a="finishConfirm">Finish anyway</button><button class="lb-btn ghost" data-a="closeSheet">Go back</button></div>' });
+      return;
+    }
     finishFlow();
   });
   on('cancelLiveFromSheet', () => { closeAllSheets(); actions.cancelLive(); });
   on('finishConfirm', () => { closeSheet(); finishFlow(); });
+  // "Finish and check remaining": tick every unchecked set that has numbers or can take last time's, flag records, then finish. No rest timer, no per-set sound.
+  on('finishCheckAll', () => {
+    closeSheet();
+    const d = E.doc, n = fillRemaining(d.exercises, fieldsFor, getEx, phFor, prevFor, prevMatch, (e, s) => { s.pr = setPRs(e.exId, e.unit, s, d.id); });
+    if (n) { touch(); toast('Checked ' + n + ' set' + (n > 1 ? 's' : '')); }
+    finishFlow();
+  });
   function finishFlow() {
     const d = E.doc, tpl = d.templateId && S.data.templates[d.templateId];
     if (tpl && templateChanged(tpl, d)) {
@@ -6233,7 +6263,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
   const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, restNotifyLooks: REST_NOTIFY, workoutInfo, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
-    parseRest, setRestOf,
+    parseRest, setRestOf, fillRemaining,
     gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
     swipe: { swipeDecision } };
   global.WorkoutLogger = api;
