@@ -116,3 +116,39 @@ test("a closed sheet that still has a size (aria-hidden / visibility:hidden) doe
   assert.equal(clicked, 0);
   delete global.window; delete global.getComputedStyle;
 });
+
+test("live rest countdown: RestTimer plugin starts with the rest end, stops on rest-stop, buttons fire events", async () => {
+  delete require.cache[require.resolve("./android-shell.js")];
+  const listeners = {}, rtListeners = {}, started = [], fired = [];
+  let stops = 0;
+  const LocalNotifications = { checkPermissions: async () => ({ display: "granted" }), createChannel: async () => {}, schedule: async () => {}, cancel: async () => {} };
+  const RestTimer = { start: async o => { started.push(o); return { shown: true }; }, stop: async () => { stops++; }, addListener: (k, fn) => { rtListeners[k] = fn; } };
+  global.CustomEvent = class { constructor(name, o) { this.type = name; this.detail = o && o.detail; } };
+  global.window = { Capacitor: { isNativePlatform: () => true, Plugins: { LocalNotifications, RestTimer } }, addEventListener: (k, fn) => { listeners[k] = fn; }, dispatchEvent: e => fired.push(e) };
+  global.document = { documentElement: { classList: { add() {} } }, body: {} };
+  const A = require("./android-shell.js");
+  assert.equal(A.init({}), true);
+  const end = Date.now() + 90000;
+  listeners["lb:rest"]({ detail: { end, total: 90, sound: "restDone" } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(started.length, 1);
+  assert.equal(started[0].end, end);
+  assert.equal(started[0].total, 90);
+  assert.equal(started[0].title, "Rest timer");
+  assert.equal(started[0].body, "Rest 1:30");
+  listeners["lb:rest-stop"]();
+  assert.equal(stops, 1);
+  rtListeners.skip();
+  rtListeners.adjust({ seconds: 15 });
+  assert.deepEqual(fired.map(e => [e.type, e.detail]), [["lb:rest-skip", {}], ["lb:rest-adjust", { d: 15 }]]);
+  delete global.document; delete global.CustomEvent; global.window = {};
+});
+
+test("RestTimerPlugin.kt and its layout are copied into the Android project unchanged", () => {
+  const fs = require("fs"), path = require("path"), root = path.join(__dirname, "..", "..");
+  for (const [src, dst] of [["RestTimerPlugin.kt", "android/app/src/main/java/com/azizfitness/app/RestTimerPlugin.kt"], ["notification_rest.xml", "android/app/src/main/res/layout/notification_rest.xml"]]) {
+    assert.equal(fs.readFileSync(path.join(root, dst), "utf8"), fs.readFileSync(path.join(__dirname, "android", src), "utf8"), "copy modules/android-shell/android/" + src + " into " + dst);
+  }
+  const main = fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/MainActivity.java"), "utf8");
+  assert.ok(main.includes("registerPlugin(RestTimerPlugin.class)"), "RestTimerPlugin registered in MainActivity");
+});

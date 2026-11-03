@@ -2087,15 +2087,21 @@ Power Clean (Barbell)|Other|Barbell|`;
     const end = Math.max(now, r.end + d * 1000), left = (end - now) / 1000;
     return Object.assign({}, r, { end, total: Math.max(r.total, Math.ceil(left), 1), buzz: undefined, alerted: false });
   }
-  on('restAdj', t => {
+  function restAdjust(d) {
     if (!rest) return;
-    rest = adjustRest(rest, +t.dataset.d, Date.now()); persistRest();
+    rest = adjustRest(rest, d, Date.now()); persistRest();
     if (rest.end <= Date.now()) return stopRest();
     renderRest();
     // Re-arm the locked-phone end sound for the new end time (same notification id, so it replaces the old one).
     try { window.dispatchEvent(new CustomEvent('lb:rest', { detail: { end: rest.end, total: rest.total, sound: S.settings.restSound || 'restDone' } })); } catch (e) { }
-  });
+  }
+  on('restAdj', t => restAdjust(+t.dataset.d));
   on('restSkip', () => stopRest());
+  // Skip / +15 s buttons on the Android rest-countdown notification (modules/android-shell).
+  try {
+    window.addEventListener('lb:rest-skip', () => { if (rest) stopRest(); });
+    window.addEventListener('lb:rest-adjust', e => restAdjust(+((e.detail || {}).d) || 15));
+  } catch (e) { }
   on('restMini', () => { if (!rest) return; rest.mini = true; persistRest(); renderRest(); });
   on('restFull', () => { if (!rest) return; rest.mini = false; persistRest(); renderRest(); });
   function restHost() { return E && liveEl && !liveEl.hidden ? liveEl.querySelector('.lb-rest') : floatingRest(); }

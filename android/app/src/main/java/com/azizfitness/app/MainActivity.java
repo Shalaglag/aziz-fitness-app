@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AppUpdatePlugin.class);
         registerPlugin(GoogleSignInPlugin.class);
         registerPlugin(SpeechPlugin.class);
+        registerPlugin(RestTimerPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
