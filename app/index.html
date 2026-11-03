@@ -5180,7 +5180,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   let liveEl;
   function openEditor(mode, doc) {
     E = { mode, doc, view: mode === 'live' && S.settings.gym ? 'gym' : 'list', cur: null, flash: null };
-    if (!liveEl) { liveEl = document.createElement('section'); liveEl.className = 'lb-live'; liveEl.setAttribute('role', 'dialog'); liveEl.setAttribute('aria-label', 'Workout'); overlay.appendChild(liveEl); }
+    if (!liveEl) { liveEl = document.createElement('section'); liveEl.className = 'lb-live'; liveEl.setAttribute('role', 'dialog'); liveEl.setAttribute('aria-label', 'Workout'); overlay.appendChild(liveEl); bindSwipe(liveEl); }
     liveEl.innerHTML = '<header class="lb-live-head"></header><div class="lb-live-body"></div><div class="lb-rest" hidden></div>';
     liveEl.hidden = false; document.documentElement.classList.add('lb-noscroll');
     liveEl.classList.remove('lb-live-in'); void liveEl.offsetWidth; liveEl.classList.add('lb-live-in'); clearTimeout(liveEl._inT); liveEl._inT = setTimeout(() => liveEl.classList.remove('lb-live-in'), 320);
@@ -5280,12 +5280,12 @@ Power Clean (Barbell)|Other|Barbell|`;
       e.sets.forEach((s, j) => {
         const p = prevMatch(prev, e, j), label = s.t === 'n' ? ++n : s.t.toUpperCase();
         const pTxt = p ? fmtSet(p, { unit: p._base ? e.unit : (prev.unit || e.unit), exId: e.exId }, ex) : '';
-        html += '<div class="lb-setrow' + (s.done ? ' done' : '') + '" data-ei="' + i + '" data-si="' + j + '"><button class="lb-settag ' + s.t + '" data-a="setType" data-ei="' + i + '" data-si="' + j + '" aria-label="Set type">' + label + '</button>' +
+        html += '<div class="lb-setwrap"><div class="lb-swipe-del"><button class="lb-swipe-btn" data-a="delSet" data-ei="' + i + '" data-si="' + j + '" tabindex="-1">Delete</button></div><div class="lb-setrow' + (s.done ? ' done' : '') + '" data-ei="' + i + '" data-si="' + j + '"><button class="lb-settag ' + s.t + '" data-a="setType" data-ei="' + i + '" data-si="' + j + '" aria-label="Set type">' + label + '</button>' +
           '<button class="lb-prev' + (p && p._base ? ' base' : '') + '" data-a="usePrev" data-ei="' + i + '" data-si="' + j + '" title="' + (p && p._base ? 'Template baseline' : 'Last time') + '">' + (pTxt ? esc(pTxt) : '–') + '</button>' +
           f.map(k => { const ph = phFor(prev, p, e, k); return '<input class="lb-cell" inputmode="' + (k === 'r' || k === 'sec' ? 'numeric' : 'decimal') + '" data-in="cell" data-k="' + k + '" data-ei="' + i + '" data-si="' + j + '" value="' + esc(s[k] ?? '') + '" placeholder="' + esc(ph) + '" aria-label="' + k + '">'; }).join('') +
           xc.map(k => '<input class="lb-cell" inputmode="' + (k === 'rir' ? 'numeric' : 'decimal') + '" data-in="cell" data-k="' + k + '" data-ei="' + i + '" data-si="' + j + '" value="' + esc(s[k] ?? '') + '" aria-label="' + k.toUpperCase() + '">').join('') +
           (live ? '<button class="lb-chk" data-a="check" data-ei="' + i + '" data-si="' + j + '" aria-label="Complete set" aria-pressed="' + !!s.done + '">✓</button>' : '<button class="lb-icon small" data-a="delSet" data-ei="' + i + '" data-si="' + j + '" aria-label="Delete set">×</button>') +
-          (s.pr && s.pr.length ? '<span class="lb-prrow">PR · ' + esc(s.pr.join(', ')) + '</span>' : '') + '</div>' +
+          (s.pr && s.pr.length ? '<span class="lb-prrow">PR · ' + esc(s.pr.join(', ')) + '</span>' : '') + '</div></div>' +
           (ex.cat !== 'Cardio' ? restLineHtml(e, s, i, j) : '');
       });
       html += '</div><div class="lb-exfoot"><button class="lb-btn small ghost" data-a="addSet" data-ei="' + i + '">Add set</button><button class="lb-link small" data-a="restEdit" data-ei="' + i + '">Rest ' + restLabel(restOf(e)) + '</button></div></article>';
@@ -5470,6 +5470,59 @@ Power Clean (Barbell)|Other|Barbell|`;
     e.sets.push(s); touch(); renderEditor();
   });
   on('delSet', t => { cellOf(t).sets.splice(+t.dataset.si, 1); touch(); renderEditor(); });
+  // ---------- Swipe a set row left to delete it (Strong-style) ----------
+  // A short swipe reveals a Delete button; a long one (past half the row) deletes on release.
+  const SWIPE_REVEAL = 88, SWIPE_START = 8, SWIPE_MIN = 40, SWIPE_FAR = 0.55;
+  function swipeDecision(dx, dy, width) {
+    if (!(dx < 0) || Math.abs(dx) <= Math.abs(dy)) return 'none';
+    if (-dx >= width * SWIPE_FAR) return 'delete';
+    return -dx >= SWIPE_MIN ? 'reveal' : 'none';
+  }
+  function bindSwipe(el) {
+    let sw = null, openWrap = null;
+    const setX = (wrap, x) => { wrap.querySelector('.lb-setrow').style.transform = x ? 'translateX(' + x + 'px)' : ''; };
+    const closeOpen = () => { if (openWrap) { openWrap.classList.remove('open', 'far'); setX(openWrap, 0); openWrap = null; } };
+    el.addEventListener('pointerdown', ev => {
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      const wrap = ev.target.closest('.lb-setwrap');
+      if (openWrap && wrap !== openWrap) closeOpen();
+      if (!wrap || !el.contains(wrap) || ev.target.closest('.lb-swipe-del')) return;
+      sw = { wrap, x0: ev.clientX, y0: ev.clientY, id: ev.pointerId, base: wrap === openWrap ? -SWIPE_REVEAL : 0, drag: false, off: 0 };
+    });
+    el.addEventListener('pointermove', ev => {
+      if (!sw || ev.pointerId !== sw.id) return;
+      const dx = ev.clientX - sw.x0, dy = ev.clientY - sw.y0;
+      if (!sw.drag) {
+        if (Math.abs(dy) > SWIPE_START && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }
+        if (Math.abs(dx) <= SWIPE_START) return;
+        sw.drag = true; sw.wrap.classList.add('swiping');
+        try { sw.wrap.setPointerCapture(ev.pointerId); } catch (e) { }
+      }
+      const w = sw.wrap.offsetWidth || 1;
+      sw.off = Math.max(-w, Math.min(0, sw.base + dx));
+      sw.wrap.classList.toggle('far', -sw.off >= w * SWIPE_FAR);
+      setX(sw.wrap, sw.off);
+    });
+    const end = ev => {
+      if (!sw || ev.pointerId !== sw.id) return;
+      const cur = sw; sw = null;
+      if (!cur.drag) { if (cur.wrap === openWrap && !ev.target.closest('[data-a]')) closeOpen(); return; }
+      cur.wrap.classList.remove('swiping');
+      // The drag's trailing click must not tick or open anything.
+      const eat = e => { e.stopPropagation(); e.preventDefault(); };
+      el.addEventListener('click', eat, { capture: true, once: true }); setTimeout(() => el.removeEventListener('click', eat, { capture: true }), 400);
+      const d = ev.type === 'pointercancel' ? 'none' : swipeDecision(cur.off, 0, cur.wrap.offsetWidth || 1);
+      const row = cur.wrap.querySelector('.lb-setrow');
+      if (d === 'delete' && E && row) {
+        const e = E.doc.exercises[+row.dataset.ei];
+        if (e && e.sets[+row.dataset.si]) { e.sets.splice(+row.dataset.si, 1); touch(); if (navigator.vibrate) try { navigator.vibrate(12); } catch (x) { } }
+        openWrap = null; renderEditor(); return;
+      }
+      if (d === 'reveal') { closeOpen(); cur.wrap.classList.add('open'); cur.wrap.classList.remove('far'); setX(cur.wrap, -SWIPE_REVEAL); openWrap = cur.wrap; }
+      else { cur.wrap.classList.remove('open', 'far'); setX(cur.wrap, 0); if (cur.wrap === openWrap) openWrap = null; }
+    };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  }
   on('setType', t => {
     const ei = +t.dataset.ei, si = +t.dataset.si;
     openSheet({
@@ -5965,6 +6018,14 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-setrow.head{min-height:0;padding:0 2px 2px;font-size:.68rem;text-transform:uppercase;letter-spacing:.14em;color:var(--lb-ink);font-weight:700}
 .lb-setrow.head span{text-align:center} .lb-setrow.head span:nth-child(2){text-align:left}
 .lb-setrow.done{background:color-mix(in srgb,var(--lb-good) 16%,transparent)}
+.lb-setwrap{position:relative;overflow:hidden;border-radius:10px;touch-action:pan-y}
+.lb-swipe-del{position:absolute;inset:0;display:flex;justify-content:flex-end;background:var(--lb-bad);border-radius:10px;visibility:hidden}
+.lb-setwrap.swiping .lb-swipe-del,.lb-setwrap.open .lb-swipe-del{visibility:visible}
+.lb-swipe-btn{width:88px;height:100%;border:0;background:transparent;color:#fff;font:inherit;font-weight:800;font-size:.92rem;transition:width .15s}
+.lb-setwrap.far .lb-swipe-btn{width:100%;text-align:left;padding-left:16px}
+.lb-setwrap .lb-setrow{position:relative;background:var(--lb-surface);transition:transform .18s cubic-bezier(.2,.8,.2,1)}
+.lb-setwrap.swiping .lb-setrow{transition:none}
+.lb-setwrap .lb-setrow.done{background:color-mix(in srgb,var(--lb-good) 16%,var(--lb-surface))}
 .lb-prev{font-size:.88rem;color:var(--lb-muted);opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-variant-numeric:tabular-nums;text-align:left}
 .lb-prev.base{font-style:italic}
 .lb-cell{width:100%;min-width:0;height:2.15rem;font-size:1.05rem;text-align:center;border-radius:8px;border:1px solid transparent;background:var(--lb-sunk);color:var(--lb-ink);font-weight:600;font-variant-numeric:tabular-nums;padding:0 4px}
@@ -6118,7 +6179,8 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
   const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     parseRest, setRestOf,
-    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest } };
+    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
+    swipe: { swipeDecision } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
