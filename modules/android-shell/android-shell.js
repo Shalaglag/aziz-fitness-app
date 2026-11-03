@@ -15,8 +15,9 @@
  * (opts.setTab(tab, scrollY), a history stack) → the Today tab → minimise the app.
  * Rest timer: the workout logger fires "lb:rest" {end,total,sound} and "lb:rest-stop" on window; a local
  * notification is scheduled 1 s after the end so the in-app beep (which cancels it) wins while the app is open,
- * and the RestTimer plugin shows the live countdown in the shade meanwhile (Skip / +15 s buttons fire
- * "lb:rest-skip" / "lb:rest-adjust" {d} on window, which the logger and Quick log handle).
+ * and the RestTimer plugin keeps a persistent workout notification in the shade ("lb:workout" {name,start,exercise,
+ * set,next,done,total,look} / "lb:workout-stop" from the logger) that turns into the live countdown during a rest.
+ * Its buttons fire "lb:rest-skip", "lb:rest-adjust" {d: ±15}, "lb:workout-next" and "lb:rest-start" on window.
  */
 const AndroidShell = (function () {
   const handlers = [];
@@ -135,22 +136,38 @@ const AndroidShell = (function () {
       return true;
     } catch (e) { return false; }
   }
-  // Live countdown in the notification shade (Strong-style): RestTimerPlugin.kt posts an ongoing silent
-  // notification whose chronometer counts down to d.end on its own, under the same id as "Rest is over",
-  // so that one replaces it and rings. Its Skip / +15 s buttons come back as "skip" / "adjust" events.
+  // Persistent workout notification (Strong-style), RestTimerPlugin.kt. Between rests it shows the workout's
+  // elapsed time, the current exercise and set and the next exercise, with "Next exercise" / "Rest" buttons;
+  // during a rest its chronometer counts down to d.end on its own with −15 s / +15 s / Skip. The plugin flips
+  // back to the workout view when the rest ends. A rest with no workout (Quick log) is a countdown that clears
+  // itself. Buttons come back as "skip" / "adjust" {seconds} / "next" / "rest" and are fired on window.
   const LOOKS = ["big", "clock", "bar", "plain", "endsAt"]; // RestTimerPlugin looks; the logger's restNotify setting
-  function liveRest(d) {
-    const rt = plugin("RestTimer"); if (!rt || !rt.start) return Promise.resolve(false);
-    const left = Math.round((d.end - Date.now()) / 1000);
-    const body = d.total ? "Rest " + mmss(d.total) + (left > 0 && left < d.total ? " \u00b7 " + mmss(left) + " left" : "") : "Next set when it hits 0:00";
-    return Promise.resolve(rt.start({ end: d.end, total: d.total || 0, title: d.title || "Rest timer", body, look: LOOKS.includes(d.look) ? d.look : "big" })).then(r => !!(r && r.shown), () => false);
+  const live = { workout: null, rest: null };
+  function liveShow() {
+    const rt = plugin("RestTimer"); if (!rt || !rt.show) return Promise.resolve(false);
+    const w = live.workout, r = live.rest; if (!w && !r) return Promise.resolve(false);
+    const look = LOOKS.includes((r && r.look) || (w && w.look)) ? ((r && r.look) || (w && w.look)) : "big";
+    const ex = w && w.exercise ? w.exercise + (w.set ? " \u00b7 " + w.set : "") : "";
+    const left = r ? Math.round((r.end - Date.now()) / 1000) : 0;
+    const o = {
+      title: r ? "Rest timer" : (w.name || "Workout"),
+      body: ex || (r ? "Rest " + mmss(r.total || left) : "Workout running"),
+      sub: w && w.next ? "Next: " + w.next : (w && w.total ? w.done + " of " + w.total + " sets done" : ""),
+      look, workout: !!w, start: w ? w.start : 0, end: r ? r.end : 0, total: r ? r.total || 0 : 0
+    };
+    return Promise.resolve(rt.show(o)).then(x => !!(x && x.shown), () => false);
   }
-  function liveRestStop() { const rt = plugin("RestTimer"); if (rt && rt.stop) try { rt.stop(); } catch (e) { } }
+  function liveRest(d) { live.rest = { end: d.end, total: d.total || 0, look: d.look }; return liveShow(); }
+  function liveRestStop() { live.rest = null; if (live.workout) liveShow(); else liveStop(); }
+  function liveWorkout(d) { live.workout = d || null; if (live.workout) liveShow(); else if (live.rest) liveShow(); else liveStop(); }
+  function liveStop() { const rt = plugin("RestTimer"); if (rt && rt.stop) try { rt.stop(); } catch (e) { } }
   function liveRestButtons() {
     const rt = plugin("RestTimer"); if (!rt || !rt.addListener) return;
     try {
       rt.addListener("skip", () => fire("lb:rest-skip", {}));
       rt.addListener("adjust", d => fire("lb:rest-adjust", { d: (d && +d.seconds) || 15 }));
+      rt.addListener("next", () => fire("lb:workout-next", {}));
+      rt.addListener("rest", () => fire("lb:rest-start", {}));
     } catch (e) { }
   }
   function fire(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch (e) { } }
@@ -176,10 +193,14 @@ const AndroidShell = (function () {
         .then(() => liveRest(d)); // after notifyAt, so the notification permission has been asked for
     });
     window.addEventListener("lb:rest-stop", () => { cancel(REST_ID); liveRestStop(); });
+    window.addEventListener("lb:workout", e => liveWorkout((e && e.detail) || null));
+    window.addEventListener("lb:workout-stop", () => liveWorkout(null));
     liveRestButtons();
+    // The logger may have restored a running workout before these listeners existed.
+    setTimeout(() => { try { const i = window.WorkoutLogger && WorkoutLogger.workoutInfo && WorkoutLogger.workoutInfo(); if (i && !live.workout) liveWorkout(i); } catch (e) { } }, 2000);
     return true;
   }
 
-  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, liveRest, liveRestStop, LOOKS, _handlers: handlers };
+  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, liveRest, liveRestStop, liveWorkout, LOOKS, _live: live, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;
