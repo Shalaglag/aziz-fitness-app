@@ -44581,12 +44581,14 @@ function render(){
   document.getElementById("dateLabel").textContent = fmt(view.date) + (view.date===TODAY?" · today":"");
   document.getElementById("goToday").hidden = view.date===TODAY;
   const y = window.scrollY;
+  try{ foodDraftCapture(); }catch(e){ console.error("[food draft]", e); }
   const tabFn = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,friends:vFriends,guide:vGuide,settings:vSettings})[view.tab] || vToday;
   main.innerHTML = safe(view.tab+" tab", tabFn);
   [["Workout logger",syncLogger],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
   if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); if(lastTab) tabMotion(lastTab, view.tab); lastTab=view.tab; }
   applyFlash();
   window.scrollTo(0,y);
+  try{ foodDraftRestore(); }catch(e){}
   if(frInst) frInst.schedulePublish();
   try{ maybeFirstRunSetup(); }catch(e){ console.error("[goal setup]", e); }
   try{ celebrateMilestones(); }catch(e){ console.error("[milestones]", e); }
@@ -45199,6 +45201,18 @@ function vFood(){
   ${fold("fcycle","Calorie cycling","", safeMod("CalorieCycling",()=>CalorieCycling.html(ccTargets(), ccState(), ccOpts())))}
   ${view.foodSheet?foodSheet(d,day,training):""}`;
 }
+// The add/edit food form survives a re-render. render() runs for many reasons while the sheet is open (a Firestore
+// snapshot, a water or steps sync, the deferred render after a pad tap moves focus off the input) and used to rebuild the
+// form from scratch, wiping what was typed. foodDraftCapture() copies the fields into view.foodSheet.draft before the DOM
+// is replaced; foodSheet() renders from the draft; foodDraftRestore() puts the keyboard back where it was.
+const FOOD_DRAFT_IDS=["fname","fslot","fk","fp","fc","ff"];
+function foodDraftCapture(){ const fs=view.foodSheet; const form=fs && main.querySelector('form[data-form="food"]'); if(!form) return;
+  const d={}; FOOD_DRAFT_IDS.forEach(id=>{ const el=form.querySelector("#"+id); if(el) d[id]=el.value; }); const ea=form.querySelector("#featen"); if(ea) d.eaten=ea.checked;
+  const tiles=[...form.querySelectorAll(".fa-field")]; d.tile=Math.max(0,tiles.findIndex(x=>x.classList.contains("is-active")));
+  const a=document.activeElement; d.focus=null; if(a && form.contains(a) && a.id){ d.focus=a.id; try{ d.sel=[a.selectionStart,a.selectionEnd]; }catch(_){ d.sel=null; } }
+  fs.draft=d; }
+function foodDraftRestore(){ const fs=view.foodSheet, d=fs && fs.draft; if(!d || !d.focus) return; const el=document.getElementById(d.focus); if(!el) return;
+  try{ el.focus({preventScroll:true}); if(d.sel && d.sel[0]!=null && el.setSelectionRange) el.setSelectionRange(d.sel[0], d.sel[1]); }catch(_){} }
 // Food detail header in the add/edit sheet: big calories, macro grams with their share of the calories, and "Impact on today" rings (share of each day goal). foodFormSync() updates it as the numbers change.
 function foodHeadHtml(v, G){ const k=+v.kcal||0,p=+v.p||0,c=+v.c||0,f=+v.f||0, kc=(p*4+c*4+f*9)||1, pc=x=>Math.round(x/kc*100);
   const impact=(lab,val,goal,cls)=>{ const pct=goal?Math.round(val/goal*100):0; return `<div class="imp mk-${cls}"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="42" pathLength="100"></circle><circle class="ring-fill" data-fh-ring="${cls}" cx="50" cy="50" r="42" pathLength="100" style="--value:${Math.min(100,pct)}"></circle></svg><b data-fh="i${cls}">${pct}%</b><span>${lab}</span></div>`; };
@@ -45216,14 +45230,15 @@ function foodSheet(d, day, training){
   const tabs=[["add",edit?"Edit":"Add"],["quick","Quick"],["saved","Saved"]].concat(window.MenuImport?[]:[["menu","Menu"]]).concat([["scan","Scan"]]);
   const num=(id,l,v,st)=>`<label class="field"><span class="label">${l}</span><input type="number" id="${id}" step="${st}" value="${v??""}" ${id==="fk"?"required":""}></label>`;
   let body="";
-  if(tab==="add"){ const v=edit||{}, G=foodGoals(d), FIELDS=[["fk","Calories","kcal","k"],["fp","Protein","p","p"],["fc","Carbs","c","c"],["ff","Fat","f","f"]];
+  if(tab==="add"){ const dr=fs.draft||null, v=dr ? {kcal:dr.fk,p:dr.fp,c:dr.fc,f:dr.ff} : (edit||{}), G=foodGoals(d), FIELDS=[["fk","Calories","kcal","k"],["fp","Protein","p","p"],["fc","Carbs","c","c"],["ff","Fat","f","f"]];
+    const nameV = dr ? dr.fname : (edit?edit.name:""), slotV = dr ? dr.fslot : (edit?edit.slot:slot), eatenV = dr ? !!dr.eaten : !!(edit&&edit.eaten), tileV = dr ? (dr.tile||0) : 0;
     body = `<form data-form="food" class="fadd" autocomplete="off">
         ${edit?`<input type="hidden" id="fedit" value="${esc(edit.id)}">`:""}
-        <div class="fa-top"><select id="fslot" aria-label="Meal">${["Meal 1","Meal 2","Snack","Breakfast","Extra"].concat(edit&&!["Meal 1","Meal 2","Snack","Breakfast","Extra"].includes(edit.slot)?[edit.slot]:[]).map(s=>`<option ${s===(edit?edit.slot:slot)?"selected":""}>${esc(s)}</option>`).join("")}</select>
-          <input type="text" id="fname" placeholder="Food name" required aria-label="Food name" value="${edit?esc(edit.name):""}"></div>
+        <div class="fa-top"><select id="fslot" aria-label="Meal">${["Meal 1","Meal 2","Snack","Breakfast","Extra"].concat(slotV&&!["Meal 1","Meal 2","Snack","Breakfast","Extra"].includes(slotV)?[slotV]:[]).map(s=>`<option ${s===slotV?"selected":""}>${esc(s)}</option>`).join("")}</select>
+          <input type="text" id="fname" placeholder="Food name" required aria-label="Food name" value="${esc(nameV||"")}"></div>
         <div class="fa-head" id="fhead">${foodHeadHtml({kcal:+v.kcal||0,p:+v.p||0,c:+v.c||0,f:+v.f||0}, G)}</div>
-        <div class="fa-acts"><label class="fa-act"><input type="checkbox" id="featen" ${edit&&edit.eaten?"checked":""}><span class="ico">✓</span>${edit?"Eaten":"Eaten now"}</label>${edit?`<button type="button" class="fa-act" data-act="fooddup" data-id="${esc(edit.id)}">Add again</button><button type="button" class="fa-act" data-act="delfood" data-id="${esc(edit.id)}">Delete</button>`:""}</div>
-        <div class="fa-fields">${FIELDS.map(([id,l,key,cls],i)=>`<label class="fa-field mk-${cls} ${i===0?"is-active":""}"><span>${l}</span><input type="text" inputmode="none" id="${id}" value="${v[key]??""}" ${id==="fk"?"required":""} aria-label="${l}"></label>`).join("")}</div>
+        <div class="fa-acts"><label class="fa-act"><input type="checkbox" id="featen" ${eatenV?"checked":""}><span class="ico">✓</span>${edit?"Eaten":"Eaten now"}</label>${edit?`<button type="button" class="fa-act" data-act="fooddup" data-id="${esc(edit.id)}">Add again</button><button type="button" class="fa-act" data-act="delfood" data-id="${esc(edit.id)}">Delete</button>`:""}</div>
+        <div class="fa-fields">${FIELDS.map(([id,l,key,cls],i)=>`<label class="fa-field mk-${cls} ${i===tileV?"is-active":""}"><span>${l}</span><input type="text" inputmode="none" id="${id}" value="${esc(String(v[key]??""))}" ${id==="fk"?"required":""} aria-label="${l}"></label>`).join("")}</div>
         <div class="fa-portion"><span class="label">Portion</span>${[0.5,0.75,1.5,2].map(m=>`<button type="button" class="chip" data-act="portion" data-m="${m}">×${m}</button>`).join("")}</div>
         <div class="pad" role="group" aria-label="Number pad">${["1","2","3","4","5","6","7","8","9",".","0","del"].map(k=>`<button type="button" data-act="pad" data-k="${k}" class="${k==="del"?"pk-del":""}" aria-label="${k==="del"?"Delete":k}">${k==="del"?"⌫":k}</button>`).join("")}<button type="button" class="pk-next" data-act="padnext">Next</button><button class="pk-add" type="submit">${edit?"Save":"Add"}</button></div>
         ${edit?"":`<p class="muted" style="font-size:.82rem;margin:0;text-align:center">Not eaten yet? Leave "Eaten now" off and tick it later.</p>`}</form>
