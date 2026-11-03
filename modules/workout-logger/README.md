@@ -21,6 +21,11 @@ Live workouts open in Gym mode by default. "List view" in the header switches to
 - Reopening a workout picks up after the furthest checked set, so skipped warm-ups don't pull you back.
 - Wake lock, beep and vibration settings are the existing ones.
 
+## Swipe left to delete a set (Nov 3)
+- Every set row in the list view sits in `.lb-setwrap` over a red Delete panel. Drag it left 40 px or more and it stays open showing **Delete** (tap to remove the set); drag past half the row and the set is deleted on release. A tap elsewhere or a re-render closes it. Vertical drags scroll as before (`touch-action: pan-y`).
+- The other ways stay: the set-tag sheet's "Delete this set", and the × button when editing a template.
+- `WorkoutLogger.swipe.swipeDecision(dx, dy, width)` → `none | reveal | delete`; tests in `swipe-delete.test.js`.
+
 ## Rest timer look and sound
 Settings → Workout (app) or Tools → Settings (logger) pick both; stored in `lb_meta/settings` as `restStyle` and `restSound`.
 - `restStyle`: `bar` Loading bar (default) · `half` Half circle · `ring` Full circle, full screen like Strong · `fill` Screen fill (the colour drains down the screen) · `plates` Plates off the bar (2.5 → 20 kg plates come off as rest runs down) · `blocks` Blocks (10 segments). Full-screen looks are a `role="dialog"` with Minimise (also the Android back button), which drops to the bar for that rest.
