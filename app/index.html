@@ -30127,6 +30127,7 @@ window.EXERCISE_3D={
     biceps_long: 'biceps', biceps_short: 'biceps', brachialis: 'biceps', brachioradialis: 'forearms', forearm_flexors: 'forearms', forearm_extensors: 'forearms', triceps_long: 'triceps', triceps_lateral: 'triceps',
     abs_rectus: 'abs', glute_max: 'glutes', quads_vasti: 'quads', rectus_femoris: 'quads', calves_gastrocnemius: 'calves', calves_soleus: 'calves', tibialis_anterior: 'tibialis' };
   let loading = null, gl = null, failed = false;
+  const viewOff = {};
   function load() {
     if (loading) return loading;
     const base = DATA().base || './';   // relative to the page; import() needs the ./ prefix
@@ -30170,6 +30171,7 @@ window.EXERCISE_3D={
     const r = gl.recipes[id]; if (!r) return null;
     for (const p of gl.gear) gl.scene.remove(p.group);
     gl.cur = r; gl.poser = new gl.E.Poser(gl.rig, r); gl.gear = gl.G.buildGear(r, gl.scene);
+    gl.gearBox = new gl.THREE.Box3(); for (const p of gl.gear) if (p.group) gl.gearBox.expandByObject(p.group);   // static frame; moving parts stay inside it
     // cable machines: sample the rep once so each weight stack knows the cable's shortest length (stack at rest)
     for (const p of gl.gear) if (p.calib) { let mn = Infinity; for (let i = 0; i < 36; i++) { p.update(gl.poser.solve(i / 36 * gl.poser.period)); mn = Math.min(mn, p.calib.last); } p.calib.Lmin = mn; }
     const toM = l => [...new Set((l || []).map(m => gl.masks[m] ? m : (VOCAB_TO_MASK[m] || m)))], pm = toM(r.muscles.primary);
@@ -30187,14 +30189,24 @@ window.EXERCISE_3D={
     for (const p of gl.gear) p.update && p.update(out);
     const dpr = Math.min(2, root.devicePixelRatio || 1), W = Math.round(w * dpr), H = Math.round(h * dpr);
     if (canvas.width !== W || canvas.height !== H) renderer.setSize(W, H, false);
-    const c = r.camera, tgt = new THREE.Vector3(...c.target), dir = new THREE.Vector3(...c.dir).normalize();
-    const yaw = (st.yaw == null ? 0.7 : st.yaw) - 0.7, pitch = (st.pitch == null ? 0.15 : st.pitch) - 0.15;
-    dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-    const el = Math.max(-0.1, Math.min(1.35, Math.asin(Math.max(-1, Math.min(1, dir.y))) + pitch)), hz = Math.hypot(dir.x, dir.z) || 1;
-    dir.set(dir.x / hz * Math.cos(el), Math.sin(el), dir.z / hz * Math.cos(el));
-    camera.aspect = w / h; camera.fov = 32 / Math.min(1, camera.aspect) / (st.zoom || 1); camera.updateProjectionMatrix();
-    camera.position.copy(tgt).addScaledVector(dir, c.dist); camera.lookAt(tgt);
+    // card views: 3D = the recipe's own camera, Front / Side = straight views (as in the review viewer); a drag turns
+    // from whichever view was showing, so the card's yaw / pitch are kept as offsets from that view
+    const c = r.camera, tgt = new THREE.Vector3(...c.target), sy = st.yaw == null ? 0.7 : st.yaw, sp = st.pitch == null ? 0.15 : st.pitch;
+    const pre = { '3d': c.dir, front: [0.12, 0.25, 1], side: [1, 0.25, 0.05] }[st.view || '3d'];
+    const off = viewOff[id] || (viewOff[id] = {});
+    if (pre || off.y == null) { const d = new THREE.Vector3(...(pre || c.dir)).normalize(); off.y = Math.atan2(d.x, d.z) - sy; off.p = Math.asin(d.y) - sp; }
+    const yaw = sy + off.y, el = Math.max(-0.1, Math.min(1.35, sp + off.p));
+    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(el), Math.sin(el), Math.cos(yaw) * Math.cos(el));
+    // keep the camera outside the equipment (turning used to fly it through frames and stacks): back it out of the
+    // gear's box and narrow the lens by the same ratio, so the person stays the same size on screen
+    let dist = c.dist; const box = gl.gearBox;
+    if (box && !box.isEmpty()) { const ray = new THREE.Ray(tgt.clone().addScaledVector(dir, 40), dir.clone().negate()), hit = ray.intersectBox(box, new THREE.Vector3());
+      if (hit) dist = Math.max(dist, Math.min(12, 40 - hit.distanceTo(ray.origin) + 0.35)); }
+    const fov0 = 32 / Math.min(1, w / h) / (st.zoom || 1);
+    camera.aspect = w / h; camera.fov = 2 * Math.atan(Math.tan(fov0 * Math.PI / 360) * c.dist / dist) * 180 / Math.PI; camera.far = dist + 20; camera.updateProjectionMatrix();
+    camera.position.copy(tgt).addScaledVector(dir, dist); camera.lookAt(tgt);
     renderer.render(scene, camera);
+    ctx.clearRect(0, 0, w, h);   // the 3D frame is transparent around the person: wipe the last frame first or turning leaves copies behind
     ctx.drawImage(canvas, 0, 0, w, h);
     return true;
   }
