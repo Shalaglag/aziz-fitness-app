@@ -504,23 +504,71 @@ test("service address: the health-check or endpoint link is cut back to the base
   assert.match(Coach._state.capMsg, /must start with https/);
 });
 
-test("voice: the mic asks the question when you stop talking, in English or Arabic; errors are shown; no mic without speech", async () => {
-  const calls = [], starts = [];
-  let cb = null, stopped = 0;
-  const speech = { supported: () => true, start: o => { starts.push(o.lang); cb = o; return { stop() { stopped++; } }; } };
-  const { tap } = serviceSetup({ calls, speech, reply: url => url.endsWith("/v1/usage") ? ndjsonResponse([MONTH], 200, "application/json") : ndjsonResponse([{ t: "d", text: '{"answer":"Fine."}' }, { t: "done", stop: "end_turn", costUsd: 0.001, usage: {} }]) });
+function voiceSetup(opts = {}) {
+  const calls = [], starts = [], stops = [];
+  let cb = null;
+  const speech = { supported: () => true, start: o => { starts.push(o.lang); cb = o; return { stop() { stops.push(1); } }; } };
+  const tidyReply = opts.tidy || (() => ndjsonResponse([{ text: "How much protein is left today?" }], 200, "application/json"));
+  const set = serviceSetup({ calls, speech, consent: opts.consent !== false, reply: (url, init) => url.endsWith("/v1/usage") ? ndjsonResponse([MONTH], 200, "application/json")
+    : url.endsWith("/v1/tidy") ? tidyReply(url, init)
+    : ndjsonResponse([{ t: "d", text: '{"answer":"Fine."}' }, { t: "done", stop: "end_turn", costUsd: 0.001, usage: {} }]) });
+  Coach._state.tidying = false; Coach._state.voiceRaw = null; Coach._state.sendAfterTidy = false;
+  return Object.assign(set, { calls, starts, stops, cb: () => cb, chats: () => calls.filter(c => c.url.endsWith("/v1/chat")), tidies: () => calls.filter(c => c.url.endsWith("/v1/tidy")) });
+}
+const restart = () => new Promise(r => setTimeout(r, 260));
+
+test("voice: keeps listening through pauses and never sends by itself; ■ tidies the words for review; Ask sends", async () => {
+  const V = voiceSetup();
   assert.match(Coach.panelHtml(), /data-coach-mic/); assert.match(Coach.panelHtml(), /data-coach-vlang[^>]*>EN</);
-  tap({ mic: "" });
-  assert.equal(starts[0], "en-US"); assert.match(Coach.panelHtml(), /Listening… speak now/); assert.match(Coach.panelHtml(), /co-mic on/);
-  cb.onText("how much protein", false); assert.equal(Coach._state.draft, "how much protein");
-  assert.equal(calls.filter(c => c.url.endsWith("/v1/chat")).length, 0, "nothing sent while still talking");
-  cb.onText("how much protein is left", true); cb.onEnd(); await tick();
-  const chat = calls.filter(c => c.url.endsWith("/v1/chat"));
-  assert.equal(chat.length, 1); assert.equal(chat[0].body.question, "how much protein is left");
-  tap({ vlang: "" }); assert.match(Coach.panelHtml(), /data-coach-vlang[^>]*>ع</);
-  tap({ mic: "" }); assert.equal(starts[1], "ar-KW");
-  tap({ mic: "" }); assert.equal(stopped, 1, "tapping again stops listening"); assert.equal(Coach._state.voice, null);
-  tap({ mic: "" }); cb.onError("not-allowed"); assert.match(Coach.panelHtml(), /speech error not-allowed/);
+  V.tap({ mic: "" });
+  assert.equal(V.starts[0], "en-US"); assert.match(Coach.panelHtml(), /Listening… take your time/); assert.match(Coach.panelHtml(), /co-mic on/);
+  V.cb().onText("how much", false); assert.equal(Coach._state.draft, "how much");
+  V.cb().onText("how much protein", true); V.cb().onEnd();          // the phone ends a phrase at a pause…
+  await restart();
+  assert.equal(V.starts.length, 2, "…and the mic starts again"); assert.equal(V.chats().length, 0, "nothing sent at a pause");
+  V.cb().onError("no-speech"); await restart();                       // a breath / thinking: still listening
+  assert.equal(V.starts.length, 3); assert.ok(Coach._state.voice);
+  V.cb().onText("protein protein is left to day", false);
+  assert.equal(Coach._state.draft, "how much protein protein protein is left to day");
+  V.tap({ mic: "" }); assert.equal(V.stops.length, 1);               // ■ stop and check
+  V.cb().onText("protein protein is left to day", true); V.cb().onEnd(); await tick();
+  assert.equal(V.chats().length, 0, "stopping never sends");
+  assert.equal(V.tidies().length, 1);
+  assert.equal(V.tidies()[0].body.text, "how much protein protein protein is left to day"); assert.equal(V.tidies()[0].body.lang, "en"); assert.ok(Array.isArray(V.tidies()[0].body.hints));
+  assert.equal(Coach._state.draft, "How much protein is left today?");
+  assert.match(Coach.panelHtml(), /Words tidied/); assert.match(Coach.panelHtml(), /data-coach-voiceraw/);
+  V.tap({ voiceraw: "" }); assert.equal(Coach._state.draft, "how much protein protein protein is left to day", "the words as spoken come back");
+  V.tap({ mic: "" }); assert.equal(V.starts.length, 4, "tapping 🎤 again carries on from the words in the box");
+  V.cb().onText("for today", true); V.cb().onEnd(); await restart();
+  V.submit("ignored: Ask while listening uses what was heard"); V.cb().onEnd(); await tick(); await tick();
+  assert.equal(V.tidies().length, 2); assert.match(V.tidies()[1].body.text, /left to day for today$/);
+  assert.equal(V.chats().length, 1); assert.equal(V.chats()[0].body.question, "How much protein is left today?", "Ask sends the tidied question");
+});
+
+test("voice: a long silence stops the mic without sending; Arabic; tidy failure keeps the words; no consent = no tidy; no mic without speech", async () => {
+  let V = voiceSetup();
+  V.tap({ vlang: "" }); assert.match(Coach.panelHtml(), /data-coach-vlang[^>]*>ع</);
+  V.tap({ mic: "" }); assert.equal(V.starts[0], "ar-KW");
+  V.cb().onText("كم بروتين باقي", true); V.cb().onEnd(); await restart();
+  for (let i = 0; i < 6; i++) { V.cb().onError("no-speech"); if (i < 5) await restart(); }
+  await tick();
+  assert.equal(Coach._state.voice, null, "stopped after a long pause"); assert.equal(V.chats().length, 0, "and nothing was sent");
+  assert.match(Coach.panelHtml(), /Stopped listening after a long pause/);
+  assert.equal(V.tidies()[0].body.lang, "ar");
+
+  V = voiceSetup({ tidy: () => ndjsonResponse([{ error: "upstream_busy" }], 503, "application/json") });
+  V.tap({ mic: "" }); V.cb().onText("bench press for ten reps", true); V.cb().onEnd(); await restart();
+  V.tap({ mic: "" }); V.cb().onEnd(); await tick();
+  assert.equal(Coach._state.draft, "bench press for ten reps"); assert.match(Coach.panelHtml(), /Couldn.{1,6}t tidy the words/); assert.equal(V.chats().length, 0);
+
+  V = voiceSetup({ consent: false });
+  V.tap({ mic: "" }); V.cb().onText("hello coach", true); V.cb().onEnd(); await restart();
+  V.tap({ mic: "" }); V.cb().onEnd(); await tick();
+  assert.equal(V.tidies().length, 0, "nothing goes to the service before the AI chat is turned on"); assert.equal(Coach._state.draft, "hello coach");
+
+  V = voiceSetup();
+  V.tap({ mic: "" }); V.cb().onError("not-allowed"); await tick();
+  assert.match(Coach.panelHtml(), /speech error not-allowed/); assert.equal(Coach._state.voice, null);
   Coach.bind({ addEventListener() {} }, { speech: () => ({ supported: () => false }) });
   assert.doesNotMatch(Coach.panelHtml(), /data-coach-mic/, "no mic button when the phone or browser can't listen");
 });

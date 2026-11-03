@@ -36631,6 +36631,8 @@ window.Coach = (() => {
 .co-err{color:var(--bad);font-size:.85rem;margin-top:6px}
 .co-mic{min-width:44px;padding:0 10px;margin:0}
 .co-mic.on{background:var(--bad);color:#fff;border-color:var(--bad)}
+.co-vstat{margin:6px 0 0}
+.co-linkbtn{background:none;border:0;padding:0;color:var(--accent,inherit);text-decoration:underline;font:inherit;cursor:pointer}
 .co-vlang{min-width:44px;padding:0 8px;margin:0;font-size:.8rem}
 .co-toggle{display:flex;gap:8px;align-items:center;margin:8px 0 0}
 @media (prefers-reduced-motion:no-preference){.co-new{animation:co-in .25s ease-out}@keyframes co-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
@@ -36655,7 +36657,7 @@ window.Coach = (() => {
 @keyframes co-blink{to{opacity:0}}
 @media (prefers-reduced-motion:reduce){.co-panel{transition:none}.co-cursor{animation:none}}
 `;
-  const S = { from: null, msgs: [], busy: false, error: "", ctl: null, draft: "", hidden: false, noClaude: false, noClaudeWhy: "", open: false, stream: "", loaded: false, consentQ: null, month: null, monthErr: "", monthAt: 0, settings: false, capMsg: "", voice: null, voiceErr: "", voiceLang: null };
+  const S = { from: null, msgs: [], busy: false, error: "", ctl: null, draft: "", hidden: false, noClaude: false, noClaudeWhy: "", open: false, stream: "", loaded: false, consentQ: null, month: null, monthErr: "", monthAt: 0, settings: false, capMsg: "", voice: null, voiceErr: "", voiceLang: null, voiceRaw: null, tidying: false, sendAfterTidy: false };
   let O = null;
 
   // ---------- Insights: patterns in the logs, worked out locally (no Claude, no cost) ----------
@@ -36932,37 +36934,108 @@ window.Coach = (() => {
   }
   // ---------- Voice questions ----------
   // Uses the speech service the app already has (VoiceLog.speech: the Android Speech plugin, or the browser's
-  // SpeechRecognition). Speak, and the question is sent when you stop talking; anything Claude proposes still
-  // needs a Confirm tap. English or Arabic, switched with the EN / ع button.
+  // SpeechRecognition). Aziz, Nov 3: keep listening while he pauses to think or breathe, and never send by
+  // itself. Each time the phone's recogniser ends a phrase the mic starts again and the words are added, until he
+  // taps ■ (stop and check the words) or Ask (send). Then the coach service tidies the transcript (misheard or
+  // mixed-up words, repeats, "no I mean…"); "Use what I said" puts the raw words back. English or Arabic (EN / ع).
   const speechApi = () => { const sp = O && O.speech && O.speech(); return sp && sp.supported && sp.supported() ? sp : null; };
   const voiceLang = () => S.voiceLang || (() => { const last = S.msgs.filter(m => m.q).slice(-1)[0];
     if (last) return langOf(last.q); return typeof navigator !== "undefined" && /^ar/i.test(navigator.language || "") ? "ar" : "en"; })();
   const SPEECH_LANG = { en: "en-US", ar: "ar-KW" };
+  const VOICE = { quietRounds: 6, maxMs: 5 * 60e3, restartMs: 200, stopWaitMs: 1500, tidyMs: 12000 };
   function voiceErrorText(code) {
     if (O && O.speechError) { try { return O.speechError(code); } catch (e) {} }
     return code === "not-allowed" ? "Mizan isn't allowed to use the microphone. Allow it in the phone's settings, or type the question." : "Couldn't hear that. Tap the mic and try again, or type the question.";
   }
-  function stopVoice() { const v = S.voice; S.voice = null; if (v) { try { v.stop(); } catch (e) {} } }
+  const voiceText = v => v.segs.concat(v.cur ? [v.cur] : []).map(x => String(x).trim()).filter(Boolean).join(" ");
+  function showDraft(v) { S.draft = voiceText(v); const inp = host && host.querySelector("[data-coach-input]"); if (inp) inp.value = S.draft; }
   function startVoice() {
-    const sp = speechApi(); if (!sp || S.busy) return;
-    S.voiceErr = ""; S.error = "";
-    let sent = false;
-    S.voice = sp.start({
+    const sp = speechApi(); if (!sp || S.busy || S.tidying) return;
+    S.voiceErr = ""; S.error = ""; S.voiceRaw = null;
+    const base = String(S.draft || "").trim();
+    const v = S.voice = { segs: base ? [base] : [], cur: "", ctl: null, stopping: false, then: "review", quiet: 0, at: Date.now(), timer: null };
+    renderPanel(); segment(v, sp);
+  }
+  function segment(v, sp) {
+    if (S.voice !== v || v.stopping) return;
+    let ended = false;
+    const end = code => { if (ended) return; ended = true; segEnd(v, sp, code); };
+    v.ctl = sp.start({
       lang: SPEECH_LANG[voiceLang()],
       onText: (text, final) => {
-        S.draft = text; const inp = host && host.querySelector("[data-coach-input]"); if (inp && !final) inp.value = text;
-        if (final && !sent && String(text).trim()) { sent = true; S.voice = null; ask(text); }
+        if (S.voice !== v || ended) return;
+        if (final) { if (String(text).trim()) { v.segs.push(String(text).trim()); v.quiet = 0; } v.cur = ""; } else v.cur = String(text || "");
+        showDraft(v);
       },
-      onEnd: () => { if (S.voice) { S.voice = null; renderPanel(); } },
-      onError: code => { S.voice = null; S.voiceErr = voiceErrorText(code); renderPanel(); },
+      onEnd: () => end(null),
+      onError: code => end(code || "error"),
     }) || null;
-    if (S.voice) renderPanel();
+  }
+  function segEnd(v, sp, code) {
+    if (S.voice !== v) return;
+    if (v.cur) { v.segs.push(v.cur.trim()); v.cur = ""; }
+    if (v.stopping) return finishVoice(v);
+    if (code && code !== "no-speech" && code !== "busy") { S.voiceErr = voiceErrorText(code); return finishVoice(v); }
+    if (code) v.quiet++; // silence, or the recogniser still releasing the last phrase: listen again
+    // A long silence or a very long recording stops the mic, but nothing is sent.
+    if (v.quiet >= VOICE.quietRounds || Date.now() - v.at > VOICE.maxMs) { S.voiceErr = "Stopped listening after a long pause. Tap 🎤 to carry on, or press Ask."; return finishVoice(v); }
+    v.timer = setTimeout(() => segment(v, sp), VOICE.restartMs);
+  }
+  // then: "review" (■: tidy and show the words), "send" (Ask: tidy, then send), "keep" (panel closed: keep the words)
+  function stopVoice(then) {
+    const v = S.voice; if (!v) return;
+    v.stopping = true; v.then = then || "keep"; clearTimeout(v.timer);
+    if (v.ctl) { try { v.ctl.stop(); } catch (e) {} }
+    setTimeout(() => finishVoice(v), VOICE.stopWaitMs); // in case the recogniser never reports its end
+    if (!v.ctl) finishVoice(v);
+  }
+  function finishVoice(v) {
+    if (S.voice !== v) return;
+    S.voice = null; clearTimeout(v.timer);
+    const raw = voiceText(v);
+    S.draft = raw.slice(0, 600);
+    if (!raw || v.then === "keep") { renderPanel(); return; }
+    S.tidying = true; renderPanel();
+    tidyVoice(raw).then(clean => {
+      S.tidying = false;
+      if (clean && clean !== raw) { S.voiceRaw = raw.slice(0, 600); S.draft = clean.slice(0, 600); }
+      if (v.then === "send" || S.sendAfterTidy) { S.sendAfterTidy = false; S.voiceRaw = null; ask(S.draft); return; }
+      renderPanel();
+    });
+  }
+  // Names from his own logs help the clean-up spell exercises and meals ("Romanian deadlift", not "Romanian dead lift").
+  function voiceHints() {
+    try {
+      const o = oo(), c = context(O.getDocs(), o);
+      return [].concat((c.lifts || []).map(l => l.name), ((o.planToday || {}).exercises || []).map(x => x.name), (c.savedMeals || []).map(m => m.name),
+        (c.menuToday || []).map(m => m && m.name), o.exerciseNames || []).filter(x => typeof x === "string" && x).filter((x, i, a) => a.indexOf(x) === i).slice(0, 80);
+    } catch (e) { return []; }
+  }
+  // Gives back the tidied text, or the words as spoken when the service isn't set up, isn't turned on, or fails.
+  async function tidyVoice(text) {
+    if (!serviceUrl() || !consented()) return text;
+    const ctl = typeof AbortController === "function" ? new AbortController() : null;
+    const t = setTimeout(() => ctl && ctl.abort(), VOICE.tidyMs);
+    try {
+      const r = await service("/v1/tidy", { method: "POST", body: JSON.stringify({ text, lang: langOf(text), hints: voiceHints() }), signal: ctl && ctl.signal });
+      const j = await r.json();
+      const out = String((j && j.text) || "").trim();
+      return out && out.length <= text.length * 2 + 40 ? out : text;
+    } catch (e) { S.voiceErr = "Couldn't tidy the words, so they're as heard. Check them before you press Ask."; return text; }
+    finally { clearTimeout(t); }
+  }
+  function voiceStatusHtml() {
+    const ar = voiceLang() === "ar";
+    if (S.voice) return '<p class="co-src co-vstat">' + (ar ? "أسمعك. خذ وقتك، وإذا خلصت اضغط ■ لتراجع الكلام أو Ask للإرسال." : "Listening. Pause whenever you like; tap ■ to check the words, or Ask to send.") + "</p>";
+    if (S.tidying) return '<p class="co-src co-vstat">' + (ar ? "أصلّح الكلمات…" : "Fixing misheard words…") + "</p>";
+    if (S.voiceRaw && S.voiceRaw !== S.draft) return '<p class="co-src co-vstat">' + (ar ? "صلّحت الكلمات. راجعها واضغط Ask." : "Words tidied. Check them, then press Ask.") + ' <button type="button" class="co-linkbtn" data-coach-voiceraw>' + (ar ? "رجّع كلامي" : "Use what I said") + "</button></p>";
+    return "";
   }
   function micHtml() {
     if (!speechApi()) return "";
     const on = !!S.voice, ar = voiceLang() === "ar";
     return '<button type="button" class="co-btn co-ghost co-vlang" data-coach-vlang aria-label="Voice language: ' + (ar ? "Arabic" : "English") + '" title="Voice language">' + (ar ? "ع" : "EN") + "</button>" +
-      '<button type="button" class="co-btn co-ghost co-mic' + (on ? " on" : "") + '" data-coach-mic aria-label="' + (on ? "Stop listening" : "Ask by voice") + '" aria-pressed="' + on + '"' + (S.busy ? " disabled" : "") + ">" + (on ? "■" : "🎤") + "</button>";
+      '<button type="button" class="co-btn co-ghost co-mic' + (on ? " on" : "") + '" data-coach-mic aria-label="' + (on ? "Stop listening" : "Ask by voice") + '" aria-pressed="' + on + '"' + (S.busy || S.tidying ? " disabled" : "") + ">" + (on ? "■" : "🎤") + "</button>";
   }
   function panelHtml() {
     const tab = O && O.tab ? O.tab() : "today";
@@ -36972,7 +37045,7 @@ window.Coach = (() => {
     const live = S.busy && S.stream ? '<div class="co-q" dir="auto">' + esc(S.msgs[S.msgs.length - 1].q) + '</div><div class="co-a co-live" dir="auto">' + esc(S.stream) + '<span class="co-cursor"></span></div>' : "";
     const msgs = S.msgs.map((m, i) => (m.pending && live) ? "" : (m.q ? '<div class="co-q" dir="auto">' + esc(m.q) + "</div>" : "") + answerHtml(m, i)).join("") + live;
     S.msgs.forEach(m => { m.seen = true; });
-    const form = (S.voiceErr ? '<p class="co-err" style="margin:0 0 6px">' + esc(S.voiceErr) + "</p>" : "") + '<form class="co-ask" data-coach-form><input data-coach-input dir="auto" placeholder="' + (S.voice ? (voiceLang() === "ar" ? "أسمعك… تكلّم" : "Listening… speak now") : "Ask about training, food or weight · اسأل بالعربي") + '" value="' + esc(S.draft) + '" maxlength="600"' + (S.busy ? " disabled" : "") + ' autocomplete="off">' + micHtml() + '<button class="co-btn" style="margin:0"' + (S.busy ? " disabled" : "") + ">Ask</button>" + (S.busy ? '<button type="button" class="co-btn co-ghost" style="margin:0" data-coach-stop>Stop</button>' : "") + "</form>";
+    const form = (S.voiceErr ? '<p class="co-err" style="margin:0 0 6px">' + esc(S.voiceErr) + "</p>" : "") + '<form class="co-ask" data-coach-form><input data-coach-input dir="auto" placeholder="' + (S.voice ? (voiceLang() === "ar" ? "أسمعك… خذ راحتك" : "Listening… take your time") : "Ask about training, food or weight · اسأل بالعربي") + '" value="' + esc(S.draft) + '" maxlength="600"' + (S.busy ? " disabled" : "") + ' autocomplete="off">' + micHtml() + '<button class="co-btn" style="margin:0"' + (S.busy ? " disabled" : "") + ">Ask</button>" + (S.busy ? '<button type="button" class="co-btn co-ghost" style="margin:0" data-coach-stop>Stop</button>' : "") + "</form>" + voiceStatusHtml();
     return '<button class="co-fab" data-coach-open aria-label="Ask the coach" title="Ask the coach"><span class="co-fab-i">✦</span><span class="co-fab-t">Coach</span></button>' +
       '<div class="co-scrim" data-coach-close' + (S.open ? "" : " hidden") + '></div>' +
       '<section class="co-panel' + (S.open ? " co-open" : "") + '" role="dialog" aria-label="Ask Claude" aria-hidden="' + (S.open ? "false" : "true") + '">' +
@@ -37006,7 +37079,7 @@ window.Coach = (() => {
   function openPanel(on) {
     loadHistory();
     S.open = on !== false;
-    if (!S.open) stopVoice();
+    if (!S.open) stopVoice("keep");
     renderPanel();
     if (S.open) refreshMonth(false);
     if (S.open) { const inp = host && host.querySelector("[data-coach-input]"); if (inp && window.matchMedia && !window.matchMedia("(max-width:720px)").matches) inp.focus(); }
@@ -37131,7 +37204,7 @@ window.Coach = (() => {
   function bind(root, opts) {
     O = Object.assign(O || {}, opts);
     root.addEventListener("click", e => {
-      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask],[data-coach-dismiss],[data-coach-act],[data-coach-skip],[data-coach-consent],[data-coach-settings],[data-coach-refresh],[data-coach-capsave],[data-coach-mic],[data-coach-vlang]");
+      const t = e.target.closest("[data-coach-topic],[data-coach-period],[data-coach-apply],[data-coach-clear],[data-coach-stop],[data-coach-open],[data-coach-close],[data-coach-ask],[data-coach-dismiss],[data-coach-act],[data-coach-skip],[data-coach-consent],[data-coach-settings],[data-coach-refresh],[data-coach-capsave],[data-coach-mic],[data-coach-vlang],[data-coach-voiceraw]");
       if (!t) return;
       if (t.dataset.coachAct || t.dataset.coachSkip) {
         const [mi, ai] = String(t.dataset.coachAct || t.dataset.coachSkip).split(":").map(Number), msg = S.msgs[mi], a = msg && msg.actions && msg.actions[ai];
@@ -37148,8 +37221,9 @@ window.Coach = (() => {
       }
       if (t.hasAttribute("data-coach-settings")) { S.settings = !S.settings; S.capMsg = ""; renderPanel(); if (S.settings) refreshMonth(true); return; }
       if (t.hasAttribute("data-coach-refresh")) { refreshMonth(true); return; }
-      if (t.hasAttribute("data-coach-mic")) { if (S.voice) { stopVoice(); renderPanel(); } else startVoice(); return; }
-      if (t.hasAttribute("data-coach-vlang")) { S.voiceLang = voiceLang() === "ar" ? "en" : "ar"; if (S.voice) { stopVoice(); startVoice(); } else renderPanel(); return; }
+      if (t.hasAttribute("data-coach-mic")) { if (S.voice) stopVoice("review"); else startVoice(); return; }
+      if (t.hasAttribute("data-coach-vlang")) { S.voiceLang = voiceLang() === "ar" ? "en" : "ar"; if (S.voice) { const v = S.voice; v.then = "keep"; stopVoice("keep"); finishVoice(v); startVoice(); } else renderPanel(); return; }
+      if (t.hasAttribute("data-coach-voiceraw")) { if (S.voiceRaw) S.draft = S.voiceRaw; S.voiceRaw = null; renderPanel(); return; }
       if (t.hasAttribute("data-coach-capsave")) { const sel = host && host.querySelector("[data-coach-capsel]"); if (sel) setCap(+sel.value); return; }
       if (t.dataset.coachDismiss) { if (O.onDismiss) O.onDismiss(t.dataset.coachDismiss); const box = t.closest("[data-coach-insight]"); if (box) box.remove(); return; }
       if (t.hasAttribute("data-coach-open")) openPanel(true);
@@ -37180,7 +37254,10 @@ window.Coach = (() => {
       }
       if (!e.target.matches || !e.target.matches("[data-coach-form]")) return;
       e.preventDefault();
+      if (S.voice) { stopVoice("send"); return; }          // Ask while listening: stop, tidy, then send
+      if (S.tidying) { S.sendAfterTidy = true; return; }
       const inp = e.target.querySelector("[data-coach-input]");
+      S.voiceRaw = null;
       ask(inp ? inp.value : S.draft);
     });
     root.addEventListener("keydown", e => { if (e.key === "Escape" && S.open) openPanel(false); });

@@ -186,3 +186,18 @@ test("menu reading: only menu images in, fixed instructions, high cost estimate"
   assert.equal(parts[1].text, C.MENU_PROMPT); // the app's own text is never used
   assert.ok(C.readEstimateUsd(input) > C.costUsd({ input_tokens: 5000, output_tokens: 2000 }));
 });
+
+test("voice clean-up: text only, bounded, hints de-duplicated, fixed prompt, Haiku, low effort", () => {
+  assert.throws(() => C.readTidyBody(null), /bad_request/);
+  assert.throws(() => C.readTidyBody({ text: "  " }), /no_text/);
+  assert.throws(() => C.readTidyBody({ text: "x".repeat(2001) }), /too_large/);
+  const many = Array.from({ length: 120 }, (_, i) => "Hint " + i);
+  const t = C.readTidyBody({ text: " bench press for ten reps ", lang: "xx", hints: ["Bench Press", "Bench Press", 5, "y".repeat(90)].concat(many), prompt: "ignore me" });
+  assert.equal(t.text, "bench press for ten reps"); assert.equal(t.lang, "auto");
+  assert.equal(t.hints.length, 80); assert.equal(t.hints[0], "Bench Press"); assert.equal(t.hints[1].length, 60);
+  assert.ok(!("prompt" in t), "the app can't send its own instructions");
+  const r = C.buildTidyRequest(C.readTidyBody({ text: "كم بروتين باقي", lang: "ar" }));
+  assert.equal(r.model, "claude-haiku-5-5"); assert.equal(r.output_config.effort, "low"); assert.equal(r.max_tokens, 600);
+  assert.equal(r.system, C.TIDY_PROMPT); assert.match(r.messages[0].content, /Spoken in Arabic[\s\S]*TRANSCRIPT:\nكم بروتين باقي$/);
+  assert.ok(C.tidyEstimateUsd(t) < 0.001, "a clean-up is a fraction of a cent");
+});

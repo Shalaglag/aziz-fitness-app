@@ -194,6 +194,45 @@ export function buildReadRequest(input) {
 // High guess for the ledger: each image counted as 6,000 tokens (a full-size page is about 1,600-5,000).
 export const readEstimateUsd = input => estimateUsd(input.images.length * READ.imageTokens + MENU_PROMPT.length, READ.maxTokens);
 
+// ---------- voice clean-up (POST /v1/tidy) ----------
+// The coach's mic gives raw speech-to-text: misheard words, repeats, "no I mean…". Before Aziz presses Send,
+// the app asks for the question he meant. Text in, text out, nothing else: the prompt lives here, the app only
+// sends the transcript, its language and up to 80 names from his own logs (exercises, meals) as spelling hints.
+export const TIDY = { maxChars: 2000, maxHints: 80, hintChars: 60, maxTokens: 600 };
+export function readTidyBody(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw err("bad_request", 400);
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (!text) throw err("no_text", 400);
+  if (text.length > TIDY.maxChars) throw err("too_large", 413);
+  const hints = (Array.isArray(body.hints) ? body.hints : []).filter(h => typeof h === "string")
+    .map(h => h.trim().slice(0, TIDY.hintChars)).filter(Boolean).filter((h, i, a) => a.indexOf(h) === i).slice(0, TIDY.maxHints);
+  const lang = body.lang === "ar" || body.lang === "en" ? body.lang : "auto";
+  return { text, hints, lang };
+}
+export const TIDY_PROMPT = [
+  "You clean up a speech-to-text transcript before it is sent as a question to Mizan, a fitness coach app.",
+  "The transcript can have misheard words, words in the wrong order, repeats, fillers (um, uh, like, يعني, يعني شلون) and the speaker correcting themselves.",
+  "Rules:",
+  "- Write the question the speaker meant, in the language they spoke: Arabic stays Arabic in the same dialect, English stays English, a mix stays a mix.",
+  "- Fix words that were clearly misheard, using the fitness context and the HINTS (names from the user's own app: exercises, meals, foods) when they sound alike.",
+  "- When the speaker corrects themselves (\"no, I mean…\", \"لا قصدي…\"), keep only the correction.",
+  "- Remove fillers, repeats and false starts, and add normal punctuation.",
+  "- Keep every number, weight, rep count, day and unit they said, unless they corrected it themselves.",
+  "- Never answer the question, add facts or explain. If you can't tell what a word was, leave it as spoken.",
+  "Reply with only the cleaned text.",
+].join("\n");
+export function buildTidyRequest(input) {
+  const hint = input.hints.length ? "HINTS: " + input.hints.join("; ") + "\n\n" : "";
+  return {
+    model: MODEL,
+    max_tokens: TIDY.maxTokens,
+    output_config: { effort: "low" },
+    system: TIDY_PROMPT,
+    messages: [{ role: "user", content: hint + (input.lang === "ar" ? "(Spoken in Arabic.)\n" : "") + "TRANSCRIPT:\n" + input.text }],
+  };
+}
+export const tidyEstimateUsd = input => estimateUsd(TIDY_PROMPT.length + input.text.length + input.hints.join("; ").length + 60, TIDY.maxTokens);
+
 // ---------- the monthly ledger ----------
 // state = {month, capUsd, allTimeUsd (every month so far, to compare with the prepaid credit), confirmedUsd, unsettledUsd, requests, tokens:{in, out, cacheWrite, cacheRead},
 //          open:{id:{uid, usd, at}}, users:{uid:{day, n, recent:[ms]}}}
