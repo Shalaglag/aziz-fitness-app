@@ -1117,7 +1117,7 @@ Power Clean (Barbell)|Other|Barbell|`;
         (MAIN_LIFTS.includes(id) ? '<p class="lb-note">Main lift on your watchlist. If it drops 2 sessions in a row, check sleep, pre-workout food and volume before touching calories.</p>' : '') +
         '<h4>Machine settings and notes</h4><p class="' + (ex.memo ? '' : 'lb-muted') + '">' + (ex.memo ? esc(ex.memo).replace(/\n/g, '<br>') : 'Nothing saved. Tap Edit to keep seat height, pin positions or cues here.') + '</p>' +
         (ss.length ? '<p class="lb-muted small">First logged ' + fmtDate(ss[ss.length - 1].w.start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' · last ' + relDay(ss[0].w.start).toLowerCase() + '</p>' : '') +
-        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '');
+        (S.opts.formCues ? S.opts.formCues.detailHtml(formFor(id)) : '') + (S.opts.tips ? S.opts.tips.detailHtml(id) : '');
     }
     if (!ss.length) return '<div class="lb-empty">No sets logged for this exercise yet.</div>';
     if (exTab === 'history') {
@@ -1537,7 +1537,35 @@ Power Clean (Barbell)|Other|Barbell|`;
   on('resume', () => { closeAllSheets(); if (S.active) { openEditor('live', S.active); keepAwake(true); } });
   on('editWorkout', t => { closeAllSheets(); openEditor('edit', clone(S.data.workouts[t.dataset.id])); });
   on('editTpl', t => { closeAllSheets(); openEditor('template', clone(S.data.templates[t.dataset.id])); });
-  on('newTpl', () => openEditor('template', { id: uid(), name: 'New template', folder: 'My templates', order: 99, notes: '', exercises: [] }));
+  const blankTemplate = () => openEditor('template', { id: uid(), name: 'New template', folder: 'My templates', order: 99, notes: '', exercises: [] });
+  on('newTpl', () => { if (S.opts.programs && S.opts.programs.size) openProgramPicker(); else blankTemplate(); });
+  on('blankTpl', () => { closeAllSheets(); blankTemplate(); });
+  // Ready-made programs (opts.programs, e.g. NippardPrograms): pick one, preview its days, add them as templates in a folder of their own.
+  function openProgramPicker() {
+    const list = S.opts.programs.list();
+    const groups = {}; list.forEach(p => { (groups[p.source] = groups[p.source] || []).push(p); });
+    openSheet({
+      title: 'New template',
+      body: () => '<div class="lb-row"><button class="lb-btn primary wide" data-a="blankTpl">Blank template</button></div>' +
+        '<h4 class="lb-folder">Ready-made programs <span class="lb-muted">' + list.length + '</span></h4><p class="lb-muted small">No split yet? Pick a programme and its days are added to your templates, with Jeff Nippard\'s sets, reps, RPE, rest and notes. Edit anything after.</p>' +
+        Object.keys(groups).map(src => '<p class="lb-eyebrow">' + esc(src) + '</p><div class="lb-grid">' + groups[src].map(p => '<button class="lb-card lb-tpl" data-a="progPreview" data-id="' + esc(p.id) + '"><div class="lb-tpl-top"><b>' + esc(p.name.replace(/^.*· /, '')) + '</b><span class="lb-muted small">' + p.days + 'x/week</span></div><p>' + esc(p.level) + ' · ' + p.workouts + ' days · ' + esc(p.time) + (S.data.templates['np-' + p.id + '-1'] ? ' · added' : '') + '</p></button>').join('') + '</div>').join('')
+    });
+  }
+  on('progPreview', t => {
+    const p = S.opts.programs.get(t.dataset.id); if (!p) return;
+    const added = !!S.data.templates['np-' + p.id + '-1'];
+    openSheet({
+      title: p.name,
+      body: () => '<p class="lb-note">' + esc(p.blurb) + '</p><p class="lb-muted small">' + esc(p.level) + ' · ' + p.days + ' days a week · about ' + esc(p.time) + ' per session · from ' + esc(p.source) + '</p>' +
+        p.workouts.map(w => '<h4 class="lb-folder">' + esc(w.name) + '</h4><ol class="lb-plist">' + w.exercises.map(e => { const ex = getEx(e.ex); const ws = e.sets.filter(x => x.t !== 'w'); const wu = e.sets.length - ws.length; return '<li><b>' + esc(ex.name) + '</b><span>' + ws.length + ' × ' + esc(ws[0] && ws[0].r !== '' && ws[0].r != null ? ws[0].r + ' reps' : (ws[0] && ws[0].sec ? ws[0].sec + ' s' : '')) + (wu ? ' · ' + wu + ' warm-up' : '') + '</span>' + (e.notes ? '<em>' + esc(e.notes) + '</em>' : '') + '</li>'; }).join('') + '</ol>').join('') +
+        '<div class="lb-row"><button class="lb-btn primary wide" data-a="progAdd" data-id="' + esc(p.id) + '">' + (added ? 'Add again (replaces its templates)' : 'Add to my templates') + '</button></div>'
+    });
+  });
+  on('progAdd', t => {
+    const id = t.dataset.id, tpls = S.opts.programs.templates(id, { unit: S.settings.unit, order: 50 });
+    tpls.forEach(tp => put('templates', tp));
+    closeAllSheets(); toast('Added ' + tpls.length + ' templates'); renderMain();
+  });
 
   let liveEl;
   function openEditor(mode, doc) {
@@ -1646,7 +1674,7 @@ Power Clean (Barbell)|Other|Barbell|`;
         (e.ss ? '<div class="lb-sslabel">Superset ' + String.fromCharCode(65 + ssIdx) + '</div>' : '') +
         '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button>' + (dmHead ? dm : '') + '<button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
         (dm && !dmHead ? dm : '') +
-        (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') +
+        (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') + (live && S.opts.tips ? S.opts.tips.inlineHtml(e.exId) : '') +
         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
         memoHtml(ex, live) +
@@ -2610,6 +2638,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
       opts.anim.attach(document);
     }
     if (opts.formCues) { if (!document.getElementById('fc-style')) { const st = document.createElement('style'); st.id = 'fc-style'; st.textContent = opts.formCues.css; document.head.appendChild(st); } opts.formCues.attach(document); }
+    if (opts.tips && opts.tips.css && !document.getElementById('nt-style')) { const st = document.createElement('style'); st.id = 'nt-style'; st.textContent = opts.tips.css; document.head.appendChild(st); }
     root = el; root.classList.add('lb');
     overlay = document.querySelector('.lb-overlay') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'lb-overlay' }));
     if (!root.dataset.lbBound) { delegate(root); root.dataset.lbBound = '1'; }
