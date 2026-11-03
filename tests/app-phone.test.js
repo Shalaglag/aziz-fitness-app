@@ -331,6 +331,30 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("Gym mode keeps the rest timer look picked in Settings", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "train");
+      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      const r = await page.evaluate(async () => {
+        const w = ms => new Promise(r => setTimeout(r, ms)), out = {};
+        WorkoutLogger.setSettings({ restStyle: "ring", gym: false });
+        document.querySelector('#lbHost [data-a="startTplName"],#lbHost [data-a="startTpl"]').click(); await w(400);
+        const look = () => { const h = document.querySelector(".lb-rest:not([hidden])"), t = h && h.querySelector(".lb-rest-time"); return { style: h && h.dataset.style, full: !!(h && h.classList.contains("full")), font: t && getComputedStyle(t).fontSize }; };
+        document.querySelector('.lb-live [data-a="check"]').click(); await w(200);
+        out.list = look(); document.querySelector('[data-a="restSkip"]').click();
+        document.querySelector('[data-a="gymToggle"]').click(); await w(200);
+        document.querySelector('[data-a="gDone"]').click(); await w(200);
+        out.gym = look(); out.setting = WorkoutLogger.settings().restStyle;
+        document.querySelector('[data-a="restSkip"]').click();
+        return out;
+      });
+      assert.strictEqual(r.setting, "ring", "Gym mode doesn't change the saved look");
+      assert.deepStrictEqual(r.gym, r.list, "the Gym mode rest timer is the same full-screen ring as the List view: " + JSON.stringify(r));
+      assert.ok(r.gym.full && r.gym.style === "ring");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("rest timer: every look renders, full-screen looks minimise, the picked sound plays", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "settings");
