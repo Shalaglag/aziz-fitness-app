@@ -77,7 +77,7 @@ for (const id of GK.IDS()) {
         const { from, to, via, k } = out.seg, A = mk[from], B = mk[to], M = via != null ? mk[via] : undefined;
         if (A === undefined || B === undefined || (via != null && M === undefined)) return;
         let a0 = A, m0 = M, b0 = B;
-        if (cyc) { if (m0 !== undefined && m0 < a0) m0 += 1; if (b0 < (m0 ?? a0)) b0 += 1; }
+        if (cyc) { const w = (x, r) => x - Math.round(x - r); if (m0 !== undefined) m0 = w(m0, a0); b0 = w(b0, m0 ?? a0); }   // audit (Aziz Nov 3 elliptical glitch): wrap the short way, so keys stepping backward (0.875 -> 0.75) no longer spin the machine a full turn forward
         const lp = (x, y, t) => x + (y - x) * t;
         let v = m0 !== undefined ? lp(lp(a0, m0, k), lp(m0, b0, k), k) : lp(a0, b0, k);
         if (cyc) v -= Math.floor(v); else { const D = P.dofs.find(d => d.name === DN); v = Math.max(Math.min(0, D.min), Math.min(Math.max(1, D.max), v)); }   // audit: a dof may run below 0 (pec-deck rear-delt fly)

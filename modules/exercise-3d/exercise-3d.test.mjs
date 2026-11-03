@@ -69,5 +69,5 @@ test('reviewed recipe demos: app ids only, held exercises left out, files in pla
   assert.deepEqual(Object.keys(recipes).sort(), ids.sort(), 'recipes.json matches the list');
   for (const f of ['engine.js', 'gear.js', 'gear_all.js', 'gymkit.js']) { const s = fs.readFileSync(R + 'app/3d/rx/' + f, 'utf8'); assert.ok(!/from 'three'/.test(s), f + ' imports the vendored three.js'); }
   for (const f of ['body.glb', 'body_meta.json', 'gripcache.json']) assert.ok(fs.existsSync(R + 'app/3d/rx/' + f), f);
-  window.EXERCISE_3D = DATA; assert.ok(window.Exercise3D.has('bench-press-barbell') && !window.Exercise3D.has('elliptical'));
+  window.EXERCISE_3D = DATA; assert.ok(window.Exercise3D.has('bench-press-barbell')); for (const id of DATA.recipesSource.held) assert.ok(!window.Exercise3D.has(id), id + ' keeps the old view');
 });

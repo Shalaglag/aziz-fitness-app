@@ -1965,7 +1965,7 @@ def('reverse-hyper', 'Reverse hyper', 'Machines: legs', 3, 'hip pad on a tall fr
   flatBand(strap, new THREE.CatmullRomCurve3(new THREE.EllipseCurve(0, 0, 0.09, 0.07).getPoints(60).map(p => V(0, p.y, p.x)), true), 0.06, 0.006, 120, true, MAT.strap);
   body(lever, 'ankle', 'ankle', V(0, -0.72, -0.13), V(0, 0, -1));
   horn(lever, V(0.04, -0.5, 0.05), V(1, 0, 0), [20]); horn(lever, V(-0.04, -0.5, 0.05), V(-1, 0, 0), [20]); tube(lever, [0, -0.5, 0], [0, -0.5, 0.05], 0.05);
-  const set = m => turn(lever, m * 1.15); dof(P, 'motion', 'Swing', 0, 1, 0, '', set); set(0); return P;
+  const set = m => turn(lever, -m * 1.15); dof(P, 'motion', 'Swing', 0, 1, 0, '', set); set(0); return P;   // audit (Aziz Nov 3): the pendulum swings back and up behind the user (head at the handles, -Z)
 });
 
 // ================================================================= CARDIO
@@ -2371,7 +2371,7 @@ def('lever-pulldown', 'Lever pulldown (plate-loaded, iso-lateral)', 'Machines: u
 def('lever-pulldown-narrow', 'Lever pulldown, narrow grip', 'Machines: upper body', 1, 'audit: lever pulldown with the narrow handles (same as lever-pulldown {grip:"narrow"})', () => R['lever-pulldown']({ grip: 'narrow' }));
 def('chest-supported-t-bar', 'Chest-supported T-bar row', 'Machines: upper body', 1, 'stand on the raised tread platform, chest on the 45 deg pad, pull the lever handles up from below the pad; plate horn on the lever; motion 0 = arms long, 1 = handles at the chest', () => {
   const P = piece(); const g = P.o;
-  spine(g, -0.6, 1.3, 0.85);
+  spine(g, -0.6, 1.95, 0.85);
   box(g, 0.72, 0.18, 0.55, MAT.frame, 0, 0.11, -0.3, 0.012); footPlate(g, 0.7, 0.53, V(0, 0.21, -0.3), 0, ['footL', 'footR'], 0.14);
   for (const s of [-1, 1]) levelFoot(g, s * 0.33, -0.55);
   // chest pad on a braced post
@@ -2383,12 +2383,14 @@ def('chest-supported-t-bar', 'Chest-supported T-bar row', 'Machines: upper body'
   for (const s of [-1, 1]) { tube(g, [s * 0.26, 0.07, -0.02], [s * 0.26, 1.0, 0.42], 0.06); tube(g, [s * 0.26, 0.07, -0.02], [s * 0.33, 0.07, -0.3], 0.06); }
   body(g, 'chest', 'chest', PC.clone().add(V(0, 0.045, 0).applyAxisAngle(V(1, 0, 0), PA)), V(0, 1, 0).applyAxisAngle(V(1, 0, 0), PA));
   // lever pivoting low at the front
-  const Pv = V(0, 0.28, 1.2); tube(g, [0, 0.07, 1.3], [0, 0.28, 1.2], 0.08); for (const s of [-1, 1]) tube(g, [s * 0.12, 0.07, 1.2], [s * 0.12, 0.28, 1.2], 0.06);
+  // audit (Aziz Nov 3 'still wrong', MoveKit: handles row back past the torso): pivot moved far forward and low so the lever is long and
+  // shallow and the handles rise nearly straight up under the chest (the short 45 deg lever swung them forward, away from the body)
+  const Pv = V(0, 0.22, 1.85); tube(g, [0, 0.07, 1.95], [0, 0.22, 1.85], 0.08); for (const s of [-1, 1]) tube(g, [s * 0.12, 0.07, 1.85], [s * 0.12, 0.22, 1.85], 0.06);
   const lever = pivot(g, Pv, 'x'); hub(lever, V(0, 0, 0), 'x', 0.05, 0.22);
-  const Hc = V(0, 0.83, 0.40).sub(Pv);   // audit (reviewer 08:30, MoveKit steps): handles start in reach of straight arms under the pad
+  const Hc = V(0, 0.80, 0.36).sub(Pv);   // audit (reviewer 08:30, MoveKit steps): handles start in reach of straight arms under the pad
   tube(lever, [0, 0, 0], Hc, 0.07);
-  horn(lever, Hc.clone().multiplyScalar(0.4).add(V(0.04, 0.04, 0)), V(1, 0, 0), [20]); horn(lever, Hc.clone().multiplyScalar(0.4).add(V(-0.04, 0.04, 0)), V(-1, 0, 0), [20]);
-  tube(lever, Hc.clone().multiplyScalar(0.4), Hc.clone().multiplyScalar(0.4).add(V(0, 0.04, 0)), 0.05);
+  horn(lever, Hc.clone().multiplyScalar(0.5).add(V(0.04, 0.04, 0)), V(1, 0, 0), [20]); horn(lever, Hc.clone().multiplyScalar(0.5).add(V(-0.04, 0.04, 0)), V(-1, 0, 0), [20]);
+  tube(lever, Hc.clone().multiplyScalar(0.5), Hc.clone().multiplyScalar(0.5).add(V(0, 0.04, 0)), 0.05);
   // handle yoke: wide overhand grips and neutral grips
   tube(lever, Hc.clone().add(V(-0.3, 0, 0)), Hc.clone().add(V(0.3, 0, 0)), 0.05);
   for (const s of [-1, 1]) {
@@ -2397,7 +2399,7 @@ def('chest-supported-t-bar', 'Chest-supported T-bar row', 'Machines: upper body'
   }
   cyl(g, 0.03, 0.06, MAT.rubber, 0, 0.12, 0.42, 'y', 24); tube(g, [0, 0.07, 0.42], [0, 0.09, 0.42], 0.05);
   // audit (Aziz 20:06 reference video): handles travel about 0.5 m, up to just under the front of the pad (was 0.33 m)
-  const r = Hc.clone(), ang = 0.45 / r.length(), sgn = Math.sign(-r.z) || 1;   // ~0.45 m arc: up to elbows bent past 90 deg
+  const r = Hc.clone(), ang = 0.36 / r.length(), sgn = Math.sign(-r.z) || 1;   // ~0.36 m arc (Nov 3: long lever): up to elbows bent past 90 deg
   const set = m => turn(lever, sgn * ang * m);
   dof(P, 'motion', 'Row (0 = arms long)', 0, 1, 0, '', set); set(0); return P;
 });
