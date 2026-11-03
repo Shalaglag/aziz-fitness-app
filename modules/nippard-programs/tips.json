@@ -1,0 +1,837 @@
+{
+ "_comment": "Jeff Nippard's own words about specific exercises, quoted from his published programs and The Muscle Ladder. Keyed by workout-logger exercise id. kind: tip (how to do it), machine (equipment/setup), fact (research or fun fact).",
+ "_sources": {
+  "ML": "The Muscle Ladder (2024)",
+  "MLB": "The Muscle Ladder bonus guide: best exercise for each muscle",
+  "FUND": "Fundamentals Hypertrophy Program",
+  "ESS": "The Essentials Program",
+  "BTS": "The Bodybuilding Transformation System",
+  "PB": "Powerbuilding 3.0",
+  "PBB": "The Pure Bodybuilding Program, Phase 2",
+  "CB": "The Comeback Program"
+ },
+ "tips": {
+  "bench-press-barbell": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "Touch the bar to the bottom of your chest but don't use your sternum as a trampoline. Press the bar along the same trajectory, up and slightly back."
+   },
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "It's okay if your elbows flare out as you lift, and it's also okay if you keep them tucked closer to your torso; if either style causes shoulder pain, do the opposite."
+   },
+   {
+    "kind": "fact",
+    "src": "ML",
+    "q": "The bigger arch used in the powerlifting-style bench press decreases the ROM, which in turn increases how much weight you can lift. But with a shorter ROM, it may be marginally less effective for building muscle."
+   },
+   {
+    "kind": "tip",
+    "src": "PB",
+    "q": "Set up a comfortable arch, quick pause on chest and explode up on each rep."
+   }
+  ],
+  "close-grip-bench-press-barbell": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "You can work your triceps and upper pecs a little harder with a grip that's between one and one-and-a-quarter times shoulder width."
+   }
+  ],
+  "chest-press-machine": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for chest. A good machine chest press gives you a deep stretch in your pecs at the start of the lift and provides high muscle tension throughout the entire range of motion. You also can safely go to failure without the need for a spotter."
+   },
+   {
+    "kind": "machine",
+    "src": "PBB",
+    "q": "1 second pause on the chest while maintaining tension on the chest."
+   }
+  ],
+  "incline-bench-press-dumbbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "Dumbbells allow a deeper stretch in your pecs than you can get with a barbell. The incline places a bit more tension on the upper pecs without taking anything away from the mid and lower pecs."
+   },
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Sink the dumbbells as low as you comfortably can."
+   },
+   {
+    "kind": "tip",
+    "src": "CB",
+    "q": "Low 15–30 degree incline, mind muscle connection with upper pecs."
+   }
+  ],
+  "bench-press-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Focus on mind-muscle connection with pecs. Drop the weight back and focus on stretch and squeeze."
+   }
+  ],
+  "incline-bench-press-barbell": [
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "1 second pause at the bottom of each rep while maintaining tension on the pecs."
+   }
+  ],
+  "chest-fly-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "The closer you get to the top of the movement, the less resistance you'll get from gravity. So if you've mastered the full ROM and you're ready for something more advanced, try eliminating the top half. Go from the most stretched position to about halfway up."
+   }
+  ],
+  "chest-fly-cable": [
+   {
+    "kind": "machine",
+    "src": "ML",
+    "q": "By changing the height of the cable pulleys, you can shift the focus to the upper, middle, or lower pecs. Use a lower setting to target the upper pecs with a low-to-high path. Set the pulleys around chest height to hit the middle pecs. Or set the pulleys just above head height to work the lower pecs."
+   },
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Keep your scapulae retracted, pull your inner elbows together (not your hands)."
+   }
+  ],
+  "cable-crossover": [
+   {
+    "kind": "machine",
+    "src": "BTS",
+    "q": "Do one set with low cable position, one set with medium-height cable position, and one with a high cable position."
+   }
+  ],
+  "push-up": [
+   {
+    "kind": "fact",
+    "src": "ML",
+    "q": "Deficit push-ups allow a deeper stretch in the pecs, making the exercise potentially more effective for hypertrophy but also putting more strain on your shoulder joints."
+   },
+   {
+    "kind": "fact",
+    "src": "ML",
+    "q": "A banded push-up allows you to add resistance at the top, which is the easiest portion. That makes it a challenging exercise, even for intermediate to advanced lifters."
+   }
+  ],
+  "chest-dip": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Tuck elbows at a 45° angle, lean your torso forward 15°."
+   }
+  ],
+  "lat-pulldown-wide-grip-cable": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Pull your elbows straight out to your sides, use a 1.5x shoulder width grip."
+   },
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Do first set wide overhand (1.5x shoulder width), second set underhand (1x shoulder width)."
+   }
+  ],
+  "lat-pulldown-neutral-grip": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for lats. Pulldowns offer smooth, even tension throughout the range of motion, with a big lat stretch at the top. The neutral grip puts more emphasis on your lats and less on your middle traps."
+   },
+   {
+    "kind": "tip",
+    "src": "MLB",
+    "q": "Try focusing on driving your elbows down, which engages your lats more, rather than driving your elbows back, which engages more of your middle traps."
+   }
+  ],
+  "lat-pulldown-reverse-grip": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Pull your elbows down against your sides, use shoulder width grip."
+   }
+  ],
+  "pull-up": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "Your grip will be stronger with your thumbs wrapped around the bar (full grip), but most people experience a better mind-muscle connection with their thumbs behind the bar (false grip)."
+   },
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "If you can't do pull-ups with your body weight, start with machine- or band-assisted pull-ups."
+   }
+  ],
+  "pull-up-wide-grip": [
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "1.5x shoulder width overhand grip. Slow 2–3 second negative. Feel your lats pulling apart on the way down."
+   }
+  ],
+  "pull-up-neutral-grip": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "Pull-ups feel much easier at the bottom compared to the top of the range of motion. If you struggle to get more than about 6 reps, use a band or assisted pull-up machine. If they're too easy, add weight with a belt."
+   }
+  ],
+  "chest-supported-t-bar-row-machine": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for mid-back. The chest-supported row gives you much more stability than free-standing barbell rows, which allows you to direct all of the tension to your middle back. I consider these to be an absolute staple of any bodybuilding routine."
+   },
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Retract your scapulae during the concentric, protract your scapulae during the eccentric."
+   }
+  ],
+  "chest-supported-row-machine": [
+   {
+    "kind": "machine",
+    "src": "PBB",
+    "q": "Set the chest pad up so you get a deep stretch on each rep."
+   },
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "Flare elbows out at roughly 45° and squeeze your shoulder blades together hard at the top of each rep."
+   }
+  ],
+  "t-bar-row": [
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Squeeze your shoulder blades at the top, control the weight."
+   }
+  ],
+  "bent-over-row-barbell": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "You'll have some hip movement as you raise the weight, but you should try to minimize it. If you need a lot of movement to complete your reps, reduce the load. Momentum means you aren't fully activating the targeted muscles."
+   }
+  ],
+  "pendlay-row-barbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "If a deadlift married a barbell row, the result would be the Pendlay row. Having your back parallel to the floor places your back muscles under a higher degree of stretch. A deficit Pendlay row (standing on a bumper plate) adds a few inches to your range of motion."
+   }
+  ],
+  "seated-row-cable": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Use a V-bar grip, let your scapulae protract during the eccentric."
+   },
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Focus on squeezing your shoulder blades together, drive your elbows down and back."
+   }
+  ],
+  "straight-arm-pulldown-cable": [
+   {
+    "kind": "fact",
+    "src": "ML",
+    "q": "The lat pull-in works best as an activation exercise. It helps you feel your lats working in relative isolation. Use relatively light weights and high reps (15 to 20 per side) and focus on developing a mind-muscle connection."
+   }
+  ],
+  "pullover-cable": [
+   {
+    "kind": "tip",
+    "src": "PB",
+    "q": "Keep constant tension on the lats. Big stretch at the top by leaning slightly forward."
+   }
+  ],
+  "deadlift-barbell": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Brace your lats, chest tall, hips high, pull the slack out of the bar before lifting."
+   },
+   {
+    "kind": "fact",
+    "src": "ML",
+    "q": "Flat soles make Converse-style sneakers ideal for deadlifting because you want your feet to be as close to the floor as possible. Some competitive powerlifters wear deadlift slippers."
+   },
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "Even with chalk, you'll eventually reach the point where your legs and back are stronger than your hands and forearms, and the double overhand grip will no longer work for your heaviest loads. That's when you'll need to switch to the alternate grip or use wrist straps."
+   }
+  ],
+  "romanian-deadlift-barbell": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Maintain a neutral lower back, set your hips back, don't allow your spine to round."
+   },
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "To keep tension on the hamstrings, stop about 75% of the way to full lockout on each rep (stay in the bottom 3/4 of the range of motion)."
+   },
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "RDLs hit three of the four heads of the hamstrings. The only part they miss is the short head of the biceps femoris, whose only job is to help bend your knee. All varieties of leg curls hit all four heads."
+   }
+  ],
+  "good-morning-barbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for lower back. The good morning is among the most underrated exercises. Start with an unloaded bar and progress slowly. Even as you get comfortable, you won't use loads beyond 40 to 50 percent of your one-rep max on the barbell squat."
+   },
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "Don't worry if the ROM feels short. As long as you feel the stretch in your hamstrings and your lower back remains in the neutral position, you're doing it correctly."
+   }
+  ],
+  "back-extension": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "If you have a lot of experience with back extensions, you can try them with a rounded back. The goal is to shift some of the load from your back to your glutes. Start with just your body weight."
+   }
+  ],
+  "overhead-press-barbell": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Squeeze your glutes to keep your torso upright, clear your head out of the way of the bar."
+   }
+  ],
+  "shoulder-press-machine": [
+   {
+    "kind": "machine",
+    "src": "BTS",
+    "q": "Ensure that your elbows break at least 90°. Mind-muscle connection with your delts. Smooth, controlled reps."
+   },
+   {
+    "kind": "machine",
+    "src": "PBB",
+    "q": "Keep tension on the shoulders at the bottom."
+   }
+  ],
+  "seated-overhead-press-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Bring the dumbbells all the way down, keep your torso upright."
+   }
+  ],
+  "lateral-raise-dumbbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "The most popular shoulder exercise has a significant drawback: there's zero tension on the delts at the bottom, and you don't reach maximum tension until your arms are parallel to the floor. By leaning against a wall, squat rack, or an incline bench you can start the lateral raise with tension on your side delts."
+   },
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Tilt the dumbbell such that your pinky comes up first."
+   },
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Raise the dumbbells \"out\" not \"up\", mind muscle connection with middle fibers."
+   },
+   {
+    "kind": "fact",
+    "src": "ML",
+    "q": "You can extend the ROM above shoulder level if you want to work your upper traps a little more. It's an advanced technique and not recommended if you have any history of shoulder pain."
+   }
+  ],
+  "lateral-raise-cable": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for shoulders. As long as you set the cable pulley at about hand-height (level with your upper to middle thighs), you'll feel the most tension in your side delt at the beginning of the movement, when the muscle is fully stretched."
+   },
+   {
+    "kind": "machine",
+    "src": "MLB",
+    "q": "Sometimes I get such a big pump in my forearms that it's hard to focus on my delts. I get around this by doing the cable lateral raise with a wrist cuff instead of the standard D-shaped handle."
+   },
+   {
+    "kind": "tip",
+    "src": "CB",
+    "q": "Egyptian lateral raise: pass the cable between your legs and lean away from the cable."
+   }
+  ],
+  "reverse-fly-machine": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "If you're trying to isolate the rear delts with minimal help from your traps, focus on sweeping your arms without squeezing your shoulder blades together at the end."
+   },
+   {
+    "kind": "machine",
+    "src": "PBB",
+    "q": "Super-stretch version: face side on to the machine and pull your arm across your body for a bigger stretch."
+   }
+  ],
+  "reverse-fly-cable": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Protract your scapulae, sweep the weight out and back."
+   },
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "Pause for 1–2 seconds in the squeeze of each rep. Contract the rear delts hard!"
+   }
+  ],
+  "face-pull-cable": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Pull your arms back and out."
+   },
+   {
+    "kind": "tip",
+    "src": "PB",
+    "q": "Don't go too heavy, focus on mind-muscle connection."
+   }
+  ],
+  "shrug-barbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for upper traps is the trap-bar shrug: it lets you lift with your arms slightly out to the sides, which aligns more closely with the angle of the upper-trap fibers. No trap bar? A barbell shrug with a wide grip gives the same effect. Shrug up and in, as if trying to touch your ears with your shoulders."
+   },
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "As your upper-back strength improves and you work with increasingly heavy weights, your grip will become a limiting factor, and you'll need to use wrist straps."
+   }
+  ],
+  "shrug-machine": [
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "Brief pause at the top and the bottom of the ROM. Think about pulling your shoulders up to your ears!"
+   }
+  ],
+  "shrug-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "CB",
+    "q": "Don't go heavy, lean slightly forward, squeeze upper traps."
+   }
+  ],
+  "bicep-curl-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Drive your pinky into the handle harder than your pointer finger."
+   },
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Palms start neutral at the bottom and supinate (palms up) as you curl. Do both arms at the same time."
+   }
+  ],
+  "bicep-curl-ez-bar": [
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Arc the bar \"out\" not \"up\", focus on squeezing your biceps."
+   }
+  ],
+  "bicep-curl-barbell": [
+   {
+    "kind": "tip",
+    "src": "PB",
+    "q": "Strict curl: lean against a wall and maintain wall contact with head, hips and back. Keep elbows pinned at sides. Control the weight."
+   }
+  ],
+  "bicep-curl-cable": [
+   {
+    "kind": "machine",
+    "src": "BTS",
+    "q": "Set up the cable at the lowest position. Maintain constant tension on the biceps. Slow, controlled reps!"
+   }
+  ],
+  "bayesian-curl-cable": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for biceps. I like to set the cable up at wrist height and then take two steps out. That means my arm is slightly behind my torso, which puts a massive stretch on the biceps at the bottom of the movement."
+   },
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "If you have a left-right bicep size imbalance, do these 1 arm at a time, starting with the weaker arm."
+   }
+  ],
+  "preacher-curl-dumbbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "Using a dumbbell places maximum tension on the biceps at the bottom of the range of motion while they're most stretched. The preacher pad also locks your elbows in place, which prevents cheating as you approach failure. I love using these as a 15- to 20-rep finisher."
+   }
+  ],
+  "hammer-curl-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Neutral grip, prevent your upper arm from moving."
+   },
+   {
+    "kind": "tip",
+    "src": "CB",
+    "q": "Grip the dumbbell in the middle of the handle, squeeze the handle hard."
+   }
+  ],
+  "incline-curl-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "PBB",
+    "q": "Bottom-half version: all reps and sets are to be performed in the bottom half of the ROM. Focus on feeling a deep stretch in the biceps."
+   }
+  ],
+  "triceps-extension-cable": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for triceps. The overhead position puts the biggest possible stretch on the long head of the triceps. A 2023 study found that overhead extensions caused about 40 percent more triceps growth than pressdowns."
+   },
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "Optionally pause for 0.5–1 second in the stretched aspect of each rep."
+   }
+  ],
+  "skull-crusher-ez-bar": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "Despite the name, under no circumstances should you lower the weight to your forehead. It's safer to think of this exercise as a lying triceps extension. Your goal is to lower the weight behind your head and start the concentric phase with your triceps in a deep stretch."
+   },
+   {
+    "kind": "tip",
+    "src": "MLB",
+    "q": "Start with your upper arms angled slightly toward your ears, rather than perpendicular to your torso with your elbows pointed straight up. That puts the long head in a more stretched position."
+   }
+  ],
+  "skull-crusher-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Keep your elbows in line with the top of your head, don't let your upper arms drift."
+   },
+   {
+    "kind": "tip",
+    "src": "PB",
+    "q": "Arc the dumbbells behind your head. Constant tension on triceps."
+   }
+  ],
+  "triceps-pushdown-straight-bar": [
+   {
+    "kind": "tip",
+    "src": "CB",
+    "q": "Keep elbows in place, smooth and consistent reps."
+   },
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "I still include pressdowns, but if I had to pick just one triceps exercise, it'd be an overhead extension."
+   }
+  ],
+  "triceps-kickback-cable": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "The kickback is more of a finesse movement. It's incredibly easy to cheat and use momentum to knock out reps, but it's also pointless. Do each rep slowly, with continuous tension on the triceps and a full contraction at the end."
+   }
+  ],
+  "single-arm-pushdown-cable": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Pull your arm behind your torso, don't move your upper arm."
+   }
+  ],
+  "wrist-curl-dumbbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for forearms. There's no easier or more universally accessible way to isolate the forearm muscles. For stability, rest your forearm on a bench with your hand and wrist hanging off the edge."
+   }
+  ],
+  "squat-barbell": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Sit back and down, 15° toe flare, drive your knees out laterally."
+   },
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "One head of the quads is not especially activated in the squat: the rectus femoris. If you simply add leg extensions to your lower-body program, you don't have to worry about that one head lagging behind."
+   },
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "If you need any proof that squats build monster quads, check out a powerlifting meet."
+   }
+  ],
+  "front-squat-barbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "The front squat may shift even more tension to the quads. The position of the barbell on the front of your shoulders forces you to keep a more upright posture. You'll drop the bar if you bend too far forward."
+   }
+  ],
+  "hack-squat-machine": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for quads. There's less setup than a barbell squat, and because the machine provides stability, you can experiment with different foot positions to find the one that allows the most continuous quad tension."
+   },
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "If you're worried that you'll build less muscle with a machine than with free weights, don't. The latest research shows you can build just as much muscle with machines as long as you push yourself hard on each set."
+   }
+  ],
+  "squat-smith-machine": [
+   {
+    "kind": "machine",
+    "src": "BTS",
+    "q": "Once you are under the bar, set up your feet as you would a normal squat and then bring them forward 3–6 inches, allowing for a more upright squat while placing more tension on the quads."
+   }
+  ],
+  "goblet-squat-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "The goblet squat is a good beginner exercise. It's much easier to learn than the barbell squat variations."
+   }
+  ],
+  "leg-press-machine": [
+   {
+    "kind": "fact",
+    "src": "ML",
+    "q": "Locking your knees at the top doesn't pose an injury risk as long as you're in full control of the weight. If you prefer not to lock your knees, you can finish your reps with a slight bend."
+   },
+   {
+    "kind": "machine",
+    "src": "BTS",
+    "q": "Feet lower on the platform for more quad focus. Get as deep as you can without excessive back rounding."
+   }
+  ],
+  "leg-extension-machine": [
+   {
+    "kind": "machine",
+    "src": "BTS",
+    "q": "Set the seat back as far as it will go while still feeling comfortable. Grab the handles as hard as you can to pull your butt down into the seat."
+   },
+   {
+    "kind": "fact",
+    "src": "ML",
+    "q": "Recent research refutes the idea of leg extensions causing knee damage. It's generally safe to lock your knees out at the top, but if it causes discomfort, it's fine to finish with a slight bend."
+   }
+  ],
+  "walking-lunge-dumbbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for glutes. Lunges produce much, much more stretch and tension in your glutes than you'll get in your quads, especially when you take medium to long steps forward."
+   },
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Take medium strides, let your torso lean forward."
+   }
+  ],
+  "reverse-lunge-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "If balance is an issue in the split stance, start and finish with your feet aligned about hip width apart, take a step back, lower your trailing leg toward the floor, then return. This is the reverse lunge."
+   }
+  ],
+  "hip-thrust-barbell": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "I hesitate to call the hip thrust the best glute exercise because of the resistance curve: the most challenging part is at the top, when you're squeezing the glutes. By contrast, the most challenging part of the lunge is at the bottom, when your glutes are stretched. They're both really solid options."
+   },
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "If your shins aren't vertical at the top of the movement, shift your feet forward or back until you find the right placement. Remember the spot and use it for subsequent workouts."
+   }
+  ],
+  "hip-abductor-machine": [
+   {
+    "kind": "machine",
+    "src": "BTS",
+    "q": "If possible, use pads to increase the range of motion on the machine. Lean forward and grab onto the machine rails."
+   },
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Keep your butt in the seat, focus on squeezing your glutes to make the weight move."
+   }
+  ],
+  "seated-leg-curl-machine": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for hamstrings. Your hamstrings start from a more stretched position when you're sitting upright than when you're lying prone. A 2021 study found that seated curls produced 55 percent more hamstring growth compared to lying curls."
+   },
+   {
+    "kind": "machine",
+    "src": "BTS",
+    "q": "Lean forward over the machine to get a maximum stretch in your hamstrings."
+   }
+  ],
+  "lying-leg-curl-machine": [
+   {
+    "kind": "machine",
+    "src": "BTS",
+    "q": "Set the machine so that you get the biggest stretch possible at the bottom. Prevent your butt from popping up as you curl."
+   },
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "There's nothing wrong with using the lying leg curl if it's your only option, you prefer it, or you want to mix things up from time to time."
+   }
+  ],
+  "nordic-curl": [
+   {
+    "kind": "tip",
+    "src": "MLB",
+    "q": "If you take the Nordic challenge, focus on increasing your range of motion from week to week: work on lowering yourself closer to the floor before reversing the motion. Or work on using less assistance over time."
+   }
+  ],
+  "glute-ham-raise": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "If you can't return to the starting position, use the handles for assistance. On subsequent reps, find a ROM that allows you to lower and raise yourself using only your hams and glutes."
+   }
+  ],
+  "standing-calf-raise-machine": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for calves. A 2023 study found that standing calf raises produced 2.6 times as much muscle growth as seated calf raises. The standing calf raise puts the calf muscles in a more stretched position at the beginning of the movement."
+   },
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "Another recent study found that lengthened partials, performing just the first half of the exercise, resulted in significantly greater muscle growth than the full range of motion. If you're struggling to grow your calves, try lengthened partials for a month or two."
+   },
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "Most shoes restrict your ROM on calf raises. So, if permissible in your gym, do calf raises without shoes."
+   },
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "1–2 second pause at the bottom of each rep. Instead of just going up onto your toes, think about rolling your ankle back."
+   }
+  ],
+  "seated-calf-raise-machine": [
+   {
+    "kind": "tip",
+    "src": "ESS",
+    "q": "Press all the way up to your toes, stretch your calves at the bottom, don't bounce."
+   }
+  ],
+  "calf-press-leg-press": [
+   {
+    "kind": "tip",
+    "src": "MLB",
+    "q": "Because your knee is still straight, this is effectively the same movement as the standing calf raise, but you get to sit down. Focus on the stretch, pause at the bottom, and don't worry about finishing your reps by going all the way up on your toes."
+   }
+  ],
+  "cable-crunch": [
+   {
+    "kind": "fact",
+    "src": "MLB",
+    "q": "My choice for abs. Nothing thickens up your six-pack more than cable crunches. They're among the easiest to overload, they allow a good stretch at the top, and you can get a great squeeze at the bottom as long as you round your back at the end."
+   },
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "You'll be tempted to work with the heaviest weight you can move. Don't. You'll end up either raising and lowering your entire torso, which uses your hip flexors instead of your abs, or yanking on the rope with your arms."
+   }
+  ],
+  "crunch": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Focus on flexing your spine, don't yank your head with your arms."
+   }
+  ],
+  "decline-sit-up": [
+   {
+    "kind": "tip",
+    "src": "MLB",
+    "q": "Hold the plate against your chest and be sure to crunch down hard, using your ab muscles to pull your rib cage down toward your pelvis."
+   }
+  ],
+  "hanging-leg-raise": [
+   {
+    "kind": "tip",
+    "src": "ML",
+    "q": "Your hip flexors do all the work at the beginning of the movement. It takes a lot of focus to train your abs to take over the second half of the ROM so you can finish with your pelvis tilted upward."
+   },
+   {
+    "kind": "tip",
+    "src": "PB",
+    "q": "Knees to chest, controlled reps, straighten legs more to increase difficulty."
+   }
+  ],
+  "captain-s-chair-leg-raise": [
+   {
+    "kind": "tip",
+    "src": "PBB",
+    "q": "Allow your lower back to round as you curl your legs up."
+   }
+  ],
+  "lying-leg-raise": [
+   {
+    "kind": "tip",
+    "src": "BTS",
+    "q": "Perform these slowly, focus on keeping your lower back against the ground throughout the set."
+   }
+  ],
+  "plank": [
+   {
+    "kind": "tip",
+    "src": "FUND",
+    "q": "Squeeze your glutes, keep your hips low."
+   }
+  ],
+  "step-up-dumbbell": [
+   {
+    "kind": "tip",
+    "src": "CB",
+    "q": "Set the box just below knee height."
+   }
+  ]
+ }
+}
