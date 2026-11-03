@@ -507,6 +507,11 @@ Power Clean (Barbell)|Other|Barbell|`;
   }
 
   const COLL = { templates: 'lb_templates', workouts: 'lb_workouts', exercises: 'lb_exercises', measures: 'lb_measures' };
+  // Saved settings over the defaults, then anything changed before they loaded on top.
+  function mergeSettings(defaults, saved, early) {
+    const s = Object.assign({}, saved || {}); delete s.id;
+    return Object.assign(clone(defaults), s, early || {});
+  }
   const S = { storage: null, opts: {}, data: { templates: {}, workouts: {}, exercises: {}, measures: {} }, settings: clone(DEFAULT_SETTINGS), active: null, ready: false, shellWeights: null };
   const chains = {};
   function queue(path, fn) {
@@ -521,7 +526,13 @@ Power Clean (Barbell)|Other|Barbell|`;
     delete S.data[kind][id]; bump();
     return queue(kind + '/' + id, () => S.storage.remove(COLL[kind], id));
   }
-  function saveSettings() { queue('meta/settings', () => S.storage.put('lb_meta', 'settings', clone(Object.assign({ id: 'settings' }, S.settings)))); }
+  // Settings changed before loadAll() has read the saved ones (the host's Settings screen mounts the logger and can be
+  // tapped while a big history is still loading) are kept here and laid over the saved settings once they arrive.
+  // Writing then would save defaults over everything else, and loading would undo the tap: the rest timer look
+  // "went back to the default" the next time a workout (or Gym mode) saved settings.
+  let earlySettings = null, settingsLoaded = false;
+  function noteSetting(k, v) { S.settings[k] = v; if (!settingsLoaded) (earlySettings = earlySettings || {})[k] = v; saveSettings(); }
+  function saveSettings() { if (!settingsLoaded) return; queue('meta/settings', () => S.storage.put('lb_meta', 'settings', clone(Object.assign({ id: 'settings' }, S.settings)))); }
   let activeTimer = null;
   function saveActive(now) {
     try { localStorage.setItem('lb_active', JSON.stringify(S.active)); } catch (e) { }
@@ -538,7 +549,10 @@ Power Clean (Barbell)|Other|Barbell|`;
     const index = arr => Object.fromEntries((arr || []).filter(d => d && d.id).map(d => [d.id, d]));
     S.data = { templates: index(t), workouts: index(w), exercises: index(e), measures: index(m) };
     const metaIdx = index(meta);
-    if (metaIdx.settings) { const s = Object.assign({}, metaIdx.settings); delete s.id; S.settings = Object.assign(clone(DEFAULT_SETTINGS), s); }
+    const early = earlySettings; earlySettings = null;
+    S.settings = mergeSettings(DEFAULT_SETTINGS, metaIdx.settings, early);
+    settingsLoaded = true;
+    if (early) saveSettings();
     // Nov 2026: live workouts open in the Strong-style List view (all exercises in one list). Applied once; Gym mode stays available in Settings.
     if (!S.settings.listOnce) { S.settings.gym = false; S.settings.listOnce = true; saveSettings(); }
     let act = metaIdx.active ? metaIdx.active.workout : null;
@@ -1326,7 +1340,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (k === 'restStyle' && !REST_STYLES.some(r => r[0] === v)) return;
     if (k === 'restSound' && !restSounds().some(r => r[0] === v)) return;
     if (k === 'restNotify' && !REST_NOTIFY.some(r => r[0] === v)) return;
-    S.settings[k] = v; saveSettings();
+    noteSetting(k, v);
     if (k === 'restNotify' && rest) restCue(); // the live notification switches look at once
     if (k === 'setSound' && !setSounds().some(r => r[0] === v)) return;
     if ((k === 'restSound' || k === 'setSound') && v !== 'off' && GS()) { GS().prime(); GS().play(v); }
@@ -1334,7 +1348,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     rerenderTools();
   });
   on('restTry', () => { primeAudio(); previewRest(10); });
-  on('setTog', t => { S.settings[t.dataset.k] = t.checked; saveSettings(); });
+  on('setTog', t => noteSetting(t.dataset.k, t.checked));
   on('setUnit', t => { S.settings.unit = t.value; saveSettings(); bump(); });
   on('setRest', t => { const v = parseRest(t.value); if (v == null || v < 5) { toast('Type a time like 1:45 or 105'); t.value = mmss(S.settings[t.dataset.k]); return; } S.settings[t.dataset.k] = v; t.value = mmss(v); saveSettings(); });
   on('setNum', t => { const v = num(t.value); if (v) { S.settings[t.dataset.k] = v; saveSettings(); } });
@@ -2595,13 +2609,13 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-gym-nav .lb-btn:disabled{opacity:.4}
 .lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}.pr-celebrate b{display:block;font-size:1rem}.pr-celebrate-lines{display:block;margin-top:4px;font-weight:600;font-size:.88rem;opacity:.95}.pr-celebrate-lines>span{display:block}.pr-celebrate small{opacity:.8;font-weight:500}
 @keyframes lb-pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
-.lb-live.gym .lb-rest{padding-top:12px}
+.lb-live.gym .lb-rest:not(.full){padding-top:12px}
 .lb-live.gym .lb-rest-bar{height:8px;border-radius:4px}
-.lb-live.gym .lb-rest-time{font-family:var(--lb-display);font-size:3.4rem;min-width:7rem;line-height:1}
-.lb-live.gym .lb-rest-row .lb-btn{min-height:56px;min-width:64px;font-size:1.05rem}
+.lb-live.gym .lb-rest:not(.full) .lb-rest-time{font-family:var(--lb-display);font-size:3.4rem;min-width:7rem;line-height:1}
+.lb-live.gym .lb-rest:not(.full) .lb-rest-row .lb-btn{min-height:56px;min-width:64px;font-size:1.05rem}
 .lb-rest-next{text-align:center;margin:8px auto 0;max-width:720px;color:var(--lb-muted);font-size:.9rem}
 .lb-rest-next b{color:var(--lb-ink)}
-@media (max-width:360px){.lb-gym-field{grid-template-columns:60px minmax(0,1fr) 60px}.lb-gym-num{font-size:2.5rem}.lb-gym-name{font-size:1.8rem}.lb-live.gym .lb-rest-row{gap:6px}.lb-live.gym .lb-rest-time{font-size:2.6rem;min-width:5rem}.lb-live.gym .lb-rest-row .lb-btn{min-width:52px;padding:6px 8px}}
+@media (max-width:360px){.lb-gym-field{grid-template-columns:60px minmax(0,1fr) 60px}.lb-gym-num{font-size:2.5rem}.lb-gym-name{font-size:1.8rem}.lb-live.gym .lb-rest:not(.full) .lb-rest-row{gap:6px}.lb-live.gym .lb-rest:not(.full) .lb-rest-time{font-size:2.6rem;min-width:5rem}.lb-live.gym .lb-rest:not(.full) .lb-rest-row .lb-btn{min-width:52px;padding:6px 8px}}
 .lb-done-hero{text-align:center;padding:10px 0 14px} .lb-done-hero b{display:block;font-family:var(--lb-display);font-size:1.9rem} .lb-done-hero span{color:var(--lb-muted)}
 .lb-share{background:var(--lb-sunk);border-radius:var(--lb-r);padding:8px;margin-bottom:10px} .lb-share img{display:block;width:100%;height:auto;border-radius:calc(var(--lb-r)*.7);box-shadow:0 6px 24px rgba(0,0,0,.18)} .lb-share-text{margin-top:10px} .lb-share-text pre{white-space:pre-wrap;font:inherit;font-size:.9rem;background:var(--lb-sunk);padding:10px;border-radius:var(--lb-r);margin:6px 0 0}
 .lb-prlist{list-style:none;padding:0;margin:0} .lb-prlist li{padding:6px 0;border-bottom:1px solid var(--lb-line)}
@@ -2643,10 +2657,10 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   async function refresh() { await loadAll(); if (!E && !sheets.length) renderMain(); }
   // Host settings screen: read the logger's settings and change some of them (gym, unit, rest) without opening its Tools tab.
   function settings() { return clone(S.settings); }
-  function setSettings(patch) { Object.assign(S.settings, patch || {}); saveSettings(); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
+  function setSettings(patch) { Object.keys(patch || {}).forEach(k => noteSetting(k, patch[k])); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
   const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, restNotifyLooks: REST_NOTIFY, workoutInfo, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     parseRest, setRestOf, fillRemaining,
-    gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
+    mergeSettings, gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
     swipe: { swipeDecision } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
