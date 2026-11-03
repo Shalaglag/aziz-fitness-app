@@ -518,6 +518,35 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("workout logger: the green 'Beat last time' line shows for a lift done before, in List view and after ticking a set", async () => {
+      // Regression guard (Aziz, Nov 3): this motivating line must never silently vanish from the live workout.
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "train");
+      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      const startPushA = () => page.evaluate(async () => { const b = document.createElement("button"); b.dataset.a = "startTpl"; b.dataset.id = "push-a"; document.getElementById("lbHost").appendChild(b); b.click(); b.remove(); await new Promise(r => setTimeout(r, 300)); });
+      const hints = () => page.evaluate(() => [...document.querySelectorAll(".lb-live-body .lb-hint")].map(e => e.textContent));
+      await startPushA();
+      assert.deepStrictEqual(await hints(), [], "no line before there is any history");
+      // Log 60 kg × 10 on every working set of Push A, tick them all and finish.
+      await page.evaluate(async () => {
+        document.querySelectorAll(".lb-live-body .lb-setrow:not(.head)").forEach(r => [["w", "60"], ["r", "10"]].forEach(([k, v]) => { const i = r.querySelector(`input[data-k="${k}"]`); if (i) { i.value = v; i.dispatchEvent(new Event("input", { bubbles: true })); } }));
+        for (const c of [...document.querySelectorAll(".lb-live-body .lb-chk")]) { const x = document.querySelector(`.lb-chk[data-ei="${c.dataset.ei}"][data-si="${c.dataset.si}"]`); if (x && x.getAttribute("aria-pressed") !== "true") x.click(); }
+        document.querySelector('[data-a="finish"]').click(); await new Promise(r => setTimeout(r, 200));
+        const keep = document.querySelector('[data-a="finishSave"][data-upd="0"]'); if (keep) keep.click(); await new Promise(r => setTimeout(r, 200));
+        document.querySelectorAll('[data-a="closeSheet"]').forEach(b => b.click());
+      });
+      await startPushA();
+      const h = await hints();
+      assert.ok(h.length >= 3, "every weighted lift from last time gets the line: " + JSON.stringify(h));
+      assert.ok(h.includes("Beat last time: aim for 60 kg × 11 on one set."), JSON.stringify(h));
+      assert.strictEqual(await page.evaluate(() => getComputedStyle(document.querySelector(".lb-live-body .lb-hint")).display), "block", "and it is visible");
+      await page.evaluate(() => document.querySelector(".lb-live-body .lb-chk").click()); await page.waitForTimeout(150);
+      assert.strictEqual((await hints()).length, h.length, "ticking a set keeps the line");
+      await page.evaluate(() => { const b = document.querySelector('[data-a="cancelLive"]'); if (b) b.click(); });
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("goal setup: opens first for a new install, Skip is remembered, Settings reruns it, the result applies only on confirm", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], null, { keepSetup: true });
       assert.ok(await page.$('.gs-wrap[role="dialog"]'), "a fresh install starts on the questionnaire");
