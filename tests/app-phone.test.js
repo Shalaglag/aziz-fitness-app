@@ -579,7 +579,33 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.strictEqual(await page.evaluate(() => getComputedStyle(document.querySelector(".lb-live-body .lb-hint")).display), "block", "and it is visible");
       await page.evaluate(() => document.querySelector(".lb-live-body .lb-chk").click()); await page.waitForTimeout(150);
       assert.strictEqual((await hints()).length, h.length, "ticking a set keeps the line");
-      await page.evaluate(() => { const b = document.querySelector('[data-a="cancelLive"]'); if (b) b.click(); });
+      // Cancel workout (Aziz, Nov 3): Gym mode and the Finish sheet offer it, it asks first, and it saves nothing.
+      await page.evaluate(async () => { document.querySelector('[data-a="gymToggle"]').click(); await new Promise(r => setTimeout(r, 150)); });
+      assert.ok(await page.evaluate(() => [...document.querySelectorAll('[data-a="askDiscard"]')].some(b => b.offsetParent)), "Gym mode shows Cancel workout");
+      await page.evaluate(async () => { document.querySelector('[data-a="gymToggle"]').click(); await new Promise(r => setTimeout(r, 150)); });
+      const sheet = await page.evaluate(async () => {
+        const r = document.querySelector(".lb-live-body .lb-setrow:not(.head)"), i = r.querySelector('input[data-k="w"]'); i.value = "99"; i.dispatchEvent(new Event("input", { bubbles: true }));
+        document.querySelector('[data-a="finish"]').click(); await new Promise(r => setTimeout(r, 150));
+        const ask = [...document.querySelectorAll('[data-a="askDiscard"]')].pop(); if (!ask) return null; ask.click(); await new Promise(r => setTimeout(r, 150));
+        const conf = [...document.querySelectorAll('[data-a="cancelLiveFromSheet"]')].pop(), txt = conf && conf.closest('[role="dialog"], .lb-sheet') ? conf.closest('[role="dialog"], .lb-sheet').textContent : '';
+        if (conf) conf.click(); await new Promise(r => setTimeout(r, 200));
+        return { txt, active: localStorage.getItem("lb_active") };
+      });
+      assert.ok(sheet, "the Finish sheet offers Cancel workout");
+      assert.match(sheet.txt, /Nothing from it will be saved/, "it asks before discarding");
+      assert.strictEqual(sheet.active, "null", "no workout is in progress afterwards");
+      await startPushA();
+      assert.ok((await hints()).includes("Beat last time: aim for 60 kg × 11 on one set."), "the cancelled 99 kg session was not saved and the past workout is untouched");
+      // Train page (workout hidden): Finish workout / End workout sit under the Resume bar; End asks, then discards.
+      const end = await page.evaluate(async () => {
+        const w = ms => new Promise(r => setTimeout(r, ms));
+        document.querySelector('[data-a="minimize"]').click(); await w(150);
+        const fin = !!document.querySelector('[data-a="barFinish"]'), b = document.querySelector('[data-a="barEnd"]'); if (!b) return { fin };
+        b.click(); await w(150);
+        const c = [...document.querySelectorAll('[data-a="cancelLiveFromSheet"]')].pop(); if (c) c.click(); await w(200);
+        return { fin, asked: !!c, active: localStorage.getItem("lb_active"), bar: !!document.querySelector('[data-a="barEnd"]') };
+      });
+      assert.deepStrictEqual(end, { fin: true, asked: true, active: "null", bar: false }, "Train page Finish/End workout");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });
