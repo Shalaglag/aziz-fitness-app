@@ -10,6 +10,9 @@
  *
  *   POST /v1/read    {kind:"menu", images:[{media_type, data}]}  owner only; reads a menu's nutrition numbers:
  *        {text, costUsd, month}   (text is the model's JSON answer; the instructions are fixed on the server)
+ *   GET  /v1/foods?q=…&pageSize=25[&types=Foundation,SR Legacy]  owner only; USDA FoodData Central search (no Claude,
+ *        no spending; cached a day): {foods:[trimmed hits], totalHits, fdcKey:"own"|"demo", cached}
+ *   GET  /v1/food?id=<fdcId>                                      owner only; one food's details with its portions
  *
  * Every request needs the Firebase ID token of a signed-in Mizan account (Authorization: Bearer …), and the
  * account must be listed in ALLOWED_EMAILS or ALLOWED_UIDS (both empty = nobody). The API key is the Worker
@@ -22,12 +25,14 @@
  *   ALLOWED_EMAILS     the email(s) Aziz signs in to Mizan with, comma separated
  *   ALLOWED_UIDS       optional Firebase user ids instead of emails
  *   PER_MINUTE / PER_DAY  per-account question limits (default 6 / 60)
+ *   FDC_API_KEY        optional secret: a free api.data.gov key for USDA food search (without it DEMO_KEY: 30/hour, 50/day)
  * The monthly cap starts at $100 (Aziz, Nov 2; his prepaid credit is $100 in total, not monthly) and is changed from the app (Ask Claude → spending).
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { MODEL, LIMITS, JWKS_URL, err, verifyIdToken, isAllowed, readBody, buildRequest, promptChars, estimateUsd,
   ledgerReserve, ledgerSettle, ledgerSetCap, ledgerTidy, ledgerSummary, foldEvent, round6,
-  readImageBody, buildReadRequest, readEstimateUsd, readTidyBody, buildTidyRequest, tidyEstimateUsd } from "./core.js";
+  readImageBody, buildReadRequest, readEstimateUsd, readTidyBody, buildTidyRequest, tidyEstimateUsd,
+  FDC, foodsQuery, fdcSearchRequest, fdcCacheKey, trimFdcSearch, trimFdcFood, foodIdQuery, fdcFoodRequest, fdcFoodCacheKey } from "./core.js";
 
 const CORS = {
   "access-control-allow-origin": "*", // bearer tokens only, no cookies: any page still needs the owner's sign-in
@@ -144,6 +149,24 @@ async function readMenu(req, env, who) {
   return json(200, { text, stop: msg.stop_reason || null, costUsd: s ? s.usd : null, month: s ? s.summary : null });
 }
 
+// USDA FoodData Central, proxied so the data.gov key stays here. Owner only, no Claude, no spending; answers are cached a day
+// (the same search from the phone twice costs USDA one call). FDC's own 429 is passed on as rate_limited.
+async function fdcProxy(env, ctx, input, buildReq, cacheKeyOf, trim) {
+  const cache = typeof caches !== "undefined" && caches.default ? caches.default : null;
+  const ck = new Request(cacheKeyOf(input));
+  if (cache) { const hit = await cache.match(ck).catch(() => null); if (hit) { const j = await hit.json().catch(() => null); if (j) return json(200, Object.assign(j, { cached: true })); } }
+  const { url, init } = buildReq(input, env.FDC_API_KEY);
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort("timeout"), 15000);
+  let res; try { res = await fetch(url, Object.assign({}, init, { signal: ctl.signal })); } catch (e) { clearTimeout(timer); return json(ctl.signal.aborted ? 504 : 502, { error: ctl.signal.aborted ? "timeout" : "upstream_unavailable" }); }
+  clearTimeout(timer);
+  if (res.status === 429) return json(429, { error: "rate_limited", retryAfter: +(res.headers.get("retry-after") || 0) || undefined, fdcKey: env.FDC_API_KEY ? "own" : "demo" });
+  if (res.status === 404) return json(404, { error: "not_found" });
+  if (!res.ok) { console.log("fdc upstream", res.status); return json(502, { error: "upstream_error", status: res.status }); }
+  const body = Object.assign(trim(await res.json().catch(() => null)), { fdcKey: env.FDC_API_KEY ? "own" : "demo", source: "USDA FoodData Central" });
+  if (cache) { const stored = new Response(JSON.stringify(body), { headers: { "content-type": "application/json", "cache-control": "public, max-age=" + FDC.cacheSeconds } }); const putP = cache.put(ck, stored).catch(() => {}); if (ctx && ctx.waitUntil) ctx.waitUntil(putP); }
+  return json(200, body);
+}
+
 // Voice clean-up: one short Haiku call under the same ledger, cap and per-account limits as the chat.
 async function tidy(req, env, who) {
   if (!env.ANTHROPIC_API_KEY) return json(503, { error: "no_key" });
@@ -176,7 +199,9 @@ export default {
     googleKeys.url = env.FIREBASE_JWKS_URL || null; // test override only; production uses Google's keys
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     try {
-      if (url.pathname === "/v1/health" && req.method === "GET") return json(200, { ok: true, model: MODEL, keySet: !!env.ANTHROPIC_API_KEY, ownerSet: !!(env.ALLOWED_EMAILS || env.ALLOWED_UIDS) });
+      if (url.pathname === "/v1/health" && req.method === "GET") return json(200, { ok: true, model: MODEL, keySet: !!env.ANTHROPIC_API_KEY, ownerSet: !!(env.ALLOWED_EMAILS || env.ALLOWED_UIDS), fdcKeySet: !!env.FDC_API_KEY });
+      if (url.pathname === "/v1/foods" && req.method === "GET") { await owner(req, env); return await fdcProxy(env, ctx, foodsQuery(url.searchParams), fdcSearchRequest, fdcCacheKey, trimFdcSearch); }
+      if (url.pathname === "/v1/food" && req.method === "GET") { await owner(req, env); return await fdcProxy(env, ctx, foodIdQuery(url.searchParams), fdcFoodRequest, fdcFoodCacheKey, j => ({ food: trimFdcFood(j) })); }
       if (url.pathname === "/v1/usage" && req.method === "GET") { await owner(req, env); return json(200, await ledger(env).summary({ now: Date.now(), tz: tz(env) })); }
       if (url.pathname === "/v1/cap" && req.method === "POST") {
         await owner(req, env);

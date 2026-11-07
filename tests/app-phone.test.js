@@ -467,6 +467,28 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("new account: Today and Quick log offer no plan of ours; a picked template is next and Today does not crash on its name", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      const today = await page.evaluate(() => document.getElementById("main").textContent);
+      assert.ok(/No workout plan yet/.test(today) && !/Which session is today|Push A/.test(today), "Today has no Push / Pull / Lower chips: " + today.slice(0, 160));
+      // Quick log with no templates: no Push / Pull / Lower picker either
+      await page.evaluate(() => { view.trainMode = "quick"; view.tab = "train"; render(); });
+      const quick = await page.evaluate(() => document.getElementById("main").textContent);
+      assert.ok(/No templates yet/.test(quick) && !/Push A/.test(quick), "Quick log has no picker of ours: " + quick.slice(0, 160));
+      // One template of their own (Upper), never trained: it is what Today and Train suggest, and Today renders it (no PROGRAM lookup).
+      await page.evaluate(() => { const t = { id: "upper", name: "Upper", folder: "My templates", order: 1, notes: "", exercises: [{ exId: "bench-press-barbell", unit: "kg", notes: "", sets: [{ t: "n", w: 60, r: 10 }] }] }; localStorage.setItem("lb:lb_templates", JSON.stringify({ upper: t })); localStorage.setItem("aziz-cut-tmode", "full"); localStorage.setItem("aziz-cut-tab", "today"); });
+      await page.reload(); await page.waitForFunction(() => document.querySelector("#main").children.length > 0);
+      await page.evaluate(() => { const b = document.querySelector('.gs-wrap [data-gs="skip"]'); if (b) b.click(); });
+      await go(page, "train");
+      await page.waitForFunction(() => document.querySelectorAll('#lbHost [data-a="tplPreview"]').length === 1);
+      assert.strictEqual(await page.$eval("#lbHost .lb-next h3", e => e.textContent), "Upper", "Train: the template they added is up next");
+      await go(page, "today");
+      const t2 = await page.evaluate(() => document.getElementById("main").textContent);
+      assert.ok(/Upper/.test(t2) && /1 exercises|Your template/.test(t2) && !/Push A/.test(t2), "Today shows their template: " + JSON.stringify({ upper: /Upper/.test(t2), count: /1 exercises|Your template/.test(t2), ppl: /Push A/.test(t2), around: t2.slice(Math.max(0, t2.indexOf("Upper") - 80), t2.indexOf("Upper") + 120) }));
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("ticking sets never hides a row: every template, every set (Aziz's bench warm-ups vanished after the 4th tick)", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await openTrain(page);
@@ -793,6 +815,37 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.strictEqual(after.prof.start, addDays(await page.evaluate(() => TODAY), -27), "plan start date is kept");
       assert.strictEqual(after.gs.result.profile.goalKg, 80); assert.strictEqual(after.gs.recheck.decision, "apply");
       assert.match(after.card, /changed to [\d,]+ kcal/);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("food search: cooked rice -> 150 g logged with its source, unknown macros stay unknown, no ml/g inventions", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "food");
+      await page.click('button[data-act="foodadd"]'); await page.waitForTimeout(150);
+      await page.click('button[data-act="foodtab"][data-k="search"]'); await page.waitForTimeout(150);
+      await page.fill("#flq", "cooked rice"); await page.waitForTimeout(350);
+      const first = await page.$eval(".fl-item .fl-nm", e => e.textContent.replace(/\s+/g, " ").trim());
+      assert.match(first, /^Rice, white, cooked .*Typical values \(estimate\)/);
+      await page.click(".fl-item"); await page.waitForTimeout(150);
+      await page.fill("#flamt", "150 g"); await page.waitForTimeout(100);
+      const nums = await page.$eval("#flnums", e => e.textContent.replace(/\s+/g, " ").trim());
+      assert.match(nums, /^195kcal4(\.1)?protein42\.3carbs0\.5fat 150 g/, nums); // 130 kcal per 100 g × 1.5
+      await page.fill("#flamt", "100 ml"); await page.waitForTimeout(100);
+      assert.match(await page.$eval("#flnums", e => e.textContent), /Use .*grams/, "a per-100 g food refuses millilitres");
+      await page.fill("#flamt", "150 g"); await page.waitForTimeout(100);
+      await page.click('[data-fl="add"]'); await page.waitForTimeout(300);
+      const row = await page.evaluate(() => S.docs.days[TODAY].food.find(i => /Rice, white, cooked/.test(i.name)));
+      assert.ok(row, "row logged"); assert.strictEqual(row.kcal, 195); assert.strictEqual(row.grams, 150); assert.strictEqual(row.est, true); assert.strictEqual(row.eaten, false);
+      assert.strictEqual(row.src.kind, "catalog"); assert.strictEqual(row.src.grade, "estimate"); assert.strictEqual(row.src.basis, "100 g");
+      assert.ok((await page.evaluate(() => Object.keys(S.docs.prefs.main.foodRecents || {}))).includes("cat:rice-white-cooked"), "recent remembered");
+      // The USDA button goes through the service; with no service address the card says so and local results stay.
+      await page.fill("#flq", "salmon"); await page.waitForTimeout(350);
+      await page.click('[data-fl="search"]'); await page.waitForTimeout(300);
+      const hint = await page.$eval("#flres", e => e.textContent);
+      assert.match(hint, /USDA: (the Mizan service address is not set|sign in to Mizan to search)/); assert.ok(await page.$(".fl-item"), "local salmon still listed");
+      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(wide <= 1, "search sheet scrolls sideways by " + wide);
       assert.deepStrictEqual(errors, []);
       await page.close();
     });

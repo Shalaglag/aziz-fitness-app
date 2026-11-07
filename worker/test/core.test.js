@@ -201,3 +201,26 @@ test("voice clean-up: text only, bounded, hints de-duplicated, fixed prompt, Hai
   assert.equal(r.system, C.TIDY_PROMPT); assert.match(r.messages[0].content, /Spoken in Arabic[\s\S]*TRANSCRIPT:\nكم بروتين باقي$/);
   assert.ok(C.tidyEstimateUsd(t) < 0.001, "a clean-up is a fraction of a cent");
 });
+
+test("USDA food search: query bounds, default data types (no US packets unless asked), request shape, trimmed hits", () => {
+  assert.throws(() => C.foodsQuery(new URLSearchParams("")), /no_query/);
+  const q = C.foodsQuery(new URLSearchParams("q=" + encodeURIComponent("  rice,  cooked " + "x".repeat(200)) + "&pageSize=500"));
+  assert.equal(q.q.length, C.FDC.maxQuery); assert.equal(q.pageSize, C.FDC.maxPage); assert.deepEqual(q.dataType, ["Foundation", "SR Legacy", "Survey (FNDDS)"]);
+  const b = C.foodsQuery(new URLSearchParams("q=oreo&types=Branded,Nonsense"));
+  assert.deepEqual(b.dataType, ["Branded"]); assert.equal(b.pageSize, 25);
+  const r = C.fdcSearchRequest(q, "secret-key");
+  assert.equal(r.url, "https://api.nal.usda.gov/fdc/v1/foods/search?api_key=secret-key"); assert.equal(r.init.method, "POST");
+  assert.deepEqual(JSON.parse(r.init.body).dataType, q.dataType);
+  assert.match(C.fdcSearchRequest(q).url, /api_key=DEMO_KEY$/, "no key -> the public demo key");
+  assert.ok(!C.fdcCacheKey(q).includes("secret"), "the cache key never carries the API key");
+  assert.equal(C.fdcCacheKey(C.foodsQuery(new URLSearchParams("q=Rice"))), C.fdcCacheKey(C.foodsQuery(new URLSearchParams("q=rice"))));
+  const hit = { fdcId: 169756, description: "Rice, white, cooked", dataType: "SR Legacy", publishedDate: "2019-04-01", foodCategory: "Cereal Grains and Pasta", score: 500, allHighlightFields: "…",
+    foodNutrients: [{ nutrientNumber: "208", nutrientName: "Energy", unitName: "KCAL", value: 130 }, { nutrientNumber: "203", value: 2.69 }, { nutrientNumber: "999", value: 5 }] };
+  const t = C.trimFdcSearch({ foods: [hit, { nope: true }], totalHits: 1 });
+  assert.equal(t.totalHits, 1); assert.equal(t.foods.length, 1); assert.deepEqual(Object.keys(t.foods[0]).sort(), ["dataType", "description", "fdcId", "foodCategory", "foodNutrients", "publishedDate"]);
+  assert.equal(t.foods[0].foodNutrients.length, 2, "nutrients the app does not use are dropped");
+  const full = C.trimFdcFood({ fdcId: 1, description: "Egg", dataType: "Foundation", foodNutrients: [{ nutrient: { number: "957", unitName: "kcal" }, amount: 148 }], foodPortions: [{ portionDescription: "1 large", gramWeight: 50 }, { gramWeight: 0 }], brandOwner: "", servingSize: 0 });
+  assert.deepEqual(full.foodNutrients, [{ nutrientNumber: "957", unitName: "kcal", value: 148 }]); assert.deepEqual(full.foodPortions, [{ portionDescription: "1 large", gramWeight: 50 }]);
+  assert.throws(() => C.foodIdQuery(new URLSearchParams("id=abc")), /bad_request/);
+  assert.equal(C.fdcFoodRequest(C.foodIdQuery(new URLSearchParams("id=169756")), "k").url, "https://api.nal.usda.gov/fdc/v1/food/169756?api_key=k&format=full");
+});
