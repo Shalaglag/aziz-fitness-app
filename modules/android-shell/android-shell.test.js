@@ -153,8 +153,8 @@ test("workout notification: shows the workout, turns into the rest countdown, bu
   assert.deepEqual([shown[3].workout, shown[3].body, shown[3].look], [false, "Rest 1:30", "big"]);
   listeners["lb:rest-stop"]();
   assert.equal(stops, 2);
-  rtListeners.skip(); rtListeners.adjust({ seconds: -15 }); rtListeners.next(); rtListeners.rest();
-  assert.deepEqual(fired.map(e => [e.type, e.detail]), [["lb:rest-skip", {}], ["lb:rest-adjust", { d: -15 }], ["lb:workout-next", {}], ["lb:rest-start", {}]]);
+  rtListeners.skip(); rtListeners.adjust({ seconds: -15 }); rtListeners.complete(); rtListeners.rest();
+  assert.deepEqual(fired.map(e => [e.type, e.detail]), [["lb:rest-skip", {}], ["lb:rest-adjust", { d: -15 }], ["lb:workout-complete", {}], ["lb:rest-start", {}]]);
   delete global.document; delete global.CustomEvent; global.window = {};
 });
 

@@ -17,7 +17,7 @@
  * notification is scheduled 1 s after the end so the in-app beep (which cancels it) wins while the app is open,
  * and the RestTimer plugin keeps a persistent workout notification in the shade ("lb:workout" {name,start,exercise,
  * set,next,done,total,look} / "lb:workout-stop" from the logger) that turns into the live countdown during a rest.
- * Its buttons fire "lb:rest-skip", "lb:rest-adjust" {d: ±15}, "lb:workout-next" and "lb:rest-start" on window.
+ * Its buttons fire "lb:rest-skip", "lb:rest-adjust" {d: ±15}, "lb:workout-complete" and "lb:rest-start" on window.
  */
 const AndroidShell = (function () {
   const handlers = [];
@@ -137,7 +137,7 @@ const AndroidShell = (function () {
     } catch (e) { return false; }
   }
   // Persistent workout notification (Strong-style), RestTimerPlugin.kt. Between rests it shows the workout's
-  // elapsed time, the current exercise and set and the next exercise, with "Next exercise" / "Rest" buttons;
+  // elapsed time, the current exercise and set and the next exercise, with "Complete set" / "Rest" buttons;
   // during a rest its chronometer counts down to d.end on its own with −15 s / +15 s / Skip. The plugin flips
   // back to the workout view when the rest ends. A rest with no workout (Quick log) is a countdown that clears
   // itself. Buttons come back as "skip" / "adjust" {seconds} / "next" / "rest" and are fired on window.
@@ -167,6 +167,7 @@ const AndroidShell = (function () {
       rt.addListener("skip", () => fire("lb:rest-skip", {}));
       rt.addListener("adjust", d => fire("lb:rest-adjust", { d: (d && +d.seconds) || 15 }));
       rt.addListener("next", () => fire("lb:workout-next", {}));
+      rt.addListener("complete", () => fire("lb:workout-complete", {}));
       rt.addListener("rest", () => fire("lb:rest-start", {}));
     } catch (e) { }
   }
