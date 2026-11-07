@@ -26,12 +26,23 @@ function seed(today) {
   return { days: { [today]: { date: today, food, water: 1000, supps: {}, treadmill: false } }, weights, workouts: {}, prefs: {} };
 }
 
+// Train with the Push / Pull / Lower templates loaded. Nothing is loaded for a new account any more (Nov 7): the
+// person picks a programme; these checks load Aziz's.
+async function openTrain(page) {
+  await go(page, "train");
+  await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+  await page.evaluate(() => { const b = document.querySelector('#lbHost [data-a="loadProgram"]'); if (b) b.click(); });
+  await page.waitForSelector('#lbHost [data-a="tplPreview"]');
+}
+
 // Sections live in a side drawer (☰) since Oct 31: open it, then tap the section.
 // The bottom bar is the default since Nov 1; its More button opens the same drawer when ☰ is hidden.
 async function go(page, tab) { await page.evaluate(() => { const m = document.getElementById("menuBtn"); (getComputedStyle(m).display === "none" ? document.querySelector("#bottomNav button[data-more]") : m).click(); }); await page.click(tab === "settings" ? "#openSettings" : `#tabs button[data-tab="${tab}"]`); await page.waitForTimeout(150); }
 
 async function openApp(browser, phone, data, opts = {}) {
   const page = await browser.newPage({ viewport: { width: phone.width, height: phone.height }, isMobile: true, hasTouch: true });
+  // opts.fixedTime pins the page clock (Date only; timers keep running) for checks whose result depends on the weekday.
+  if (opts.fixedTime) await page.clock.setFixedTime(opts.fixedTime);
   const errors = [];
   page.on("pageerror", e => errors.push(e.message));
   await page.route(/^https:\/\/(fonts\.|www\.gstatic\.com)/, r => r.fulfill({ body: "" }));
@@ -206,7 +217,8 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
     });
 
     await t.test("menu picker sits on the Food page above Food check: most protein by default, leave out fries, reasons shown, plan adds planned items", async () => {
-      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      // Pinned to a Tuesday: on Saturdays the picker adds the eggs breakfast (490 kcal) to every plan, so no meal pair fits 2,000 kcal and this check failed on the real date.
+      const { page, errors } = await openApp(browser, PHONES[0], seed, { fixedTime: new Date("2026-11-03T12:00:00") });
       await go(page, "food");
       const order = await page.evaluate(() => { const m = document.getElementById("menuPicker"), f = [...document.querySelectorAll("#main details, #main .fold, #main [data-fold]")].find(e => /Food check/.test(e.textContent)); return { has: !!m, before: !!(m && f && (m.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
       assert.ok(order.has, "menu picker card is on the Food page");
@@ -223,7 +235,9 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.waitForSelector("#menuPicker .mi-opt.best");
       const pressed = await page.$eval('#menuPicker [data-mi="pri"][aria-pressed="true"]', e => e.textContent);
       assert.strictEqual(pressed, "Most protein");
-      assert.match(await page.$eval("#menuPicker .mi-opt.best .mi-whys", e => e.textContent), /Most protein of the \d+ meal pairs that fit your 2,000 kcal budget/);
+      // On a Saturday the picker adds the breakfast eggs first (menu-import `eggs`), so no two meals fit the 2,000 kcal budget and the reason says so.
+      const sat = await page.evaluate(() => dayType(TODAY) === "saturday");
+      assert.match(await page.$eval("#menuPicker .mi-opt.best .mi-whys", e => e.textContent), sat ? /Most protein this menu allows; no combination reaches your 2,000 kcal budget/ : /Most protein of the \d+ meal pairs that fit your 2,000 kcal budget/);
       assert.ok(/Chicken Burger with Fries/.test(await page.$eval("#menuPicker .mi-opt.best", e => e.textContent)), "the highest-protein meal is picked first");
       await page.click('#menuPicker [data-mi="avoid"][data-w="fries"]');
       const best = await page.$eval("#menuPicker .mi-opt.best", e => e.textContent);
@@ -264,8 +278,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
 
     await t.test("full logger is the default Train screen, opens in List view, and Settings can switch it", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
-      await go(page, "train");
-      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      await openTrain(page);
       const order = await page.evaluate(() => ({ mode: view.trainMode, above: document.getElementById("lbHost").compareDocumentPosition(document.getElementById("main")) & Node.DOCUMENT_POSITION_FOLLOWING ? "logger-first" : "main-first", gym: WorkoutLogger.settings().gym }));
       assert.deepStrictEqual(order, { mode: "full", above: "logger-first", gym: false });
       await go(page, "settings");
@@ -282,8 +295,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
 
     await t.test("sounds: rest over dings when the timer reaches 0 (quick log and full logger) and Finish plays the finish chime", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
-      await go(page, "train");
-      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      await openTrain(page);
       await page.evaluate(() => { window.played = []; GymSounds.play = n => { played.push(n); return true; }; window.cues = []; ["lb:rest", "lb:rest-stop"].forEach(k => addEventListener(k, () => cues.push(k))); });
       // Quick log timer bar
       await page.evaluate(() => startTimer(1));
@@ -333,8 +345,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
 
     await t.test("Gym mode keeps the rest timer look picked in Settings", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
-      await go(page, "train");
-      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      await openTrain(page);
       const r = await page.evaluate(async () => {
         const w = ms => new Promise(r => setTimeout(r, ms)), out = {};
         WorkoutLogger.setSettings({ restStyle: "ring", gym: false });
@@ -458,8 +469,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
 
     await t.test("ticking sets never hides a row: every template, every set (Aziz's bench warm-ups vanished after the 4th tick)", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
-      await go(page, "train");
-      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      await openTrain(page);
       const tap = (a, id) => page.evaluate(([a, id]) => { const b = [...document.querySelectorAll(`[data-a="${a}"]` + (id ? `[data-id="${id}"]` : ""))].filter(e => e.offsetParent).pop(); if (b) b.click(); return !!b; }, [a, id]);
       const tpls = await page.$$eval('[data-a="tplPreview"]', b => [...new Set(b.map(e => e.dataset.id))]);
       assert.ok(tpls.length >= 6, "all program templates listed (" + tpls.length + ")");
@@ -545,8 +555,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.strictEqual(await page.evaluate(() => S.docs.prefs.main.uiScale), 0.85, "text size is saved");
       await page.click('[data-act="scalereset"]'); await page.waitForTimeout(100);
       assert.strictEqual(await fs(), 15, "Reset goes back to the default size");
-      await go(page, "train");
-      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      await openTrain(page);
       const lg = await page.evaluate(async () => { const s = WorkoutLogger.settings(); const btn = [...document.querySelectorAll('#lbHost [data-a="startTplName"],#lbHost [data-a="startTpl"]')][0]; btn.click(); await new Promise(r => setTimeout(r, 400)); const tog = document.querySelectorAll(".lb-live-body .lb-demo-toggle").length, before = document.querySelectorAll(".lb-live-body .ea-card").length; const t = document.querySelector(".lb-live-body .lb-demo-toggle"); if (t) t.click(); await new Promise(r => setTimeout(r, 200)); return { gym: s.gym, listOnce: s.listOnce, tog, before, after: document.querySelectorAll(".lb-live-body .ea-card").length }; });
       assert.strictEqual(lg.gym, false, "live workouts open in List view");
       assert.strictEqual(lg.listOnce, true);
@@ -558,8 +567,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
     await t.test("workout logger: the green 'Beat last time' line shows for a lift done before, in List view and after ticking a set", async () => {
       // Regression guard (Aziz, Nov 3): this motivating line must never silently vanish from the live workout.
       const { page, errors } = await openApp(browser, PHONES[0], seed);
-      await go(page, "train");
-      await page.waitForFunction(() => !document.getElementById("lbHost").hidden && /Templates/.test(document.getElementById("lbHost").textContent));
+      await openTrain(page);
       const startPushA = () => page.evaluate(async () => { const b = document.createElement("button"); b.dataset.a = "startTpl"; b.dataset.id = "push-a"; document.getElementById("lbHost").appendChild(b); b.click(); b.remove(); await new Promise(r => setTimeout(r, 300)); });
       const hints = () => page.evaluate(() => [...document.querySelectorAll(".lb-live-body .lb-hint")].map(e => e.textContent));
       await startPushA();
@@ -712,6 +720,40 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.reload(); await page.waitForFunction(() => document.querySelector("#main").children.length > 0); await page.waitForTimeout(150);
       assert.deepStrictEqual(await page.evaluate(() => [...document.querySelectorAll(".toast")].map(t => t.textContent).filter(t => /logged|on the trend|est\. 1RM|steady/.test(t))), [], "nothing fires twice");
       assert.ok((await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("workout: hold an exercise name and drag it to reorder; its sets go with it and nothing opens", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "train");
+      await page.evaluate(() => document.querySelector('[data-a="startEmpty"]').click()); await page.waitForTimeout(250);
+      await page.evaluate(() => document.querySelector('.lb-live [data-a="addEx"]').click()); await page.waitForTimeout(250);
+      await page.evaluate(() => [...document.querySelectorAll('.lb-sheet .lb-exrow')].filter(r => !/bike|run|row/i.test(r.textContent)).slice(0, 3).forEach(r => r.click()));
+      await page.evaluate(() => document.querySelector('[data-a="pickDone"]').click()); await page.waitForTimeout(250);
+      await page.evaluate(() => { document.querySelector('.lb-live-body').scrollTop = 0; const i = document.querySelector('.lb-exblock[data-ei="0"] input[data-k="r"]'); i.value = "12"; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new Event("change", { bubbles: true })); });
+      const names = () => page.evaluate(() => [...document.querySelectorAll(".lb-exblock .lb-exhead .lb-link")].map(x => x.textContent));
+      const before = await names();
+      const hd = await page.locator('.lb-exblock[data-ei="0"] .lb-exhead .lb-link').boundingBox();
+      const cdp = await page.context().newCDPSession(page);
+      const x = hd.x + 30, y = hd.y + hd.height / 2;
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+      await page.waitForTimeout(550);
+      assert.ok(await page.evaluate(() => document.querySelector(".lb-live").classList.contains("lb-reordering")), "holding folds the list");
+      const held = await page.locator(".lb-exblock.dragging").boundingBox();
+      for (let i = 1; i <= 15; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: held.y + held.height / 2 + i * 14 }] }); await page.waitForTimeout(16); }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await page.waitForTimeout(300);
+      const after = await names();
+      assert.deepStrictEqual(after, [before[1], before[2], before[0]], "first exercise dropped at the end");
+      const r = await page.evaluate(() => ({ reps: document.querySelector('.lb-exblock[data-ei="2"] input[data-k="r"]').value, folded: document.querySelector(".lb-live").classList.contains("lb-reordering"), sheets: document.querySelectorAll(".lb-sheet").length }));
+      assert.strictEqual(r.reps, "12", "the set typed before the drag moved with its exercise");
+      assert.strictEqual(r.folded, false); assert.strictEqual(r.sheets, 0, "the hold did not open the exercise");
+      // A quick tap still opens the exercise as before.
+      await page.waitForTimeout(300);
+      const sheetsBefore = await page.evaluate(() => document.querySelectorAll(".lb-sheet").length);
+      await page.locator('.lb-exblock[data-ei="0"] .lb-exhead .lb-link').tap(); await page.waitForTimeout(250);
+      assert.ok(await page.evaluate(n => document.querySelectorAll(".lb-sheet").length > n, sheetsBefore), "a tap still opens the exercise");
       assert.deepStrictEqual(errors, []);
       await page.close();
     });
