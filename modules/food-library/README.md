@@ -62,3 +62,7 @@ node tools/restaurants/import-mcd-arabia.js mcd.txt --dry      # check the parse
 node tools/restaurants/import-mcd-arabia.js mcd.txt            # writes restaurants.json; then node build/build.js
 ```
 A cell printed "-" stays unknown. Meals get `kind: "meal"`; say in `includes` what is in the box. Other restaurants with a published local table (any market) go in the same file as their own block.
+
+## Shell integration (Add food sheet)
+
+`mount` option `onAdd(row)` may return `false` to keep the review step open (the app's duplicate guard does this when the same food was added moments ago). `pickRecord(rec)` opens the review for a record from outside (recipes list, "Fits what's left today" suggestions). The Add button is handled on click with `preventDefault`, so the form submit does not add a second time.

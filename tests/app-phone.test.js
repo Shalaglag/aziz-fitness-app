@@ -165,6 +165,8 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.click('.mealgrp:has(.mh span:text-is("Meal 2")) [data-act="foodadd"]');
       await page.waitForSelector('#foodSheet[role="dialog"]');
       assert.strictEqual(await page.$eval("#foodSheet h2", e => e.textContent), "Add to Meal 2");
+      assert.ok(await page.$("#flq"), "the sheet opens on Search, the one front door");
+      await page.click('button[data-act="foodtab"][data-k="add"]'); await page.waitForTimeout(150);
       await page.fill("#fname", "Greek yoghurt"); await page.fill("#fk", "150"); await page.fill("#fp", "15"); await page.check("#featen");
       await page.click('#foodSheet button[type="submit"]');
       await page.waitForTimeout(200);
@@ -181,6 +183,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       // Typing survives a background re-render (sync snapshot, water/steps import, deferred render after a pad tap).
       await page.click('.mealgrp:has(.mh span:text-is("Meal 2")) [data-act="foodadd"]');
       await page.waitForSelector('#foodSheet[role="dialog"]');
+      await page.click('button[data-act="foodtab"][data-k="add"]'); await page.waitForTimeout(150);
       await page.fill("#fname", "Oat bar"); await page.selectOption("#fslot", "Extra");
       await page.click('[data-act="pad"][data-k="2"]'); await page.click('[data-act="pad"][data-k="1"]'); await page.click('[data-act="pad"][data-k="0"]');
       await page.click('[data-act="padnext"]'); await page.click('[data-act="pad"][data-k="9"]');
@@ -195,6 +198,7 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.deepStrictEqual([bar.kcal, bar.p, bar.slot, bar.eaten], [210, 95, "Extra", false]);
       await page.click('.mealgrp [data-act="foodadd"]');
       await page.waitForSelector('#foodSheet[role="dialog"]');
+      await page.click('button[data-act="foodtab"][data-k="add"]'); await page.waitForTimeout(150);
       assert.strictEqual(await page.$eval("#fname", e => e.value), "", "a fresh sheet starts empty, not with the old draft");
       await page.click('[data-act="foodclose"]');
       assert.deepStrictEqual(errors, []);
@@ -930,6 +934,48 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.strictEqual(added.length, 2);
       assert.strictEqual(added[0].kcal, 260); assert.strictEqual(added[0].grams, 200); assert.match(String(added[0].matched), /^cat:/); assert.strictEqual(added[0].est, true);
       assert.strictEqual(added[1].grade, "estimate"); assert.strictEqual(added[1].matched, null);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("one Add food flow: Search first with Barcode / Photo / Describe one tap away, fits-what's-left suggestions, duplicate guard", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await page.evaluate(() => { const m = Object.assign({}, S.docs.prefs.main, { foodFavs: { "cat:chicken-breast-cooked": TODAY, "cat:rice-white-cooked": TODAY } }); S.docs.prefs.main = m; });
+      await go(page, "food");
+      await page.click('.mealgrp:has(.mh span:text-is("Meal 2")) [data-act="foodadd"]'); await page.waitForTimeout(150);
+      const r = await page.evaluate(() => ({
+        tabs: [...document.querySelectorAll('#foodSheet [data-act="foodtab"]')].map(b => b.textContent),
+        search: !!document.getElementById("flq"),
+        ways: [...document.querySelectorAll('#foodSheet .fl-way')].map(b => b.textContent.trim()),
+        fit: (document.querySelector(".fl-fit .label") || {}).textContent || "",
+        fitRows: [...document.querySelectorAll(".fl-fit-row")].map(b => b.textContent.replace(/\s+/g, " ").trim()),
+        wide: document.documentElement.scrollWidth - window.innerWidth }));
+      assert.deepStrictEqual(r.tabs, ["Search", "Scan", "Type", "Quick", "Saved"]);
+      assert.ok(r.search, "Search is the front door");
+      assert.deepStrictEqual(r.ways, ["Barcode", "Photo", "Describe"]);
+      assert.match(r.fit, /^Fits what's left today · 1,130 kcal/);
+      assert.ok(r.fitRows.length >= 1 && r.fitRows.every(x => /kcal · P/.test(x)), "suggestions show portion, kcal and protein: " + r.fitRows.join(" | "));
+      assert.ok(r.wide <= 1, "no sideways scroll");
+      // A suggestion opens the normal review step (nothing logged yet)
+      await page.click(".fl-fit-row"); await page.waitForTimeout(150);
+      assert.ok(await page.$('#flHost [data-fl="add"]'), "review step with an Add button");
+      const before = await page.evaluate(() => S.docs.days[TODAY].food.length);
+      await page.click('#flHost [data-fl="add"]'); await page.waitForTimeout(150);
+      // Same food again straight away (the sheet stays open after Add): held back once, logged on the second tap
+      await page.click(".fl-fit-row"); await page.waitForTimeout(150);
+      await page.click('#flHost [data-fl="add"]'); await page.waitForTimeout(150);
+      const held = await page.evaluate(() => ({ n: S.docs.days[TODAY].food.length, toast: document.body.textContent.includes("added a moment ago"), review: !!document.querySelector('#flHost [data-fl="add"]') }));
+      assert.strictEqual(held.n, before + 1, "the duplicate was held back");
+      assert.ok(held.toast && held.review, "a toast explains and the review stays open");
+      await page.click('#flHost [data-fl="add"]'); await page.waitForTimeout(150);
+      assert.strictEqual(await page.evaluate(() => S.docs.days[TODAY].food.length), before + 2, "the second tap logs it twice");
+      // Describe opens the Scan tab with the photo/description card alone and the text box focused
+      await page.click('.fl-way[data-k="describe"]'); await page.waitForTimeout(200);
+      const d = await page.evaluate(() => ({ pf: !!document.getElementById("pfText"), bc: !!document.getElementById("bcHost"), ls: !!document.getElementById("lsHost"), focus: document.activeElement && document.activeElement.id, pressed: (document.querySelector('.fl-way[aria-pressed="true"]') || {}).textContent }));
+      assert.deepStrictEqual([d.pf, d.bc, d.ls, d.focus, d.pressed && d.pressed.trim()], [true, false, false, "pfText", "Describe"]);
+      await page.click('.fl-way[data-k="barcode"]'); await page.waitForTimeout(150);
+      assert.ok(await page.$("#bcHost"), "Barcode shows the barcode card alone");
+      await page.screenshot({ path: SHOTS + "/add-food-360px.png" }).catch(() => {});
       assert.deepStrictEqual(errors, []);
       await page.close();
     });
