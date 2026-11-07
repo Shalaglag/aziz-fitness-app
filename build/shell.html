@@ -908,8 +908,8 @@ const LIB = {
 };
 
 /* ===================== Store (synced db when available, else this browser) ===================== */
-const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio","markers","runs","chats"];
-const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},markers:{},runs:{},chats:{},lb_workouts:{},lb_exercises:{},lb_templates:{}}, db:null, mode:"loading", synced:new Set()};
+const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio","markers","runs","chats","recipes"];
+const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},markers:{},runs:{},chats:{},recipes:{},lb_workouts:{},lb_exercises:{},lb_templates:{}}, db:null, mode:"loading", synced:new Set()};
 const LB_READ = ["lb_workouts","lb_exercises","lb_templates"];
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
@@ -1202,7 +1202,7 @@ function render(){
   try{ foodDraftCapture(); }catch(e){ console.error("[food draft]", e); }
   const tabFn = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,friends:vFriends,guide:vGuide,settings:vSettings})[view.tab] || vToday;
   main.innerHTML = safe(view.tab+" tab", tabFn);
-  [["Workout logger",syncLogger],["Food search",mountFoodSearch],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
+  [["Workout logger",syncLogger],["Food search",mountFoodSearch],["Recipe editor",mountRecipeEditor],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
   if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); if(lastTab) tabMotion(lastTab, view.tab); lastTab=view.tab; }
   applyFlash();
   window.scrollTo(0,y);
@@ -1817,7 +1817,7 @@ function vFood(){
   ${fold("fauto","Automatic foods","Adonis, Gatorade rules", safeMod("AutoFoods",()=>AutoFoods.html((S.docs.prefs.main||{}).autoFoods,{day,training,type,hasDrinks:!!window.SuppDrinks})))}
   ${fold("fprefs","Likes and never-pick","", foodPrefsHtml())}
   ${fold("fcycle","Calorie cycling","", safeMod("CalorieCycling",()=>CalorieCycling.html(ccTargets(), ccState(), ccOpts())))}
-  ${view.foodSheet?foodSheet(d,day,training):""}`;
+  ${view.foodSheet?foodSheet(d,day,training):""}${view.recipeEdit?`<div class="sheet-wrap" role="dialog" aria-modal="true" aria-label="Recipe" id="recipeSheet"><div class="fsheet"><div class="sheet-head"><button class="iconbtn" data-act="rc-close" data-close aria-label="Close">✕</button><h2>${view.recipeEdit.isNew?"New recipe":"Edit recipe"}</h2><span></span></div><div class="sheet-body"><div id="rcHost"></div></div></div></div>`:""}`;
 }
 // The add/edit food form survives a re-render. render() runs for many reasons while the sheet is open (a Firestore
 // snapshot, a water or steps sync, the deferred render after a pad tap moves focus off the input) and used to rebuild the
@@ -1867,7 +1867,7 @@ function foodSheet(d, day, training){
       <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[0]==="Banned"?"":mgBadge({kcal:s[2],p:s[3],c:s[4],f:s[5]},"snack")+" "}${s[1]}<br><small class="muted">${s[0]==="Banned"?"Never pick":s[0]}</small></td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody></table></div>
       <p class="muted" style="font-size:.85rem">With Meal 1 (pre-workout) prefer fruit or a light sweet. Nuts and Pro Mud Cake fit better with Meal 2.</p></div>`;
   else if(tab==="search") body = `<div id="flHost"></div>`;
-  else if(tab==="saved") body = safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day})) + safeMod("CopyMeals",()=>CopyMeals.cardHTML(day,{today:TODAY,days:S.docs.days,open:view.open.cm}));
+  else if(tab==="saved") body = safeMod("Recipes",()=>Recipes.listHtml(S.docs.recipes)) + safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day})) + safeMod("CopyMeals",()=>CopyMeals.cardHTML(day,{today:TODAY,days:S.docs.days,open:view.open.cm}));
   else if(tab==="menu" && !window.MenuImport) body = pickerCard(d, training);
   else body = `<div id="bcHost"></div><div id="lsHost"></div>${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}${window.VoiceLog && typeof PhotoFood !== "undefined" ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : ""}`;
   return `<div class="sheet-wrap" role="dialog" aria-modal="true" aria-label="Add food" id="foodSheet"><div class="fsheet">
@@ -2295,6 +2295,11 @@ main.addEventListener("click",e=>{
   if(a==="foodadd"){ const keep=view.foodSheet && !view.foodSheet.edit ? view.foodSheet.tab : "add"; view.foodSheet={tab:keep||"add", slot:el.dataset.slot||"Meal 1"}; render(); requestAnimationFrame(()=>{ const f=document.getElementById("fname"); if(f) f.focus({preventScroll:true}); }); return; }
   if(a==="foodedit"){ view.foodSheet={tab:"add", edit:el.dataset.id}; render(); return; }
   if(a==="foodclose"){ view.foodSheet=null; render(); return; }
+  if(a==="rc-close"){ view.recipeEdit=null; render(); return; }
+  if(a==="rc-new"){ view.recipeEdit={isNew:true, recipe:Recipes.create({existing:S.docs.recipes})}; render(); return; }
+  if(a==="rc-edit"){ view.recipeEdit={id:el.dataset.id}; render(); return; }
+  if(a==="rc-fromday"){ const rc=Recipes.fromRows(getDay(d).food,{existing:S.docs.recipes}); if(!rc){ toast("Log some food on this day first."); return; } view.recipeEdit={isNew:true, recipe:rc}; render(); return; }
+  if(a==="rc-log"){ const rc=S.docs.recipes[el.dataset.id]; if(!rc) return; view.foodSheet={...(view.foodSheet||{}), tab:"search"}; render(); try{ FoodSearch.pickRecord(Recipes.toRecord(rc)); }catch(e){} return; }
   if(a==="foodtab"){ view.foodSheet={...(view.foodSheet||{}), tab:el.dataset.k}; render(); return; }
   if(a==="portion"){ const m=+el.dataset.m; ["fk","fp","fc","ff"].forEach(id=>{ const inp=document.getElementById(id); if(inp && inp.value!=="") inp.value=Math.round(+inp.value*m*10)/10; }); foodFormSync(); return; }
   if(a==="foodmode"){ view.foodMode=el.dataset.k; render(); return; }
@@ -2472,24 +2477,47 @@ function foodLibRecords(){
   try{ if(window.FOOD_CATALOG) for(const e of FOOD_CATALOG.foods||[]) { const r=FoodLib.fromCatalog(e); if(r) out.push(r); } }catch(e){}
   try{ if(window.FOOD_RESTAURANTS) out.push(...FoodLib.restaurantRecords(FOOD_RESTAURANTS)); }catch(e){}
   try{ for(const [code,prod] of Object.entries(S.docs.barcodes||{})){ const r=FoodLib.fromLibrary(code,prod); if(r) out.push(r); } }catch(e){}
+  try{ if(window.Recipes) for(const rc of Object.values(S.docs.recipes||{})){ const r=Recipes.toRecord(rc); if(r) out.push(r); } }catch(e){}
   return out;
 }
-function mountFoodSearch(){
-  const el=document.getElementById("flHost"); if(!el || !window.FoodSearch || !window.FoodLib) return;
+// "Save my version" in the search review: a personal product in barcodes/{code} (source manual, grade user), never the original record.
+function saveCustomFood(c){
+  const code="my-"+String(c.name).toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g,"-").replace(/^-|-$/g,"").slice(0,40);
+  const per=c.per100 || (c.perServing && c.perServing.g ? Object.fromEntries(Object.entries(c.perServing.nutrients).map(([k,v])=>[k, v==null?null:Math.round(v/c.perServing.g*100*10)/10])) : null);
+  const prod={ code, name:c.name, brand:c.brand||"", quantity:"", basis:c.basis||"g", per100: per || {kcal:null,p:null,c:null,f:null}, serving: c.perServing ? {g:c.perServing.g||1, label:c.perServing.label} : null, missing:c.missing||[], derived:false, source:"manual", from:c.from||null, at:TODAY };
+  if(!per && c.perServing){ // a serving with no weight: keep the serving numbers as "per 100" of a 100-unit serving so one serving scales right
+    prod.per100=c.perServing.nutrients; prod.serving={g:100,label:c.perServing.label}; }
+  put("barcodes",code,prod,{quiet:true}); render();
+}
+function foodSearchOpts(){
   if(!flCache){ try{ flCache=FoodLib.cache(localStorage); }catch(e){ flCache=FoodLib.cache(null); } }
   const token=()=>window.CloudStore && CloudStore.idToken ? CloudStore.idToken().catch(()=>null) : Promise.resolve(null);
   const prefs=()=>S.docs.prefs.main||{};
-  FoodSearch.mount(el,{
-    records: foodLibRecords, market:"KW", slot:(view.foodSheet&&view.foodSheet.slot)||"Meal 1", toast,
+  return {
+    records: foodLibRecords, market:"KW", toast,
     usda: async q=>{ const base=coachBase(); if(!base) return {records:[],error:"no_endpoint"}; const t=await token(); if(!t) return {records:[],error:"not_signed_in"}; return FoodLib.usdaSearch(q,{fetch:(u,i)=>fetch(u,i), base, token:t, cache:flCache}); },
     off: q=>FoodLib.offSearch(q,{fetch:(u,i)=>fetch(u,i), cache:flCache}),
-    details: async rec=>{ const base=coachBase(), t=base&&await token(); if(!t) return null; const id=rec.source.id; const key="usdafood:"+id; const hit=flCache.get(key); const j=hit||await fetch(base+"/v1/food?id="+encodeURIComponent(id),{headers:{authorization:"Bearer "+t}}).then(r=>r.ok?r.json():null).catch(()=>null); if(!j||!j.food) return null; if(!hit) flCache.put(key,j); const full=FoodLib.fromUsda(j.food,{retrievedAt:rec.source.retrievedAt}); return full; },
+    details: async rec=>{ const base=coachBase(), t=base&&await token(); if(!t) return null; const id=rec.source.id; const key="usdafood:"+id; const hit=flCache.get(key); const j=hit||await fetch(base+"/v1/food?id="+encodeURIComponent(id),{headers:{authorization:"Bearer "+t}}).then(r=>r.ok?r.json():null).catch(()=>null); if(!j||!j.food) return null; if(!hit) flCache.put(key,j); return FoodLib.fromUsda(j.food,{retrievedAt:rec.source.retrievedAt}); },
     favourites:()=>new Set(Object.keys(prefs().foodFavs||{})),
     toggleFavourite:id=>{ const m=clone(prefs()); m.foodFavs={...(m.foodFavs||{})}; if(m.foodFavs[id]) delete m.foodFavs[id]; else m.foodFavs[id]=TODAY; put("prefs","main",m,{quiet:true}); },
     recents:()=>new Map(Object.entries(prefs().foodRecents||{}).map(([k,v])=>[k,+v.n||1])),
     bumpRecent:id=>{ const m=clone(prefs()); const r={...(m.foodRecents||{})}; r[id]={n:((r[id]&&r[id].n)||0)+1, at:TODAY}; const keys=Object.keys(r).sort((a,b)=>(r[b].at||"").localeCompare(r[a].at||"")); for(const k of keys.slice(60)) delete r[k]; m.foodRecents=r; put("prefs","main",m,{quiet:true}); },
-    onAdd:row=>{ const day=getDay(view.date); day.food.push(row); flash("food"); saveDay(day); }
-  });
+    saveCustom: saveCustomFood,
+  };
+}
+function mountRecipeEditor(){
+  const el=document.getElementById("rcHost"); if(!el || !window.Recipes || !view.recipeEdit) return;
+  if(el.dataset.rcBound) return; // the editor owns its DOM; a background re-render must not wipe what is typed
+  const re=view.recipeEdit, rc=re.recipe || S.docs.recipes[re.id] || Recipes.create({existing:S.docs.recipes});
+  Recipes.mountEditor(el,{ recipe:rc, canDelete:!re.isNew, toast, search:foodSearchOpts(),
+    onSave:r=>{ if(re.isNew){ r={...r, id:Recipes.create({name:r.name, existing:S.docs.recipes}).id}; } put("recipes",r.id,r,{quiet:true}); view.recipeEdit=null; render(); toast("Saved "+r.name+". Find it under Search or Saved."); },
+    onCancel:()=>{ view.recipeEdit=null; render(); },
+    onDelete:id=>{ const old=S.docs.recipes[id]; view.recipeEdit=null; remove("recipes",id); if(old) undoToast("Deleted "+(old.name||"recipe"), ()=>put("recipes",id,old)); } });
+}
+function mountFoodSearch(){
+  const el=document.getElementById("flHost"); if(!el || !window.FoodSearch || !window.FoodLib) return;
+  FoodSearch.mount(el,Object.assign(foodSearchOpts(),{ slot:(view.foodSheet&&view.foodSheet.slot)||"Meal 1",
+    onAdd:row=>{ const day=getDay(view.date); day.food.push(row); flash("food"); saveDay(day); } }));
 }
 function mountBarcode(){
   const el=document.getElementById("bcHost"); if(!el || !window.BarcodeFood) return;
@@ -2623,7 +2651,7 @@ window.addEventListener("lb:rest-skip",()=>{ if(tInt) quickRestStop(); });
 window.addEventListener("lb:rest-adjust",e=>{ if(tInt) quickRestAdjust(+((e.detail||{}).d)||15); });
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
-try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:"")+(window.FoodSearch&&FoodSearch.CSS?FoodSearch.CSS:""); document.head.appendChild(st2); }catch(e){}
+try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:"")+(window.FoodSearch&&FoodSearch.CSS?FoodSearch.CSS:"")+(window.Recipes&&Recipes.CSS?Recipes.CSS:""); document.head.appendChild(st2); }catch(e){}
 ["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones","ProgramChooser"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);

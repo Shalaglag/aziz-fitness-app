@@ -21,7 +21,7 @@ const FoodSearch = (() => {
   let host = null, O = null, timer = null;
   const fmt = (v, d = 0) => v == null ? "–" : (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toString();
 
-  function reset() { Object.assign(S, { q: "", local: [], remote: { usda: null, off: null }, busy: { usda: false, off: false }, pick: null, amountText: "", details: false, err: {} }); }
+  function reset() { Object.assign(S, { q: "", local: [], remote: { usda: null, off: null }, busy: { usda: false, off: false }, pick: null, amountText: "", details: false, err: {}, custom: null }); }
   function mount(el, opts) {
     if (!el || !FL) return;
     host = el; O = opts || {};
@@ -62,6 +62,8 @@ const FoodSearch = (() => {
     else if (a === "details") { S.details = !S.details; draw(); }
     else if (a === "fav") { if (O.toggleFavourite) O.toggleFavourite(b.dataset.id); draw(); }
     else if (a === "add") { add(); }
+    else if (a === "custom") { S.custom = S.custom ? null : customFrom(S.pick); draw(); }
+    else if (a === "customsave") { saveCustom(); }
     else if (a === "clear") { S.q = ""; runLocal(); S.remote = { usda: null, off: null }; draw(); const i = host.querySelector("#flq"); if (i) i.focus(); }
   }
   async function pick(rec) {
@@ -78,11 +80,26 @@ const FoodSearch = (() => {
   function scaled() { if (!S.pick) return null; const a = FL.parseAmount(S.amountText, S.pick); return a ? FL.scale(S.pick, a) : null; }
   function add() {
     const sc = scaled(); if (!S.pick || !sc) { if (O.toast) O.toast("Enter an amount the food can be measured in (" + unitsFor(S.pick) + ")."); return; }
+    if (O.onPick) { const rec = S.pick; S.pick = null; S.details = false; O.onPick(rec, sc); return; } // e.g. a recipe editor takes the food + amount itself
     const row = FL.toRow(S.pick, sc, { slot: S.slot, eaten: S.eaten });
     if (O.onAdd) O.onAdd(row);
     if (O.bumpRecent) O.bumpRecent(S.pick.id);
     if (O.toast) O.toast("Added " + row.name + (row.eaten ? "" : ". Tick it when you eat it."));
     S.pick = null; S.details = false; draw();
+  }
+  // "Save my version": the record's per-basis numbers, editable, saved as a personal product (grade user) that search lists first.
+  function customFrom(rec) { if (!rec) return null; const n = rec.nutrients; return { name: rec.name, brand: rec.brand || "", basis: rec.basis.kind === "per100ml" ? "ml" : "g", perLabel: rec.basis.kind === "serving" ? rec.basis.label : (rec.basis.kind === "per100ml" ? "100 ml" : "100 g"), kcal: n.kcal, p: n.p, c: n.c, f: n.f, from: rec.id }; }
+  function saveCustom() {
+    const c = S.custom; if (!c || !O.saveCustom) return;
+    const g = id => { const el = host.querySelector("#" + id); return el ? el.value : ""; };
+    const n = v => { const x = parseFloat(String(v).replace(",", ".")); return isFinite(x) && x >= 0 ? x : null; };
+    const name = g("flcName").trim(); if (!name) { if (O.toast) O.toast("Give your version a name."); return; }
+    const per = { kcal: n(g("flcK")), p: n(g("flcP")), c: n(g("flcC")), f: n(g("flcF")) };
+    if (per.kcal == null && per.p == null && per.c == null && per.f == null) { if (O.toast) O.toast("Enter at least one number."); return; }
+    // A serving-based source (restaurant item) is saved per serving as one portion; per-100 sources stay per 100.
+    const rec = S.pick, serving = rec && rec.basis.kind === "serving";
+    O.saveCustom({ name, brand: g("flcBrand").trim(), basis: c.basis, per100: serving ? null : per, perServing: serving ? { label: rec.basis.label, g: rec.basis.unit === "g" ? rec.basis.amount : null, nutrients: per } : null, from: c.from, missing: Object.keys(per).filter(k => per[k] == null) });
+    S.custom = null; if (O.toast) O.toast("Saved as your version. It now comes first in search."); S.pick = null; draw();
   }
   function unitsFor(rec) { if (!rec) return "grams"; const u = []; if (rec.basis.kind === "serving") u.push("servings"); if (rec.basis.kind === "per100g" || (rec.basis.kind === "serving" && rec.basis.unit === "g")) u.push("grams"); if (rec.basis.kind === "per100ml" || (rec.basis.kind === "serving" && rec.basis.unit === "ml")) u.push("ml"); if (rec.portions.length) u.push(rec.portions.map(p => p.label).join(", ")); return u.join(", "); }
 
@@ -138,16 +155,26 @@ const FoodSearch = (() => {
       ${r.includes && r.includes.length ? `<p class="muted fl-hint">Includes: ${esc(r.includes.join(", "))}</p>` : ""}
       <button type="button" class="fl-detbtn" data-fl="details" aria-expanded="${S.details}">${S.details ? "Hide details" : "Details"}</button>
       ${S.details ? `<ul class="fl-details">${FL.sourceDetails(r).map(l => `<li>${/^https?:/.test(l) ? `<a href="${esc(l)}" target="_blank" rel="noopener">${esc(l.replace(/^https?:\/\//, ""))}</a>` : esc(l)}</li>`).join("")}<li>Per ${esc(r.basis.label)}: ${fmt(r.nutrients.kcal)} kcal · P ${fmt(r.nutrients.p, 1)} · C ${fmt(r.nutrients.c, 1)} · F ${fmt(r.nutrients.f, 1)}${r.nutrients.fiber != null ? " · fibre " + fmt(r.nutrients.fiber, 1) : ""}</li></ul>` : ""}
-      <div class="fl-acts"><select id="flslot" aria-label="Meal">${slots.map(s => `<option ${s === S.slot ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
-        <label class="fl-eaten"><input type="checkbox" id="fleaten" ${S.eaten ? "checked" : ""}> Eaten now</label>
-        <button type="submit" class="btn" data-fl="add">Add</button></div></form>`;
+      ${O.saveCustom && r.source.kind !== "recipe" ? `<button type="button" class="fl-detbtn" data-fl="custom" aria-expanded="${!!S.custom}">${S.custom ? "Cancel my version" : (r.grade === "user" ? "Edit my version" : "Save my version (correct the numbers)")}</button>` : ""}
+      ${S.custom ? customHtml(S.custom) : ""}
+      <div class="fl-acts">${O.hideSlot ? `<span></span><span></span>` : `<select id="flslot" aria-label="Meal">${slots.map(s => `<option ${s === S.slot ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
+        <label class="fl-eaten"><input type="checkbox" id="fleaten" ${S.eaten ? "checked" : ""}> Eaten now</label>`}
+        <button type="submit" class="btn" data-fl="add">${esc(O.addLabel || "Add")}</button></div></form>`;
+  }
+  function customHtml(c) {
+    const f = (id, l, v) => `<label class="fl-cf"><span>${l}</span><input type="text" inputmode="decimal" id="${id}" value="${v == null ? "" : esc(v)}" placeholder="?"></label>`;
+    return `<div class="fl-custom"><p class="muted fl-hint" style="margin:0">Your own numbers per ${esc(c.perLabel)} (from a label or your own weighing). Saved as a personal product, marked "Your entry"; the original stays unchanged and old logs keep their numbers.</p>
+      <label class="field"><span class="label">Name</span><input type="text" id="flcName" value="${esc(c.name)}"></label>
+      <label class="field"><span class="label">Brand (optional)</span><input type="text" id="flcBrand" value="${esc(c.brand)}"></label>
+      <div class="fl-cgrid">${f("flcK", "kcal", c.kcal)}${f("flcP", "protein g", c.p)}${f("flcC", "carbs g", c.c)}${f("flcF", "fat g", c.f)}</div>
+      <button type="button" class="btn small" data-fl="customsave">Save my version</button></div>`;
   }
   function numbersHtml() {
     const sc = scaled();
     if (!sc) return `<p class="fl-nums fl-bad">Use ${esc(unitsFor(S.pick))}.</p>`;
     const n = sc.nutrients, u = k => sc.unknown.includes(k) ? ' class="unk" title="not given by the source"' : "";
     return `<div class="fl-nums"><div><b>${fmt(n.kcal)}</b><small>kcal</small></div><div${u("p")}><b>${fmt(n.p, 1)}</b><small>protein</small></div><div${u("c")}><b>${fmt(n.c, 1)}</b><small>carbs</small></div><div${u("f")}><b>${fmt(n.f, 1)}</b><small>fat</small></div></div>
-      <p class="muted fl-hint">${esc(sc.amountText)}${sc.unknown.length ? " · " + sc.unknown.map(k => ({ p: "protein", c: "carbs", f: "fat", kcal: "calories" }[k])).join(", ") + " unknown, logged as 0 and marked estimate" : ""}${S.pick.grade === "estimate" ? " · typical values, logged as an estimate" : ""}</p>`;
+      <p class="muted fl-hint">${esc(sc.amountText)}${sc.unknown.length ? " · " + sc.unknown.map(k => ({ p: "protein", c: "carbs", f: "fat", kcal: "calories" }[k])).join(", ") + " unknown, logged as 0 and marked estimate" : ""}${S.pick.grade === "estimate" ? (S.pick.source.kind === "recipe" ? " · some ingredients are typical values, logged as an estimate" : " · typical values, logged as an estimate") : ""}</p>`;
   }
   const CSS = `
 .fl-form{display:flex;flex-direction:column;gap:8px}.fl-row{position:relative}.fl-row input{width:100%;box-sizing:border-box;padding:12px 40px 12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-size:1rem;color:var(--fg)}
@@ -168,7 +195,9 @@ const FoodSearch = (() => {
 .fl-details{margin:0;padding-left:18px;font-size:.8rem;color:var(--fg-muted);word-break:break-word}.fl-details a{color:var(--accent)}
 .fl-acts{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}.fl-acts select{min-width:0;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
 .fl-eaten{display:flex;align-items:center;gap:6px;font-size:.85rem;white-space:nowrap}
+.fl-custom{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:var(--surface-2,var(--sunk))}.fl-custom .field input{width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit}
+.fl-cgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.fl-cf{display:flex;flex-direction:column;gap:2px;font-size:.7rem;color:var(--fg-muted)}.fl-cf input{width:100%;box-sizing:border-box;padding:8px 4px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);text-align:center;font:inherit}
 `;
-  return { mount, reset, CSS, state: () => S, _allResults: allResults };
+  return { mount, reset, CSS, state: () => S, pickRecord: rec => { if (rec) pick(rec); }, _allResults: allResults };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = FoodSearch;

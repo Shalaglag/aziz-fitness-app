@@ -43,6 +43,11 @@ The shared foundation for food logging (Aziz's Nov 7, 2026 spec, work area 1): o
 
 `FoodLib.search(q, records, {favourites, recents, market, limit})` ranks by token and prefix matches (aliases: khubz → bread, laban → yogurt, dajaj → chicken…), prefers cooked unless the query says raw, boosts favourites, recents, your own entries and the KW market, and **never merges** two records because their names look alike: the same rice from USDA and the catalog are two results with their own source lines.
 
+## Personal foods and recipes (work area 2)
+
+- **Save my version** in the review step: correct any record's numbers (per its basis) and save it as a personal product in `barcodes/{my-<slug>}` (`source: "manual"`, grade *Your entry*). The original record stays; search lists your version first; old logs keep the numbers they were logged with.
+- **Recipes** (`modules/recipes`, `Recipes`, collection `recipes/{id}`): real ingredients with amounts, servings and an optional finished batch weight. Totals are the sum of the ingredients (numbers copied when each one is added); per serving = totals ÷ servings; per gram only when the finished dish was weighed (2,400 kcal in 1,000 g → 250 g = 600 kcal). Raw weights are never summed into a cooked weight. Ingredients come from the same food search (`FoodSearch` with `onPick`), amounts rescale linearly in the unit they were added with, "Save day as recipe" turns a logged day into a recipe. A recipe is a FoodLib record (`Recipes.toRecord`) so it is searchable and logged by servings or grams through the same review step; it carries *Personal recipe* and "(estimate)" when any ingredient was a typical value or had unknown macros.
+
 ## In the app
 
 Add food sheet → **Search** tab (`#flHost`, `mountFoodSearch()` in the shell). Local results appear as you type; **Search USDA** and **Packaged (Open Food Facts)** run on request. Picking a result opens the review: amount box with the record's portion chips, live kcal/P/C/F (unknown macros greyed and named), the source line (grade · basis · prep · includes), **Details** (source, id, published and fetched dates, link), meal slot, Eaten now, **Add**. Favourites (★) live in `prefs/main.foodFavs`, recents in `prefs/main.foodRecents` (last 60), both synced.

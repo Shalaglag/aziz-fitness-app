@@ -41,6 +41,7 @@
     { "file": "modules/food-library/restaurants.json", "json": "FOOD_RESTAURANTS" },
     { "file": "modules/food-library/food-library.js", "expose": ["FoodLib"] },
     { "file": "modules/food-library/food-search.js", "expose": ["FoodSearch"] },
+    { "file": "modules/recipes/recipes.js", "expose": ["Recipes"] },
     { "file": "modules/macro-target/macro-target.js", "expose": ["MacroTarget"] },
     { "file": "modules/meal-grade/meal-grade.js" },
     { "file": "modules/protein-gap/protein-gap.js" },

@@ -828,6 +828,47 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("recipes: ingredients from search, servings and weighed batch, logged by grams; save my version comes first", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "food");
+      await page.click('button[data-act="foodadd"]'); await page.waitForTimeout(150);
+      await page.click('button[data-act="foodtab"][data-k="saved"]'); await page.waitForTimeout(150);
+      await page.click('[data-act="rc-new"]'); await page.waitForTimeout(200);
+      await page.fill("#rcName", "Test stew"); await page.fill("#rcServ", "4");
+      await page.fill("#flq", "chicken breast"); await page.waitForTimeout(350); await page.click(".fl-item"); await page.waitForTimeout(150);
+      await page.fill("#flamt", "600 g"); await page.click('[data-fl="add"]'); await page.waitForTimeout(250);
+      await page.click('[data-rc="tab"][data-k="add"]'); await page.waitForTimeout(150);
+      await page.fill("#flq", "cooked rice"); await page.waitForTimeout(350); await page.click(".fl-item"); await page.waitForTimeout(150);
+      await page.fill("#flamt", "800 g"); await page.click('[data-fl="add"]'); await page.waitForTimeout(250);
+      let tot = await page.$eval("#rcTotals", e => e.textContent.replace(/\s+/g, " "));
+      assert.match(tot, /Whole recipe ?2030 kcal/); assert.match(tot, /Weigh the finished dish/, "no per-gram figure before the batch is weighed");
+      await page.fill("#rcBatch", "1200"); await page.waitForTimeout(150);
+      tot = await page.$eval("#rcTotals", e => e.textContent.replace(/\s+/g, " "));
+      assert.match(tot, /Per 100 g cooked ?169 kcal/); // 2030 / 1200 × 100
+      await page.click('[data-rc="save"]'); await page.waitForTimeout(300);
+      const saved = await page.evaluate(() => S.docs.recipes["test-stew"]);
+      assert.ok(saved, "recipe saved under its name"); assert.strictEqual(saved.ingredients.length, 2); assert.strictEqual(saved.batchG, 1200);
+      await page.click(".rc-item"); await page.waitForTimeout(250);
+      await page.fill("#flamt", "300 g"); await page.waitForTimeout(100);
+      assert.match(await page.$eval("#flnums", e => e.textContent.replace(/\s+/g, " ")), /^508 ?kcal/); // 2030 ÷ 4 servings = 300 g each
+      await page.click('[data-fl="add"]'); await page.waitForTimeout(250);
+      const row = await page.evaluate(() => S.docs.days[TODAY].food.find(i => /Test stew/.test(i.name)));
+      assert.strictEqual(row.kcal, 508); assert.strictEqual(row.grams, 300); assert.strictEqual(row.src.kind, "recipe"); assert.strictEqual(row.est, true);
+      // Save my version: a corrected labneh becomes a personal product and ranks first
+      await page.click('button[data-act="foodtab"][data-k="search"]'); await page.waitForTimeout(150);
+      await page.fill("#flq", "labneh"); await page.waitForTimeout(350); await page.click(".fl-item"); await page.waitForTimeout(150);
+      await page.click('[data-fl="custom"]'); await page.waitForTimeout(100);
+      await page.fill("#flcName", "My labneh"); await page.fill("#flcK", "190"); await page.fill("#flcP", "7"); await page.fill("#flcC", "4"); await page.fill("#flcF", "16");
+      await page.click('[data-fl="customsave"]'); await page.waitForTimeout(300);
+      await page.fill("#flq", "labneh"); await page.waitForTimeout(350);
+      const names = await page.$$eval(".fl-item .fl-nm", els => els.map(e => e.textContent.replace(/\s+/g, " ").trim()));
+      assert.match(names[0], /^My labneh Your entry · 100 g/, names.join(" | "));
+      const prod = await page.evaluate(() => S.docs.barcodes["my-my-labneh"]);
+      assert.deepStrictEqual(prod.per100, { kcal: 190, p: 7, c: 4, f: 16 }); assert.strictEqual(prod.source, "manual");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     for (const phone of PHONES) {
       await t.test(phone.name + ": every tab renders with no errors and no sideways scroll", async () => {
         for (const data of [null, seed]) {
