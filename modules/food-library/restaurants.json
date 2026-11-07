@@ -1,0 +1,19 @@
+{
+  "_about": "Published restaurant nutrition, one block per restaurant and market. Values are copied from the restaurant's own published table (source url + date on the block); never US values for a Kuwait item. kind: item (one sandwich/side/drink) or meal (a box: includes[] lists what is in it). Fill a block with tools/restaurants/import-mcd-arabia.js from the official PDF, or by hand with the source noted.",
+  "restaurants": [
+    {
+      "id": "mcd-kw",
+      "name": "McDonald's",
+      "market": "KW",
+      "source": {
+        "kind": "restaurant",
+        "url": null,
+        "checked": "https://www.mcdonalds.com/kw/en-kw/about-our-food/nutrition-calculator.html",
+        "publishedAt": null,
+        "retrievedAt": null,
+        "note": "GAP (checked Nov 7, 2026): McDonald's Kuwait publishes no usable per-item nutrition. The Kuwait site's nutrition page only links a McDonald's Arabia PDF whose file name says Jeddah (nutrition-info-jeddah-en-new.pdf, 'current as of 2017'), so it may hold Saudi values and is not used for Kuwait items. The Kuwait product pages carry no protein, carbs or fat (one page mentions calories in its text). Items stay empty until McDonald's Kuwait publishes a Kuwait table; tools/restaurants/import-mcd-arabia.js can import one when it exists."
+      },
+      "items": []
+    }
+  ]
+}
