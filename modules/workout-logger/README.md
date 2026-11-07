@@ -26,6 +26,11 @@ Live workouts open in Gym mode by default. "List view" in the header switches to
 - The other ways stay: the set-tag sheet's "Delete this set", and the × button when editing a template.
 - `WorkoutLogger.swipe.swipeDecision(dx, dy, width)` → `none | reveal | delete`; tests in `swipe-delete.test.js`.
 
+## Hold and drag to reorder exercises (Nov 7)
+- In the list view (live workout and template editing), hold an exercise's name row ~0.4 s: the list folds to names only, the held one follows the finger (the list scrolls near the edges), let go to drop it. A tap still opens the exercise; moving the finger before the hold just scrolls. Gym mode is unchanged.
+- The exercise object moves whole, so its sets, notes, rest and superset tag go with it. Move up / Move down stay in the ••• menu.
+- `WorkoutLogger.reorder.dropIndex(mids, from, y)` and `moveItem(arr, from, to)`; tests in `reorder.test.js` and the touch check in `tests/app-phone.test.js`.
+
 ## Rest timer look and sound
 Settings → Workout (app) or Tools → Settings (logger) pick both; stored in `lb_meta/settings` as `restStyle` and `restSound`.
 - `restStyle`: `bar` Loading bar (default) · `half` Half circle · `ring` Full circle, full screen like Strong · `fill` Screen fill (the colour drains down the screen) · `plates` Plates off the bar (2.5 → 20 kg plates come off as rest runs down) · `blocks` Blocks (10 segments). Full-screen looks are a `role="dialog"` with Minimise (also the Android back button), which drops to the bar for that rest.

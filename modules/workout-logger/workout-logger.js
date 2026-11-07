@@ -1584,7 +1584,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   let liveEl;
   function openEditor(mode, doc) {
     E = { mode, doc, view: mode === 'live' && S.settings.gym ? 'gym' : 'list', cur: null, flash: null };
-    if (!liveEl) { liveEl = document.createElement('section'); liveEl.className = 'lb-live'; liveEl.setAttribute('role', 'dialog'); liveEl.setAttribute('aria-label', 'Workout'); overlay.appendChild(liveEl); bindSwipe(liveEl); }
+    if (!liveEl) { liveEl = document.createElement('section'); liveEl.className = 'lb-live'; liveEl.setAttribute('role', 'dialog'); liveEl.setAttribute('aria-label', 'Workout'); overlay.appendChild(liveEl); bindSwipe(liveEl); bindReorder(liveEl); }
     liveEl.innerHTML = '<header class="lb-live-head"></header><div class="lb-live-body"></div><div class="lb-rest" hidden></div>';
     liveEl.hidden = false; document.documentElement.classList.add('lb-noscroll');
     liveEl.classList.remove('lb-live-in'); void liveEl.offsetWidth; liveEl.classList.add('lb-live-in'); clearTimeout(liveEl._inT); liveEl._inT = setTimeout(() => liveEl.classList.remove('lb-live-in'), 320);
@@ -1666,8 +1666,9 @@ Power Clean (Barbell)|Other|Barbell|`;
   // Placeholder for field k: last time's value (converted when it was logged in the other unit) or the template baseline.
   const phFor = (prev, p, e, k) => p && p[k] !== '' && p[k] != null ? (!p._base && prev.unit && k === 'w' && prev.unit !== e.unit ? fmtN(prev.unit === 'lb' ? p.w * LB : p.w / LB, 1) : p[k]) : '';
   const extraCols = ex => isWeighted(ex) ? ['rpe', 'rir'].filter(k => S.settings[k]) : [];
+  let reorderOn = false; // true while an exercise is held for drag-reordering (see bindReorder)
   function renderEditor() {
-    if (!E) return;
+    if (!E || reorderOn) return;
     const d = E.doc, live = E.mode !== 'template';
     liveEl.querySelector('.lb-live-head').innerHTML = headHtml();
     liveEl.classList.toggle('gym', E.view === 'gym');
@@ -1944,6 +1945,87 @@ Power Clean (Barbell)|Other|Barbell|`;
       else { cur.wrap.classList.remove('open', 'far'); setX(cur.wrap, 0); if (cur.wrap === openWrap) openWrap = null; }
     };
     el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  }
+  // ---------- Hold an exercise and drag it to reorder (Strong-style) ----------
+  // Hold an exercise's name row for ~0.4 s: the list folds to names only, the held one follows the finger
+  // and the others slide out of its way; let go to drop it. The exercise object moves as a whole, so its
+  // sets, notes, rest and superset tag go with it. Works in a live workout and in template editing.
+  const HOLD_MS = 420, HOLD_SLOP = 10, EDGE = 64;
+  // Where the held block lands: how many of the other blocks' centres are above the finger.
+  function dropIndex(mids, from, y) { let to = 0; mids.forEach((m, k) => { if (k !== from && y > m) to++; }); return to; }
+  function moveItem(a, from, to) {
+    if (!a || from === to || from < 0 || from >= a.length) return false;
+    const [x] = a.splice(from, 1); a.splice(Math.max(0, Math.min(a.length, to)), 0, x); return true;
+  }
+  function bindReorder(el) {
+    let h = null;
+    const body = () => el.querySelector('.lb-live-body');
+    const fingerY = () => h.y + h.body.scrollTop;
+    function layout() {
+      const y = fingerY(), to = dropIndex(h.mids, h.from, y); h.to = to;
+      h.blocks.forEach((b, k) => {
+        let dy = 0;
+        if (k === h.from) dy = y - h.mids[k];
+        else if (h.from < k && k <= to) dy = -h.slot;
+        else if (to <= k && k < h.from) dy = h.slot;
+        b.style.transform = dy ? 'translateY(' + dy + 'px)' : '';
+      });
+    }
+    function autoScroll() {
+      if (!h || !h.on) return;
+      const r = h.body.getBoundingClientRect(), v = h.y < r.top + EDGE ? -1 : h.y > r.bottom - EDGE ? 1 : 0;
+      if (v) { const before = h.body.scrollTop; h.body.scrollTop += v * 9; if (h.body.scrollTop !== before) layout(); }
+      h.raf = requestAnimationFrame(autoScroll);
+    }
+    function start() {
+      if (!h || !E) return; const b = body(); if (!b) { h = null; return; }
+      h.on = true; reorderOn = true; h.body = b;
+      el.classList.add('lb-reordering');
+      h.blocks = [...b.querySelectorAll('.lb-exblock')];
+      const held = h.blocks[h.from]; if (!held) { stop(); return; }
+      held.classList.add('dragging');
+      // Bring the folded, held row back under the finger.
+      const r = held.getBoundingClientRect(); b.scrollTop += r.top + r.height / 2 - h.y;
+      h.mids = h.blocks.map(x => { const q = x.getBoundingClientRect(); return q.top + b.scrollTop + q.height / 2; });
+      h.slot = held.getBoundingClientRect().height + (parseFloat(getComputedStyle(held).marginTop) || 0);
+      try { el.setPointerCapture(h.id); } catch (e) { }
+      if (navigator.vibrate) try { navigator.vibrate(20); } catch (e) { }
+      layout(); h.raf = requestAnimationFrame(autoScroll);
+    }
+    function stop() {
+      if (h && h.raf) cancelAnimationFrame(h.raf);
+      el.classList.remove('lb-reordering');
+      if (h && h.blocks) h.blocks.forEach(b => { b.style.transform = ''; b.classList.remove('dragging'); });
+      reorderOn = false;
+    }
+    el.addEventListener('pointerdown', ev => {
+      if (!E || E.view === 'gym' || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      const head = ev.target.closest('.lb-exhead'), block = head && head.closest('.lb-exblock');
+      if (!block || !el.contains(block) || E.doc.exercises.length < 2 || ev.target.closest('input,textarea,video')) return;
+      if (h) clearTimeout(h.timer);
+      h = { id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, y: ev.clientY, from: +block.dataset.ei, on: false };
+      h.timer = setTimeout(start, HOLD_MS);
+    });
+    el.addEventListener('pointermove', ev => {
+      if (!h || ev.pointerId !== h.id) return;
+      if (!h.on) { if (Math.hypot(ev.clientX - h.x0, ev.clientY - h.y0) > HOLD_SLOP) { clearTimeout(h.timer); h = null; } return; }
+      h.y = ev.clientY; layout();
+    });
+    const end = ev => {
+      if (!h || ev.pointerId !== h.id) return;
+      const cur = h; clearTimeout(cur.timer);
+      if (!cur.on) { h = null; return; }
+      // The hold's trailing click must not open the exercise.
+      const eat = e => { e.stopPropagation(); e.preventDefault(); };
+      el.addEventListener('click', eat, { capture: true, once: true }); setTimeout(() => el.removeEventListener('click', eat, { capture: true }), 250);
+      stop(); h = null;
+      if (ev.type !== 'pointercancel' && moveItem(E.doc.exercises, cur.from, cur.to)) touch();
+      renderEditor();
+    };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+    // While dragging, the finger moves the exercise, not the page; a long press must not open a menu.
+    el.addEventListener('touchmove', ev => { if (h && h.on) ev.preventDefault(); }, { passive: false });
+    el.addEventListener('contextmenu', ev => { if (h && ev.target.closest('.lb-exhead')) ev.preventDefault(); });
   }
   on('setType', t => {
     const ei = +t.dataset.ei, si = +t.dataset.si;
@@ -2493,7 +2575,11 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-exblock.ss{border-left:4px solid var(--lb-accent)}
 .lb-exblock.ss1{border-left-color:#1f5fbf}.lb-exblock.ss2{border-left-color:#1f8a4c}.lb-exblock.ss3{border-left-color:#e3b300}
 .lb-sslabel{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--lb-muted)}
-.lb-exhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lb-exhead{display:flex;justify-content:space-between;align-items:center;gap:8px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.lb-reordering .lb-exblock>:not(.lb-exhead):not(.lb-sslabel){display:none}
+.lb-reordering .lb-exblock{margin-top:8px;padding:10px 12px;background:var(--lb-sunk);border-radius:12px;transition:transform .15s ease}
+.lb-reordering .lb-exblock.dragging{position:relative;z-index:5;transition:none;background:var(--lb-surface);box-shadow:0 10px 28px rgba(0,0,0,.28)}
+.lb-reordering .lb-live-meta{opacity:.4}
 .lb-exhead .lb-link.strong{flex:1;min-width:0;line-height:1.2}
 .lb-exhead .lb-demo-toggle{margin:0;flex:none;padding:3px 9px;font-size:.78rem}
 .lb-exhead h3{color:var(--lb-accent);font-size:1.1rem;font-weight:600;font-family:var(--lb-body)}
@@ -2674,7 +2760,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, restNotifyLooks: REST_NOTIFY, workoutInfo, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     parseRest, setRestOf, fillRemaining,
     mergeSettings, gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
-    swipe: { swipeDecision } };
+    swipe: { swipeDecision }, reorder: { dropIndex, moveItem } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 
