@@ -313,3 +313,43 @@ export function foldEvent(acc, ev) {
   else if (d.type === "error") acc.error = (d.error && d.error.type) || "upstream";
   return "";
 }
+
+// ---------- food search (GET /v1/foods, GET /v1/food) ----------
+// USDA FoodData Central through the service, so the data.gov key stays here (never in the APK). No Claude, no spending:
+// these calls cost nothing and are cached for a day. Without FDC_API_KEY the public DEMO_KEY is used (30 requests an hour,
+// 50 a day per IP: enough to try it, not to live on). Terms: data is CC0; USDA asks to be credited as the source.
+export const FDC = { base: "https://api.nal.usda.gov/fdc/v1", demoKey: "DEMO_KEY", maxQuery: 80, maxPage: 50, cacheSeconds: 86400,
+  dataTypes: ["Foundation", "SR Legacy", "Survey (FNDDS)", "Branded"] };
+const FDC_NUTRIENTS = new Set(["208", "957", "958", "203", "204", "205", "291", "269", "307", "268"]);
+export function foodsQuery(params) {
+  const q = clean(params && params.get ? params.get("q") : params && params.q, FDC.maxQuery);
+  if (!q) throw err("no_query", 400);
+  let pageSize = parseInt((params && params.get ? params.get("pageSize") : params && params.pageSize) || "25", 10);
+  if (!(pageSize > 0)) pageSize = 25; pageSize = Math.min(pageSize, FDC.maxPage);
+  const types = clean(params && params.get ? params.get("types") : params && params.types, 80);
+  const dataType = types ? types.split(",").map(t => t.trim()).filter(t => FDC.dataTypes.includes(t)) : FDC.dataTypes.slice(0, 3); // Branded (US packets) only when asked
+  return { q, pageSize, dataType: dataType.length ? dataType : FDC.dataTypes.slice(0, 3) };
+}
+export function fdcSearchRequest(input, key) {
+  return { url: FDC.base + "/foods/search?api_key=" + encodeURIComponent(key || FDC.demoKey),
+    init: { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: input.q, dataType: input.dataType, pageSize: input.pageSize, pageNumber: 1 }) } };
+}
+export const fdcCacheKey = input => "https://mizan-coach.cache/fdc/search?" + new URLSearchParams({ q: input.q.toLowerCase(), n: String(input.pageSize), t: input.dataType.join("|") });
+// Keep only what the app's record needs (a raw hit is 5-20 KB of nutrients the app never shows).
+export function trimFdcFood(f) {
+  if (!f || !f.fdcId) return null;
+  const out = { fdcId: f.fdcId, description: clean(f.description, 160), dataType: f.dataType || null, publishedDate: f.publishedDate || f.publicationDate || null, foodCategory: typeof f.foodCategory === "string" ? f.foodCategory : (f.foodCategory && f.foodCategory.description) || null,
+    foodNutrients: (f.foodNutrients || []).filter(n => FDC_NUTRIENTS.has(String(n.nutrientNumber || (n.nutrient && n.nutrient.number) || ""))).map(n => ({ nutrientNumber: String(n.nutrientNumber || (n.nutrient && n.nutrient.number)), unitName: n.unitName || (n.nutrient && n.nutrient.unitName) || null, value: n.value != null ? n.value : n.amount })) };
+  if (f.brandOwner || f.brandName) out.brandOwner = clean(f.brandOwner || f.brandName, 60);
+  if (f.servingSize > 0) { out.servingSize = f.servingSize; out.servingSizeUnit = f.servingSizeUnit || null; out.householdServingFullText = clean(f.householdServingFullText, 60) || null; }
+  if (Array.isArray(f.foodPortions)) out.foodPortions = f.foodPortions.filter(p => p && p.gramWeight > 0).slice(0, 12).map(p => ({ portionDescription: clean(p.portionDescription || p.modifier || ((p.amount || 1) + " " + ((p.measureUnit && p.measureUnit.name) || "portion")), 60), gramWeight: p.gramWeight }));
+  return out;
+}
+export const trimFdcSearch = j => ({ foods: ((j && j.foods) || []).map(trimFdcFood).filter(Boolean), totalHits: (j && j.totalHits) || 0 });
+export function foodIdQuery(params) {
+  const id = clean(params && params.get ? params.get("id") : params && params.id, 12);
+  if (!/^\d{1,10}$/.test(id)) throw err("bad_request", 400);
+  return { id };
+}
+export const fdcFoodRequest = (input, key) => ({ url: FDC.base + "/food/" + input.id + "?api_key=" + encodeURIComponent(key || FDC.demoKey) + "&format=full", init: { method: "GET" } });
+export const fdcFoodCacheKey = input => "https://mizan-coach.cache/fdc/food/" + input.id;
