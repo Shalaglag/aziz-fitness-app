@@ -80,7 +80,7 @@
   --shadow-2: 0 6px 20px rgba(18, 22, 27, .10), 0 2px 6px rgba(18, 22, 27, .06);
   --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
 
-  --tap: 44px; /* minimum touch target */
+  --tap: calc(44px * var(--icon-scale, 1)); /* minimum touch target, grows with Icons and buttons */
 
   color-scheme: light;
 }
@@ -186,8 +186,26 @@
 .anim-rise .fsum .v.big { animation: fit-rise var(--dur-enter) var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * var(--stagger) + 80ms); }
 /* ---- Press feedback everywhere (the logger has its own) ---- */
 #main button, nav.drawer button, .fsheet button, .co-fab, .fold > summary { transition: transform var(--dur-tap) var(--ease-out), background-color var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out); }
-#main button:active, nav.drawer button:active, .fsheet button:active, .co-fab:active { transform: scale(.96); }
-@media (prefers-reduced-motion: reduce) { #main button:active, nav.drawer button:active, .fsheet button:active { transform: none; } }
+/* Tap animation (Settings › Tap animation, html[data-tap]): hop (default) | pop | bounce | ripple | squeeze | off.
+   squeeze/bounce shrink while held; pop/bounce/hop replay a keyframe on release (tapFx() adds .tp-*); ripple draws .tap-rip. */
+:root[data-tap="squeeze"] :is(#main, nav.drawer, .fsheet) button:active, :root[data-tap="squeeze"] .co-fab:active { transform: scale(.96); }
+:root[data-tap="bounce"] :is(#main, nav.drawer, .fsheet, #lbHost, .bottombar) button:active { transform: scale(.94); }
+:root:not([data-tap="squeeze"]) .bottombar button:active .ico { transform: none; }
+@keyframes tap-pop { 0% { transform: scale(1); } 45% { transform: scale(1.07); } 100% { transform: scale(1); } }
+@keyframes tap-bounce { 0% { transform: scale(.94); } 55% { transform: scale(1.04); } 100% { transform: scale(1); } }
+@keyframes tap-hop { 0% { transform: translateY(0) scale(1); } 40% { transform: translateY(-4px) scale(1.14); } 100% { transform: translateY(0) scale(1); } }
+@keyframes tap-lite { 0% { transform: scale(1); } 45% { transform: scale(1.04); } 100% { transform: scale(1); } }
+@keyframes tap-rip { to { transform: scale(1); opacity: 0; } }
+.tp-pop { animation: tap-pop 220ms var(--ease-spring); }
+.tp-bounce { animation: tap-bounce 300ms var(--ease-spring); }
+.tp-hop { animation: tap-hop 300ms var(--ease-spring); }
+.tp-lite { animation: tap-lite 220ms var(--ease-spring); }
+.tap-rip { position: fixed; overflow: hidden; pointer-events: none; z-index: 9999; }
+.tap-rip i { position: absolute; border-radius: 50%; background: currentColor; opacity: .22; transform: scale(0); animation: tap-rip 480ms var(--ease-out) forwards; }
+@media (prefers-reduced-motion: reduce) { :root[data-tap] :is(#main, nav.drawer, .fsheet, #lbHost, .bottombar) button:active { transform: none; } .tp-pop, .tp-bounce, .tp-hop, .tp-lite, .tap-rip { animation: none; display: contents; } }
+/* Icons and buttons size (Settings › Icons and buttons, --icon-scale 0.7–1.5): icons zoom, tap areas and button padding grow; words follow Text size only. */
+:root { --icon-scale: 1; }
+.ico, :is(button, [role="button"], .iconbtn) svg:not(.ico svg) { zoom: var(--icon-scale); }
 /* ---- Water fluid (Nov 2026, WaterH-style): liquid rises to % of goal, two waves drift on top ---- */
 :root { --water: #2F8FE8; --water-ink: #0B4F9C; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --water: #4FA8F0; --water-ink: #CFE8FF; } }
@@ -358,7 +376,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background
 .brand span{color:var(--accent)}
 .datepick{display:flex;align-items:center;gap:6px}
 .datepick .d{min-width:9.5em;text-align:center;font-weight:600}
-.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:36px;height:36px;cursor:pointer;display:grid;place-items:center}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:calc(36px * var(--icon-scale,1));height:calc(36px * var(--icon-scale,1));cursor:pointer;display:grid;place-items:center}
 .today-link{border:0;background:none;color:var(--accent);cursor:pointer;font-weight:600;padding:4px}
 /* Side drawer (replaces the bottom tab bar, Oct 31) */
 .menubtn{font-size:1.25rem}
@@ -399,10 +417,10 @@ main{padding-block:22px 40px;display:flex;flex-direction:column;gap:18px}
 .card.hero{border-color:var(--card-line);box-shadow:var(--shadow-2)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .spread{display:flex;gap:10px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
-.btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600}
+.btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:8px;padding:calc(8px * var(--icon-scale,1)) calc(14px * var(--icon-scale,1));cursor:pointer;font-weight:600}
 .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
-.btn.small{padding:5px 10px;font-size:.88rem}
-.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;cursor:pointer;font-size:.9rem}
+.btn.small{padding:calc(5px * var(--icon-scale,1)) calc(10px * var(--icon-scale,1));font-size:.88rem}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:calc(6px * var(--icon-scale,1)) calc(12px * var(--icon-scale,1));cursor:pointer;font-size:.9rem}
 .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .chip.rest{border-style:dashed}
 .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:600;border:1px solid currentColor}
@@ -493,12 +511,12 @@ tr.banned td{color:var(--muted);text-decoration:line-through}
 @media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
 /* ---- Calm layout (v35): collapsed rows, Strong-style set rows, settings, Lose It-style food ---- */
 :root{--bottom-nav:0px}
-:root[data-nav="bottom"],:root[data-nav="both"]{--bottom-nav:64px}
+:root[data-nav="bottom"],:root[data-nav="both"]{--bottom-nav:calc(36px + 28px * var(--icon-scale,1))}
 .bottombar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:9;align-items:flex-start;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));background:var(--surface);box-shadow:0 -1px 0 var(--line),0 -8px 24px rgba(28,25,23,.06)}
 :root[data-nav="bottom"] .bottombar,:root[data-nav="both"] .bottombar{display:flex}
 :root[data-nav="bottom"] .bottombar .only-both,:root[data-nav="both"] .bottombar .only-bottom{display:none}
 :root[data-nav="bottom"] #menuBtn{display:none}
-.bottombar button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 2px 2px;border:0;background:none;color:var(--muted);font:inherit;font-size:.68rem;font-weight:700;letter-spacing:.01em;border-radius:12px;min-height:46px}
+.bottombar button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 2px 2px;border:0;background:none;color:var(--muted);font:inherit;font-size:.68rem;font-weight:700;letter-spacing:.01em;border-radius:12px;min-height:calc(46px * var(--icon-scale,1))}
 .bottombar button .ico{display:flex;align-items:center;justify-content:center;width:44px;height:26px;border-radius:999px;font-size:1.05rem;transition:background-color var(--dur-ui) var(--ease-out),transform var(--dur-tap) var(--ease-out)}
 .bottombar button[aria-current="page"]{color:var(--accent)}
 .bottombar button[aria-current="page"] .ico{background:var(--accent-soft)}
@@ -568,7 +586,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .chip.swatch i{width:14px;height:14px;border-radius:50%;flex:none;box-shadow:0 0 0 1px color-mix(in srgb,var(--fg) 18%,transparent)}
 .chip.swatch[aria-pressed="true"] i{box-shadow:0 0 0 2px var(--accent-ink)}
 .seg{display:inline-flex;background:var(--sunk);border-radius:10px;padding:3px;gap:2px;flex:none}
-.seg button{border:0;background:none;padding:6px 11px;border-radius:8px;font-weight:600;font-size:.88rem;color:var(--muted);cursor:pointer;min-height:32px}
+.seg button{border:0;background:none;padding:6px calc(11px * var(--icon-scale,1));border-radius:8px;font-weight:600;font-size:.88rem;color:var(--muted);cursor:pointer;min-height:calc(32px * var(--icon-scale,1))}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-1)}
 .switch{width:46px;height:28px;border-radius:999px;border:0;background:var(--surface-3);position:relative;cursor:pointer;flex:none;padding:0}
 .switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform var(--dur-ui)}
@@ -58265,6 +58283,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
 <script>
 try{ const nv=localStorage.getItem("aziz-cut-nav"); if(nv!=="drawer") document.documentElement.setAttribute("data-nav",nv==="both"?"both":"bottom"); }catch(e){ document.documentElement.setAttribute("data-nav","bottom"); }
 try{ const sc=parseFloat(localStorage.getItem("aziz-cut-scale")); if(sc>=0.8&&sc<=1.3) document.documentElement.style.setProperty("--ui-scale",sc); }catch(e){}
+try{ const ic=parseFloat(localStorage.getItem("aziz-cut-icons")); if(ic>=0.7&&ic<=1.5) document.documentElement.style.setProperty("--icon-scale",ic); }catch(e){}
+try{ const tp=localStorage.getItem("aziz-cut-tap"); document.documentElement.setAttribute("data-tap",["hop","pop","bounce","ripple","squeeze","off"].includes(tp)?tp:"hop"); }catch(e){ document.documentElement.setAttribute("data-tap","hop"); }
 try{ const th=localStorage.getItem("aziz-cut-theme"); if(th==="light"||th==="dark") document.documentElement.setAttribute("data-theme",th); }catch(e){}
 /* ===================== Plan data (from Aziz's handoff, Oct 25 2026) ===================== */
 const TARGET = {kcal:2000, pMin:160, pMax:170, fMin:55, fMax:70, cMin:180, cMax:220};
@@ -58644,7 +58664,7 @@ function render(){
   applyTargets();
   try{ autoFoodsTick(); }catch(e){ console.error("[auto foods]", e); }
   applyAccent(currentAccent());
-  if(S.mode!=="loading"){ applyTheme(S.docs.prefs.main?.theme); applyNav(S.docs.prefs.main?.nav); if(S.docs.prefs.main?.uiScale!=null) applyScale(S.docs.prefs.main.uiScale); }
+  if(S.mode!=="loading"){ applyTheme(S.docs.prefs.main?.theme); applyNav(S.docs.prefs.main?.nav); if(S.docs.prefs.main?.uiScale!=null) applyScale(S.docs.prefs.main.uiScale); if(S.docs.prefs.main?.iconScale!=null) applyIcons(S.docs.prefs.main.iconScale); if(S.docs.prefs.main?.tapAnim) applyTap(S.docs.prefs.main.tapAnim); }
   if(window.AndroidShell && AndroidShell.visit) AndroidShell.visit(view.tab, window.scrollY);
   document.querySelectorAll("#tabs button, #bottomNav button").forEach(b=>b.setAttribute("aria-current", b.dataset.tab===view.tab?"page":"false"));
   document.getElementById("dateLabel").textContent = fmt(view.date) + (view.date===TODAY?" · today":"");
@@ -58813,6 +58833,32 @@ function setKg(s,name){ return convW(s.w, setUnit(s,name), "kg"); }
 function programEff(){ const o={}; for(const s in PROGRAM){ o[s]=PROGRAM[s].map(e=>{ const u=exUnit(e[0]); return u===(e[4]||"kg") ? e : [e[0], convW(e[1], e[4]||"kg", u), e[2], e[3], u, e[5]]; }); } return o; }
 function applyNav(n){ n=(n==="drawer"||n==="both")?n:"bottom"; if(n==="drawer") document.documentElement.removeAttribute("data-nav"); else document.documentElement.setAttribute("data-nav",n); try{ localStorage.setItem("aziz-cut-nav",n); }catch(e){} }
 function uiScale(v){ v=Math.round(parseFloat(v)*100)/100; return v>=0.8&&v<=1.3?v:1; }
+function iconScale(v){ v=Math.round(parseFloat(v)*100)/100; return v>=0.7&&v<=1.5?v:1; }
+function applyIcons(v){ v=iconScale(v); document.documentElement.style.setProperty("--icon-scale",v); try{ localStorage.setItem("aziz-cut-icons",v); }catch(e){} }
+const TAP_ANIMS=[["hop","Icon hop"],["pop","Light pop"],["bounce","Soft bounce"],["ripple","Ripple"],["squeeze","Squeeze"],["off","Off"]];
+function tapAnim(v){ return TAP_ANIMS.some(t=>t[0]===v)?v:"hop"; }
+function applyTap(v){ v=tapAnim(v); document.documentElement.setAttribute("data-tap",v); try{ localStorage.setItem("aziz-cut-tap",v); }catch(e){} }
+// Tap animation on release: replays a small keyframe on the button (or its icon), or draws a ripple from the finger.
+function tapFx(e){
+  const mode=document.documentElement.getAttribute("data-tap")||"hop";
+  if(mode==="off"||mode==="squeeze") return;
+  try{ if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches) return; }catch(err){}
+  const b=e.target&&e.target.closest&&e.target.closest('button:not([disabled]),[role="button"],.fold>summary,.chip');
+  if(!b||b.closest(".tap-rip")) return;
+  if(mode==="ripple"){
+    const r=b.getBoundingClientRect(); if(!r.width) return;
+    const host=document.createElement("span"), dot=document.createElement("i"), d=Math.max(r.width,r.height)*2.2;
+    host.className="tap-rip"; host.setAttribute("aria-hidden","true");
+    Object.assign(host.style,{left:r.left+"px",top:r.top+"px",width:r.width+"px",height:r.height+"px",borderRadius:getComputedStyle(b).borderRadius,color:getComputedStyle(b).color});
+    Object.assign(dot.style,{width:d+"px",height:d+"px",left:(e.clientX-r.left-d/2)+"px",top:(e.clientY-r.top-d/2)+"px"});
+    host.appendChild(dot); document.body.appendChild(host); setTimeout(()=>host.remove(),520); return;
+  }
+  let el=b, cls="tp-"+mode;
+  if(mode==="hop"){ const ic=b.querySelector(".ico")||b.querySelector("svg"); if(ic) el=ic; else cls="tp-lite"; }
+  el.classList.remove("tp-pop","tp-bounce","tp-hop","tp-lite"); void el.offsetWidth; el.classList.add(cls);
+  setTimeout(()=>el.classList.remove(cls),340);
+}
+document.addEventListener("pointerup",tapFx,true);
 function applyScale(v){ v=uiScale(v); document.documentElement.style.setProperty("--ui-scale",v); try{ localStorage.setItem("aziz-cut-scale",v); }catch(e){} }
 function applyTheme(t){ t=t||"system"; if(t==="light"||t==="dark") document.documentElement.setAttribute("data-theme",t); else document.documentElement.removeAttribute("data-theme"); try{ localStorage.setItem("aziz-cut-theme",t); }catch(e){} }
 function lbSettings(){ try{ return window.WorkoutLogger && WorkoutLogger.settings ? WorkoutLogger.settings() : null; }catch(e){ return null; } }
@@ -59586,6 +59632,8 @@ function vSettings(){
   <div class="card"><div class="set-list">
     ${row("Navigation","Where the sections live",seg("navset",[["bottom","Bottom bar"],["drawer","Side menu"],["both","Both"]],m.nav||"bottom"))}
     ${(()=>{ const sc=uiScale(m.uiScale??1); return row("Text size",`Makes words, rows and boxes smaller or bigger · <b id="scaleVal">${Math.round(sc*100)}%</b>`,`<span class="row" style="gap:6px;justify-content:flex-end;flex-wrap:nowrap"><span aria-hidden="true" style="font-size:.8rem">A</span><input type="range" id="uiScale" min="0.8" max="1.3" step="0.05" value="${sc}" aria-label="Text size"><span aria-hidden="true" style="font-size:1.2rem">A</span><button type="button" class="btn ghost small" data-act="scalereset">Reset</button></span>`); })()}
+    ${(()=>{ const ic=iconScale(m.iconScale??1); return row("Icons and buttons",`Makes icons, tabs and tap areas smaller or bigger · <b id="iconVal">${Math.round(ic*100)}%</b>`,`<span class="row" style="gap:6px;justify-content:flex-end;flex-wrap:nowrap"><span aria-hidden="true" style="font-size:.7rem">●</span><input type="range" id="iconScale" min="0.7" max="1.5" step="0.05" value="${ic}" aria-label="Icons and buttons"><span aria-hidden="true" style="font-size:1.3rem">●</span><button type="button" class="btn ghost small" data-act="iconreset">Reset</button></span>`); })()}
+    ${row("Tap animation","A small movement when you press a button or tab",`<span class="row swatches" role="group" aria-label="Tap animation">${TAP_ANIMS.map(([k,l])=>`<button type="button" class="chip" data-act="tapanim" data-k="${k}" aria-pressed="${tapAnim(m.tapAnim)===k}">${l}</button>`).join("")}</span>`)}
     ${row("Theme","Auto follows your phone",seg("theme",[["system","Auto"],["light","Light"],["dark","Dark"]],theme))}
     ${row("Food look","The calorie card on Food. Ring is the default; Night, Board and Gauge are the other looks",seg("foodlook",FOOD_LOOKS,foodLook()))}
     ${row("App colour","Buttons, tabs and highlights across the whole app",`<span class="row swatches" role="group" aria-label="App colour">${ACCENTS.map(([k,l,c])=>`<button type="button" class="chip swatch" data-act="accent" data-k="${k}" aria-pressed="${currentAccent()===k}"><i style="background:${c}" aria-hidden="true"></i>${l}</button>`).join("")}</span>`)}
@@ -59754,6 +59802,8 @@ main.addEventListener("click",e=>{
     const inp=cur.querySelector("input"), k=el.dataset.k; let v=String(inp.value||"");
     if(k==="del") v=v.slice(0,-1); else if(k===".") { if(!v.includes(".")) v=(v||"0")+"."; } else v = (v==="0" ? k : v+k).slice(0,7);
     inp.value=v; foodFormSync(); return; }
+  if(a==="iconreset"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.iconScale=1; applyIcons(1); put("prefs","main",p); return; }
+  if(a==="tapanim"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.tapAnim=tapAnim(el.dataset.k); applyTap(p.tapAnim); put("prefs","main",p); return; }
   if(a==="scalereset"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.uiScale=1; applyScale(1); put("prefs","main",p); return; }
   if(a==="theme"){ const p=clone(S.docs.prefs.main); p.theme=el.dataset.k; applyTheme(p.theme); put("prefs","main",p); return; }
   if(a==="rest"){ const p=clone(S.docs.prefs.main); p.restSec=+el.dataset.k; put("prefs","main",p); return; }
@@ -59841,6 +59891,8 @@ main.addEventListener("change",e=>{
     w.sets[n]=arr; put("workouts",d,w,{quiet:true}); renderPending=true;
   }
 });
+main.addEventListener("input",e=>{ if(e.target.id==="iconScale"){ applyIcons(e.target.value); const l=document.getElementById("iconVal"); if(l) l.textContent=Math.round(iconScale(e.target.value)*100)+"%"; } });
+main.addEventListener("change",e=>{ if(e.target.id==="iconScale"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.iconScale=iconScale(e.target.value); applyIcons(p.iconScale); put("prefs","main",p); } });
 main.addEventListener("input",e=>{ if(e.target.id==="uiScale"){ applyScale(e.target.value); const l=document.getElementById("scaleVal"); if(l) l.textContent=Math.round(uiScale(e.target.value)*100)+"%"; } });
 main.addEventListener("change",e=>{ if(e.target.id==="uiScale"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.uiScale=uiScale(e.target.value); applyScale(p.uiScale); put("prefs","main",p); } });
 main.addEventListener("focusin",e=>{ const f=e.target.closest && e.target.closest(".fa-field"); if(f) f.parentElement.querySelectorAll(".fa-field").forEach(x=>x.classList.toggle("is-active",x===f)); });
