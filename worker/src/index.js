@@ -8,8 +8,11 @@
  *        {"t":"d","text":"…"} answer text as it arrives, then
  *        {"t":"done","costUsd","usage","stop","month"} or {"t":"error","error"}
  *
- *   POST /v1/read    {kind:"menu", images:[{media_type, data}]}  owner only; reads a menu's nutrition numbers:
- *        {text, costUsd, month}   (text is the model's JSON answer; the instructions are fixed on the server)
+ *   POST /v1/read    {kind, images:[{media_type, data}], text?, weightG?}  owner only; fixed server prompts:
+ *        kind "menu" (1-4 pages -> printed numbers), "plate" (1-2 photos + optional description/weight -> components
+ *        with gram guesses), "label" (1 photo -> per 100 / per serving as printed), "describe" (text only -> components).
+ *        -> {text, costUsd, month}   (text is the model's JSON answer). Every call counts against the per-account scan
+ *        allowance (SCANS_PER_DAY, default 40) as well as the shared cap and limits. Photos are never stored or logged.
  *   GET  /v1/foods?q=…&pageSize=25[&types=Foundation,SR Legacy]  owner only; USDA FoodData Central search (no Claude,
  *        no spending; cached a day): {foods:[trimmed hits], totalHits, fdcKey:"own"|"demo", cached}
  *   GET  /v1/food?id=<fdcId>                                      owner only; one food's details with its portions
@@ -25,6 +28,7 @@
  *   ALLOWED_EMAILS     the email(s) Aziz signs in to Mizan with, comma separated
  *   ALLOWED_UIDS       optional Firebase user ids instead of emails
  *   PER_MINUTE / PER_DAY  per-account question limits (default 6 / 60)
+ *   SCANS_PER_DAY      per-account photo/label/description reads a day (default 40)
  *   FDC_API_KEY        optional secret: a free api.data.gov key for USDA food search (without it DEMO_KEY: 30/hour, 50/day)
  * The monthly cap starts at $100 (Aziz, Nov 2; his prepaid credit is $100 in total, not monthly) and is changed from the app (Ask Claude → spending).
  */
@@ -42,7 +46,7 @@ const CORS = {
 };
 const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: Object.assign({ "content-type": "application/json", "cache-control": "no-store" }, CORS) });
 const tz = env => env.COACH_TZ || "Asia/Kuwait";
-const limits = env => ({ perMinute: parseInt(env.PER_MINUTE || "6", 10) || 6, perDay: parseInt(env.PER_DAY || "60", 10) || 60, inFlight: 2 });
+const limits = env => ({ perMinute: parseInt(env.PER_MINUTE || "6", 10) || 6, perDay: parseInt(env.PER_DAY || "60", 10) || 60, inFlight: 2, scansPerDay: parseInt(env.SCANS_PER_DAY || "40", 10) || 40 });
 
 let jwksCache = { until: 0, jwks: null };
 async function googleKeys() {
@@ -130,7 +134,7 @@ async function readMenu(req, env, who) {
   const input = readImageBody(await req.json().catch(() => null));
   const body = buildReadRequest(input);
   const id = crypto.randomUUID(), book = ledger(env);
-  const r = await book.reserve({ uid: who.uid, usd: readEstimateUsd(input), id, now: Date.now(), tz: tz(env) }, limits(env));
+  const r = await book.reserve({ uid: who.uid, usd: readEstimateUsd(input), id, now: Date.now(), tz: tz(env), bucket: "scan" }, limits(env));
   if (!r.ok) return json(r.status, { error: r.error, retryAfter: r.retryAfter || undefined, month: r.summary || undefined });
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort("timeout"), +env.TIMEOUT_MS || 90000);
@@ -146,7 +150,7 @@ async function readMenu(req, env, who) {
   clearTimeout(timer);
   const s = await book.settle({ id, usage: msg.usage || null, now: Date.now(), tz: tz(env) }).catch(() => null);
   const text = (msg.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-  return json(200, { text, stop: msg.stop_reason || null, costUsd: s ? s.usd : null, month: s ? s.summary : null });
+  return json(200, { text, kind: input.kind, stop: msg.stop_reason || null, costUsd: s ? s.usd : null, month: s ? s.summary : null });
 }
 
 // USDA FoodData Central, proxied so the data.gov key stays here. Owner only, no Claude, no spending; answers are cached a day
