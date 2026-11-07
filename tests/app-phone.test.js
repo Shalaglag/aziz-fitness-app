@@ -37,6 +37,8 @@ async function openApp(browser, phone, data, opts = {}) {
   await page.route(/^https:\/\/(fonts\.|www\.gstatic\.com)/, r => r.fulfill({ body: "" }));
   // The app ships Firebase in app/vendor; blank it too so these checks run in device-only mode with no sign-in sheet.
   await page.route(/\/vendor\/firebase-/, r => r.fulfill({ body: "" }));
+  // Checks whose numbers depend on the day type (Friday / Saturday have their own targets) pin a weekday.
+  if (opts.now) await page.clock.setFixedTime(new Date(opts.now));
   await page.goto(APP);
   if (data) {
     const today = await page.evaluate(() => TODAY);
@@ -206,7 +208,8 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
     });
 
     await t.test("menu picker sits on the Food page above Food check: most protein by default, leave out fries, reasons shown, plan adds planned items", async () => {
-      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      // A Wednesday training day: on Saturdays the day's own targets change which pairs fit, so the wording below differs.
+      const { page, errors } = await openApp(browser, PHONES[0], seed, { now: "2026-11-04T09:00:00" });
       await go(page, "food");
       const order = await page.evaluate(() => { const m = document.getElementById("menuPicker"), f = [...document.querySelectorAll("#main details, #main .fold, #main [data-fold]")].find(e => /Food check/.test(e.textContent)); return { has: !!m, before: !!(m && f && (m.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
       assert.ok(order.has, "menu picker card is on the Food page");
