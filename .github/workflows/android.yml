@@ -74,7 +74,9 @@ jobs:
             }, null, 2) + "\n");
           '
           cat latest.json
+      # The release attachment below is what ships; a full artifact storage quota must not fail the build.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: aziz-fitness-android
           path: |
