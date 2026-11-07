@@ -156,4 +156,17 @@ t('a set\'s own rest wins over the exercise rest', () => {
   assert.strictEqual(setRestOf(e, { rest: -1 }), -1, 'off for one set');
 });
 
+t('next exercise: the following one with sets left, read from the current order', () => {
+  const { nextExIndex: nextExercise } = globalThis.WorkoutLogger.gym;
+  const exs = [{ sets: sets(2, 1) }, { sets: sets(2, 2) }, { sets: sets(3) }];
+  assert.strictEqual(nextExercise(exs, 0), 2, 'skips a finished exercise');
+  assert.strictEqual(nextExercise(exs, 2), 0, 'wraps round to a skipped earlier one');
+  exs.reverse();
+  assert.strictEqual(nextExercise(exs, 0), 2, 'follows a reorder');
+  exs[2].sets.forEach(s => { s.done = true; });
+  assert.strictEqual(nextExercise(exs, 0), null, 'null when nothing else is left');
+  const ss = [{ ss: 'a', sets: sets(2) }, { ss: 'a', sets: sets(2) }, { sets: sets(1) }];
+  assert.strictEqual(nextExercise(ss, 0), 2, 'superset partner is not "next"');
+});
+
 console.log('\n' + n + ' tests passed');

@@ -4374,6 +4374,13 @@ Power Clean (Barbell)|Other|Barbell|`;
     for (let n = 1; n <= ord.length; n++) { const p = ord[(k + n) % ord.length]; if (!exs[p[0]].sets[p[1]].done) return p; }
     return null;
   }
+  // The exercise after `ei` that still has an unchecked set (list order, read live so a reorder shows at once),
+  // skipping the current exercise's superset partners; wraps round to skipped earlier ones. null when nothing is left.
+  function nextExIndex(exs, ei) {
+    const cur = exs[ei], same = k => k === ei || (cur && cur.ss && exs[k].ss === cur.ss);
+    for (let n = 1; n < exs.length; n++) { const k = (ei + n) % exs.length; if (!same(k) && exs[k].sets.some(s => !s.done)) return k; }
+    return null;
+  }
   // Where to pick up: the first unchecked set after the furthest checked one (so skipped warm-ups don't pull you back).
   function resumePoint(exs) {
     const ord = gymOrder(exs); let last = null;
@@ -5445,6 +5452,11 @@ Power Clean (Barbell)|Other|Barbell|`;
     else html += '<div class="lb-gym-pair"><button class="lb-btn ghost" data-a="gUndo">Undo</button>' + (nx ? '<button class="lb-gym-done" data-a="gNext">Next set ›</button>' : '<button class="lb-gym-done ok" data-a="finish">All sets done · Finish</button>') + '</div>';
     html += '<div class="lb-gym-nav"><button class="lb-btn ghost" data-a="gNav" data-d="-1"' + (ei ? '' : ' disabled') + '>‹ Prev</button><button class="lb-btn ghost" data-a="addEx">+ Exercise</button><button class="lb-btn ghost" data-a="gNav" data-d="1"' + (ei < d.exercises.length - 1 ? '' : ' disabled') + '>Next ›</button></div>';
     html += '<button class="lb-btn wide ghost danger" data-a="askDiscard">Cancel workout</button>';
+    // At-a-glance line at the very bottom: the next exercise still to do (tap to jump there).
+    const nxEi = nextExIndex(d.exercises, ei);
+    if (nxEi != null) { const nxE = d.exercises[nxEi], j = nxE.sets.findIndex(x => !x.done);
+      html += '<button class="lb-gym-upnext" data-a="gGo" data-ei="' + nxEi + '" data-si="' + j + '"><span>Next</span><b>' + esc(getEx(nxE.exId).name) + '</b><small>' + nxE.sets.filter(x => !x.done).length + ' set' + (nxE.sets.filter(x => !x.done).length === 1 ? '' : 's') + ' left ›</small></button>'; }
+    else html += '<p class="lb-gym-upnext last"><span>Next</span><b>Last exercise</b></p>';
     return html + '</div>';
   }
   function gymRefresh() { const el = liveEl && liveEl.querySelector('#lb-gym-cmp'); if (el && E && E.cur) el.innerHTML = gymCmpHtml(gymCtx()); }
@@ -6267,6 +6279,11 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-gym-pair{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:stretch} .lb-gym-pair .lb-btn{min-height:76px;padding:0 18px}
 .lb-gym-nav{display:grid;grid-template-columns:1fr auto 1fr;gap:8px} .lb-gym-nav .lb-btn{min-height:52px;padding:6px 10px;font-size:.9rem}
 .lb-gym-nav .lb-btn:disabled{opacity:.4}
+.lb-gym-upnext{display:flex;align-items:baseline;gap:8px;width:100%;margin:4px 0 0;padding:12px 14px;border:1px dashed var(--lb-line);border-radius:12px;background:transparent;color:var(--lb-muted);font:inherit;font-size:.95rem;text-align:left;cursor:pointer}
+.lb-gym-upnext span{text-transform:uppercase;letter-spacing:.06em;font-size:.75rem}
+.lb-gym-upnext b{flex:1;min-width:0;color:var(--lb-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-gym-upnext small{white-space:nowrap;font-size:.8rem}
+.lb-gym-upnext.last{cursor:default}
 .lb-gym-pr{background:var(--lb-good);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;text-align:center;animation:lb-pop .35s ease-out}.pr-celebrate b{display:block;font-size:1rem}.pr-celebrate-lines{display:block;margin-top:4px;font-weight:600;font-size:.88rem;opacity:.95}.pr-celebrate-lines>span{display:block}.pr-celebrate small{opacity:.8;font-weight:500}
 @keyframes lb-pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
 .lb-live.gym .lb-rest:not(.full){padding-top:12px}
@@ -6320,7 +6337,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   function setSettings(patch) { Object.keys(patch || {}).forEach(k => noteSetting(k, patch[k])); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
   const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, restNotifyLooks: REST_NOTIFY, workoutInfo, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
     parseRest, setRestOf, fillRemaining,
-    mergeSettings, gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
+    mergeSettings, gym: { gymOrder, nextPending, nextExIndex, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
     swipe: { swipeDecision } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
