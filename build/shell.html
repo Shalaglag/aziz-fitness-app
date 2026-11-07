@@ -700,6 +700,12 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 @media (max-width:380px){.mealgrp .item.fi{grid-template-columns:auto minmax(0,1fr) auto auto;row-gap:0}}
 /* Add / edit food: detail header, impact rings, value tiles and a number pad */
 .fadd{display:flex;flex-direction:column;gap:12px}
+.fl-ways{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;margin:0 0 10px}
+.fl-way{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;font-size:.8rem;font-weight:600;min-height:52px}
+.fl-way svg{width:20px;height:20px}.fl-way[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft,var(--sunk))}
+.fl-fit{margin-top:14px;display:flex;flex-direction:column;gap:6px}.fl-fit-rows{display:flex;flex-direction:column;gap:6px}
+.fl-fit-row{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit}
+.fl-fit-row b{font-size:.92rem}.fl-fit-row small{color:var(--muted);font-size:.8rem}
 .fa-top{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px}
 .fa-top input{font-size:1rem;padding:10px 12px;border-radius:12px;width:100%}
 .fa-top select{border-radius:12px}
@@ -1855,11 +1861,40 @@ function foodFormSync(){ const h=document.getElementById("fhead"); if(!h) return
   const set=(key,txt)=>{ const el=h.querySelector(`[data-fh="${key}"]`); if(el && el.textContent!==txt) el.textContent=txt; };
   set("kcal",fkc(k)); set("p",String(r1(p))); set("c",String(r1(c))); set("f",String(r1(f))); set("sp",Math.round(p*4/kc*100)+"%"); set("sc",Math.round(c*4/kc*100)+"%"); set("sf",Math.round(f*9/kc*100)+"%");
   [["kcal",k,G.kcal],["p",p,G.pMin],["c",c,G.cMax],["f",f,G.fMax]].forEach(([cls,val,goal])=>{ const pct=goal?Math.round(val/goal*100):0; set("i"+cls,pct+"%"); const r=h.querySelector(`[data-fh-ring="${cls}"]`); if(r) r.style.setProperty("--value",Math.min(100,pct)); }); }
+// "Fits what's left today": your own foods, recipes, favourites and recents whose usual portion fits the remaining
+// calories, ranked by how much of the protein still to go they cover. Arithmetic over the library only, no AI;
+// the tap opens the normal review step, so nothing is logged until Add. Planned (unticked) rows don't count as eaten.
+function foodSuggestHtml(d, day){
+  if(!window.FoodLib || !window.FoodSearch) return "";
+  try{
+    const G=foodGoals(d), eaten=(day.food||[]).filter(i=>i.eaten), k=eaten.reduce((a,i)=>a+(+i.kcal||0),0), pr=eaten.reduce((a,i)=>a+(+i.p||0),0);
+    const remK=Math.round(G.kcal-k), remP=Math.round(G.pMin-pr);
+    if(remK<80) return "";
+    const prefs=S.docs.prefs.main||{}, favs=prefs.foodFavs||{}, rec=prefs.foodRecents||{};
+    const mine=foodLibRecords().filter(r=>r.grade==="user"||r.source.kind==="recipe"||favs[r.id]||rec[r.id]);
+    const rows=mine.map(r=>{ const sc=FoodLib.scale(r,FoodLib.defaultAmount(r)); if(!sc||sc.nutrients.kcal==null||sc.nutrients.kcal<=0||sc.nutrients.kcal>remK) return null;
+      const p=sc.nutrients.p||0, score=(remP>0?Math.min(p,remP)/remP:0)*2 + (favs[r.id]?0.5:0) + (rec[r.id]?Math.min(0.5,(+rec[r.id].n||1)/10):0) + sc.nutrients.kcal/Math.max(remK,1)*0.3;
+      return {r,sc,score}; }).filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,4);
+    if(!rows.length) return "";
+    return `<div class="fl-fit"><span class="label">Fits what's left today · ${fkc(remK)} kcal${remP>0?`, ${remP} g protein to go`:""}</span><div class="fl-fit-rows">${rows.map(({r,sc})=>`<button type="button" class="fl-fit-row" data-act="foodsuggest" data-id="${esc(r.id)}"><b>${esc(r.name)}</b><small>${esc(sc.amountText)} · ${fkc(sc.nutrients.kcal)} kcal · P ${r1(sc.nutrients.p||0)}${r.grade==="estimate"?" · estimate":""}</small></button>`).join("")}</div></div>`;
+  }catch(e){ return ""; }
+}
+// Duplicate guard: the same food (name + kcal) added within two minutes is held back once with a toast; a second tap logs it.
+let dupOk=null;
+function addFoodGuarded(row){
+  const day=getDay(view.date), now=Date.now(), key=(String(row.name||"")+"|"+Math.round(+row.kcal||0)).toLowerCase();
+  const dup=day.food.find(i=>i.id!==row.id && i.at && now-i.at<120000 && (String(i.name||"")+"|"+Math.round(+i.kcal||0)).toLowerCase()===key);
+  if(dup && dupOk!==key){ dupOk=key; setTimeout(()=>{ if(dupOk===key) dupOk=null; },20000); toast((row.name||"That food")+" was added a moment ago. Tap Add again to log it twice."); return false; }
+  dupOk=null; day.food.push({at:now,...row}); flash("food"); saveDay(day); return true;
+}
 // One add-food sheet: Add (type it in, or edit an item), Quick (plan foods, snack menu), Saved (combos, copy a day), Menu (Nutreeze menu), Scan (barcode, label, photo, voice)
 function foodSheet(d, day, training){
   const fs=view.foodSheet, tab=fs.tab||"add", slot=fs.slot||"Meal 1", edit = fs.edit ? day.food.find(i=>i.id===fs.edit) : null;
   // The menu picker sits on the Food page itself (above Food check) when MenuImport is inlined; the sheet keeps the old paste picker only as a fallback.
-  const tabs=[["add",edit?"Edit":"Add"]].concat(window.FoodSearch?[["search","Search"]]:[]).concat([["quick","Quick"],["saved","Saved"]]).concat(window.MenuImport?[]:[["menu","Menu"]]).concat([["scan","Scan"]]);
+  const hasSearch=!!(window.FoodSearch&&window.FoodLib);
+  const tabs=(hasSearch?[["search","Search"],["scan","Scan"],["add","Type"]]:[["add","Add"],["scan","Scan"]]).concat([["quick","Quick"],["saved","Saved"]]).concat(window.MenuImport?[]:[["menu","Menu"]]);
+  const WAYS=[["barcode","Barcode","M4 5h2v14H4zM8 5h1v14H8zM11 5h2v14h-2zM15 5h1v14h-1zM18 5h2v14h-2z"],["photo","Photo","M4 7h3l2-2h6l2 2h3v12H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],["describe","Describe","M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4"]];
+  const waysHtml=(cur)=>`<div class="fl-ways" role="group" aria-label="Other ways to add">${WAYS.map(([k,l,path])=>`<button type="button" class="fl-way" data-act="${cur?"scanmode":"foodway"}" data-k="${k}" aria-pressed="${cur===k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>${l}</button>`).join("")}${cur?`<button type="button" class="fl-way" data-act="scanmode" data-k="label" aria-pressed="${cur==="label"}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4"/></svg>Label</button>`:""}</div>`;
   const num=(id,l,v,st)=>`<label class="field"><span class="label">${l}</span><input type="number" id="${id}" step="${st}" value="${v??""}" ${id==="fk"?"required":""}></label>`;
   let body="";
   if(tab==="add"){ const dr=fs.draft||null, v=dr ? {kcal:dr.fk,p:dr.fp,c:dr.fc,f:dr.ff} : (edit||{}), G=foodGoals(d), FIELDS=[["fk","Calories","kcal","k"],["fp","Protein","p","p"],["fc","Carbs","c","c"],["ff","Fat","f","f"]];
@@ -1880,10 +1915,13 @@ function foodSheet(d, day, training){
       <div class="tablewrap"><table><thead><tr><th>Snack</th><th class="n">kcal</th><th class="n">P</th><th class="n">C</th><th class="n">F</th><th></th></tr></thead>
       <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[0]==="Banned"?"":mgBadge({kcal:s[2],p:s[3],c:s[4],f:s[5]},"snack")+" "}${s[1]}<br><small class="muted">${s[0]==="Banned"?"Never pick":s[0]}</small></td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody></table></div>
       <p class="muted" style="font-size:.85rem">With Meal 1 (pre-workout) prefer fruit or a light sweet. Nuts and Pro Mud Cake fit better with Meal 2.</p></div>`;
-  else if(tab==="search") body = `<div id="flHost"></div>`;
+  else if(tab==="search") body = waysHtml(null) + `<div id="flHost"></div>` + foodSuggestHtml(d, day);
   else if(tab==="saved") body = safeMod("Recipes",()=>Recipes.listHtml(S.docs.recipes)) + safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day})) + safeMod("CopyMeals",()=>CopyMeals.cardHTML(day,{today:TODAY,days:S.docs.days,open:view.open.cm}));
   else if(tab==="menu" && !window.MenuImport) body = pickerCard(d, training);
-  else body = `<div id="bcHost"></div><div id="lsHost"></div>${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}${window.VoiceLog && typeof PhotoFood !== "undefined" ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : ""}`;
+  else { // Scan: one card at a time (Barcode, Photo, Describe, Label); Describe is the photo card with the text box in front.
+    const mode=fs.scan||"photo";
+    const pf = typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : "";
+    body = waysHtml(mode) + (mode==="barcode" ? `<div id="bcHost"></div>` : mode==="label" ? `<div id="lsHost"></div>` : pf + (mode==="describe" && window.VoiceLog && pf ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : "")); }
   return `<div class="sheet-wrap" role="dialog" aria-modal="true" aria-label="Add food" id="foodSheet"><div class="fsheet">
     <div class="sheet-head"><button class="iconbtn" data-act="foodclose" data-close aria-label="Close">✕</button><h2>${edit?"Edit food":"Add to "+esc(slotLabel(slot))}</h2><span></span></div>
     ${edit?"":`<div class="subnav" style="margin:10px 16px 0">${tabs.map(([k,l])=>`<button type="button" data-act="foodtab" data-k="${k}" aria-pressed="${tab===k}">${l}</button>`).join("")}</div>`}
@@ -2233,7 +2271,7 @@ function autoFoodsTick(){
   put("days",d,r.day,{quiet:true});
   if(r.added.length) toast("Planned for "+(d===TODAY?"today":fmt(d))+": "+r.added.map(n=>n.split(" (")[0]).join(", ")+". Tick when eaten, or remove to skip.");
 }
-function addFood(item){ const day=getDay(view.date); day.food.push({id:uid(),eaten:false,...item}); flash("food"); saveDay(day); }
+function addFood(item){ return addFoodGuarded({id:uid(),eaten:false,...item}); }
 
 main.addEventListener("change",e=>{ if(window.HealthMarkers && e.target && e.target.dataset && e.target.dataset.hmSel){ try{ HealthMarkers.onPresetChange(e.target); }catch(err){} } });
 main.addEventListener("toggle",e=>{ const k=e.target && e.target.dataset && e.target.dataset.keep; if(k) view.open[k]=e.target.open; }, true);
@@ -2313,7 +2351,10 @@ main.addEventListener("click",e=>{
     return; }
   if(a==="goalsetup"){ openGoalSetup(); return; }
   if(a==="pcgo"){ view.tab="progress"; view.pTab="reviews"; try{localStorage.setItem("aziz-cut-tab","progress")}catch(_){} render(); window.scrollTo(0,0); return; }
-  if(a==="foodadd"){ const keep=view.foodSheet && !view.foodSheet.edit ? view.foodSheet.tab : "add"; view.foodSheet={tab:keep||"add", slot:el.dataset.slot||"Meal 1"}; render(); requestAnimationFrame(()=>{ const f=document.getElementById("fname"); if(f) f.focus({preventScroll:true}); }); return; }
+  if(a==="foodadd"){ const first=window.FoodSearch&&window.FoodLib?"search":"add"; const keep=view.foodSheet && !view.foodSheet.edit ? view.foodSheet.tab : first; view.foodSheet={tab:keep||first, slot:el.dataset.slot||"Meal 1", scan:view.foodSheet&&view.foodSheet.scan}; render(); requestAnimationFrame(()=>{ const f=document.getElementById(view.foodSheet.tab==="search"?"flq":"fname"); if(f) f.focus({preventScroll:true}); }); return; }
+  // One Add food flow: Search is the front door; Barcode / Photo / Describe are one tap away and open the matching card alone.
+  if(a==="foodway"){ view.foodSheet={...(view.foodSheet||{}), tab:"scan", scan:el.dataset.k}; render(); requestAnimationFrame(()=>{ if(el.dataset.k==="describe"){ const t=document.getElementById("pfText"); if(t) t.focus({preventScroll:true}); } }); return; }
+  if(a==="foodsuggest"){ const rec=foodLibRecords().find(r=>r.id===el.dataset.id); if(!rec || !window.FoodSearch) return; view.foodSheet={...(view.foodSheet||{}), tab:"search"}; render(); try{ FoodSearch.pickRecord(rec); }catch(e){} return; }
   if(a==="foodedit"){ view.foodSheet={tab:"add", edit:el.dataset.id}; render(); return; }
   if(a==="foodclose"){ view.foodSheet=null; render(); return; }
   if(a==="rc-close"){ view.recipeEdit=null; render(); return; }
@@ -2322,6 +2363,7 @@ main.addEventListener("click",e=>{
   if(a==="rc-fromday"){ const rc=Recipes.fromRows(getDay(d).food,{existing:S.docs.recipes}); if(!rc){ toast("Log some food on this day first."); return; } view.recipeEdit={isNew:true, recipe:rc}; render(); return; }
   if(a==="rc-log"){ const rc=S.docs.recipes[el.dataset.id]; if(!rc) return; view.foodSheet={...(view.foodSheet||{}), tab:"search"}; render(); try{ FoodSearch.pickRecord(Recipes.toRecord(rc)); }catch(e){} return; }
   if(a==="foodtab"){ view.foodSheet={...(view.foodSheet||{}), tab:el.dataset.k}; render(); return; }
+  if(a==="scanmode"){ view.foodSheet={...(view.foodSheet||{}), tab:"scan", scan:el.dataset.k}; render(); requestAnimationFrame(()=>{ if(el.dataset.k==="describe"){ const t=document.getElementById("pfText"); if(t) t.focus({preventScroll:true}); } }); return; }
   if(a==="portion"){ const m=+el.dataset.m; ["fk","fp","fc","ff"].forEach(id=>{ const inp=document.getElementById(id); if(inp && inp.value!=="") inp.value=Math.round(+inp.value*m*10)/10; }); foodFormSync(); return; }
   if(a==="foodmode"){ view.foodMode=el.dataset.k; render(); return; }
   if(a==="fooddup"){ const it=getDay(d).food.find(i=>i.id===el.dataset.id); if(!it) return; const {id, eaten, ...rest}=it; view.foodSheet=null; addFood({...rest, eaten:false}); toast("Added "+it.name+" again. Tick it when you eat it."); return; }
@@ -2561,12 +2603,12 @@ function mountRecipeEditor(){
 function mountFoodSearch(){
   const el=document.getElementById("flHost"); if(!el || !window.FoodSearch || !window.FoodLib) return;
   FoodSearch.mount(el,Object.assign(foodSearchOpts(),{ slot:(view.foodSheet&&view.foodSheet.slot)||"Meal 1",
-    onAdd:row=>{ const day=getDay(view.date); day.food.push(row); flash("food"); saveDay(day); } }));
+    onAdd:row=>addFoodGuarded(row) }));
 }
 function mountBarcode(){
   const el=document.getElementById("bcHost"); if(!el || !window.BarcodeFood) return;
   try{ BarcodeFood.mount(el,{
-    slot:"Extra",
+    slot:(view.foodSheet&&view.foodSheet.slot)||"Extra",
     onAdd:item=>addFood(item),
     library:{ get: code=>S.docs.barcodes?.[code], put:(code,prod)=>put("barcodes",code,prod,{quiet:true}) }
   }); }catch(e){ el.innerHTML=""; }
@@ -2574,7 +2616,7 @@ function mountBarcode(){
 function mountLabelScan(){
   const el=document.getElementById("lsHost"); if(!el || !window.LabelScan) return;
   try{ LabelScan.mount(el,{
-    slot:"Extra",
+    slot:(view.foodSheet&&view.foodSheet.slot)||"Extra",
     getSample:()=>window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
     readService: aiReadService(),
     library:{ all:()=>S.docs.barcodes||{}, get: code=>S.docs.barcodes?.[code], put:(code,prod)=>put("barcodes",code,prod,{quiet:true}) },

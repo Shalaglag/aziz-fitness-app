@@ -61,7 +61,7 @@ const FoodSearch = (() => {
     else if (a === "portion") { S.amountText = b.dataset.amt; draw(); }
     else if (a === "details") { S.details = !S.details; draw(); }
     else if (a === "fav") { if (O.toggleFavourite) O.toggleFavourite(b.dataset.id); draw(); }
-    else if (a === "add") { add(); }
+    else if (a === "add") { e.preventDefault(); add(); } // preventDefault: the button also submits #flreview, which would add twice
     else if (a === "custom") { S.custom = S.custom ? null : customFrom(S.pick); draw(); }
     else if (a === "customsave") { saveCustom(); }
     else if (a === "clear") { S.q = ""; runLocal(); S.remote = { usda: null, off: null }; draw(); const i = host.querySelector("#flq"); if (i) i.focus(); }
@@ -82,7 +82,7 @@ const FoodSearch = (() => {
     const sc = scaled(); if (!S.pick || !sc) { if (O.toast) O.toast("Enter an amount the food can be measured in (" + unitsFor(S.pick) + ")."); return; }
     if (O.onPick) { const rec = S.pick; S.pick = null; S.details = false; O.onPick(rec, sc); return; } // e.g. a recipe editor takes the food + amount itself
     const row = FL.toRow(S.pick, sc, { slot: S.slot, eaten: S.eaten });
-    if (O.onAdd) O.onAdd(row);
+    if (O.onAdd && O.onAdd(row) === false) return; // e.g. the shell's duplicate guard: keep the review open
     if (O.bumpRecent) O.bumpRecent(S.pick.id);
     if (O.toast) O.toast("Added " + row.name + (row.eaten ? "" : ". Tick it when you eat it."));
     S.pick = null; S.details = false; draw();
