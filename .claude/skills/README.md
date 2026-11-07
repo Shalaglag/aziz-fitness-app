@@ -11,11 +11,12 @@ then copy the changed files there in the same PR/turn.
 | Task you are about to do | Load | Not needed when |
 |---|---|---|
 | Any change to the app: module, shell, test, PR, merge, telling Aziz the build | `ship-app-change/SKILL.md` | docs-only edits |
-| Check an APK/release: build number, signing, update path, phone checks list | `android-release-check/SKILL.md` | the change is not user-visible |
-| UI change: screens at 360–412 px, light/dark, overlays, screenshots | `phone-ui-check/SKILL.md` | logic, data or docs change |
+| Check an APK/release: build number, signing, update path, phone checks list; a bug report from Aziz's phone | `android-release-check/SKILL.md` | the change is not user-visible |
+| UI change: screens at 360–412 px, light/dark, overlays, screenshots; Aziz asks for looks/options to pick from | `phone-ui-check/SKILL.md` | logic, data or docs change |
 | PR red or conflicting with main; flaky/weekday test; CI quota errors | `pr-conflicts-and-ci/SKILL.md` | CI is green and mergeable |
 | Water/steps not updating: WaterH → Fitbit → Google Health, Health Connect | `health-sync-debug/SKILL.md` | not a sync problem |
 | Chat is long, slow or near its limits; a continuation chat is needed | `thread-handoff/SKILL.md` | a usage block, CI wait or pause (not a context problem) |
+| Aziz must click through GitHub, Firebase, Google Cloud, Cloudflare or phone settings (keys, secrets, providers, rules) | `guide-aziz-setup/SKILL.md` | CI, the GitHub tools or a repo file can do it |
 
 Rules that are not skills (state them, do not load anything):
 - Repo rules: `CLAUDE.md` (build, reading, tests, Android, habits). Read it first in every chat.
