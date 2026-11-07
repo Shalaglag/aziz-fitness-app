@@ -17,6 +17,19 @@ then copy the changed files there in the same PR/turn.
 | Water/steps not updating: WaterH → Fitbit → Google Health, Health Connect | `health-sync-debug/SKILL.md` | not a sync problem |
 | Chat is long, slow or near its limits; a continuation chat is needed | `thread-handoff/SKILL.md` | a usage block, CI wait or pause (not a context problem) |
 
+Exercise animation project ("Mizan exercise animation"; it owns `app/3d`, the 3D viewer and
+exercise ids). These skills are only for chats in that project; its shared files keep the same
+mirror at `/mnt/project-files/Skills/`. It uses `thread-handoff` above for rollovers.
+
+| Task you are about to do | Load | Not needed when |
+|---|---|---|
+| Fix how demos move, grip or frame (Aziz's notes, reviewer findings) | `anim-demo-fix-round/SKILL.md` | only reviewing, nothing to change |
+| Run the automatic demo checker on a few ids or all 898 | `anim-demo-qa-run/SKILL.md` | a by-eye review is asked for |
+| Review demos by eye, compare with MoveKit steps, recheck fixes, log findings | `anim-demo-review/SKILL.md` | writing the fix itself |
+| Change or add a gym equipment piece | `anim-gym-kit-change/SKILL.md` | the piece is fine and only the body motion is wrong |
+| Ship reviewed demos into the app (import, build, PR, Update) | `anim-app-rollout/SKILL.md` + `ship-app-change/SKILL.md` | demos still under review |
+| Copy shared files to Aziz's PC folder | `anim-pc-sync/SKILL.md` | the files only need to be in the shared folder |
+
 Rules that are not skills (state them, do not load anything):
 - Repo rules: `CLAUDE.md` (build, reading, tests, Android, habits). Read it first in every chat.
 - Standing user rules: merge finished PRs when tests pass; "accept anything on my behalf" for
