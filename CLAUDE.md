@@ -39,3 +39,4 @@ Goal: same quality and pace, fewer tokens. These rules remove reading that never
 - One screenshot at most after a visual change; none for logic, docs or test changes.
 - No subagents unless asked. Replies short; long content goes in a document.
 - Merge finished PRs when tests pass (Aziz's standing rule).
+- Project skills: read `.claude/skills/README.md` first and load only the skill for the task at hand. When a rule or workflow changes, update its SKILL.md and that README in the same change. Long chats hand over via `handoffs/<topic>.md` (skill `thread-handoff`).
