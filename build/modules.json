@@ -15,6 +15,7 @@
     { "file": "modules/gym-sounds/clips.js" },
     { "file": "modules/gym-sounds/gym-sounds.js" },
     { "file": "modules/workout-logger/workout-logger.js" },
+    { "file": "modules/music-control/music-control.js", "expose": ["MusicControl"] },
     { "file": "modules/saved-meals/saved-meals.js" },
     { "file": "modules/auto-foods/auto-foods.js" },
     { "file": "modules/copy-meals/copy-meals.js" },

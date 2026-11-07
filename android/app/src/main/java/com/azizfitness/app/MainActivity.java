@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GoogleSignInPlugin.class);
         registerPlugin(SpeechPlugin.class);
         registerPlugin(RestTimerPlugin.class);
+        registerPlugin(MediaKeysPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

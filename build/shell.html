@@ -765,10 +765,12 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
         <button class="iconbtn" id="prevDay" aria-label="Previous day">‹</button>
         <div class="d" id="dateLabel"></div>
         <button class="iconbtn" id="nextDay" aria-label="Next day">›</button>
+        <span id="musicHead"></span>
         <button class="today-link" id="goToday">Today</button>
       </div>
     </div>
   </div>
+  <div id="musicStrip"></div>
 </header>
 <div class="drawer-wrap" id="drawer" hidden role="dialog" aria-modal="true" aria-label="Menu">
   <div class="scrim" data-close-drawer></div>
@@ -1195,6 +1197,7 @@ function render(){
   main.innerHTML = safe(view.tab+" tab", tabFn);
   [["Workout logger",syncLogger],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
   if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); if(lastTab) tabMotion(lastTab, view.tab); lastTab=view.tab; }
+  if(window.MusicControl){ try{ MusicControl.mountHeader(document.getElementById("musicHead"), document.getElementById("musicStrip")); }catch(e){ console.error("[music]", e); } }
   applyFlash();
   window.scrollTo(0,y);
   try{ foodDraftRestore(); }catch(e){}
@@ -2145,6 +2148,12 @@ function vSettings(){
     ${lb&&window.GymSounds&&GymSounds.SET_SOUNDS?(()=>{ const cur=lb.setSound||"check"; return row("Sound when you tick a set","Check is your own sound. Tap one to hear it.",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.SET_SOUNDS.concat([{id:"off",label:"Off"}]).map(s=>`<button type="button" class="chip" data-act="lbpick" data-s="setSound" data-k="${s.id}" aria-pressed="${cur===s.id}">${esc(s.label)}</button>`).join("")}</span>`); })():""}
     ${lb?row("Play a sound when rest ends","",sw("lbtog",lb.sound,"Play a sound when rest ends",'data-s="sound"'))+row("Vibrate when rest ends","",sw("lbtog",lb.vibrate,"Vibrate when rest ends",'data-s="vibrate"'))+row("Buzz at 3, 2, 1","One short buzz for each of the last three seconds",sw("lbtog",lb.countBuzz!==false,"Buzz at 3, 2 and 1 seconds left",'data-s="countBuzz"'))+row("Keep the screen on","During a workout",sw("lbtog",lb.wake,"Keep the screen on during a workout",'data-s="wake"')):""}
   </div></div>
+  ${window.MusicControl?(()=>{ const mc=MusicControl.settings(); return `<div class="card"><h3>Music</h3><div class="set-list">
+    ${row("Music controls","Play, pause and skip whatever is playing in YouTube Music (or any music app). Mizan never plays music itself.",sw("musictog",mc.on,"Music controls"))}
+    ${mc.on?row("Where",'Strip: a slim bar under the header. Icon: a note button that opens a panel. Workout: only on the live workout screen, above the rest timer.',seg("musiclook",MusicControl.LOOKS.map(([k,l])=>[k,l.replace(/ .*/,"")]),mc.look)):""}
+    ${mc.on?row("Workout playlist","Paste a YouTube Music playlist or song link. Opens in the YouTube Music app with one tap.",`<input type="url" id="musicUrl" data-music-url inputmode="url" enterkeyhint="done" placeholder="https://music.youtube.com/playlist?list=…" value="${esc(mc.playlist||"")}" style="width:min(100%,22em)" aria-label="Workout playlist link">`):""}
+    ${mc.on?`<p class="note info" style="margin-top:8px">YouTube Music keeps playing while you use Mizan only with YouTube Music Premium or YouTube Premium. The free app stops when it leaves the screen.</p>`:""}
+  </div></div>`; })():""}
   <div class="card"><h3>Units</h3><div class="set-list">
     ${lb?row("Default unit","New exercises in the full logger",seg("lbset",[["kg","kg"],["lb","lb"]],lb.unit,'data-s="unit"')):""}
     ${row("Per exercise","Full logger: ••• menu on the exercise → Switch to lb. The plan's exercises are below. History keeps the unit it was logged in.","")}
@@ -2174,6 +2183,7 @@ function vSettings(){
 // In-app updates (modules/app-update): Settings card + Today banner; reads the public releases repo (no key), private release with a key as a fallback.
 if(window.AppUpdate){ try{ const st=document.createElement("style"); st.textContent=AppUpdate.css; document.head.appendChild(st); AppUpdate.bind({ render, toast }); }catch(e){} }
 if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", setTab:(t,y)=>{ view.tab=t; try{localStorage.setItem("aziz-cut-tab",t)}catch(_){} render(); window.scrollTo(0,y||0); }, goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
+if(window.MusicControl){ MusicControl.init({ get:()=>S.docs.prefs.main?.music||null, set:m=>{ const p=clone(S.docs.prefs.main||{}); p.music=m; put("prefs","main",p,{quiet:true}); }, toast }); MusicControl.bind(document); window.addEventListener("mc:settings",()=>{ view.tab="settings"; render(); setTimeout(()=>{ const el=document.getElementById("musicUrl"); if(el){ el.scrollIntoView({block:"center"}); el.focus(); } },50); }); }
 function openDrawer(on){ const d=document.getElementById("drawer"); clearTimeout(d._closeT);
   if(!on){ if(d.hidden) return; d.classList.add("closing"); d._closeT=setTimeout(()=>{ d.hidden=true; d.classList.remove("closing"); }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200); return; }
   d.classList.remove("closing"); d.hidden=false; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
@@ -2297,6 +2307,8 @@ main.addEventListener("click",e=>{
   if(a==="scalereset"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.uiScale=1; applyScale(1); put("prefs","main",p); return; }
   if(a==="theme"){ const p=clone(S.docs.prefs.main); p.theme=el.dataset.k; applyTheme(p.theme); put("prefs","main",p); return; }
   if(a==="rest"){ const p=clone(S.docs.prefs.main); p.restSec=+el.dataset.k; put("prefs","main",p); return; }
+  if(a==="musictog"){ MusicControl.setSettings({on:!MusicControl.settings().on}); render(); return; }
+  if(a==="musiclook"){ MusicControl.setSettings({look:el.dataset.k}); render(); return; }
   if(a==="restauto"){ const p=clone(S.docs.prefs.main); p.restAuto=!(p.restAuto!==false); put("prefs","main",p); return; }
   if(a==="lbset"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings(k==="gym" ? {gym:v==="gym"} : k==="unit" ? {unit:v} : {[k]:+v}); if(k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=+v; put("prefs","main",p); } else render(); return; }
   if(a==="lbpick"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings({[k]:v}); if((k==="restSound"||k==="setSound")&&v!=="off"&&window.GymSounds){ GymSounds.prime(); GymSounds.play(v); } render(); return; }
@@ -2361,6 +2373,7 @@ main.addEventListener("change",e=>{
   const el=e.target, d=view.date;
   if(el.id==="strongFile" && el.files && el.files[0]){ importStrong(el.files[0]); return; }
   if(el.id==="stepsFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyStepsText(String(fr.result)); fr.readAsText(el.files[0]); return; }
+  if(el.dataset.musicUrl!=null && window.MusicControl){ const raw=el.value.trim(), v=MusicControl.validPlaylist(raw); if(raw && !v){ toast("Paste a YouTube Music or YouTube link"); return; } MusicControl.setSettings({playlist:v||""}); toast(v?"Playlist saved":"Playlist removed"); render(); return; }
   if(el.dataset.restK){ const k=el.dataset.restK, v=window.WorkoutLogger&&WorkoutLogger.parseRest?WorkoutLogger.parseRest(el.value):(parseFloat(el.value)||null);
     if(v==null||v<5){ toast("Type a time like 1:45 or 105"); render(); return; }
     if(k==="restSec"||k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=v; put("prefs","main",p); }

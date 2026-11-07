@@ -1670,6 +1670,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (!E) return;
     const d = E.doc, live = E.mode !== 'template';
     liveEl.querySelector('.lb-live-head').innerHTML = headHtml();
+    if (global.MusicControl && global.MusicControl.mountWorkout) try { global.MusicControl.mountWorkout(liveEl); } catch (e) { }
     liveEl.classList.toggle('gym', E.view === 'gym');
     if (E.view === 'gym') { const body = liveEl.querySelector('.lb-live-body'); body.innerHTML = gymHtml(); return; }
     const ssColors = {};

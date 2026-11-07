@@ -69,6 +69,8 @@
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <!-- Music controls (modules/music-control): only to hide the Open button when YouTube Music is missing -->
+        <package android:name="com.google.android.apps.youtube.music" />
         <!-- Android 11+: lets SpeechRecognizer find the phone's speech service -->
         <intent>
             <action android:name="android.speech.RecognitionService" />
