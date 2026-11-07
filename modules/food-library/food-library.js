@@ -244,7 +244,8 @@ const FoodLib = (() => {
   function gradeLabel(rec) {
     if (!rec) return "";
     if (rec.grade === "source") return rec.source.kind === "restaurant" ? (rec.restaurant || "Restaurant") + (rec.market ? " " + marketName(rec.market) : "") : "Source: " + (SOURCE_NAMES[rec.source.kind] || rec.source.kind);
-    if (rec.grade === "user") return rec.source.kind === "recipe" ? "Personal recipe" : rec.source.kind === "label" ? "From your label scan" : "Your entry";
+    if (rec.source.kind === "recipe") return "Personal recipe" + (rec.grade === "estimate" ? " (estimate)" : "");
+    if (rec.grade === "user") return rec.source.kind === "label" ? "From your label scan" : "Your entry";
     if (rec.grade === "reviewed") return "Reviewed";
     return rec.source.kind === "catalog" ? "Typical values (estimate)" : "Estimate";
   }
@@ -290,14 +291,14 @@ const FoodLib = (() => {
     if (!hits || !realHit) return 0; // "cooked" alone must not pull in every cooked food
     if (qt.length >= 2 && hits * 2 < qt.length) return 0;
     if (hits < qt.length) s -= 8 * (qt.length - hits);
-    if (nameL === qL) s += 40; else if (nameL.startsWith(qL)) s += 20;
+    if (nameL === qL) s += 25; else if (nameL.startsWith(qL)) s += 15;
     s -= Math.min(10, Math.max(0, hay.length - qt.length - 2)); // much longer names last (a 12-word variant below "Rice, white, cooked")
     if (/\b(raw|dry|uncooked)\b/.test(qL) && rec.prep === "raw") s += 6;
     if (/\bcooked\b/.test(qL) && rec.prep === "cooked") s += 6;
     if (!/\b(raw|dry|uncooked)\b/.test(qL) && rec.prep === "raw") s -= 3; // people usually log cooked food
     if (ctx.favourites && ctx.favourites.has(rec.id)) s += 25;
     const rec1 = ctx.recents ? ctx.recents.get(rec.id) : null; if (rec1) s += 15 + Math.min(10, rec1);
-    if (rec.grade === "user" || rec.source.kind === "recipe") s += 12;
+    if (rec.grade === "user" || rec.source.kind === "recipe") s += 25; // your own foods and recipes first
     if (ctx.market && rec.market === ctx.market) s += 8;
     if (rec.grade === "estimate") s -= 6;
     if (rec.source.kind === "usda" && rec.source.dataType === "Branded") s -= 6;
