@@ -1,0 +1,59 @@
+# Food library (`FoodLib`) and food search (`FoodSearch`)
+
+The shared foundation for food logging (Aziz's Nov 7, 2026 spec, work area 1): one record shape for every source, portion maths with no AI, and one ranked search over all of them. Everything else (recipes, photo and label estimates, the single Add food flow) builds on these records.
+
+- `food-library.js`: pure logic, no network of its own (`FoodLib.usdaSearch` / `offSearch` take an injected `fetch`). Browser global `FoodLib` or CommonJS.
+- `food-search.js`: the Search tab of the Add food sheet (`FoodSearch.mount(host, opts)`), owns its DOM so typing survives app re-renders.
+- `catalog.json` (`FOOD_CATALOG`): 106 everyday ingredients per 100 g / 100 ml, **typical USDA-based values**. Always shown and logged as *Typical values (estimate)*; a live USDA search gives the source-backed record with its FDC id. Portions only where a weight is known (1 cup cooked rice = 158 g, 1 large egg = 50 g…).
+- `restaurants.json` (`FOOD_RESTAURANTS`): published restaurant nutrition per restaurant **and market**. McDonald's Kuwait block points at the official McDonald's Arabia table (2017) linked from the Kuwait site; fill it with `tools/restaurants/import-mcd-arabia.js` (see below). US values are never used for a Kuwait item.
+- Tests: `node --test modules/food-library/food-library.test.js`.
+
+## The record
+
+```js
+{ id: "usda:169756",                 // usda:<fdcId> | off:<barcode> | lib:<code> | rest:<restaurant>:<item> | cat:<slug> | recipe:<id>
+  kind: "food" | "meal" | "recipe", name, brand, restaurant, market: "KW" | null, prep: "raw" | "cooked" | "as-sold" | null,
+  basis: { kind: "per100g" | "per100ml" | "serving", amount, unit, label },
+  nutrients: { kcal, p, c, f, fiber, sugar, sodium },   // null = the source gives no value (never silently 0)
+  derived: ["kcal"],                                    // kcal was calculated from the macros (flagged, never hidden)
+  portions: [{ label: "1 cup", g: 158 }],              // only real conversions from the source
+  includes: ["Medium fries", "Medium Coca-Cola"],      // restaurant meals
+  source: { kind, id, url, dataType, publishedAt, retrievedAt, note },
+  grade: "source" | "user" | "reviewed" | "estimate" }
+```
+
+`publishedAt` is the source's own date; `retrievedAt` is when the app fetched it. The Details fold shows both and says that fetching does not make a record newer.
+
+## Portion maths (`FoodLib.scale(rec, amount)`)
+
+`amount` = `{g}` | `{ml}` | `{servings}` | `{portion: label | index, count}`. Linear from the basis; published kcal is kept (never replaced by 4P+4C+9F); unknown nutrients stay `null` and are listed in `unknown`. 200 kcal per 100 g × 150 g = 300 kcal. No invented conversions: grams on a per-100 ml record, ml on a per-100 g record, servings on a per-100 g record, or grams on a meal with no weight all return `null`, and the card says which units the food takes. Raw and cooked are separate records. `FoodLib.parseAmount("150 g" | "250 ml" | "2 servings" | "1.5 cup", rec)` reads what the person typed.
+
+`FoodLib.toRow(rec, scaled, {slot, eaten})` gives a `days/{date}.food` row that copies the numbers at logging time (a later change to the source never rewrites old logs) with `est` set when the grade is estimate, a macro is unknown or kcal was derived, plus `src: {id, kind, grade, basis, unknown}` for the row's own source line.
+
+## Sources and search
+
+| Source | How | Grade |
+|---|---|---|
+| Bundled catalog | `FoodLib.fromCatalog` | estimate ("Typical values") |
+| Your products (`barcodes/{code}`: barcode scans, label scans, hand-entered) | `FoodLib.fromLibrary` | source (Open Food Facts) / user |
+| Restaurants (`restaurants.json`) | `FoodLib.fromRestaurant`, `restaurantRecords` | source |
+| USDA FoodData Central | `FoodLib.usdaSearch(q, {fetch, base, token, cache})` → the Mizan service `GET /v1/foods?q=` (the data.gov key stays on the server; no AI, no spending; cached a day). Picking a result fetches `GET /v1/food?id=` for household portions. | source |
+| Open Food Facts text search | `FoodLib.offSearch(q, {fetch, cache})`, straight from the phone, only when the person presses the button (10 searches a minute per IP; never as-you-type) | source |
+| Recipes (work area 2) | `FoodLib.fromRecipe` | user / estimate |
+
+`FoodLib.search(q, records, {favourites, recents, market, limit})` ranks by token and prefix matches (aliases: khubz → bread, laban → yogurt, dajaj → chicken…), prefers cooked unless the query says raw, boosts favourites, recents, your own entries and the KW market, and **never merges** two records because their names look alike: the same rice from USDA and the catalog are two results with their own source lines.
+
+## In the app
+
+Add food sheet → **Search** tab (`#flHost`, `mountFoodSearch()` in the shell). Local results appear as you type; **Search USDA** and **Packaged (Open Food Facts)** run on request. Picking a result opens the review: amount box with the record's portion chips, live kcal/P/C/F (unknown macros greyed and named), the source line (grade · basis · prep · includes), **Details** (source, id, published and fetched dates, link), meal slot, Eaten now, **Add**. Favourites (★) live in `prefs/main.foodFavs`, recents in `prefs/main.foodRecents` (last 60), both synced.
+
+## Filling McDonald's Kuwait
+
+The Kuwait site publishes its numbers only as the McDonald's Arabia PDF (2017). Download it, then:
+
+```
+pdftotext -layout nutrition-info-jeddah-en-new.pdf mcd.txt
+node tools/restaurants/import-mcd-arabia.js mcd.txt --dry      # check the parsed rows and the column order
+node tools/restaurants/import-mcd-arabia.js mcd.txt            # writes restaurants.json; then node build/build.js
+```
+A cell printed "-" stays unknown. Meals get `kind: "meal"`; say in `includes` what is in the box.

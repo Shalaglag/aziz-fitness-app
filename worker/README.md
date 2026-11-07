@@ -37,6 +37,8 @@ and keeps a monthly spending ledger so a question that would pass the cap is nev
 | `POST /v1/cap` | owner | `{capUsd}` 1-100 |
 | `POST /v1/chat` | owner | `{question, ctx, history, effort, lang}` → NDJSON: `{"t":"d","text"}` … `{"t":"done","costUsd","usage","month"}` or `{"t":"error","error"}` |
 | `POST /v1/read` | owner | `{kind:"menu", images:[{media_type, data(base64)}]}` (up to 4, 2.5 MB each) → `{text, stop, costUsd, month}`. The menu-reading instructions are fixed on the server; each image is reserved as 6,000 tokens, so a menu costs well under a cent. Same ledger, cap and per-account limits as chat. |
+| `GET /v1/foods?q=…&pageSize=25[&types=…]` | owner | USDA FoodData Central search, proxied so the data.gov key stays here: `{foods:[trimmed hits], totalHits, fdcKey:"own"|"demo", cached}`. No Claude, no spending, no ledger; answers are cached for a day. Default data types Foundation, SR Legacy, Survey (FNDDS); `types=Branded` adds US packaged foods. Secret `FDC_API_KEY` (free at https://api.data.gov/signup/, 1,000 requests an hour); without it the public `DEMO_KEY` is used (30 an hour, 50 a day per IP, enough to try it). FDC's 429 → `rate_limited`. |
+| `GET /v1/food?id=<fdcId>` | owner | one food with its household portions (`{food}`), same caching. |
 | `POST /v1/tidy` | owner | `{text (≤ 2,000 chars), lang, hints[] (≤ 80 names)}` → `{text, costUsd, month}`. Cleans a voice transcript before the user sends it (misheard or mixed-up words, repeats, self-corrections); fixed prompt on the server, low effort, at most 600 output tokens, about $0.0003 each. Same ledger, cap and per-account limits as chat. |
 
 Errors: `not_signed_in` 401, `not_allowed` 403, `cap_reached` / `out_of_credit` 402, `busy` / `rate_limited` /
@@ -53,6 +55,8 @@ Errors: `not_signed_in` 401, `not_allowed` 403, `cap_reached` / `out_of_credit` 
    - `ANTHROPIC_API_KEY`, type **Secret**: the key from https://platform.claude.com/settings/keys
    - `ALLOWED_EMAILS`, type Text: the email you sign in to Mizan with
 4. Open `https://mizan-coach.<your-subdomain>.workers.dev/v1/health`: `keySet` and `ownerSet` should be `true`.
+   Optional, for USDA food search without the demo key's limits: add `FDC_API_KEY` (type Secret) with a free key from
+   https://api.data.gov/signup/ (arrives by email in a minute); `fdcKeySet` then shows `true`.
 5. The app's built-in address is `coachEndpoint` in `app/cloud-config.js` (the BASE address, no `/v1/…`):
    `https://mizan-coach.a47alshaheen.workers.dev` since Nov 2. A different service can be set in Ask Claude → ⚙ AI
    settings; the field drops a pasted `/v1/health`, `/v1/chat`, `/v1/usage` or `/v1/cap` suffix. Ask a question and
