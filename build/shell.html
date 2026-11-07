@@ -2546,6 +2546,7 @@ function syncLogger(){
       formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE) : undefined,
       programs: (window.NippardPrograms && window.NIPPARD_PROGRAMS) ? NippardPrograms.create(window.NIPPARD_PROGRAMS) : undefined,
       tips: (window.NippardPrograms && window.NIPPARD_TIPS) ? NippardPrograms.tips(window.NIPPARD_TIPS) : undefined,
+      chooser: window.ProgramChooser || undefined, onBack: (window.AndroidShell && AndroidShell.onBack) ? fn => AndroidShell.onBack(fn) : undefined,
       anim: window.ExerciseAnim ? ExerciseAnim.create() : undefined,
       breakRamp: window.BreakRamp || undefined,
       weights: { list: async()=>weightsSorted().map(w=>({date:w.date,kg:w.kg})), put: async(date,kg)=>put("weights",date,{date,kg:Math.round(kg*10)/10},{quiet:true}) },
@@ -2594,7 +2595,7 @@ window.addEventListener("lb:rest-adjust",e=>{ if(tInt) quickRestAdjust(+((e.deta
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones","ProgramChooser"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget, plan:()=>S.docs.prefs.main?.goalSetup||null,
