@@ -74,7 +74,9 @@ jobs:
             }, null, 2) + "\n");
           '
           cat latest.json
+      # The APK also goes to the release below; a full Actions storage quota must not stop that.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: aziz-fitness-android
           path: |
