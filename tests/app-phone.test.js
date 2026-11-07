@@ -724,6 +724,40 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("workout: hold an exercise name and drag it to reorder; its sets go with it and nothing opens", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "train");
+      await page.evaluate(() => document.querySelector('[data-a="startEmpty"]').click()); await page.waitForTimeout(250);
+      await page.evaluate(() => document.querySelector('.lb-live [data-a="addEx"]').click()); await page.waitForTimeout(250);
+      await page.evaluate(() => [...document.querySelectorAll('.lb-sheet .lb-exrow')].filter(r => !/bike|run|row/i.test(r.textContent)).slice(0, 3).forEach(r => r.click()));
+      await page.evaluate(() => document.querySelector('[data-a="pickDone"]').click()); await page.waitForTimeout(250);
+      await page.evaluate(() => { document.querySelector('.lb-live-body').scrollTop = 0; const i = document.querySelector('.lb-exblock[data-ei="0"] input[data-k="r"]'); i.value = "12"; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new Event("change", { bubbles: true })); });
+      const names = () => page.evaluate(() => [...document.querySelectorAll(".lb-exblock .lb-exhead .lb-link")].map(x => x.textContent));
+      const before = await names();
+      const hd = await page.locator('.lb-exblock[data-ei="0"] .lb-exhead .lb-link').boundingBox();
+      const cdp = await page.context().newCDPSession(page);
+      const x = hd.x + 30, y = hd.y + hd.height / 2;
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+      await page.waitForTimeout(550);
+      assert.ok(await page.evaluate(() => document.querySelector(".lb-live").classList.contains("lb-reordering")), "holding folds the list");
+      const held = await page.locator(".lb-exblock.dragging").boundingBox();
+      for (let i = 1; i <= 15; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: held.y + held.height / 2 + i * 14 }] }); await page.waitForTimeout(16); }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await page.waitForTimeout(300);
+      const after = await names();
+      assert.deepStrictEqual(after, [before[1], before[2], before[0]], "first exercise dropped at the end");
+      const r = await page.evaluate(() => ({ reps: document.querySelector('.lb-exblock[data-ei="2"] input[data-k="r"]').value, folded: document.querySelector(".lb-live").classList.contains("lb-reordering"), sheets: document.querySelectorAll(".lb-sheet").length }));
+      assert.strictEqual(r.reps, "12", "the set typed before the drag moved with its exercise");
+      assert.strictEqual(r.folded, false); assert.strictEqual(r.sheets, 0, "the hold did not open the exercise");
+      // A quick tap still opens the exercise as before.
+      await page.waitForTimeout(300);
+      const sheetsBefore = await page.evaluate(() => document.querySelectorAll(".lb-sheet").length);
+      await page.locator('.lb-exblock[data-ei="0"] .lb-exhead .lb-link').tap(); await page.waitForTimeout(250);
+      assert.ok(await page.evaluate(n => document.querySelectorAll(".lb-sheet").length > n, sheetsBefore), "a tap still opens the exercise");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("plan check: two weeks of logs → estimate card with a range, weekly report plan line, apply only on tap", async () => {
       // 28 days of weigh-ins losing 0.15 kg/wk while eating 2,370: slower than the plan's 0.46, so the estimate is lower and a change is offered.
       const seedPlan = today => {
