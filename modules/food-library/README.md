@@ -5,7 +5,7 @@ The shared foundation for food logging (Aziz's Nov 7, 2026 spec, work area 1): o
 - `food-library.js`: pure logic, no network of its own (`FoodLib.usdaSearch` / `offSearch` take an injected `fetch`). Browser global `FoodLib` or CommonJS.
 - `food-search.js`: the Search tab of the Add food sheet (`FoodSearch.mount(host, opts)`), owns its DOM so typing survives app re-renders.
 - `catalog.json` (`FOOD_CATALOG`): 106 everyday ingredients per 100 g / 100 ml, **typical USDA-based values**. Always shown and logged as *Typical values (estimate)*; a live USDA search gives the source-backed record with its FDC id. Portions only where a weight is known (1 cup cooked rice = 158 g, 1 large egg = 50 g…).
-- `restaurants.json` (`FOOD_RESTAURANTS`): published restaurant nutrition per restaurant **and market**. McDonald's Kuwait block points at the official McDonald's Arabia table (2017) linked from the Kuwait site; fill it with `tools/restaurants/import-mcd-arabia.js` (see below). US values are never used for a Kuwait item.
+- `restaurants.json` (`FOOD_RESTAURANTS`): published restaurant nutrition per restaurant **and market**. The McDonald's Kuwait block is **empty on purpose** (see "Filling McDonald's Kuwait"): no Kuwait table exists, and values from another country are never used for a Kuwait item.
 - Tests: `node --test modules/food-library/food-library.test.js`.
 
 ## The record
@@ -47,13 +47,13 @@ The shared foundation for food logging (Aziz's Nov 7, 2026 spec, work area 1): o
 
 Add food sheet → **Search** tab (`#flHost`, `mountFoodSearch()` in the shell). Local results appear as you type; **Search USDA** and **Packaged (Open Food Facts)** run on request. Picking a result opens the review: amount box with the record's portion chips, live kcal/P/C/F (unknown macros greyed and named), the source line (grade · basis · prep · includes), **Details** (source, id, published and fetched dates, link), meal slot, Eaten now, **Add**. Favourites (★) live in `prefs/main.foodFavs`, recents in `prefs/main.foodRecents` (last 60), both synced.
 
-## Filling McDonald's Kuwait
+## Filling McDonald's Kuwait (gap, Nov 7 2026)
 
-The Kuwait site publishes its numbers only as the McDonald's Arabia PDF (2017). Download it, then:
+McDonald's Kuwait publishes no usable per-item nutrition: the Kuwait site's nutrition page links only a McDonald's Arabia PDF named `nutrition-info-jeddah-en-new.pdf` ("current as of 2017"), which by its name is the Jeddah (Saudi) table, and the Kuwait product pages carry no protein, carbs or fat. The block therefore has no items. When a Kuwait table appears:
 
 ```
-pdftotext -layout nutrition-info-jeddah-en-new.pdf mcd.txt
+pdftotext -layout <kuwait-table>.pdf mcd.txt
 node tools/restaurants/import-mcd-arabia.js mcd.txt --dry      # check the parsed rows and the column order
 node tools/restaurants/import-mcd-arabia.js mcd.txt            # writes restaurants.json; then node build/build.js
 ```
-A cell printed "-" stays unknown. Meals get `kind: "meal"`; say in `includes` what is in the box.
+A cell printed "-" stays unknown. Meals get `kind: "meal"`; say in `includes` what is in the box. Other restaurants with a published local table (any market) go in the same file as their own block.
