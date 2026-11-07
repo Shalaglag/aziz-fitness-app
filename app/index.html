@@ -4164,16 +4164,67 @@ Power Clean (Barbell)|Other|Barbell|`;
   const S = { storage: null, opts: {}, data: { templates: {}, workouts: {}, exercises: {}, measures: {} }, settings: clone(DEFAULT_SETTINGS), active: null, ready: false, shellWeights: null };
   const chains = {};
   function queue(path, fn) {
-    chains[path] = (chains[path] || Promise.resolve()).then(fn).catch(e => toast('Not saved: ' + (e && (e.code || e.message) || 'storage error')));
+    chains[path] = (chains[path] || Promise.resolve()).then(fn).then(() => true).catch(e => { toast('Not saved: ' + (e && (e.code || e.message) || 'storage error')); return false; });
     return chains[path];
   }
+  // Finished workouts are written to a localStorage journal first and taken out only once the store confirmed the
+  // write, so a failed or interrupted save (app closed in the gym, no signal, storage error) is retried on the next
+  // load, when the phone comes back online and when the app returns to the front. Nothing Aziz finished is dropped.
+  const JOURNAL_KEY = 'lb_unsaved';
+  function journalStore(ls) {
+    const read = () => { try { return JSON.parse(ls.getItem(JOURNAL_KEY) || '{}') || {}; } catch (e) { return {}; } };
+    const write = j => { try { ls.setItem(JOURNAL_KEY, JSON.stringify(j)); } catch (e) { } };
+    return {
+      list: () => Object.values(read()).filter(w => w && w.id),
+      add(w) { const j = read(); j[w.id] = clone(w); write(j); },
+      // Drops the entry unless the workout changed again after this copy was saved.
+      drop(id, saved) { const j = read(); if (!(id in j)) return; if (saved && JSON.stringify(j[id]) !== JSON.stringify(saved)) return; delete j[id]; write(j); }
+    };
+  }
+  const journal = journalStore(typeof localStorage !== 'undefined' ? localStorage : { getItem() { return null; }, setItem() { } });
   function put(kind, obj) {
     S.data[kind][obj.id] = obj; bump();
-    return queue(kind + '/' + obj.id, () => S.storage.put(COLL[kind], obj.id, clone(obj)));
+    const saved = clone(obj);
+    if (kind === 'workouts' && obj.end) journal.add(saved);
+    return queue(kind + '/' + obj.id, () => S.storage.put(COLL[kind], obj.id, clone(saved)).then(() => { if (kind === 'workouts') journal.drop(obj.id, saved); }));
   }
   function remove(kind, id) {
     delete S.data[kind][id]; bump();
+    if (kind === 'workouts') journal.drop(id);
     return queue(kind + '/' + id, () => S.storage.remove(COLL[kind], id));
+  }
+  // Re-sends journaled workouts that the store never confirmed (or that are missing / older in the loaded data).
+  function replayJournal() {
+    let n = 0;
+    journal.list().forEach(w => {
+      const have = S.data.workouts[w.id];
+      if (have && JSON.stringify(have) === JSON.stringify(w)) { journal.drop(w.id, w); return; }
+      if (have && (have.updated || have.end || 0) > (w.updated || w.end || 0)) { journal.drop(w.id); return; }
+      put('workouts', w); n++;
+    });
+    return n;
+  }
+  // Workouts saved while the logger ran on this-device storage (the app opened on Train before the account connected,
+  // or "use without an account") are moved into the account the first time the logger mounts with real storage.
+  async function recoverLocal() {
+    if (!S.opts.storage || typeof localStorage === 'undefined') return 0;
+    const loc = localStorageAdapter('lb:');
+    const kinds = ['workouts', 'exercises', 'measures', 'templates'];
+    const lists = {};
+    for (const k of kinds) lists[k] = (await loc.list(COLL[k]).catch(() => [])).filter(d => d && d.id);
+    if (!kinds.some(k => lists[k].length)) return 0;
+    const seedIds = new Set(buildProgram().map(t => t.id)), usedTpl = new Set(lists.workouts.map(w => w.templateId));
+    const jobs = []; let workouts = 0;
+    kinds.forEach(k => lists[k].forEach(d => {
+      if (S.data[k][d.id]) return;
+      if (k === 'workouts' && !d.end) return;
+      if (k === 'templates' && seedIds.has(d.id) && !usedTpl.has(d.id)) return; // the old auto-loaded program nobody used
+      if (k === 'workouts') workouts++;
+      jobs.push(put(k, d));
+    }));
+    const ok = (await Promise.all(jobs)).every(Boolean);
+    if (ok) Object.values(COLL).forEach(c => { try { localStorage.removeItem('lb:' + c); } catch (e) { } });
+    return workouts;
   }
   // Settings changed before loadAll() has read the saved ones (the host's Settings screen mounts the logger and can be
   // tapped while a big history is still loading) are kept here and laid over the saved settings once they arrive.
@@ -4208,11 +4259,12 @@ Power Clean (Barbell)|Other|Barbell|`;
     try { const loc = JSON.parse(localStorage.getItem('lb_active') || 'null'); if (loc && (!act || (loc.updated || 0) > (act.updated || 0))) act = loc; } catch (e) { }
     S.active = act && !act.end ? act : null;
     if (S.opts.weights) { try { S.shellWeights = await S.opts.weights.list(); } catch (e) { S.shellWeights = null; } }
-    if (!S.settings.seeded && !Object.keys(S.data.templates).length) {
-      buildProgram().forEach(tpl => put('templates', tpl));
-      S.settings.seeded = true; saveSettings();
-    }
+    // No program is loaded for a new person: the Workout tab offers "Load the Push / Pull / Lower program" and New template
+    // (ready-made programs). Up next follows whatever templates they add.
     bump(); S.ready = true;
+    const replayed = replayJournal();
+    if (replayed) toast('Saved ' + replayed + ' workout' + (replayed > 1 ? 's' : '') + ' that hadn’t reached your account');
+    try { const got = await recoverLocal(); if (got) { bump(); renderMain(); toast('Moved ' + got + ' workout' + (got > 1 ? 's' : '') + ' saved on this phone into your account'); } } catch (e) { }
   }
 
   // ---------- Derived data (memoized per data version) ----------
@@ -4237,7 +4289,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   const setRestOf = (e, s) => (s && s.rest) || restOf(e);
   const defUnit = exId => getEx(exId).unit || S.settings.unit;
   const workouts = () => memo('ws', () => Object.values(S.data.workouts).filter(w => w.end).sort((a, b) => b.start - a.start));
-  const templatesSorted = () => memo('ts', () => Object.values(S.data.templates).sort((a, b) => (a.folder || '').localeCompare(b.folder || '') || (a.order ?? 99) - (b.order ?? 99) || a.name.localeCompare(b.name)));
+  const templatesSorted = () => memo('ts', () => sortTpls(Object.values(S.data.templates)));
   function sessions(exId, excludeId) {
     return memo('s|' + exId + '|' + (excludeId || ''), () => {
       const out = [];
@@ -4307,17 +4359,30 @@ Power Clean (Barbell)|Other|Barbell|`;
     if ((s.w === '' || s.w == null) && (s.r === '' || s.r == null)) return '';
     return fmtN(+s.w || 0, 2) + ' ' + (e.unit || 'kg') + (s.r !== '' && s.r != null ? ' × ' + s.r : '');
   };
-  function rotationInfo() {
-    return memo('rot', () => {
-      const ws = workouts();
-      const last = ws.find(w => w.templateName && ROTATION.includes(w.templateName));
-      let idx = 0;
-      if (last) idx = (ROTATION.indexOf(last.templateName) + 1) % ROTATION.length;
-      const o = S.settings.rotOverride;
-      if (o && (!last || o.at > last.end)) idx = o.idx;
-      return { idx, name: ROTATION[idx], last };
-    });
+  const sortTpls = arr => arr.slice().sort((a, b) => (a.folder || '').localeCompare(b.folder || '') || (a.order ?? 99) - (b.order ?? 99) || a.name.localeCompare(b.name));
+  // Which template comes next (pure; the shell's Today page uses it too). Aziz's Push / Pull / Lower rotation with its
+  // rest days applies only when all six of those templates exist. Otherwise it cycles through the templates the person
+  // added: the ones in the same folder (programme) as the last workout, or all of them when there is no history yet.
+  // No templates → null (nothing is "up next" until they pick one). `override` = settings.rotOverride from Skip.
+  function planNext(templates, workoutMap, override) {
+    const tpls = Object.values(templates || {}).filter(t => t && t.name && Array.isArray(t.exercises));
+    if (!tpls.length) return null;
+    const names = new Set(tpls.map(t => t.name));
+    const ws = Object.values(workoutMap || {}).filter(w => w && w.end).sort((a, b) => b.start - a.start);
+    let list;
+    if (ROTATION.filter(n => n !== 'Rest').every(n => names.has(n))) list = ROTATION;
+    else {
+      const lastAny = ws.find(w => w.templateName && names.has(w.templateName));
+      const lastTpl = lastAny && tpls.find(t => t.name === lastAny.templateName);
+      const pool = lastTpl && lastTpl.folder ? tpls.filter(t => (t.folder || '') === lastTpl.folder) : tpls;
+      list = [...new Set(sortTpls(pool).map(t => t.name))];
+    }
+    const last = ws.find(w => w.templateName && list.includes(w.templateName));
+    let idx = last ? (list.indexOf(last.templateName) + 1) % list.length : 0;
+    if (override && Number.isInteger(override.idx) && override.idx < list.length && (!last || override.at > last.end)) idx = override.idx;
+    return { idx, name: list[idx], list, last: last || null, rest: list[idx] === 'Rest' };
   }
+  function rotationInfo() { return memo('rot', () => planNext(S.data.templates, S.data.workouts, S.settings.rotOverride)); }
   const templateByName = name => templatesSorted().find(t => t.name === name);
 
   // Main-lift drop check: best working e1RM per session, flag when it fell 2 sessions in a row.
@@ -4493,12 +4558,13 @@ Power Clean (Barbell)|Other|Barbell|`;
   function viewWorkout() {
     const rot = rotationInfo();
     let up = '';
-    if (rot.name === 'Rest') {
-      const nextName = ROTATION[(rot.idx + 1) % ROTATION.length];
+    if (!rot) up = '';
+    else if (rot.name === 'Rest') {
+      const nextName = rot.list[(rot.idx + 1) % rot.list.length];
       up = '<section class="lb-card lb-next"><div class="lb-eyebrow">Up next in your rotation</div><h3>Rest day</h3><p class="lb-muted">' + (rot.last ? 'Last session: ' + esc(rot.last.templateName) + ', ' + relDay(rot.last.start).toLowerCase() + '. ' : '') + 'Next lift after rest: ' + esc(nextName) + '.</p><div class="lb-row"><button class="lb-btn" data-a="rotSkip">Rest done, show ' + esc(nextName) + '</button><button class="lb-btn ghost" data-a="startTplName" data-n="' + esc(nextName) + '">Train ' + esc(nextName) + ' anyway</button></div></section>';
     } else {
       const tpl = templateByName(rot.name);
-      up = '<section class="lb-card lb-next"><div class="lb-eyebrow">Up next in your rotation</div><h3>' + esc(rot.name) + '</h3>' + (tpl ? '<p class="lb-muted">' + tpl.exercises.length + ' exercises · ' + tpl.exercises.reduce((n, e) => n + e.sets.filter(s => s.t !== 'w').length, 0) + ' working sets' + (rot.last ? ' · last session ' + esc(rot.last.templateName) + ' ' + relDay(rot.last.start).toLowerCase() : '') + '</p>' : '<p class="lb-muted">No template named ' + esc(rot.name) + ' yet.</p>') + '<div class="lb-row">' + (tpl ? '<button class="lb-btn primary" data-a="startTpl" data-id="' + tpl.id + '">Start ' + esc(rot.name) + '</button>' : '') + '<button class="lb-btn ghost" data-a="rotSkip">Skip to next</button></div><div class="lb-rot">' + ROTATION.map((n, i) => '<span class="' + (i === rot.idx ? 'on' : '') + (n === 'Rest' ? ' rest' : '') + '">' + esc(n) + '</span>').join('') + '</div></section>';
+      up = '<section class="lb-card lb-next"><div class="lb-eyebrow">Up next in your rotation</div><h3>' + esc(rot.name) + '</h3>' + (tpl ? '<p class="lb-muted">' + tpl.exercises.length + ' exercises · ' + tpl.exercises.reduce((n, e) => n + e.sets.filter(s => s.t !== 'w').length, 0) + ' working sets' + (rot.last ? ' · last session ' + esc(rot.last.templateName) + ' ' + relDay(rot.last.start).toLowerCase() : '') + '</p>' : '<p class="lb-muted">No template named ' + esc(rot.name) + ' yet.</p>') + '<div class="lb-row">' + (tpl ? '<button class="lb-btn primary" data-a="startTpl" data-id="' + tpl.id + '">Start ' + esc(rot.name) + '</button>' : '') + '' + (rot.list.length > 1 ? '<button class="lb-btn ghost" data-a="rotSkip">Skip to next</button>' : '') + '</div><div class="lb-rot">' + rot.list.map((n, i) => '<span class="' + (i === rot.idx ? 'on' : '') + (n === 'Rest' ? ' rest' : '') + '">' + esc(n) + '</span>').join('') + '</div></section>';
     }
     const groups = {};
     templatesSorted().forEach(t => { (groups[t.folder || 'Other templates'] = groups[t.folder || 'Other templates'] || []).push(t); });
@@ -4507,13 +4573,13 @@ Power Clean (Barbell)|Other|Barbell|`;
     return up +
       '<div class="lb-row"><button class="lb-btn wide" data-a="startEmpty">Start an empty workout</button></div>' +
       '<div class="lb-section-head"><h3>Templates</h3><div class="lb-row tight"><button class="lb-btn small" data-a="newTpl">New template</button>' + (anyTpl ? '' : '') + '</div></div>' +
-      (anyTpl ? tplHtml : '<div class="lb-empty">No templates yet. <button class="lb-link" data-a="loadProgram">Load the Push / Pull / Lower program</button> or create your own.</div>');
+      (anyTpl ? tplHtml : '<div class="lb-empty">No templates yet. Tap <b>New template</b> for a ready-made programme or your own split, or <button class="lb-link" data-a="loadProgram">load the Push / Pull / Lower program</button>. Whatever you add becomes what’s up next.</div>');
   }
   function tplCard(t) {
     const last = workouts().find(w => w.templateId === t.id);
     return '<button class="lb-card lb-tpl" data-a="tplPreview" data-id="' + t.id + '"><div class="lb-tpl-top"><b>' + esc(t.name) + '</b><span class="lb-muted small">' + (last ? relDay(last.start) : 'Not done yet') + '</span></div><p>' + esc(t.exercises.map(e => getEx(e.exId).name.replace(/ \(.*\)$/, '')).join(', ')) + '</p></button>';
   }
-  on('rotSkip', () => { const r = rotationInfo(); S.settings.rotOverride = { idx: (r.idx + 1) % ROTATION.length, at: Date.now() }; saveSettings(); bump(); enterSel = '.lb-next'; renderMain(); });
+  on('rotSkip', () => { const r = rotationInfo(); if (!r) return; S.settings.rotOverride = { idx: (r.idx + 1) % r.list.length, at: Date.now() }; saveSettings(); bump(); enterSel = '.lb-next'; renderMain(); });
   on('loadProgram', () => { buildProgram().forEach(t => { if (!S.data.templates[t.id]) put('templates', t); }); toast('Loaded 6 templates'); renderMain(); });
   on('tplPreview', t => {
     const tpl = S.data.templates[t.dataset.id]; if (!tpl) return;
@@ -4748,11 +4814,18 @@ Power Clean (Barbell)|Other|Barbell|`;
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
   // Demos start collapsed: a small "Demo" toggle expands the built-in animation card in place (Gym mode, List view, About).
   const demoOpen = new Set();
-  function demoSlot(id) {
+  // part 'toggle' = only the Demo / Hide demo pill (for a header row), 'card' = only the open card.
+  // With no part, an open demo shows Hide demo at the top right, where the Demo pill was, above the card.
+  function demoSlot(id, part) {
     const an = S.opts && S.opts.anim; if (!an || !an.has(id)) return '';
-    return demoOpen.has(id)
-      ? '<div class="lb-demo-wrap">' + an.cardHtml(id) + '<button type="button" class="lb-link small" data-a="demoHide" data-id="' + esc(id) + '">Hide demo</button></div>'
+    const open = demoOpen.has(id);
+    const toggle = open
+      ? '<button type="button" class="lb-demo-toggle" data-a="demoHide" data-id="' + esc(id) + '" aria-expanded="true">&#9660; Hide demo</button>'
       : '<button type="button" class="lb-demo-toggle" data-a="demoShow" data-id="' + esc(id) + '" aria-expanded="false">&#9654; Demo</button>';
+    if (part === 'toggle') return toggle;
+    const card = open ? '<div class="lb-demo-wrap">' + an.cardHtml(id) + '</div>' : '';
+    if (part === 'card') return card;
+    return open ? '<div class="lb-demo-wrap"><div class="lb-demo-bar">' + toggle + '</div>' + an.cardHtml(id) + '</div>' : toggle;
   }
   function demoRerender() { if (E) renderEditor(); const sh = topSheet(); if (sh) sh.render(); }
   on('demoShow', t => { demoOpen.add(t.dataset.id); demoRerender(); });
@@ -5209,7 +5282,8 @@ Power Clean (Barbell)|Other|Barbell|`;
     const groups = {}; list.forEach(p => { (groups[p.source] = groups[p.source] || []).push(p); });
     openSheet({
       title: 'New template',
-      body: () => '<div class="lb-row"><button class="lb-btn primary wide" data-a="blankTpl">Blank template</button></div>' +
+      body: () => (S.opts.chooser ? '<button class="lb-card lb-help" data-a="progHelp"><b>Help me choose</b><span>Answer a few questions about your goal, schedule, gym and any injuries, and get the best-fitting programme.</span></button>' : '') +
+        '<div class="lb-row"><button class="lb-btn primary wide" data-a="blankTpl">Blank template</button></div>' +
         '<h4 class="lb-folder">Ready-made programs <span class="lb-muted">' + list.length + '</span></h4><p class="lb-muted small">No split yet? Pick a programme and its days are added to your templates, with Jeff Nippard\'s sets, reps, RPE, rest and notes. Edit anything after.</p>' +
         Object.keys(groups).map(src => '<p class="lb-eyebrow">' + esc(src) + '</p><div class="lb-grid">' + groups[src].map(p => '<button class="lb-card lb-tpl" data-a="progPreview" data-id="' + esc(p.id) + '"><div class="lb-tpl-top"><b>' + esc(p.name.replace(/^.*· /, '')) + '</b><span class="lb-muted small">' + p.days + 'x/week</span></div><p>' + esc(p.level) + ' · ' + p.workouts + ' days · ' + esc(p.time) + (S.data.templates['np-' + p.id + '-1'] ? ' · added' : '') + '</p></button>').join('') + '</div>').join('')
     });
@@ -5224,16 +5298,30 @@ Power Clean (Barbell)|Other|Barbell|`;
         '<div class="lb-row"><button class="lb-btn primary wide" data-a="progAdd" data-id="' + esc(p.id) + '">' + (added ? 'Add again (replaces its templates)' : 'Add to my templates') + '</button></div>'
     });
   });
-  on('progAdd', t => {
-    const id = t.dataset.id, tpls = S.opts.programs.templates(id, { unit: S.settings.unit, order: 50 });
+  function addProgram(id) {
+    const tpls = S.opts.programs.templates(id, { unit: S.settings.unit, order: 50 });
     tpls.forEach(tp => put('templates', tp));
     closeAllSheets(); toast('Added ' + tpls.length + ' templates'); renderMain();
+  }
+  on('progAdd', t => addProgram(t.dataset.id));
+  // "Help me choose": the program-chooser questionnaire (goal-setup look) picks the best programme for the answers.
+  on('progHelp', () => {
+    if (!S.opts.chooser || !S.opts.programs) return;
+    closeAllSheets();
+    S.opts.chooser.open({
+      programs: S.opts.programs.list(),
+      added: id => !!S.data.templates['np-' + id + '-1'],
+      onPick: id => addProgram(id),
+      onPreview: id => { openProgramPicker(); actions.progPreview({ dataset: { id } }); },
+      onClose: reason => { if (reason === 'close') openProgramPicker(); },
+      onBack: S.opts.onBack
+    });
   });
 
   let liveEl;
   function openEditor(mode, doc) {
     E = { mode, doc, view: mode === 'live' && S.settings.gym ? 'gym' : 'list', cur: null, flash: null };
-    if (!liveEl) { liveEl = document.createElement('section'); liveEl.className = 'lb-live'; liveEl.setAttribute('role', 'dialog'); liveEl.setAttribute('aria-label', 'Workout'); overlay.appendChild(liveEl); bindSwipe(liveEl); }
+    if (!liveEl) { liveEl = document.createElement('section'); liveEl.className = 'lb-live'; liveEl.setAttribute('role', 'dialog'); liveEl.setAttribute('aria-label', 'Workout'); overlay.appendChild(liveEl); bindSwipe(liveEl); bindReorder(liveEl); }
     liveEl.innerHTML = '<header class="lb-live-head"></header><div class="lb-live-body"></div><div class="lb-rest" hidden></div>';
     liveEl.hidden = false; document.documentElement.classList.add('lb-noscroll');
     liveEl.classList.remove('lb-live-in'); void liveEl.offsetWidth; liveEl.classList.add('lb-live-in'); clearTimeout(liveEl._inT); liveEl._inT = setTimeout(() => liveEl.classList.remove('lb-live-in'), 320);
@@ -5272,6 +5360,7 @@ Power Clean (Barbell)|Other|Barbell|`;
         if (j < 0) { e.sets.push({ t: 'n', w: '', r: '', km: '', min: '', sec: '', done: false }); j = e.sets.length - 1; }
         const s = e.sets[j];
         ['w', 'r', 'km', 'min', 'sec'].forEach(k => { if (vals[k] !== '' && vals[k] != null) s[k] = String(vals[k]); });
+        freshStart(E.doc);
         s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id); n++;
       });
     });
@@ -5315,8 +5404,9 @@ Power Clean (Barbell)|Other|Barbell|`;
   // Placeholder for field k: last time's value (converted when it was logged in the other unit) or the template baseline.
   const phFor = (prev, p, e, k) => p && p[k] !== '' && p[k] != null ? (!p._base && prev.unit && k === 'w' && prev.unit !== e.unit ? fmtN(prev.unit === 'lb' ? p.w * LB : p.w / LB, 1) : p[k]) : '';
   const extraCols = ex => isWeighted(ex) ? ['rpe', 'rir'].filter(k => S.settings[k]) : [];
+  let reorderOn = false; // true while an exercise is held for drag-reordering (see bindReorder)
   function renderEditor() {
-    if (!E) return;
+    if (!E || reorderOn) return;
     const d = E.doc, live = E.mode !== 'template';
     liveEl.querySelector('.lb-live-head').innerHTML = headHtml();
     if (global.MusicControl && global.MusicControl.mountWorkout) try { global.MusicControl.mountWorkout(liveEl); } catch (e) { }
@@ -5333,11 +5423,11 @@ Power Clean (Barbell)|Other|Barbell|`;
       const hint = E.mode === 'live' ? progressionHint(e.exId, e.unit, prev.e) : '';
       const xc = extraCols(ex);
       const cols = '2.1rem 1fr ' + f.map(() => '4.2rem').join(' ') + xc.map(() => ' 3rem').join('') + (live ? ' 2.6rem' : ' 2rem');
-      const dm = live ? demoSlot(e.exId) : '', dmHead = !!dm && !demoOpen.has(e.exId);
+      const dmHead = live ? demoSlot(e.exId, 'toggle') : '', dmCard = live ? demoSlot(e.exId, 'card') : '';
       html += '<article class="lb-exblock' + (e.ss ? ' ss ss' + (ssIdx % 4) : '') + '" data-ei="' + i + '">' +
         (e.ss ? '<div class="lb-sslabel">Superset ' + String.fromCharCode(65 + ssIdx) + '</div>' : '') +
-        '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button>' + (dmHead ? dm : '') + '<button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
-        (dm && !dmHead ? dm : '') +
+        '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button>' + dmHead + '<button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
+        dmCard +
         (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') + (live && S.opts.tips ? S.opts.tips.inlineHtml(e.exId) : '') +
         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
@@ -5522,6 +5612,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     const e = E.doc.exercises[i], s = e.sets[j], ex = getEx(e.exId), f = fieldsFor(ex), prev = prevFor(e), p = prevMatch(prev, e, j);
     f.forEach(k => { const ph = phFor(prev, p, e, k); if ((s[k] === '' || s[k] == null) && ph !== '') s[k] = String(ph).replace(/,/g, ''); });
     if (f.every(k => s[k] === '' || s[k] == null)) { toast('Enter ' + (f[0] === 'w' ? 'weight and reps' : 'a value') + ' first'); return false; }
+    freshStart(E.doc);
     s.done = true; s.pr = setPRs(e.exId, e.unit, s, E.doc.id);
     setDoneSound();
     const cel = celebration(e, s);
@@ -5594,6 +5685,87 @@ Power Clean (Barbell)|Other|Barbell|`;
       else { cur.wrap.classList.remove('open', 'far'); setX(cur.wrap, 0); if (cur.wrap === openWrap) openWrap = null; }
     };
     el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  }
+  // ---------- Hold an exercise and drag it to reorder (Strong-style) ----------
+  // Hold an exercise's name row for ~0.4 s: the list folds to names only, the held one follows the finger
+  // and the others slide out of its way; let go to drop it. The exercise object moves as a whole, so its
+  // sets, notes, rest and superset tag go with it. Works in a live workout and in template editing.
+  const HOLD_MS = 420, HOLD_SLOP = 10, EDGE = 64;
+  // Where the held block lands: how many of the other blocks' centres are above the finger.
+  function dropIndex(mids, from, y) { let to = 0; mids.forEach((m, k) => { if (k !== from && y > m) to++; }); return to; }
+  function moveItem(a, from, to) {
+    if (!a || from === to || from < 0 || from >= a.length) return false;
+    const [x] = a.splice(from, 1); a.splice(Math.max(0, Math.min(a.length, to)), 0, x); return true;
+  }
+  function bindReorder(el) {
+    let h = null;
+    const body = () => el.querySelector('.lb-live-body');
+    const fingerY = () => h.y + h.body.scrollTop;
+    function layout() {
+      const y = fingerY(), to = dropIndex(h.mids, h.from, y); h.to = to;
+      h.blocks.forEach((b, k) => {
+        let dy = 0;
+        if (k === h.from) dy = y - h.mids[k];
+        else if (h.from < k && k <= to) dy = -h.slot;
+        else if (to <= k && k < h.from) dy = h.slot;
+        b.style.transform = dy ? 'translateY(' + dy + 'px)' : '';
+      });
+    }
+    function autoScroll() {
+      if (!h || !h.on) return;
+      const r = h.body.getBoundingClientRect(), v = h.y < r.top + EDGE ? -1 : h.y > r.bottom - EDGE ? 1 : 0;
+      if (v) { const before = h.body.scrollTop; h.body.scrollTop += v * 9; if (h.body.scrollTop !== before) layout(); }
+      h.raf = requestAnimationFrame(autoScroll);
+    }
+    function start() {
+      if (!h || !E) return; const b = body(); if (!b) { h = null; return; }
+      h.on = true; reorderOn = true; h.body = b;
+      el.classList.add('lb-reordering');
+      h.blocks = [...b.querySelectorAll('.lb-exblock')];
+      const held = h.blocks[h.from]; if (!held) { stop(); return; }
+      held.classList.add('dragging');
+      // Bring the folded, held row back under the finger.
+      const r = held.getBoundingClientRect(); b.scrollTop += r.top + r.height / 2 - h.y;
+      h.mids = h.blocks.map(x => { const q = x.getBoundingClientRect(); return q.top + b.scrollTop + q.height / 2; });
+      h.slot = held.getBoundingClientRect().height + (parseFloat(getComputedStyle(held).marginTop) || 0);
+      try { el.setPointerCapture(h.id); } catch (e) { }
+      if (navigator.vibrate) try { navigator.vibrate(20); } catch (e) { }
+      layout(); h.raf = requestAnimationFrame(autoScroll);
+    }
+    function stop() {
+      if (h && h.raf) cancelAnimationFrame(h.raf);
+      el.classList.remove('lb-reordering');
+      if (h && h.blocks) h.blocks.forEach(b => { b.style.transform = ''; b.classList.remove('dragging'); });
+      reorderOn = false;
+    }
+    el.addEventListener('pointerdown', ev => {
+      if (!E || E.view === 'gym' || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      const head = ev.target.closest('.lb-exhead'), block = head && head.closest('.lb-exblock');
+      if (!block || !el.contains(block) || E.doc.exercises.length < 2 || ev.target.closest('input,textarea,video')) return;
+      if (h) clearTimeout(h.timer);
+      h = { id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, y: ev.clientY, from: +block.dataset.ei, on: false };
+      h.timer = setTimeout(start, HOLD_MS);
+    });
+    el.addEventListener('pointermove', ev => {
+      if (!h || ev.pointerId !== h.id) return;
+      if (!h.on) { if (Math.hypot(ev.clientX - h.x0, ev.clientY - h.y0) > HOLD_SLOP) { clearTimeout(h.timer); h = null; } return; }
+      h.y = ev.clientY; layout();
+    });
+    const end = ev => {
+      if (!h || ev.pointerId !== h.id) return;
+      const cur = h; clearTimeout(cur.timer);
+      if (!cur.on) { h = null; return; }
+      // The hold's trailing click must not open the exercise.
+      const eat = e => { e.stopPropagation(); e.preventDefault(); };
+      el.addEventListener('click', eat, { capture: true, once: true }); setTimeout(() => el.removeEventListener('click', eat, { capture: true }), 250);
+      stop(); h = null;
+      if (ev.type !== 'pointercancel' && moveItem(E.doc.exercises, cur.from, cur.to)) touch();
+      renderEditor();
+    };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+    // While dragging, the finger moves the exercise, not the page; a long press must not open a menu.
+    el.addEventListener('touchmove', ev => { if (h && h.on) ev.preventDefault(); }, { passive: false });
+    el.addEventListener('contextmenu', ev => { if (h && ev.target.closest('.lb-exhead')) ev.preventDefault(); });
   }
   on('setType', t => {
     const ei = +t.dataset.ei, si = +t.dataset.si;
@@ -5717,6 +5889,14 @@ Power Clean (Barbell)|Other|Barbell|`;
     cleaned.exercises.forEach(e => e.sets.forEach(s => { s.pr = setPRs(e.exId, e.unit, s, cleaned.id); }));
     put('workouts', cleaned); closeEditor(); toast('Workout updated');
   });
+  // A workout opened on an earlier day (started, then left in Resume) with no set ticked yet is dated from its first
+  // set, so a session logged today lands on today in History and on the Today page, not on the day it was opened.
+  function freshStart(doc, now) {
+    now = now || Date.now();
+    if (!doc || doc.exercises.some(e => e.sets.some(s => s.done))) return false;
+    if (startOfDay(doc.start) >= startOfDay(now)) return false;
+    doc.start = now; return true;
+  }
   function cleanWorkout(d) {
     const w = clone(d);
     w.exercises = w.exercises.map(e => { delete e.showNote; delete e.base; delete e.tplNote; e.sets = e.sets.filter(s => s.done); return e; }).filter(e => e.sets.length);
@@ -5750,39 +5930,41 @@ Power Clean (Barbell)|Other|Barbell|`;
   // "Finish and check remaining": tick every unchecked set that has numbers or can take last time's, flag records, then finish. No rest timer, no per-set sound.
   on('finishCheckAll', () => {
     closeSheet();
+    freshStart(E.doc);
     const d = E.doc, n = fillRemaining(d.exercises, fieldsFor, getEx, phFor, prevFor, prevMatch, (e, s) => { s.pr = setPRs(e.exId, e.unit, s, d.id); });
     if (n) { touch(); toast('Checked ' + n + ' set' + (n > 1 ? 's' : '')); }
     finishFlow();
   });
+  // The workout is saved the moment Finish is confirmed; the "update the template?" question comes after, on the
+  // summary, so closing a sheet or the Android back button can never leave a finished workout unsaved.
   function finishFlow() {
     const d = E.doc, tpl = d.templateId && S.data.templates[d.templateId];
-    if (tpl && templateChanged(tpl, d)) {
-      openSheet({ title: 'Update "' + tpl.name + '"?', body: () => '<p>Your weights, reps or exercises differ from the template. Save today’s numbers as the new targets?</p><div class="lb-row"><button class="lb-btn primary" data-a="finishSave" data-upd="1">Update template</button><button class="lb-btn ghost" data-a="finishSave" data-upd="0">Keep template</button></div>' });
-      return;
-    }
-    finishSave(false);
+    finishSave(false, tpl && templateChanged(tpl, d) ? tpl.id : null);
   }
   function templateChanged(tpl, d) {
     const sig = es => JSON.stringify(es.map(e => [e.exId, e.sets.filter(s => s.done !== false).map(s => [s.t, +s.w || 0, +s.r || 0])]));
     return sig(tpl.exercises) !== sig(d.exercises.map(e => ({ exId: e.exId, sets: e.sets.filter(s => s.done) })));
   }
-  on('finishSave', t => { closeSheet(); finishSave(t.dataset.upd === '1'); });
-  function finishSave(updateTpl) {
+  function updateTemplateFrom(tplId, w) {
+    const src = S.data.templates[tplId]; if (!src) return;
+    const tpl = clone(src);
+    tpl.exercises = w.exercises.map(e => { const old = tpl.exercises.find(x => x.exId === e.exId) || {}; return { exId: e.exId, unit: e.unit, notes: old.notes || '', rest: e.rest, ss: e.ss, sets: e.sets.map(s => { const c = clone(s); delete c.done; delete c.pr; if (c.t === 'w') c.r = c.r || ''; return c; }) }; });
+    put('templates', tpl);
+  }
+  on('finishUpdTpl', t => { const w = S.data.workouts[t.dataset.id]; if (w) updateTemplateFrom(t.dataset.tpl, w); const box = t.closest('.lb-tplask'); if (box) box.innerHTML = '<p class="lb-muted small">Template updated with today’s numbers.</p>'; });
+  on('finishKeepTpl', t => { const box = t.closest('.lb-tplask'); if (box) box.remove(); });
+  function finishSave(updateTpl, askTplId) {
     const d = E.doc; d.end = Date.now();
     const w = cleanWorkout(d);
     w.exercises.forEach(e => e.sets.forEach(s => { s.pr = setPRs(e.exId, e.unit, s, w.id); }));
-    if (updateTpl) {
-      const tpl = clone(S.data.templates[d.templateId]);
-      tpl.exercises = w.exercises.map(e => { const old = tpl.exercises.find(x => x.exId === e.exId) || {}; return { exId: e.exId, unit: e.unit, notes: old.notes || '', rest: e.rest, ss: e.ss, sets: e.sets.map(s => { const c = clone(s); delete c.done; delete c.pr; if (c.t === 'w') c.r = c.r || ''; return c; }) }; });
-      put('templates', tpl);
-    }
     put('workouts', w);
+    if (updateTpl && d.templateId) updateTemplateFrom(d.templateId, w);
     S.active = null; saveActive(true); stopRest(); keepAwake(false); closeEditor();
     if (S.settings.sound && GS()) GS().play('finish');
     if (S.settings.rotOverride) { S.settings.rotOverride = null; saveSettings(); }
     const shell = toShellRecord(w);
     if (S.opts.onFinish) { try { S.opts.onFinish(clone(w), shell); } catch (e) { } }
-    summarySheet(w);
+    summarySheet(w, askTplId);
   }
   function toShellRecord(w) {
     const sets = {}; let treadmill = false;
@@ -5790,8 +5972,9 @@ Power Clean (Barbell)|Other|Barbell|`;
     const idx = ROTATION.indexOf(w.templateName);
     return { date: isoDate(w.start), session: w.templateName || w.name, idx: idx >= 0 ? idx : null, sets, treadmill, durationMin: Math.round((w.end - w.start) / 6e4) };
   }
-  function summarySheet(w) {
+  function summarySheet(w, askTplId) {
     const st = workoutStats(w), prs = [];
+    const askTpl = askTplId && S.data.templates[askTplId];
     w.exercises.forEach(e => e.sets.forEach(s => { if (s.pr && s.pr.length) prs.push({ ex: getEx(e.exId).name, s, e }); }));
     const tread = w.exercises.some(e => /treadmill/i.test(getEx(e.exId).name) && e.sets.length);
     const drops = MAIN_LIFTS.filter(id => w.exercises.some(e => e.exId === id) && liftTrend(id).dropping).map(getEx);
@@ -5801,6 +5984,7 @@ Power Clean (Barbell)|Other|Barbell|`;
         (prs.length ? '<h4>New records</h4><ul class="lb-prlist">' + prs.map(p => '<li><b>' + esc(p.ex) + '</b> ' + esc(fmtSet(p.s, p.e)) + ' <span class="lb-pr">' + esc(p.s.pr.join(', ')) + '</span></li>').join('') + '</ul>' : '') +
         (drops.length ? '<p class="lb-warnbox">' + esc(drops.map(x => x.name).join(', ')) + ' dropped 2 sessions in a row. Check sleep, pre-workout food and volume before changing calories.</p>' : '') +
         (tread ? '' : '<p class="lb-note">Don’t forget your 30 min treadmill (about 4.0 km/h, incline 3).</p>') +
+        (askTpl ? '<div class="lb-tplask lb-card"><p>Your weights, reps or exercises differ from <b>' + esc(askTpl.name) + '</b>. Save today’s numbers as the new targets?</p><div class="lb-row"><button class="lb-btn small" data-a="finishUpdTpl" data-id="' + w.id + '" data-tpl="' + esc(askTpl.id) + '">Update template</button><button class="lb-btn small ghost" data-a="finishKeepTpl">Keep template</button></div></div>' : '') +
         '<div class="lb-row"><button class="lb-btn primary" data-a="shareWorkout" data-id="' + w.id + '">Share</button><button class="lb-btn ghost" data-a="copySummary" data-id="' + w.id + '">Copy summary</button><button class="lb-btn ghost" data-a="histOpen" data-id="' + w.id + '">View details</button></div>'
     });
   }
@@ -5982,6 +6166,7 @@ Power Clean (Barbell)|Other|Barbell|`;
 .lb-card{display:block;width:100%;background:var(--lb-surface);border:1px solid var(--lb-line);border-radius:var(--lb-r);padding:14px;min-width:0}
 button.lb-card{text-align:left}
 button.lb-card:hover{border-color:var(--lb-muted)}
+.lb-help{display:flex;flex-direction:column;gap:4px;text-align:left;border-color:var(--lb-accent);background:color-mix(in srgb,var(--lb-accent) 10%,var(--lb-surface));margin-bottom:10px}.lb-help b{font-size:1.05rem}.lb-help span{color:var(--lb-muted);font-size:.86rem}
 .lb-eyebrow{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--lb-muted);font-weight:600}
 .lb-next h3{font-size:2rem;margin:.1rem 0}
 .lb-rot{display:flex;flex-wrap:wrap;gap:4px;margin-top:12px}
@@ -6010,7 +6195,7 @@ button.lb-card:hover{border-color:var(--lb-muted)}
 .lb-active-bar{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;margin:-4px 0 12px;border-radius:var(--lb-r);background:var(--lb-accent);color:var(--lb-accent-ink)}
 .lb-active-bar .dot{width:9px;height:9px;border-radius:50%;background:currentColor;animation:lbpulse 1.4s 6}
 .lb-demo-toggle{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;margin:2px 0 8px;border-radius:999px;border:1px solid var(--lb-line);background:var(--lb-surface);color:var(--lb-muted);font-size:.84rem;font-weight:600;font-family:inherit}
-.lb-demo-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin-bottom:6px}.lb-demo-wrap .ea-card{width:100%;margin:0}
+.lb-demo-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin-bottom:6px}.lb-demo-bar{align-self:stretch;display:flex;justify-content:flex-end}.lb-demo-bar .lb-demo-toggle{margin:0 0 4px}.lb-demo-wrap .ea-card{width:100%;margin:0}
 .lb-screen-title{font-family:var(--display,inherit);font-size:1.9rem;line-height:1;margin:2px 0 12px;font-weight:700}
 
 .lb-active-bar .lb-chev{margin-left:auto;font-weight:700}
@@ -6143,7 +6328,11 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-exblock.ss{border-left:4px solid var(--lb-accent)}
 .lb-exblock.ss1{border-left-color:#1f5fbf}.lb-exblock.ss2{border-left-color:#1f8a4c}.lb-exblock.ss3{border-left-color:#e3b300}
 .lb-sslabel{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--lb-muted)}
-.lb-exhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lb-exhead{display:flex;justify-content:space-between;align-items:center;gap:8px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.lb-reordering .lb-exblock>:not(.lb-exhead):not(.lb-sslabel){display:none}
+.lb-reordering .lb-exblock{margin-top:8px;padding:10px 12px;background:var(--lb-sunk);border-radius:12px;transition:transform .15s ease}
+.lb-reordering .lb-exblock.dragging{position:relative;z-index:5;transition:none;background:var(--lb-surface);box-shadow:0 10px 28px rgba(0,0,0,.28)}
+.lb-reordering .lb-live-meta{opacity:.4}
 .lb-exhead .lb-link.strong{flex:1;min-width:0;line-height:1.2}
 .lb-exhead .lb-demo-toggle{margin:0;flex:none;padding:3px 9px;font-size:.78rem}
 .lb-exhead h3{color:var(--lb-accent);font-size:1.1rem;font-weight:600;font-family:var(--lb-body)}
@@ -6279,6 +6468,7 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-rest-next{text-align:center;margin:8px auto 0;max-width:720px;color:var(--lb-muted);font-size:.9rem}
 .lb-rest-next b{color:var(--lb-ink)}
 @media (max-width:360px){.lb-gym-field{grid-template-columns:60px minmax(0,1fr) 60px}.lb-gym-num{font-size:2.5rem}.lb-gym-name{font-size:1.8rem}.lb-live.gym .lb-rest:not(.full) .lb-rest-row{gap:6px}.lb-live.gym .lb-rest:not(.full) .lb-rest-time{font-size:2.6rem;min-width:5rem}.lb-live.gym .lb-rest:not(.full) .lb-rest-row .lb-btn{min-width:52px;padding:6px 8px}}
+.lb-tplask{margin:10px 0;padding:12px} .lb-tplask p{margin:0 0 8px}
 .lb-done-hero{text-align:center;padding:10px 0 14px} .lb-done-hero b{display:block;font-family:var(--lb-display);font-size:1.9rem} .lb-done-hero span{color:var(--lb-muted)}
 .lb-share{background:var(--lb-sunk);border-radius:var(--lb-r);padding:8px;margin-bottom:10px} .lb-share img{display:block;width:100%;height:auto;border-radius:calc(var(--lb-r)*.7);box-shadow:0 6px 24px rgba(0,0,0,.18)} .lb-share-text{margin-top:10px} .lb-share-text pre{white-space:pre-wrap;font:inherit;font-size:.9rem;background:var(--lb-sunk);padding:10px;border-radius:var(--lb-r);margin:6px 0 0}
 .lb-prlist{list-style:none;padding:0;margin:0} .lb-prlist li{padding:6px 0;border-bottom:1px solid var(--lb-line)}
@@ -6313,7 +6503,8 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     try { const r = JSON.parse(localStorage.getItem('lb_rest') || 'null'); if (r && r.end > Date.now()) rest = r; } catch (e) { }
     renderMain();
     if (S.active || rest) startTick();
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && E && E.mode === 'live') keepAwake(true); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && E && E.mode === 'live') keepAwake(true); if (document.visibilityState === 'visible') replayJournal(); });
+    window.addEventListener('online', () => replayJournal());
     return api;
   }
   // Called by a host when its storage changed underneath (another device): reload and redraw.
@@ -6322,9 +6513,9 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.keys(patch || {}).forEach(k => noteSetting(k, patch[k])); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
   const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, restNotifyLooks: REST_NOTIFY, workoutInfo, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
-    parseRest, setRestOf, fillRemaining,
+    parseRest, setRestOf, fillRemaining, planNext, freshStart, journalStore, sortTpls,
     mergeSettings, gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
-    swipe: { swipeDecision } };
+    swipe: { swipeDecision }, reorder: { dropIndex, moveItem } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
@@ -39417,6 +39608,411 @@ window.NippardPrograms = (() => {
 if (typeof module !== 'undefined') module.exports = NippardPrograms;
 </script>
 <script>
+/* program-chooser: "Help me choose" for Train > New template. A full-screen questionnaire in the goal-setup look
+ * (steps, dots, animated SVG art, option buttons) that scores Jeff Nippard's ready-made programs
+ * (modules/nippard-programs) against the answers and recommends the best three with reasons.
+ * Plain JS, no imports. Needs GoalSetup.css on the page for the gs-* classes (the shell injects it) plus its own css.
+ * API:
+ *   ProgramChooser.QUESTIONS                        -> the steps (id, title, sub, multi, options[{id,label,sub}])
+ *   ProgramChooser.recommend(answers, programs)     -> [{id, score, pct, reasons[], cautions[], program}] best first (programs = NippardPrograms.list())
+ *   ProgramChooser.open({programs, added(id), onPick(id), onPreview(id), onClose(reason), onBack, document, mount})
+ *       -> { el, close(), state() }; the result page's "Add to my templates" calls onPick(id) then closes.
+ *   ProgramChooser.css                              -> CSS string, inject once.
+ */
+window.ProgramChooser = (() => {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // ---------- what we know about each program (beyond days/level in programs.json) ----------
+  // split: fb | ul | ppl | bro | mix. gear: barbell (rack + bar needed, big lifts carry the plan) | mixed | machine.
+  // push: easy | steady | hard (how close to failure / intensity techniques). lvl: beginner | middle | advanced (any mix).
+  // goal: muscle | strength | both | comeback. flex: days can move around the week. ss: superset built. simple: few exercises, repeat.
+  const TAGS = {
+    'ml-fb2': { split: 'fb', gear: 'mixed', push: 'steady', lvl: ['beginner', 'middle', 'advanced'], goal: ['muscle'], flex: true, ss: true, simple: true, time: 'medium' },
+    'ml-fb3-beginner': { split: 'fb', gear: 'machine', push: 'easy', lvl: ['beginner'], goal: ['muscle'], flex: true, simple: true, time: 'long' },
+    'ml-fb3': { split: 'fb', gear: 'barbell', push: 'hard', lvl: ['middle', 'advanced'], goal: ['muscle', 'strength', 'both'], flex: true, time: 'long' },
+    'ml-ul4': { split: 'ul', gear: 'barbell', push: 'steady', lvl: ['middle', 'advanced'], goal: ['muscle', 'both'], time: 'long' },
+    'ml-fb4': { split: 'fb', gear: 'mixed', push: 'steady', lvl: ['middle', 'advanced'], goal: ['muscle'], flex: true, time: 'long', variety: true },
+    'ml-ulppl5': { split: 'mix', gear: 'barbell', push: 'hard', lvl: ['middle', 'advanced'], goal: ['muscle', 'both'], time: 'long', variety: true },
+    'ml-ul6': { split: 'ul', gear: 'mixed', push: 'hard', lvl: ['middle', 'advanced'], goal: ['muscle'], time: 'long', variety: true },
+    'ml-ppl6': { split: 'ppl', gear: 'barbell', push: 'hard', lvl: ['middle', 'advanced'], goal: ['muscle', 'both'], time: 'long', variety: true },
+    'essentials-3x': { split: 'mix', gear: 'barbell', push: 'steady', lvl: ['beginner', 'middle', 'advanced'], goal: ['muscle', 'strength', 'both'], simple: true, time: 'medium' },
+    'fund-fb3': { split: 'fb', gear: 'barbell', push: 'steady', lvl: ['beginner', 'middle'], goal: ['muscle', 'both'], flex: true, simple: true, time: 'medium' },
+    'fund-ul4': { split: 'ul', gear: 'barbell', push: 'steady', lvl: ['beginner', 'middle'], goal: ['muscle'], simple: true, time: 'medium' },
+    'fund-bro5': { split: 'bro', gear: 'mixed', push: 'steady', lvl: ['middle'], goal: ['muscle'], time: 'medium', arms: true },
+    'comeback-ppl': { split: 'ppl', gear: 'mixed', push: 'easy', lvl: ['beginner', 'middle', 'advanced'], goal: ['comeback'], comeback: true, flex: true, time: 'medium', anyDays: [3, 6] },
+    'comeback-ul': { split: 'ul', gear: 'mixed', push: 'easy', lvl: ['beginner', 'middle', 'advanced'], goal: ['comeback'], comeback: true, time: 'medium' },
+    'pbb2-fb5': { split: 'fb', gear: 'machine', push: 'hard', lvl: ['middle', 'advanced'], goal: ['muscle'], time: 'long', variety: true, arms: true },
+    'bts-beginner': { split: 'mix', gear: 'mixed', push: 'steady', lvl: ['beginner'], goal: ['muscle'], time: 'medium', simple: true },
+    'bts-intermediate': { split: 'mix', gear: 'mixed', push: 'hard', lvl: ['middle', 'advanced'], goal: ['muscle'], time: 'long', variety: true },
+    'powerbuilding-5x': { split: 'ul', gear: 'barbell', push: 'hard', lvl: ['middle', 'advanced'], goal: ['strength', 'both'], pb: true, time: 'long' }
+  };
+  const SPLIT_NAME = { fb: 'full body', ul: 'upper / lower', ppl: 'push / pull / legs', bro: 'one body part a day', mix: 'a mixed split' };
+  const TIME_RANK = { short: 0, medium: 1, long: 2, xl: 3 };
+
+  // Fallback for a program the chooser has no tags for (added later to programs.json).
+  function tagsFor(p) {
+    if (TAGS[p.id]) return TAGS[p.id];
+    const lv = String(p.level || '').toLowerCase();
+    return { split: 'mix', gear: 'mixed', push: 'steady', time: 'medium', goal: ['muscle'], lvl: lv.includes('beginner') ? ['beginner', 'middle'] : lv.includes('return') ? ['beginner', 'middle', 'advanced'] : ['middle', 'advanced'], comeback: lv.includes('return') };
+  }
+
+  // ---------- the questions ----------
+  const QUESTIONS = [
+    { id: 'situation', title: 'Where are you right now?', sub: 'This decides more than anything else.', options: [
+      { id: 'training', label: 'Training steadily', sub: 'In the gym most weeks for the last few months' },
+      { id: 'new', label: 'Just getting started', sub: 'Never lifted, or less than 6 months of it' },
+      { id: 'break', label: 'Back after a break', sub: 'Holiday, exams, work, lost the habit: 4+ weeks off' },
+      { id: 'injury', label: 'Back after an injury', sub: 'Cleared to train again and want to rebuild safely' },
+      { id: 'restart', label: 'Restarting after months or years', sub: 'Used to lift, long time ago' }] },
+    { id: 'away', title: 'How long were you away?', sub: 'Time off decides how gently to start.', when: a => ['break', 'injury', 'restart'].includes(a.situation), options: [
+      { id: 'short', label: '2 to 4 weeks', sub: 'Strength is mostly still there' },
+      { id: 'medium', label: '1 to 3 months', sub: 'Expect a few easy weeks first' },
+      { id: 'long', label: '3 months or more', sub: 'Treat it as a fresh start' }] },
+    { id: 'joints', title: 'Anything that still hurts?', sub: 'Pick all that apply. The pick leans away from heavy barbell work on a sore joint.', multi: true, none: 'nothing', options: [
+      { id: 'nothing', label: 'Nothing, all good' },
+      { id: 'shoulder', label: 'Shoulder', sub: 'Pressing or overhead work bothers it' },
+      { id: 'back', label: 'Lower back', sub: 'Deadlifts, rows or squats bother it' },
+      { id: 'knee', label: 'Knee', sub: 'Deep squats or lunges bother it' },
+      { id: 'elbow', label: 'Elbow or wrist', sub: 'Curls, extensions or heavy pressing bother it' }] },
+    { id: 'level', title: 'How long have you lifted with a plan?', sub: 'Honest answer, the beginner plans progress fastest.', options: [
+      { id: 'beginner', label: 'Under a year', sub: 'Still adding weight most weeks' },
+      { id: 'middle', label: '1 to 3 years', sub: 'Progress comes slower now' },
+      { id: 'advanced', label: '3 years or more', sub: 'Need intensity techniques to keep growing' }] },
+    { id: 'goal', title: 'What matters most?', sub: 'One answer. Every plan builds muscle, this sets the emphasis.', options: [
+      { id: 'muscle', label: 'Build muscle', sub: 'Size and shape first' },
+      { id: 'strength', label: 'Get stronger', sub: 'Bigger squat, bench and deadlift' },
+      { id: 'both', label: 'Both, strength and size', sub: 'Powerbuilding' },
+      { id: 'lean', label: 'Lose fat, keep muscle', sub: 'Training that fits a diet' },
+      { id: 'fitness', label: 'Get back in shape', sub: 'Feel good, build the habit again' }] },
+    { id: 'days', title: 'How many days a week can you really train?', sub: 'Pick what you can keep up for months, not a perfect week.', options: [
+      { id: '2', label: '2 days' }, { id: '3', label: '3 days' }, { id: '4', label: '4 days' }, { id: '5', label: '5 days' }, { id: '6', label: '6 days' }] },
+    { id: 'time', title: 'How long per session?', sub: 'Door to door in the gym.', options: [
+      { id: 'short', label: 'Up to 45 minutes', sub: 'Short and sharp' },
+      { id: 'medium', label: '45 to 60 minutes' },
+      { id: 'long', label: '60 to 90 minutes' },
+      { id: 'xl', label: 'More than 90 minutes', sub: 'Time is no problem' }] },
+    { id: 'gear', title: 'What do you train with?', sub: 'Every plan can be edited after, but this picks the closest fit.', options: [
+      { id: 'full', label: 'A full gym', sub: 'Racks, barbells, cables and machines' },
+      { id: 'free', label: 'Mostly free weights', sub: 'Barbell, rack and dumbbells, few machines' },
+      { id: 'machine', label: 'Mostly machines and cables', sub: 'Or you prefer them' },
+      { id: 'home', label: 'Home: dumbbells and bands', sub: 'No barbell or rack' }] },
+    { id: 'split', title: 'Which layout do you like?', sub: 'If you do not know, pick "Choose for me".', options: [
+      { id: 'any', label: 'Choose for me' },
+      { id: 'fb', label: 'Full body', sub: 'Every muscle every session' },
+      { id: 'ul', label: 'Upper / lower', sub: 'Alternate upper and lower days' },
+      { id: 'ppl', label: 'Push / pull / legs', sub: 'Classic three-way split' },
+      { id: 'bro', label: 'One body part a day', sub: 'Chest day, back day, leg day' }] },
+    { id: 'push', title: 'How hard do you like to push a set?', sub: 'Plans differ a lot here.', options: [
+      { id: 'easy', label: 'Keep it comfortable', sub: 'A few reps left in the tank, build the habit' },
+      { id: 'steady', label: 'Hard but controlled', sub: 'One or two reps short of failure' },
+      { id: 'hard', label: 'All the way', sub: 'Failure, drop sets, partials, the works' }] },
+    { id: 'focus', title: 'Anything you want to bring up?', sub: 'Pick all that apply. Plans with extra work there score higher.', multi: true, none: 'balanced', options: [
+      { id: 'balanced', label: 'Everything, keep it balanced' },
+      { id: 'arms', label: 'Arms' }, { id: 'chest', label: 'Chest' }, { id: 'back', label: 'Back' }, { id: 'shoulders', label: 'Shoulders' }, { id: 'legs', label: 'Legs and glutes' }] },
+    { id: 'style', title: 'What keeps you going?', sub: 'The feel of the plan.', options: [
+      { id: 'simple', label: 'Simple and repeatable', sub: 'Same lifts, add weight, no fuss' },
+      { id: 'variety', label: 'Lots of variety', sub: 'Different exercises and rep ranges across the week' },
+      { id: 'fast', label: 'Fast and sweaty', sub: 'Supersets and short rests' },
+      { id: 'heavy', label: 'Heavy barbell work', sub: 'The big lifts are the point' }] },
+    { id: 'schedule', title: 'Do your gym days move around?', sub: 'Some plans care which day is which.', options: [
+      { id: 'fixed', label: 'Same days every week' },
+      { id: 'moves', label: 'They move around', sub: 'Shift work, travel, kids' }] }
+  ];
+  const stepsFor = a => QUESTIONS.filter(q => !q.when || q.when(a));
+
+  // ---------- scoring ----------
+  function recommend(a, programs) {
+    a = a || {}; programs = programs || [];
+    const comeback = ['break', 'injury', 'restart'].includes(a.situation);
+    const gentle = comeback && (a.situation === 'injury' || a.away === 'long' || a.away === 'medium' || a.situation === 'restart');
+    const joints = (a.joints || []).filter(j => j !== 'nothing');
+    const focus = (a.focus || []).filter(f => f !== 'balanced');
+    const days = +a.days || 0;
+    const out = programs.map(p => {
+      const t = tagsFor(p), reasons = [], cautions = [];
+      // why(text, priority): the most specific reasons (comeback 0, days 1, gear / joints / focus / style 2, split / goal / level 3, time / push / schedule 4) show first.
+      const why = (txt, pr) => reasons.push([pr == null ? 3 : pr, txt]);
+      let s = 0;
+      // 1. Situation
+      if (comeback) {
+        if (t.comeback) { s += gentle ? 45 : 22; why(a.situation === 'injury' ? 'Built for coming back after an injury: light, form first' : 'Built for coming back after time off: easy first weeks', 0); }
+        else if (gentle) { s -= 18; cautions.push('Not a comeback plan: start every lift lighter than you think'); }
+        else if (a.away === 'short') { s += 2; }
+      } else if (t.comeback) { s -= 30; cautions.push('A comeback plan: too easy if you train steadily'); }
+      if (a.situation === 'new') { if (t.lvl.includes('beginner') && t.lvl.length <= 2) { s += 18; why('Made for someone starting out'); } else if (!t.lvl.includes('beginner')) { s -= 22; cautions.push('Written for lifters with a year or more behind them'); } }
+      // 2. Level
+      if (a.level) {
+        if (t.lvl.includes(a.level)) { s += 14; if (a.level === 'advanced' && t.push === 'hard') why('Enough intensity for an experienced lifter'); else if (a.level === 'beginner' && t.lvl.length < 3) why('Beginner-friendly progression'); }
+        else if (a.level === 'beginner') { s -= 16; cautions.push('More volume and intensity than a first-year lifter needs'); }
+        else { s -= 8; cautions.push(a.level === 'advanced' ? 'A beginner plan: may be too light' : 'Aimed at a different experience level'); }
+      }
+      // 3. Goal
+      if (a.goal) {
+        if (a.goal === 'fitness') { if (t.comeback || t.simple) { s += 10; why('Simple sessions that rebuild the habit'); } }
+        else if (a.goal === 'lean') { s += (t.split === 'fb' ? 8 : 0) + (t.ss ? 6 : 0); if (t.split === 'fb') why('Full-body days keep every muscle ticking over on a diet'); if (t.push === 'hard' && t.time === 'long') { s -= 4; } }
+        else if (t.goal.includes(a.goal)) { s += 18; why(a.goal === 'strength' ? 'Heavy squat, bench and deadlift are the backbone' : a.goal === 'both' ? 'Strength work first, then bodybuilding volume' : 'Pure hypertrophy layout'); }
+        else if (a.goal === 'strength' && !t.goal.includes('both')) { s -= 10; cautions.push('Little heavy barbell work for a strength goal'); }
+        else if (a.goal === 'muscle' && t.goal.includes('strength') && !t.goal.includes('muscle')) { s -= 6; }
+        if (a.goal === 'both' && t.pb) { s += 8; why('A powerbuilding plan by name', 2); }
+      }
+      // 4. Days
+      if (days) {
+        const range = t.anyDays || [p.days, p.days];
+        if (days >= range[0] && days <= range[1]) { s += 30; why(days + ' days a week, exactly', 1); }
+        else { const d = Math.min(Math.abs(days - range[0]), Math.abs(days - range[1])); if (d === 1) { s += 8; cautions.push('Written for ' + p.days + ' days: ' + (days < p.days ? 'you would roll the days over the week' : 'one day would be free or a repeat')); } else { s -= 14 * (d - 1); cautions.push('Needs ' + p.days + ' days, you have ' + days); } }
+      }
+      // 5. Time
+      if (a.time) {
+        const d = TIME_RANK[a.time] - TIME_RANK[t.time];
+        if (d === 0) { s += 12; why('Sessions fit your ' + ({ short: 'short', medium: '45 to 60 minute', long: '60 to 90 minute', xl: 'long' })[a.time] + ' window', 4); }
+        else if (d > 0) { s += 6; }
+        else { s -= 10 * -d; cautions.push('Sessions run about ' + p.time + ', longer than you have'); }
+      }
+      // 6. Equipment and joints
+      if (a.gear === 'machine' || a.gear === 'home') {
+        if (t.gear === 'barbell') { s -= 24; cautions.push('Leans on barbell lifts: swap them with Exercise swap or pick a machine-friendly plan'); }
+        else if (t.gear === 'machine') { s += 14; why('Machine and cable friendly', 2); }
+        else s += 4;
+        if (a.gear === 'home') { s -= 6; if (t.split === 'fb' || t.simple) s += 4; }
+      } else if (a.gear === 'free') { if (t.gear === 'machine') { s -= 10; cautions.push('Uses a lot of machines'); } else if (t.gear === 'barbell') { s += 8; why('Built around free weights', 2); } }
+      else if (a.gear === 'full') { s += 4; }
+      if (joints.length) {
+        if (t.gear === 'barbell') { s -= 8 * joints.length; cautions.push('Heavy barbell work with a sore ' + joints.map(j => ({ shoulder: 'shoulder', back: 'lower back', knee: 'knee', elbow: 'elbow' })[j]).join(' and ') + ': swap those lifts or ease in'); }
+        else if (t.push === 'easy' || t.gear === 'machine') { s += 6 * joints.length; why('Gentler on a sore ' + (joints.length > 1 ? 'joint' : ({ shoulder: 'shoulder', back: 'lower back', knee: 'knee', elbow: 'elbow' })[joints[0]]), 2); }
+      }
+      // 7. Split
+      if (a.split && a.split !== 'any') {
+        if (t.split === a.split) { s += 16; why('A ' + SPLIT_NAME[a.split] + ' layout, like you asked'); }
+        else if (t.split === 'mix') s += 4;
+        else { s -= 4; }
+      }
+      // 8. Intensity
+      if (a.push) {
+        if (t.push === a.push) { s += 10; if (a.push === 'hard') why('Goes to failure with intensity techniques', 4); else if (a.push === 'easy') why('Stops well short of failure', 4); }
+        else if ((a.push === 'easy' && t.push === 'hard') || (a.push === 'hard' && t.push === 'easy')) { s -= 10; cautions.push(a.push === 'easy' ? 'Pushes sets to failure' : 'Deliberately easy sets'); }
+      }
+      // 9. Focus
+      if (focus.length) {
+        if (focus.includes('arms') && t.arms) { s += 10; why('Extra arm work', 2); }
+        if (focus.includes('legs') && (t.split === 'ul' || t.split === 'ppl' || t.split === 'bro')) { s += 5; why('Dedicated leg days', 2); }
+        if ((focus.includes('chest') || focus.includes('back') || focus.includes('shoulders')) && (t.split === 'ppl' || t.split === 'bro' || t.split === 'mix')) { s += 5; why('Whole sessions for the upper body', 2); }
+        if (focus.length >= 3 && t.split === 'fb') { s += 4; }
+      }
+      // 10. Style
+      if (a.style === 'simple' && t.simple) { s += 10; why('Few exercises, repeated and progressed', 2); }
+      if (a.style === 'variety' && t.variety) { s += 10; why('Different exercises and rep ranges across the week', 2); }
+      if (a.style === 'fast') { if (t.ss) { s += 14; why('Supersets and short rests', 2); } else if (t.time === 'long') s -= 4; }
+      if (a.style === 'heavy') { if (t.gear === 'barbell') { s += 10; why('The big barbell lifts lead every session', 2); } else if (t.gear === 'machine') s -= 8; }
+      // 11. Schedule
+      if (a.schedule === 'moves') { if (t.flex) { s += 8; why('Days can move around the week', 4); } else if (p.days >= 5) { s -= 4; cautions.push('Works best on fixed days'); } }
+      return { id: p.id, score: s, reasons: uniq(reasons.sort((x, y) => x[0] - y[0]).map(x => x[1])).slice(0, 6), cautions: uniq(cautions).slice(0, 3), program: p };
+    });
+    out.sort((x, y) => y.score - x.score || x.program.days - y.program.days);
+    const top = out.length ? out[0].score : 0, floor = Math.min(0, out.length ? out[out.length - 1].score : 0);
+    out.forEach(r => { r.pct = Math.max(5, Math.min(99, Math.round(60 + 39 * ((r.score - floor) / Math.max(1, top - floor)) - (top <= 0 ? 20 : 0)))); });
+    return out;
+  }
+  const uniq = arr => arr.filter((x, i) => arr.indexOf(x) === i);
+
+  // ---------- art ----------
+  const svgWrap = inner => '<svg class="gs-art" viewBox="0 0 240 150" aria-hidden="true"><ellipse class="blob" cx="120" cy="84" rx="104" ry="56"/>' + inner + '</svg>';
+  const g = (d, inner, cls) => '<g class="p ' + (cls || '') + '" style="--d:' + d + '">' + inner + '</g>';
+  // A simple lifter: head, torso, arms holding a bar. x,y = centre of the chest.
+  const lifter = (x, y, barY, barW) => '<circle class="ink" cx="' + x + '" cy="' + (y - 26) + '" r="9"/><rect class="ink" x="' + (x - 11) + '" y="' + (y - 14) + '" width="22" height="34" rx="9"/>'
+    + '<line class="ink" x1="' + (x - 8) + '" y1="' + (y - 8) + '" x2="' + (x - 26) + '" y2="' + barY + '" stroke-width="6" stroke-linecap="round"/><line class="ink" x1="' + (x + 8) + '" y1="' + (y - 8) + '" x2="' + (x + 26) + '" y2="' + barY + '" stroke-width="6" stroke-linecap="round"/>'
+    + '<line class="ink" x1="' + (x - 6) + '" y1="' + (y + 18) + '" x2="' + (x - 10) + '" y2="' + (y + 48) + '" stroke-width="7" stroke-linecap="round"/><line class="ink" x1="' + (x + 6) + '" y1="' + (y + 18) + '" x2="' + (x + 10) + '" y2="' + (y + 48) + '" stroke-width="7" stroke-linecap="round"/>'
+    + '<rect class="ink" x="' + (x - barW / 2) + '" y="' + (barY - 3) + '" width="' + barW + '" height="6" rx="3"/><rect class="acc" x="' + (x - barW / 2 - 4) + '" y="' + (barY - 14) + '" width="12" height="28" rx="4"/><rect class="acc" x="' + (x + barW / 2 - 8) + '" y="' + (barY - 14) + '" width="12" height="28" rx="4"/>';
+  const calendar = (picked, total) => { let s = ''; for (let i = 0; i < 7; i++) { const on = i < picked; s += '<rect class="' + (on ? 'acc' : 'bg') + '" x="' + (52 + i * 20) + '" y="70" width="16" height="16" rx="4"' + (on ? '' : ' opacity=".9"') + '/>'; if (on) s += '<path class="bg" d="M' + (56 + i * 20) + ' 78 l3 3 l6 -6" stroke-width="2" fill="none" stroke-linecap="round"/>'; } return s; };
+  const ART = {
+    situation: a => svgWrap(
+      g(0, '<ellipse class="ink" cx="120" cy="136" rx="70" ry="5" opacity=".14"/>' + lifter(120, 84, 56, 70))
+      + g(1, a.situation === 'injury' ? '<rect class="warn" x="150" y="40" width="40" height="40" rx="10"/><rect class="bg" x="166" y="48" width="8" height="24" rx="2"/><rect class="bg" x="158" y="56" width="24" height="8" rx="2"/>' : a.situation === 'break' || a.situation === 'restart' ? '<rect class="s3" x="150" y="40" width="44" height="40" rx="8"/><rect class="acc" x="150" y="40" width="44" height="10" rx="4"/><line class="ink" x1="158" y1="60" x2="186" y2="60" stroke-width="2" opacity=".5"/><line class="ink" x1="158" y1="70" x2="178" y2="70" stroke-width="2" opacity=".5"/>' : a.situation === 'new' ? '<path class="acc" d="M172 36 l6 14 l15 2 l-11 10 l3 15 l-13 -7 l-13 7 l3 -15 l-11 -10 l15 -2 z"/>' : '<path class="good" d="M150 80 l12 -14 l10 10 l16 -24" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle class="good" cx="188" cy="52" r="4"/>', 'pop')
+      + g(2, '<circle class="acc2" cx="40" cy="44" r="4"/><circle class="good" cx="52" cy="112" r="3"/><circle class="acc2" cx="210" cy="112" r="3"/>', 'confetti')),
+    away: a => svgWrap(
+      g(0, '<circle class="s3" cx="120" cy="84" r="40"/><circle class="bg" cx="120" cy="84" r="32"/><circle class="ink" cx="120" cy="84" r="27" fill="none" stroke-width="2" stroke-dasharray="1.5 6.2" opacity=".4"/>')
+      + g(1, '<path class="accs" d="M120 84 L120 54 A30 30 0 ' + (a.away === 'long' ? '1 1 92 72' : a.away === 'medium' ? '0 1 150 84' : '0 1 136 60') + ' Z" fill="var(--accent)" opacity=".35" stroke-width="0"/>')
+      + g(2, '<g class="hand"><line class="accs" x1="120" y1="84" x2="120" y2="60" stroke-width="4" stroke-linecap="round"/></g><circle class="ink" cx="120" cy="84" r="4"/>')
+      + g(3, '<rect class="acc" x="176" y="56" width="36" height="12" rx="6"/><rect class="acc" x="176" y="74" width="26" height="12" rx="6" opacity=".6"/><rect class="acc" x="176" y="92" width="16" height="12" rx="6" opacity=".35"/>')),
+    joints: a => { const j = a.joints || []; const dot = (x, y, id) => '<circle class="' + (j.includes(id) ? 'warn' : 'acc') + '" cx="' + x + '" cy="' + y + '" r="' + (j.includes(id) ? 8 : 5) + '"' + (j.includes(id) ? ' class="warn"' : ' opacity=".55"') + '/>'; return svgWrap(
+      g(0, '<ellipse class="ink" cx="120" cy="140" rx="40" ry="4" opacity=".14"/><circle class="ink" cx="120" cy="30" r="11"/><path class="ink" d="M104 46 h32 l6 44 h-44 z"/><line class="ink" x1="106" y1="50" x2="88" y2="92" stroke-width="9" stroke-linecap="round"/><line class="ink" x1="134" y1="50" x2="152" y2="92" stroke-width="9" stroke-linecap="round"/><line class="ink" x1="110" y1="90" x2="106" y2="136" stroke-width="11" stroke-linecap="round"/><line class="ink" x1="130" y1="90" x2="134" y2="136" stroke-width="11" stroke-linecap="round"/>')
+      + g(1, dot(106, 52, 'shoulder') + dot(134, 52, 'shoulder') + dot(120, 84, 'back') + dot(107, 114, 'knee') + dot(133, 114, 'knee') + dot(92, 78, 'elbow') + dot(148, 78, 'elbow'), 'pop')); },
+    level: a => svgWrap(
+      g(0, '<ellipse class="ink" cx="120" cy="138" rx="80" ry="5" opacity=".14"/><rect class="s3" x="52" y="104" width="44" height="30" rx="6"/><rect class="s3" x="98" y="80" width="44" height="54" rx="6"/><rect class="s3" x="144" y="52" width="44" height="82" rx="6"/>')
+      + g(1, '<rect class="' + (a.level ? 'acc' : 'accl') + '" x="52" y="104" width="44" height="30" rx="6"' + (a.level ? '' : '') + '/>' + (a.level === 'middle' || a.level === 'advanced' ? '<rect class="acc" x="98" y="80" width="44" height="54" rx="6"/>' : '') + (a.level === 'advanced' ? '<rect class="acc" x="144" y="52" width="44" height="82" rx="6"/>' : ''))
+      + g(2, '<circle class="ink" cx="' + (a.level === 'advanced' ? 166 : a.level === 'middle' ? 120 : 74) + '" cy="' + (a.level === 'advanced' ? 30 : a.level === 'middle' ? 58 : 82) + '" r="8"/><rect class="ink" x="' + ((a.level === 'advanced' ? 166 : a.level === 'middle' ? 120 : 74) - 7) + '" y="' + ((a.level === 'advanced' ? 30 : a.level === 'middle' ? 58 : 82) + 10) + '" width="14" height="14" rx="5"/>', 'marker')
+      + g(3, '<path class="acc" d="M200 40 l4 9 l10 1 l-7 7 l2 10 l-9 -5 l-9 5 l2 -10 l-7 -7 l10 -1 z"/>', 'spark')),
+    goal: a => svgWrap(
+      g(0, '<circle class="s3" cx="120" cy="84" r="46"/><circle class="bg" cx="120" cy="84" r="34"/><circle class="acc" cx="120" cy="84" r="22"/><circle class="bg" cx="120" cy="84" r="10"/>')
+      + g(1, '<line class="ink" x1="150" y1="54" x2="124" y2="80" stroke-width="4" stroke-linecap="round"/><path class="acc" d="M150 54 l12 -4 l-4 12 z"/><path class="acc" d="M150 54 l-2 -12 l12 4 z" opacity=".7"/>', 'arrow')
+      + g(2, a.goal === 'strength' || a.goal === 'both' ? '<rect class="ink" x="178" y="100" width="40" height="6" rx="3"/><rect class="acc" x="174" y="92" width="8" height="22" rx="3"/><rect class="acc" x="214" y="92" width="8" height="22" rx="3"/>' : a.goal === 'lean' ? '<path class="good" d="M184 118 q-16 -20 0 -38 q6 10 10 2 q12 16 -10 36 z"/>' : a.goal === 'fitness' ? '<path class="good" d="M176 116 h10 l6 -12 l8 24 l8 -18 l6 6 h12" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' : '<path class="acc" d="M186 108 c-14 0 -14 -22 0 -22 c4 -8 18 -8 22 0 c14 0 14 22 0 22 z"/>', 'pop')),
+    days: a => svgWrap(
+      g(0, '<rect class="s3" x="44" y="40" width="152" height="72" rx="12"/><rect class="acc" x="44" y="40" width="152" height="18" rx="9"/><rect class="acc" x="44" y="49" width="152" height="9"/>' + ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => '<text x="' + (60 + i * 20) + '" y="53" font-size="9" font-weight="700" text-anchor="middle" fill="var(--accent-ink,#fff)">' + d + '</text>').join(''))
+      + g(1, calendar(+a.days || 0, 7), 'pop')
+      + g(2, '<rect class="bg" x="52" y="92" width="136" height="10" rx="5" opacity=".9"/><rect class="acc" x="52" y="92" width="' + (136 * ((+a.days || 0) / 7)) + '" height="10" rx="5"/>')),
+    time: a => { const arc = { short: 'M120 84 L120 50 A34 34 0 0 1 149 67 Z', medium: 'M120 84 L120 50 A34 34 0 0 1 154 84 Z', long: 'M120 84 L120 50 A34 34 0 0 1 144 112 Z', xl: 'M120 84 L120 50 A34 34 0 1 1 96 112 Z' }[a.time] || ''; return svgWrap(
+      g(0, '<circle class="s3" cx="120" cy="84" r="46"/><circle class="bg" cx="120" cy="84" r="38"/><circle class="ink" cx="120" cy="84" r="32" fill="none" stroke-width="2" stroke-dasharray="1.5 7" opacity=".4"/>')
+      + (arc ? g(1, '<path class="acc" d="' + arc + '" opacity=".45"/>', 'pop') : '')
+      + g(2, '<g class="hand"><line class="accs" x1="120" y1="84" x2="120" y2="56" stroke-width="4" stroke-linecap="round"/></g><line class="ink" x1="120" y1="84" x2="138" y2="84" stroke-width="3" stroke-linecap="round"/><circle class="ink" cx="120" cy="84" r="4"/>')
+      + g(3, '<rect class="ink" x="112" y="30" width="16" height="6" rx="3"/><rect class="ink" x="158" y="40" width="10" height="6" rx="3" transform="rotate(45 163 43)"/>')); },
+    gear: a => svgWrap(
+      g(0, '<ellipse class="ink" cx="120" cy="138" rx="86" ry="5" opacity=".14"/><rect class="ink" x="62" y="40" width="7" height="96" rx="3"/><rect class="ink" x="150" y="40" width="7" height="96" rx="3"/><rect class="ink" x="62" y="40" width="95" height="7" rx="3"/><rect class="s3" x="58" y="70" width="14" height="6" rx="2"/><rect class="s3" x="147" y="70" width="14" height="6" rx="2"/>')
+      + g(1, a.gear === 'machine' ? '<rect class="s3" x="80" y="56" width="60" height="72" rx="10"/><rect class="acc" x="88" y="64" width="44" height="12" rx="4"/><circle class="acc" cx="110" cy="102" r="12"/><rect class="bg" x="106" y="84" width="8" height="18" rx="3"/>' : a.gear === 'home' ? '<rect class="acc" x="84" y="92" width="18" height="30" rx="5"/><rect class="acc" x="118" y="92" width="18" height="30" rx="5"/><rect class="ink" x="100" y="104" width="20" height="6" rx="3"/><path class="accs" d="M84 70 q36 -24 72 0" stroke-width="4" fill="none" stroke-linecap="round"/>' : '<rect class="ink" x="44" y="70" width="132" height="6" rx="3"/><rect class="acc" x="52" y="56" width="12" height="34" rx="4"/><rect class="acc" x="66" y="60" width="9" height="26" rx="3" opacity=".7"/><rect class="acc" x="156" y="56" width="12" height="34" rx="4"/><rect class="acc" x="145" y="60" width="9" height="26" rx="3" opacity=".7"/>', 'pop')
+      + g(2, '<rect class="acc2" x="186" y="112" width="34" height="8" rx="4"/><rect class="ink" x="182" y="106" width="8" height="20" rx="3"/><rect class="ink" x="216" y="106" width="8" height="20" rx="3"/>')),
+    split: a => { const half = (x, cls) => '<rect class="' + cls + '" x="' + x + '" y="36" width="28" height="48" rx="8"/><rect class="' + cls + '" x="' + (x + 4) + '" y="86" width="20" height="48" rx="7"/>'; const body = (x, up, low) => '<circle class="ink" cx="' + (x + 14) + '" cy="24" r="9"/>' + '<rect class="' + up + '" x="' + x + '" y="36" width="28" height="48" rx="8"/><rect class="' + low + '" x="' + (x + 4) + '" y="86" width="20" height="48" rx="7"/>'; const s = a.split; return svgWrap(
+      g(0, body(40, s === 'ul' || s === 'ppl' || s === 'bro' ? 'acc' : 'acc', s === 'ul' || s === 'ppl' || s === 'bro' ? 's3' : 'acc'))
+      + g(1, body(106, s === 'ppl' ? 'acc2' : s === 'ul' ? 's3' : s === 'bro' ? 's3' : 'acc', s === 'ul' ? 'acc' : s === 'ppl' || s === 'bro' ? 's3' : 'acc'))
+      + g(2, body(172, s === 'ppl' || s === 'bro' ? 's3' : 'acc', s === 'ppl' || s === 'bro' ? 'acc' : 'acc')) + (half ? '' : '')); },
+    push: a => svgWrap(
+      g(0, '<path class="s3" d="M70 118 A50 50 0 0 1 170 118" stroke-width="16" fill="none" stroke-linecap="round"/>')
+      + g(1, '<path class="' + (a.push === 'hard' ? 'bad' : a.push === 'steady' ? 'warn' : 'good') + '" d="M70 118 A50 50 0 0 1 ' + (a.push === 'hard' ? '170 118' : a.push === 'steady' ? '120 68' : '85 83') + '" stroke-width="16" fill="none" stroke-linecap="round"/>', 'pop')
+      + g(2, '<g class="needle" style="transform-origin:120px 118px;transform:rotate(' + (a.push === 'hard' ? 80 : a.push === 'steady' ? 0 : -60) + 'deg)"><line class="ink" x1="120" y1="118" x2="120" y2="78" stroke-width="5" stroke-linecap="round"/></g><circle class="ink" cx="120" cy="118" r="7"/><circle class="bg" cx="120" cy="118" r="3"/>')
+      + g(3, a.push === 'hard' ? '<path class="bad" d="M196 70 q-14 -18 -2 -36 q4 10 10 4 q10 14 -8 32 z"/>' : '', 'spark')),
+    focus: a => { const f = a.focus || []; const m = (id, d) => '<path class="' + (f.includes(id) ? 'acc' : 'accl') + '" d="' + d + '"/>'; return svgWrap(
+      g(0, '<circle class="ink" cx="120" cy="24" r="10"/><path class="s3" d="M98 38 h44 l8 56 h-60 z"/><line class="s3" x1="98" y1="42" x2="78" y2="92" stroke-width="11" stroke-linecap="round"/><line class="s3" x1="142" y1="42" x2="162" y2="92" stroke-width="11" stroke-linecap="round"/><line class="s3" x1="108" y1="94" x2="104" y2="140" stroke-width="13" stroke-linecap="round"/><line class="s3" x1="132" y1="94" x2="136" y2="140" stroke-width="13" stroke-linecap="round"/>')
+      + g(1, m('chest', 'M102 42 h36 v16 q-18 8 -36 0 z') + m('shoulders', 'M92 38 a9 9 0 1 1 0 .1 z M148 38 a9 9 0 1 1 0 .1 z') + m('arms', 'M86 58 a8 8 0 1 1 0 .1 z M154 58 a8 8 0 1 1 0 .1 z') + m('back', 'M104 62 h32 v26 h-32 z') + m('legs', 'M100 96 h16 v38 h-16 z M124 96 h16 v38 h-16 z'), 'pop')); },
+    style: a => svgWrap(
+      g(0, '<rect class="s3" x="46" y="44" width="60" height="80" rx="10" transform="rotate(-8 76 84)"/><rect class="bg" x="90" y="40" width="60" height="80" rx="10"/><rect class="s3" x="134" y="44" width="60" height="80" rx="10" transform="rotate(8 164 84)"/>')
+      + g(1, a.style === 'fast' ? '<path class="acc" d="M120 54 l-14 30 h12 l-6 28 l22 -36 h-12 l8 -22 z"/>' : a.style === 'heavy' ? '<rect class="ink" x="96" y="78" width="48" height="5" rx="2.5"/><rect class="acc" x="94" y="68" width="8" height="25" rx="3"/><rect class="acc" x="138" y="68" width="8" height="25" rx="3"/>' : a.style === 'variety' ? '<circle class="acc" cx="108" cy="66" r="7"/><rect class="acc2" x="122" y="59" width="14" height="14" rx="3"/><path class="good" d="M108 98 l7 -12 l7 12 z"/><rect class="warn" x="122" y="88" width="14" height="14" rx="7"/>' : '<rect class="acc" x="100" y="60" width="40" height="8" rx="4"/><rect class="acc" x="100" y="76" width="40" height="8" rx="4" opacity=".7"/><rect class="acc" x="100" y="92" width="40" height="8" rx="4" opacity=".45"/>', 'pop')),
+    schedule: a => svgWrap(
+      g(0, '<rect class="s3" x="44" y="40" width="152" height="72" rx="12"/><rect class="acc" x="44" y="40" width="152" height="18" rx="9"/><rect class="acc" x="44" y="49" width="152" height="9"/>')
+      + g(1, a.schedule === 'moves' ? '<rect class="acc" x="52" y="70" width="16" height="16" rx="4" opacity=".35"/><rect class="acc" x="92" y="70" width="16" height="16" rx="4"/><rect class="acc" x="132" y="70" width="16" height="16" rx="4" opacity=".35"/><rect class="acc" x="172" y="70" width="16" height="16" rx="4"/><path class="accs" d="M60 96 q36 20 72 0" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="4 4"/>' : '<rect class="acc" x="52" y="70" width="16" height="16" rx="4"/><rect class="acc" x="92" y="70" width="16" height="16" rx="4"/><rect class="acc" x="132" y="70" width="16" height="16" rx="4"/>', 'pop')),
+    result: () => svgWrap(
+      g(0, '<ellipse class="ink" cx="120" cy="138" rx="60" ry="5" opacity=".14"/><rect class="ink" x="100" y="118" width="40" height="8" rx="3"/><rect class="ink" x="112" y="100" width="16" height="20" rx="3"/>')
+      + g(1, '<path class="acc" d="M86 36 h68 v22 c0 22 -14 36 -34 40 c-20 -4 -34 -18 -34 -40 z"/><path class="accs" d="M86 46 h-14 c0 20 10 26 18 28 M154 46 h14 c0 20 -10 26 -18 28" stroke-width="6" fill="none" stroke-linecap="round"/>', 'pop')
+      + g(2, '<path class="bg" d="M120 48 l5 11 l12 1 l-9 8 l3 12 l-11 -6 l-11 6 l3 -12 l-9 -8 l12 -1 z"/>', 'spark')
+      + g(3, '<circle class="acc2" cx="40" cy="44" r="4"/><circle class="good" cx="52" cy="112" r="3"/><rect class="warn" x="196" y="40" width="7" height="7" rx="2" transform="rotate(25 199 43)"/><circle class="acc2" cx="206" cy="110" r="3"/>', 'confetti'))
+  };
+
+  // ---------- html ----------
+  function questionHtml(q, a) {
+    const picked = q.multi ? (a[q.id] || []) : a[q.id];
+    return '<h2>' + esc(q.title) + '</h2>' + (q.sub ? '<p class="gs-sub">' + esc(q.sub) + '</p>' : '') + '<div class="gs-opts">'
+      + q.options.map(o => { const on = q.multi ? picked.includes(o.id) : picked === o.id; return '<button type="button" class="gs-opt" data-pc="pick" data-k="' + q.id + '" data-v="' + esc(o.id) + '" aria-pressed="' + String(on) + '"><span class="gs-radio' + (q.multi ? ' pc-box' : '') + '"></span><span><b>' + esc(o.label) + '</b>' + (o.sub ? '<small>' + esc(o.sub) + '</small>' : '') + '</span></button>'; }).join('') + '</div>';
+  }
+  function resultHtml(recs, a, added) {
+    const top = recs.slice(0, 3);
+    if (!top.length) return '<h2>No programs to choose from</h2>';
+    const best = top[0];
+    return '<h2>' + (best.pct >= 85 ? 'Found your match' : best.pct >= 70 ? 'Your best fit' : 'The closest fit') + '</h2><p class="gs-sub">' + esc(summary(a)) + '</p>'
+      + top.map((r, i) => { const p = r.program, isAdded = added && added(p.id); return '<div class="pc-card' + (i === 0 ? ' best' : '') + '"><div class="pc-top"><span class="pc-rank">' + (i === 0 ? 'Best match' : i === 1 ? 'Runner-up' : 'Also fits') + '</span><span class="pc-pct">' + r.pct + '% match</span></div>'
+        + '<b class="pc-name">' + esc(p.name.replace(/^.*· /, '')) + '</b><small class="pc-meta">' + esc(p.name.split(' · ')[0]) + ' · ' + esc(p.level) + ' · ' + p.days + ' days · ' + esc(p.time) + '</small>'
+        + (r.reasons.length ? '<ul class="pc-why">' + r.reasons.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '')
+        + (r.cautions.length ? '<ul class="pc-but">' + r.cautions.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '')
+        + '<div class="pc-row"><button type="button" class="btn' + (i === 0 ? '' : ' ghost') + '" data-pc="add" data-id="' + esc(p.id) + '">' + (isAdded ? 'Add again' : 'Add to my templates') + '</button><button type="button" class="btn ghost" data-pc="preview" data-id="' + esc(p.id) + '">See the days</button></div></div>'; }).join('');
+  }
+  function summary(a) {
+    const bits = [];
+    if (a.situation === 'injury') bits.push('back from an injury'); else if (a.situation === 'break' || a.situation === 'restart') bits.push('back after time off'); else if (a.situation === 'new') bits.push('just starting');
+    if (a.days) bits.push(a.days + ' days a week');
+    if (a.time) bits.push(({ short: 'short sessions', medium: '45 to 60 minutes', long: '60 to 90 minutes', xl: 'long sessions' })[a.time]);
+    if (a.goal) bits.push(({ muscle: 'muscle first', strength: 'strength first', both: 'strength and size', lean: 'fat loss', fitness: 'back in shape' })[a.goal]);
+    if (a.gear === 'machine') bits.push('machines'); else if (a.gear === 'home') bits.push('home gym');
+    return bits.length ? 'Based on: ' + bits.join(', ') + '.' : 'Based on your answers.';
+  }
+
+  const css = `
+.gs-wrap.pc-wrap{z-index:1200}
+.pc-wrap .gs-dots{flex-wrap:wrap;gap:5px}
+.pc-wrap .gs-dots i{width:7px;height:7px}
+.pc-wrap .gs-dots i.on{width:20px}
+.pc-wrap .gs-dots i.done{background:var(--accent);opacity:.45}
+.pc-box{border-radius:6px!important}
+.gs-opt[aria-pressed="true"] .pc-box::after{border-radius:2px!important}
+.pc-card{background:var(--surface);border:1px solid var(--card-line,var(--line));border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow-card,none)}
+.pc-card.best{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.pc-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pc-rank{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+.pc-card.best .pc-rank{color:var(--accent)}
+.pc-pct{font-weight:800;font-size:1.1rem;font-variant-numeric:tabular-nums}
+.pc-card.best .pc-pct{color:var(--accent)}
+.pc-name{font-size:1.15rem;line-height:1.2}
+.pc-meta{color:var(--muted);font-size:.84rem}
+.pc-why,.pc-but{margin:4px 0 0;padding-left:18px;font-size:.9rem;display:flex;flex-direction:column;gap:3px}
+.pc-why li::marker{content:"✓  ";color:var(--good)}
+.pc-but{color:var(--muted)}
+.pc-but li::marker{content:"!  ";color:var(--warn)}
+.pc-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.pc-row .btn{padding:11px 10px;font-size:.95rem;border-radius:12px}
+.gs-foot .btn[disabled]{opacity:.45}
+.pc-count{color:var(--muted);font-size:.8rem;text-align:center;margin:-8px 0 0}
+`;
+
+  // ---------- the screen ----------
+  function open(opts) {
+    opts = opts || {};
+    const doc = opts.document || (typeof document !== 'undefined' ? document : null);
+    if (!doc) throw new Error('ProgramChooser.open needs a document');
+    const programs = opts.programs || [];
+    const a = Object.assign({}, opts.answers || {});
+    let step = 0, dirCls = '', recs = null, unBack = null, closed = false, autoT = null;
+    const el = doc.createElement('div'); el.className = 'gs-wrap pc-wrap'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Help me choose a program');
+    const steps = () => stepsFor(a).concat([{ id: 'result' }]);
+    const cur = () => steps()[step];
+    const answered = q => q.multi ? !!(a[q.id] && a[q.id].length) : a[q.id] != null;
+    const dots = () => { const st = steps(); return '<div class="gs-dots" aria-hidden="true">' + st.map((s, i) => '<i class="' + (i === step ? 'on' : i < step ? 'done' : '') + '"></i>').join('') + '</div>'; };
+    function body() {
+      const q = cur();
+      if (q.id === 'result') { recs = recommend(a, programs); return resultHtml(recs, a, opts.added); }
+      return questionHtml(q, a) + '<p class="pc-count">Question ' + (step + 1) + ' of ' + (steps().length - 1) + '</p>';
+    }
+    function foot() {
+      const q = cur();
+      if (q.id === 'result') return '<button type="button" class="btn ghost" data-pc="back">Change my answers</button><button type="button" class="gs-skip" data-pc="close">See all programs instead</button>';
+      return '<button type="button" class="btn" data-pc="next"' + (answered(q) ? '' : ' disabled') + '>' + (steps()[step + 1].id === 'result' ? 'Show my match' : 'Next') + '</button>' + (step === 0 ? '<button type="button" class="gs-skip" data-pc="close">I will pick myself</button>' : '');
+    }
+    function paint() {
+      const q = cur(), art = ART[q.id];
+      el.innerHTML = '<div class="gs-head">' + (step > 0 ? '<button type="button" class="gs-back" data-pc="back" aria-label="Back">‹</button>' : '<span></span>') + dots() + '<button type="button" class="gs-x" data-pc="close" aria-label="Close">×</button></div>'
+        + '<div class="gs-body ' + (dirCls || '') + '">' + (art ? art(a) : '') + body() + '</div><div class="gs-foot">' + foot() + '</div>';
+      el.querySelectorAll('.gs-opt, .pc-card').forEach((n, i) => { n.classList.add('gs-rise'); n.style.setProperty('--i', String(Math.min(i, 8))); });
+      const b = el.querySelector('.gs-body'); if (b) b.scrollTop = 0;
+    }
+    function repaintArt() { const q = cur(), art = ART[q.id]; const old = el.querySelector('.gs-art'); if (old && art) { const tmp = doc.createElement('div'); tmp.innerHTML = art(a); old.replaceWith(tmp.firstChild); } const n = el.querySelector('[data-pc="next"]'); if (n) n.disabled = !answered(q); }
+    function close(reason) {
+      if (closed) return; closed = true; clearTimeout(autoT);
+      if (unBack) { try { unBack(); } catch (e) { } }
+      if (el.parentNode) el.parentNode.removeChild(el);
+      if (opts.onClose) opts.onClose(reason, Object.assign({}, a));
+    }
+    el.addEventListener('click', e => {
+      const t = e.target.closest('[data-pc]'); if (!t) return;
+      const act = t.dataset.pc;
+      if (act === 'pick') {
+        const q = cur(), k = t.dataset.k, v = t.dataset.v;
+        if (q.multi) {
+          let list = (a[k] || []).slice();
+          if (v === q.none) list = [v]; else { list = list.filter(x => x !== q.none); list = list.includes(v) ? list.filter(x => x !== v) : list.concat([v]); }
+          a[k] = list;
+          el.querySelectorAll('[data-pc="pick"][data-k="' + k + '"]').forEach(b => b.setAttribute('aria-pressed', String(list.includes(b.dataset.v))));
+          repaintArt();
+        } else {
+          a[k] = v;
+          // Answers that no longer apply go when the situation changes (the away step only shows for a comeback).
+          if (k === 'situation' && !['break', 'injury', 'restart'].includes(v)) delete a.away;
+          el.querySelectorAll('[data-pc="pick"][data-k="' + k + '"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+          repaintArt();
+          clearTimeout(autoT); autoT = setTimeout(() => { const n = el.querySelector('[data-pc="next"]'); if (n && !n.disabled) n.click(); }, 320);
+        }
+        return;
+      }
+      clearTimeout(autoT);
+      if (act === 'next') { if (!answered(cur())) return; step = Math.min(step + 1, steps().length - 1); dirCls = 'gs-in-r'; paint(); return; }
+      if (act === 'back') { step = Math.max(0, step - 1); dirCls = 'gs-in-l'; paint(); return; }
+      if (act === 'close') { close('close'); return; }
+      if (act === 'add') { const id = t.dataset.id; if (opts.onPick) opts.onPick(id, Object.assign({}, a)); close('pick'); return; }
+      if (act === 'preview') { const id = t.dataset.id; if (opts.onPreview) { close('preview'); opts.onPreview(id, Object.assign({}, a)); } return; }
+    });
+    paint();
+    (opts.mount || doc.body).appendChild(el);
+    if (opts.onBack) { try { unBack = opts.onBack(() => { if (closed) return false; if (step > 0) { const b = el.querySelector('[data-pc="back"]'); if (b) b.click(); } else close('close'); return true; }); } catch (e) { } }
+    return { el, close: () => close('close'), state: () => Object.assign({ step }, a) };
+  }
+
+  return { QUESTIONS, TAGS, stepsFor, recommend, questionHtml, resultHtml, summary, open, css };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = ProgramChooser;
+</script>
+<script>
 window.EXERCISE_CLIPS={
   "schema": 1,
   "base": "clips/",
@@ -58579,8 +59175,8 @@ const LIB = {
 
 /* ===================== Store (synced db when available, else this browser) ===================== */
 const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio","markers","runs","chats"];
-const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},markers:{},runs:{},chats:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading", synced:new Set()};
-const LB_READ = ["lb_workouts","lb_exercises"];
+const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},markers:{},runs:{},chats:{},lb_workouts:{},lb_exercises:{},lb_templates:{}}, db:null, mode:"loading", synced:new Set()};
+const LB_READ = ["lb_workouts","lb_exercises","lb_templates"];
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
 function saveLocal(){ try{ const o={}; COLS.forEach(c=>o[c]=S.docs[c]); localStorage.setItem("aziz-cut", JSON.stringify(o)); localStorage.setItem("aziz-cut-localAt", String(Date.now())); }catch(e){} }
@@ -58704,7 +59300,7 @@ async function initStore(){
   setInterval(()=>{ if(outbox.size()) outbox.retryAll(); }, 30000);
   document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>{ const e=outbox.firstError(); toast(outbox.size()?"Still can't save"+(e?" ("+e+")":"")+". Your changes are kept on this device.":"All changes saved"); }); });
   LB_READ.forEach(c=>{ try{ db.collection(c).onSnapshot(qs=>{ const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=o; if(view.tab!=="train") scheduleRender(); }, ()=>{}); }catch(e){} });
-  setSync();
+  setSync(); render();
   try{ mountFriends(); }catch(e){ console.warn("Friends", e); }
 }
 function setSync(){
@@ -58749,9 +59345,18 @@ function weightsSorted(){ return Object.values(S.docs.weights).filter(w=>w&&w.kg
 function avg7(date){ const ws=weightsSorted().filter(w=>w.date<=date && diffDays(w.date,date)<7); return ws.length>=7 ? ws.reduce((a,w)=>a+w.kg,0)/ws.length : null; }
 function avgWindow(endDate){ const ws=weightsSorted().filter(w=>w.date<=endDate && diffDays(w.date,endDate)<7); return ws.length ? {avg:ws.reduce((a,w)=>a+w.kg,0)/ws.length,n:ws.length} : null; }
 
+/* What's planned next comes from the person's own templates (WorkoutLogger.planNext): Aziz's Push / Pull / Lower
+   rotation when those templates exist, otherwise the templates they added, in order. Nobody sees a programme they
+   didn't pick: with no templates there is no planned session. */
+function lbPlan(){ try{ return window.WorkoutLogger && WorkoutLogger.planNext ? WorkoutLogger.planNext(S.docs.lb_templates, S.docs.lb_workouts, (lbSettings()||{}).rotOverride) : null; }catch(e){ return null; } }
+function lbTemplateByName(name){ return Object.values(S.docs.lb_templates||{}).find(t=>t && t.name===name) || null; }
+function lbExName(id){ const o=S.docs.lb_exercises && S.docs.lb_exercises[id]; if(o && o.name) return o.name; try{ const l=window.WorkoutLogger && WorkoutLogger.library && WorkoutLogger.library[id]; if(l && l.name) return l.name; }catch(e){} return id; }
 function sessionFor(date){
   const w = S.docs.workouts[date];
   if(w && w.session) return {session:w.session, idx:w.idx, chosen:true};
+  const plan = lbPlan();
+  if(plan) return {session:plan.name, idx:plan.idx, chosen:false, list:plan.list};
+  if(Object.keys(S.docs.lb_templates||{}).length) return null;
   const prev = Object.values(S.docs.workouts).filter(x=>x && x.date<date && x.session).sort((a,b)=>a.date<b.date?1:-1)[0];
   if(prev && Number.isInteger(prev.idx)){ const idx=(prev.idx+1)%8; return {session:ROTATION[idx], idx, chosen:false, after:prev}; }
   return null;
@@ -58930,7 +59535,7 @@ function verdict(items){
 
 /* ---------- TODAY ---------- */
 function ddTargets(){ return APPT || {kcal:TARGET.kcal, proteinMin:TARGET.pMin, proteinMax:TARGET.pMax}; }
-function ddOpts(){ return {today:TODAY, selected:view.date, targets:ddTargets(), kcalTarget:kcalTarget, waterGoal:(d,training)=>training?3500:3000, rotation:ROTATION, sessionFor:x=>sessionFor(x), exerciseCount:s=>(PROGRAM[s]||[]).length||null, lbWorkouts:S.docs.lb_workouts, readiness:window.RecoveryFatigue?(x=>RecoveryFatigue.readiness(S.docs,{date:x})):undefined, slots:FOOD_SLOTS, trainTime:ddTrainTime}; }
+function ddOpts(){ return {today:TODAY, selected:view.date, targets:ddTargets(), kcalTarget:kcalTarget, waterGoal:(d,training)=>training?3500:3000, rotation:(lbPlan()||{}).list||ROTATION, sessionFor:x=>sessionFor(x), exerciseCount:s=>{ const t=lbTemplateByName(s); return t ? t.exercises.length : ((PROGRAM[s]||[]).length||null); }, lbWorkouts:S.docs.lb_workouts, readiness:window.RecoveryFatigue?(x=>RecoveryFatigue.readiness(S.docs,{date:x})):undefined, slots:FOOD_SLOTS, trainTime:ddTrainTime}; }
 // Training clock time for the Your day timeline: the phone-reminder times (Sun–Thu / Saturday), null when there are none.
 function ddTrainTime(d){ if(!window.CalendarReminders) return null; try{ const s=CalendarReminders.settings(S.docs.prefs.main||{}); const wd=new Date(d+"T12:00:00Z").getUTCDay(), code=["SU","MO","TU","WE","TH","FR","SA"][wd]; if(wd===6) return s.satOn?s.satTime:null; return (s.trainDays||[]).includes(code)?s.trainTime:null; }catch(e){ return null; } }
 const CARDIO_DEFAULT = {kind:"treadmill", min:30, speed:4.0, incline:3};
@@ -59041,7 +59646,7 @@ function mfOpts(){ return {today:TODAY, musclesFor:window.StrengthAnalytics?Stre
 function mrOpts(){ return {today:TODAY, ym:view.mrYm, targets:dayTargets, sessionFor:x=>sessionFor(x)?.session, units:window.StrengthAnalytics?StrengthAnalytics.unitsFrom(PROGRAM):undefined, mainLifts:MAIN_LIFTS, start:START.date}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
-function mmOpts(){ const ses=sessionFor(view.date); const name=ses&&ses.session; return {today:TODAY, nextSession:(name&&name!=="Rest"&&PROGRAM[name])?{name, exercises:PROGRAM[name].map(e=>e[0])}:null, library:S.docs.lb_exercises}; }
+function mmOpts(){ const ses=sessionFor(view.date); const name=ses&&ses.session; const tpl=name&&name!=="Rest"?lbTemplateByName(name):null; return {today:TODAY, nextSession: tpl ? {name, exercises:tpl.exercises.map(e=>lbExName(e.exId))} : (name&&name!=="Rest"&&PROGRAM[name])?{name, exercises:PROGRAM[name].map(e=>e[0])}:null, library:S.docs.lb_exercises}; }
 function tcOpts(){ // Compare trends: reuse the trend line and the lift e1RM series the other Progress cards already compute
   let lifts; try{ if(window.StrengthAnalytics) lifts=StrengthAnalytics.analyze(S.docs, strengthOpts()).lifts; }catch(e){}
   const pick=S.docs.prefs.main?.trendCompare;
@@ -60198,7 +60803,11 @@ let lbMounted=false;
 function syncLogger(){
   const host=document.getElementById("lbHost"), show = view.tab==="train" && view.trainMode==="full";
   host.hidden = !show;
-  if((!show && view.tab!=="settings") || lbMounted || !window.WorkoutLogger || S.mode==="loading") return;
+  if(show && !lbMounted && !storeReady) host.innerHTML='<div class="card" id="lbWait"><p class="muted">Loading your workouts…</p></div>';
+  // Wait for initStore to decide between the account and this-device storage: mounting before that (the app opens on
+  // the Train tab) gave the logger localStorage-only storage for the whole session, so finished workouts never reached
+  // the account and History missed days.
+  if((!show && view.tab!=="settings") || lbMounted || !window.WorkoutLogger || S.mode==="loading" || !storeReady) return;
   lbMounted=true;
   const db=S.db;
   const storage = db ? {
@@ -60214,6 +60823,7 @@ function syncLogger(){
       formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE) : undefined,
       programs: (window.NippardPrograms && window.NIPPARD_PROGRAMS) ? NippardPrograms.create(window.NIPPARD_PROGRAMS) : undefined,
       tips: (window.NippardPrograms && window.NIPPARD_TIPS) ? NippardPrograms.tips(window.NIPPARD_TIPS) : undefined,
+      chooser: window.ProgramChooser || undefined, onBack: (window.AndroidShell && AndroidShell.onBack) ? fn => AndroidShell.onBack(fn) : undefined,
       anim: window.ExerciseAnim ? ExerciseAnim.create() : undefined,
       breakRamp: window.BreakRamp || undefined,
       weights: { list: async()=>weightsSorted().map(w=>({date:w.date,kg:w.kg})), put: async(date,kg)=>put("weights",date,{date,kg:Math.round(kg*10)/10},{quiet:true}) },
@@ -60262,7 +60872,7 @@ window.addEventListener("lb:rest-adjust",e=>{ if(tInt) quickRestAdjust(+((e.deta
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones","ProgramChooser"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget, plan:()=>S.docs.prefs.main?.goalSetup||null,

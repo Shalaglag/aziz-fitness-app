@@ -911,8 +911,8 @@ const LIB = {
 
 /* ===================== Store (synced db when available, else this browser) ===================== */
 const COLS = ["menus","days","weights","workouts","prefs","meals","barcodes","cardio","markers","runs","chats"];
-const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},markers:{},runs:{},chats:{},lb_workouts:{},lb_exercises:{}}, db:null, mode:"loading", synced:new Set()};
-const LB_READ = ["lb_workouts","lb_exercises"];
+const S = {docs:{menus:{},days:{},weights:{},workouts:{},prefs:{},meals:{},barcodes:{},cardio:{},markers:{},runs:{},chats:{},lb_workouts:{},lb_exercises:{},lb_templates:{}}, db:null, mode:"loading", synced:new Set()};
+const LB_READ = ["lb_workouts","lb_exercises","lb_templates"];
 let renderPending = false;
 function loadLocal(){ try{ const j = JSON.parse(localStorage.getItem("aziz-cut")||"null"); if(j) COLS.forEach(c=>S.docs[c]=j[c]||{}); }catch(e){} }
 function saveLocal(){ try{ const o={}; COLS.forEach(c=>o[c]=S.docs[c]); localStorage.setItem("aziz-cut", JSON.stringify(o)); localStorage.setItem("aziz-cut-localAt", String(Date.now())); }catch(e){} }
@@ -1036,7 +1036,7 @@ async function initStore(){
   setInterval(()=>{ if(outbox.size()) outbox.retryAll(); }, 30000);
   document.getElementById("unsaved").addEventListener("click", ()=>{ toast("Retrying…"); outbox.retryAll().then(()=>{ const e=outbox.firstError(); toast(outbox.size()?"Still can't save"+(e?" ("+e+")":"")+". Your changes are kept on this device.":"All changes saved"); }); });
   LB_READ.forEach(c=>{ try{ db.collection(c).onSnapshot(qs=>{ const o={}; qs.docs.forEach(d=>{ o[d.id]=d.data(); }); S.docs[c]=o; if(view.tab!=="train") scheduleRender(); }, ()=>{}); }catch(e){} });
-  setSync();
+  setSync(); render();
   try{ mountFriends(); }catch(e){ console.warn("Friends", e); }
 }
 function setSync(){
@@ -1081,9 +1081,18 @@ function weightsSorted(){ return Object.values(S.docs.weights).filter(w=>w&&w.kg
 function avg7(date){ const ws=weightsSorted().filter(w=>w.date<=date && diffDays(w.date,date)<7); return ws.length>=7 ? ws.reduce((a,w)=>a+w.kg,0)/ws.length : null; }
 function avgWindow(endDate){ const ws=weightsSorted().filter(w=>w.date<=endDate && diffDays(w.date,endDate)<7); return ws.length ? {avg:ws.reduce((a,w)=>a+w.kg,0)/ws.length,n:ws.length} : null; }
 
+/* What's planned next comes from the person's own templates (WorkoutLogger.planNext): Aziz's Push / Pull / Lower
+   rotation when those templates exist, otherwise the templates they added, in order. Nobody sees a programme they
+   didn't pick: with no templates there is no planned session. */
+function lbPlan(){ try{ return window.WorkoutLogger && WorkoutLogger.planNext ? WorkoutLogger.planNext(S.docs.lb_templates, S.docs.lb_workouts, (lbSettings()||{}).rotOverride) : null; }catch(e){ return null; } }
+function lbTemplateByName(name){ return Object.values(S.docs.lb_templates||{}).find(t=>t && t.name===name) || null; }
+function lbExName(id){ const o=S.docs.lb_exercises && S.docs.lb_exercises[id]; if(o && o.name) return o.name; try{ const l=window.WorkoutLogger && WorkoutLogger.library && WorkoutLogger.library[id]; if(l && l.name) return l.name; }catch(e){} return id; }
 function sessionFor(date){
   const w = S.docs.workouts[date];
   if(w && w.session) return {session:w.session, idx:w.idx, chosen:true};
+  const plan = lbPlan();
+  if(plan) return {session:plan.name, idx:plan.idx, chosen:false, list:plan.list};
+  if(Object.keys(S.docs.lb_templates||{}).length) return null;
   const prev = Object.values(S.docs.workouts).filter(x=>x && x.date<date && x.session).sort((a,b)=>a.date<b.date?1:-1)[0];
   if(prev && Number.isInteger(prev.idx)){ const idx=(prev.idx+1)%8; return {session:ROTATION[idx], idx, chosen:false, after:prev}; }
   return null;
@@ -1262,7 +1271,7 @@ function verdict(items){
 
 /* ---------- TODAY ---------- */
 function ddTargets(){ return APPT || {kcal:TARGET.kcal, proteinMin:TARGET.pMin, proteinMax:TARGET.pMax}; }
-function ddOpts(){ return {today:TODAY, selected:view.date, targets:ddTargets(), kcalTarget:kcalTarget, waterGoal:(d,training)=>training?3500:3000, rotation:ROTATION, sessionFor:x=>sessionFor(x), exerciseCount:s=>(PROGRAM[s]||[]).length||null, lbWorkouts:S.docs.lb_workouts, readiness:window.RecoveryFatigue?(x=>RecoveryFatigue.readiness(S.docs,{date:x})):undefined, slots:FOOD_SLOTS, trainTime:ddTrainTime}; }
+function ddOpts(){ return {today:TODAY, selected:view.date, targets:ddTargets(), kcalTarget:kcalTarget, waterGoal:(d,training)=>training?3500:3000, rotation:(lbPlan()||{}).list||ROTATION, sessionFor:x=>sessionFor(x), exerciseCount:s=>{ const t=lbTemplateByName(s); return t ? t.exercises.length : ((PROGRAM[s]||[]).length||null); }, lbWorkouts:S.docs.lb_workouts, readiness:window.RecoveryFatigue?(x=>RecoveryFatigue.readiness(S.docs,{date:x})):undefined, slots:FOOD_SLOTS, trainTime:ddTrainTime}; }
 // Training clock time for the Your day timeline: the phone-reminder times (Sun–Thu / Saturday), null when there are none.
 function ddTrainTime(d){ if(!window.CalendarReminders) return null; try{ const s=CalendarReminders.settings(S.docs.prefs.main||{}); const wd=new Date(d+"T12:00:00Z").getUTCDay(), code=["SU","MO","TU","WE","TH","FR","SA"][wd]; if(wd===6) return s.satOn?s.satTime:null; return (s.trainDays||[]).includes(code)?s.trainTime:null; }catch(e){ return null; } }
 const CARDIO_DEFAULT = {kind:"treadmill", min:30, speed:4.0, incline:3};
@@ -1373,7 +1382,7 @@ function mfOpts(){ return {today:TODAY, musclesFor:window.StrengthAnalytics?Stre
 function mrOpts(){ return {today:TODAY, ym:view.mrYm, targets:dayTargets, sessionFor:x=>sessionFor(x)?.session, units:window.StrengthAnalytics?StrengthAnalytics.unitsFrom(PROGRAM):undefined, mainLifts:MAIN_LIFTS, start:START.date}; }
 function rfOpts(){ const pr=S.docs.prefs.main?.profile||{}; return {sleepMin:+pr.sleepMin||undefined, sleepTarget:+pr.sleepTarget||undefined}; }
 function rfSafe(fn){ return safeMod("RecoveryFatigue", fn); }
-function mmOpts(){ const ses=sessionFor(view.date); const name=ses&&ses.session; return {today:TODAY, nextSession:(name&&name!=="Rest"&&PROGRAM[name])?{name, exercises:PROGRAM[name].map(e=>e[0])}:null, library:S.docs.lb_exercises}; }
+function mmOpts(){ const ses=sessionFor(view.date); const name=ses&&ses.session; const tpl=name&&name!=="Rest"?lbTemplateByName(name):null; return {today:TODAY, nextSession: tpl ? {name, exercises:tpl.exercises.map(e=>lbExName(e.exId))} : (name&&name!=="Rest"&&PROGRAM[name])?{name, exercises:PROGRAM[name].map(e=>e[0])}:null, library:S.docs.lb_exercises}; }
 function tcOpts(){ // Compare trends: reuse the trend line and the lift e1RM series the other Progress cards already compute
   let lifts; try{ if(window.StrengthAnalytics) lifts=StrengthAnalytics.analyze(S.docs, strengthOpts()).lifts; }catch(e){}
   const pick=S.docs.prefs.main?.trendCompare;
@@ -2530,7 +2539,11 @@ let lbMounted=false;
 function syncLogger(){
   const host=document.getElementById("lbHost"), show = view.tab==="train" && view.trainMode==="full";
   host.hidden = !show;
-  if((!show && view.tab!=="settings") || lbMounted || !window.WorkoutLogger || S.mode==="loading") return;
+  if(show && !lbMounted && !storeReady) host.innerHTML='<div class="card" id="lbWait"><p class="muted">Loading your workouts…</p></div>';
+  // Wait for initStore to decide between the account and this-device storage: mounting before that (the app opens on
+  // the Train tab) gave the logger localStorage-only storage for the whole session, so finished workouts never reached
+  // the account and History missed days.
+  if((!show && view.tab!=="settings") || lbMounted || !window.WorkoutLogger || S.mode==="loading" || !storeReady) return;
   lbMounted=true;
   const db=S.db;
   const storage = db ? {
@@ -2546,6 +2559,7 @@ function syncLogger(){
       formCues: (window.FormCues && window.FORM_GUIDE) ? FormCues.create(window.FORM_GUIDE) : undefined,
       programs: (window.NippardPrograms && window.NIPPARD_PROGRAMS) ? NippardPrograms.create(window.NIPPARD_PROGRAMS) : undefined,
       tips: (window.NippardPrograms && window.NIPPARD_TIPS) ? NippardPrograms.tips(window.NIPPARD_TIPS) : undefined,
+      chooser: window.ProgramChooser || undefined, onBack: (window.AndroidShell && AndroidShell.onBack) ? fn => AndroidShell.onBack(fn) : undefined,
       anim: window.ExerciseAnim ? ExerciseAnim.create() : undefined,
       breakRamp: window.BreakRamp || undefined,
       weights: { list: async()=>weightsSorted().map(w=>({date:w.date,kg:w.kg})), put: async(date,kg)=>put("weights",date,{date,kg:Math.round(kg*10)/10},{quiet:true}) },
@@ -2594,7 +2608,7 @@ window.addEventListener("lb:rest-adjust",e=>{ if(tInt) quickRestAdjust(+((e.deta
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
 try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:""); document.head.appendChild(st2); }catch(e){}
-["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
+["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones","ProgramChooser"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);
   if(window.Coach) Coach.bind(document, { getDocs:()=>S.docs, render, today:()=>TODAY, targets:()=>APPT, rules:()=>({floor:KCAL_FLOOR}), kcalTarget, plan:()=>S.docs.prefs.main?.goalSetup||null,

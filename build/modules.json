@@ -32,6 +32,7 @@
     { "file": "modules/nippard-programs/programs.json", "json": "NIPPARD_PROGRAMS" },
     { "file": "modules/nippard-programs/tips.json", "json": "NIPPARD_TIPS" },
     { "file": "modules/nippard-programs/nippard-programs.js", "expose": ["NippardPrograms"] },
+    { "file": "modules/program-chooser/program-chooser.js", "expose": ["ProgramChooser"] },
     { "file": "modules/exercise-anim/clips.json", "json": "EXERCISE_CLIPS" },
     { "file": "modules/exercise-anim/exercise-anim.js" },
     { "file": "modules/exercise-3d/exercises.json", "json": "EXERCISE_3D" },
