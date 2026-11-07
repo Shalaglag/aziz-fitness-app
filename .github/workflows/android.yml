@@ -74,9 +74,7 @@ jobs:
             }, null, 2) + "\n");
           '
           cat latest.json
-      # Convenience copy for PR builds. The account's Actions artifact storage quota can fill up (Nov 7, 2026:
-      # "Artifact storage quota has been hit"), so a failed upload must not fail the build or block the release
-      # steps below, which attach the APK to a GitHub release instead (release assets don't count against it).
+      # The release attachment below is what ships; a full artifact storage quota must not fail the build.
       - uses: actions/upload-artifact@v4
         continue-on-error: true
         with:

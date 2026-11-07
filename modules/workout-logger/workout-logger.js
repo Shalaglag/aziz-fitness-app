@@ -1560,7 +1560,8 @@ Power Clean (Barbell)|Other|Barbell|`;
     const groups = {}; list.forEach(p => { (groups[p.source] = groups[p.source] || []).push(p); });
     openSheet({
       title: 'New template',
-      body: () => '<div class="lb-row"><button class="lb-btn primary wide" data-a="blankTpl">Blank template</button></div>' +
+      body: () => (S.opts.chooser ? '<button class="lb-card lb-help" data-a="progHelp"><b>Help me choose</b><span>Answer a few questions about your goal, schedule, gym and any injuries, and get the best-fitting programme.</span></button>' : '') +
+        '<div class="lb-row"><button class="lb-btn primary wide" data-a="blankTpl">Blank template</button></div>' +
         '<h4 class="lb-folder">Ready-made programs <span class="lb-muted">' + list.length + '</span></h4><p class="lb-muted small">No split yet? Pick a programme and its days are added to your templates, with Jeff Nippard\'s sets, reps, RPE, rest and notes. Edit anything after.</p>' +
         Object.keys(groups).map(src => '<p class="lb-eyebrow">' + esc(src) + '</p><div class="lb-grid">' + groups[src].map(p => '<button class="lb-card lb-tpl" data-a="progPreview" data-id="' + esc(p.id) + '"><div class="lb-tpl-top"><b>' + esc(p.name.replace(/^.*· /, '')) + '</b><span class="lb-muted small">' + p.days + 'x/week</span></div><p>' + esc(p.level) + ' · ' + p.workouts + ' days · ' + esc(p.time) + (S.data.templates['np-' + p.id + '-1'] ? ' · added' : '') + '</p></button>').join('') + '</div>').join('')
     });
@@ -1575,10 +1576,24 @@ Power Clean (Barbell)|Other|Barbell|`;
         '<div class="lb-row"><button class="lb-btn primary wide" data-a="progAdd" data-id="' + esc(p.id) + '">' + (added ? 'Add again (replaces its templates)' : 'Add to my templates') + '</button></div>'
     });
   });
-  on('progAdd', t => {
-    const id = t.dataset.id, tpls = S.opts.programs.templates(id, { unit: S.settings.unit, order: 50 });
+  function addProgram(id) {
+    const tpls = S.opts.programs.templates(id, { unit: S.settings.unit, order: 50 });
     tpls.forEach(tp => put('templates', tp));
     closeAllSheets(); toast('Added ' + tpls.length + ' templates'); renderMain();
+  }
+  on('progAdd', t => addProgram(t.dataset.id));
+  // "Help me choose": the program-chooser questionnaire (goal-setup look) picks the best programme for the answers.
+  on('progHelp', () => {
+    if (!S.opts.chooser || !S.opts.programs) return;
+    closeAllSheets();
+    S.opts.chooser.open({
+      programs: S.opts.programs.list(),
+      added: id => !!S.data.templates['np-' + id + '-1'],
+      onPick: id => addProgram(id),
+      onPreview: id => { openProgramPicker(); actions.progPreview({ dataset: { id } }); },
+      onClose: reason => { if (reason === 'close') openProgramPicker(); },
+      onBack: S.opts.onBack
+    });
   });
 
   let liveEl;
@@ -2344,6 +2359,7 @@ Power Clean (Barbell)|Other|Barbell|`;
 .lb-card{display:block;width:100%;background:var(--lb-surface);border:1px solid var(--lb-line);border-radius:var(--lb-r);padding:14px;min-width:0}
 button.lb-card{text-align:left}
 button.lb-card:hover{border-color:var(--lb-muted)}
+.lb-help{display:flex;flex-direction:column;gap:4px;text-align:left;border-color:var(--lb-accent);background:color-mix(in srgb,var(--lb-accent) 10%,var(--lb-surface));margin-bottom:10px}.lb-help b{font-size:1.05rem}.lb-help span{color:var(--lb-muted);font-size:.86rem}
 .lb-eyebrow{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--lb-muted);font-weight:600}
 .lb-next h3{font-size:2rem;margin:.1rem 0}
 .lb-rot{display:flex;flex-wrap:wrap;gap:4px;margin-top:12px}
