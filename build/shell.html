@@ -1208,7 +1208,7 @@ function render(){
   try{ foodDraftCapture(); }catch(e){ console.error("[food draft]", e); }
   const tabFn = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,friends:vFriends,guide:vGuide,settings:vSettings})[view.tab] || vToday;
   main.innerHTML = safe(view.tab+" tab", tabFn);
-  [["Workout logger",syncLogger],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
+  [["Workout logger",syncLogger],["Food search",mountFoodSearch],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
   if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); if(lastTab) tabMotion(lastTab, view.tab); lastTab=view.tab; }
   applyFlash();
   window.scrollTo(0,y);
@@ -1856,7 +1856,7 @@ function foodFormSync(){ const h=document.getElementById("fhead"); if(!h) return
 function foodSheet(d, day, training){
   const fs=view.foodSheet, tab=fs.tab||"add", slot=fs.slot||"Meal 1", edit = fs.edit ? day.food.find(i=>i.id===fs.edit) : null;
   // The menu picker sits on the Food page itself (above Food check) when MenuImport is inlined; the sheet keeps the old paste picker only as a fallback.
-  const tabs=[["add",edit?"Edit":"Add"],["quick","Quick"],["saved","Saved"]].concat(window.MenuImport?[]:[["menu","Menu"]]).concat([["scan","Scan"]]);
+  const tabs=[["add",edit?"Edit":"Add"]].concat(window.FoodSearch?[["search","Search"]]:[]).concat([["quick","Quick"],["saved","Saved"]]).concat(window.MenuImport?[]:[["menu","Menu"]]).concat([["scan","Scan"]]);
   const num=(id,l,v,st)=>`<label class="field"><span class="label">${l}</span><input type="number" id="${id}" step="${st}" value="${v??""}" ${id==="fk"?"required":""}></label>`;
   let body="";
   if(tab==="add"){ const dr=fs.draft||null, v=dr ? {kcal:dr.fk,p:dr.fp,c:dr.fc,f:dr.ff} : (edit||{}), G=foodGoals(d), FIELDS=[["fk","Calories","kcal","k"],["fp","Protein","p","p"],["fc","Carbs","c","c"],["ff","Fat","f","f"]];
@@ -1877,6 +1877,7 @@ function foodSheet(d, day, training){
       <div class="tablewrap"><table><thead><tr><th>Snack</th><th class="n">kcal</th><th class="n">P</th><th class="n">C</th><th class="n">F</th><th></th></tr></thead>
       <tbody>${SNACKS.map((s,i)=>`<tr class="${s[0]==="Banned"?"banned":""}"><td>${s[0]==="Banned"?"":mgBadge({kcal:s[2],p:s[3],c:s[4],f:s[5]},"snack")+" "}${s[1]}<br><small class="muted">${s[0]==="Banned"?"Never pick":s[0]}</small></td><td class="n">${s[2]}</td><td class="n">${s[3]}</td><td class="n">${s[4]}</td><td class="n">${s[5]}</td><td>${s[0]==="Banned"?"":`<button class="btn ghost small" data-act="snack" data-i="${i}">Add</button>`}</td></tr>`).join("")}</tbody></table></div>
       <p class="muted" style="font-size:.85rem">With Meal 1 (pre-workout) prefer fruit or a light sweet. Nuts and Pro Mud Cake fit better with Meal 2.</p></div>`;
+  else if(tab==="search") body = `<div id="flHost"></div>`;
   else if(tab==="saved") body = safeMod("SavedMeals",()=>SavedMeals.cardHTML(S.docs.meals,{day})) + safeMod("CopyMeals",()=>CopyMeals.cardHTML(day,{today:TODAY,days:S.docs.days,open:view.open.cm}));
   else if(tab==="menu" && !window.MenuImport) body = pickerCard(d, training);
   else body = `<div id="bcHost"></div><div id="lsHost"></div>${typeof PhotoFood !== "undefined" ? PhotoFood.html(d, day) : ""}${window.VoiceLog && typeof PhotoFood !== "undefined" ? safeMod("VoiceLog",()=>VoiceLog.foodCardHtml()) : ""}`;
@@ -2473,6 +2474,34 @@ function proteinGapHtml(day){
   const can = r.best && r.best.items && r.best.items.length;
   return `<div class="note info" style="display:flex;flex-direction:column;gap:6px"><span>${esc(ProteinGap.summary(r))}</span>${can?`<div><button class="btn small" data-act="pgadd">Add to this day</button></div>`:""}</div>`;
 }
+// The Mizan service's BASE address (AI settings or cloud-config), without a pasted /v1/… suffix.
+function coachBase(){ const b=String(S.docs.prefs.main?.coachService || (window.FITNESS_CLOUD_CONFIG||{}).coachEndpoint || "").trim().replace(/\/+$/,"").replace(/\/v1\/(health|chat|usage|cap|read|foods|food|tidy)$/,""); return /^https:\/\//i.test(b) ? b : null; }
+// Food search (Search tab of the Add food sheet): local records at once, USDA through the service (no AI cost), Open Food Facts on request.
+let flCache=null;
+function foodLibRecords(){
+  const out=[];
+  try{ if(window.FOOD_CATALOG) for(const e of FOOD_CATALOG.foods||[]) { const r=FoodLib.fromCatalog(e); if(r) out.push(r); } }catch(e){}
+  try{ if(window.FOOD_RESTAURANTS) out.push(...FoodLib.restaurantRecords(FOOD_RESTAURANTS)); }catch(e){}
+  try{ for(const [code,prod] of Object.entries(S.docs.barcodes||{})){ const r=FoodLib.fromLibrary(code,prod); if(r) out.push(r); } }catch(e){}
+  return out;
+}
+function mountFoodSearch(){
+  const el=document.getElementById("flHost"); if(!el || !window.FoodSearch || !window.FoodLib) return;
+  if(!flCache){ try{ flCache=FoodLib.cache(localStorage); }catch(e){ flCache=FoodLib.cache(null); } }
+  const token=()=>window.CloudStore && CloudStore.idToken ? CloudStore.idToken().catch(()=>null) : Promise.resolve(null);
+  const prefs=()=>S.docs.prefs.main||{};
+  FoodSearch.mount(el,{
+    records: foodLibRecords, market:"KW", slot:(view.foodSheet&&view.foodSheet.slot)||"Meal 1", toast,
+    usda: async q=>{ const base=coachBase(); if(!base) return {records:[],error:"no_endpoint"}; const t=await token(); if(!t) return {records:[],error:"not_signed_in"}; return FoodLib.usdaSearch(q,{fetch:(u,i)=>fetch(u,i), base, token:t, cache:flCache}); },
+    off: q=>FoodLib.offSearch(q,{fetch:(u,i)=>fetch(u,i), cache:flCache}),
+    details: async rec=>{ const base=coachBase(), t=base&&await token(); if(!t) return null; const id=rec.source.id; const key="usdafood:"+id; const hit=flCache.get(key); const j=hit||await fetch(base+"/v1/food?id="+encodeURIComponent(id),{headers:{authorization:"Bearer "+t}}).then(r=>r.ok?r.json():null).catch(()=>null); if(!j||!j.food) return null; if(!hit) flCache.put(key,j); const full=FoodLib.fromUsda(j.food,{retrievedAt:rec.source.retrievedAt}); return full; },
+    favourites:()=>new Set(Object.keys(prefs().foodFavs||{})),
+    toggleFavourite:id=>{ const m=clone(prefs()); m.foodFavs={...(m.foodFavs||{})}; if(m.foodFavs[id]) delete m.foodFavs[id]; else m.foodFavs[id]=TODAY; put("prefs","main",m,{quiet:true}); },
+    recents:()=>new Map(Object.entries(prefs().foodRecents||{}).map(([k,v])=>[k,+v.n||1])),
+    bumpRecent:id=>{ const m=clone(prefs()); const r={...(m.foodRecents||{})}; r[id]={n:((r[id]&&r[id].n)||0)+1, at:TODAY}; const keys=Object.keys(r).sort((a,b)=>(r[b].at||"").localeCompare(r[a].at||"")); for(const k of keys.slice(60)) delete r[k]; m.foodRecents=r; put("prefs","main",m,{quiet:true}); },
+    onAdd:row=>{ const day=getDay(view.date); day.food.push(row); flash("food"); saveDay(day); }
+  });
+}
 function mountBarcode(){
   const el=document.getElementById("bcHost"); if(!el || !window.BarcodeFood) return;
   try{ BarcodeFood.mount(el,{
@@ -2605,7 +2634,7 @@ window.addEventListener("lb:rest-skip",()=>{ if(tInt) quickRestStop(); });
 window.addEventListener("lb:rest-adjust",e=>{ if(tInt) quickRestAdjust(+((e.detail||{}).d)||15); });
 
 try{ const st=document.createElement("style"); st.textContent=WeeklyReport.css; document.head.appendChild(st); }catch(e){}
-try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:""); document.head.appendChild(st2); }catch(e){}
+try{ const st2=document.createElement("style"); st2.textContent=EffortDeload.css+(window.BarcodeFood&&BarcodeFood.CSS?BarcodeFood.CSS:"")+(window.LabelScan&&LabelScan.CSS?LabelScan.CSS:"")+(window.FoodSearch&&FoodSearch.CSS?FoodSearch.CSS:""); document.head.appendChild(st2); }catch(e){}
 ["MealGrade","BudgetRecovery","DailyScore","GoalDate","Ramadan","TrendTDEE","DietBreak","ReverseDiet","DailyDashboard","SuppDrinks","RecoveryFatigue","Coach","Cardio","RunTracker","StrengthAnalytics","MonthlyRecap","LiftGoals","HealthMarkers","MuscleMap","StrengthScore","MuscleFeedback","CalorieCycling","TrendCompare","TravelWorkout","ShortSession","CalendarReminders","BreakRamp","GoalSetup","PlanCheck","Milestones","ProgramChooser"].forEach(k=>{ try{ if(window[k]&&window[k].css){ const el=document.createElement("style"); el.textContent=window[k].css; document.head.appendChild(el); } }catch(e){} });
 try{
   const st=document.createElement("style"); st.textContent=PhotoFood.css; document.head.appendChild(st);

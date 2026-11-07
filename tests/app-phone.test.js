@@ -819,6 +819,37 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("food search: cooked rice -> 150 g logged with its source, unknown macros stay unknown, no ml/g inventions", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "food");
+      await page.click('button[data-act="foodadd"]'); await page.waitForTimeout(150);
+      await page.click('button[data-act="foodtab"][data-k="search"]'); await page.waitForTimeout(150);
+      await page.fill("#flq", "cooked rice"); await page.waitForTimeout(350);
+      const first = await page.$eval(".fl-item .fl-nm", e => e.textContent.replace(/\s+/g, " ").trim());
+      assert.match(first, /^Rice, white, cooked .*Typical values \(estimate\)/);
+      await page.click(".fl-item"); await page.waitForTimeout(150);
+      await page.fill("#flamt", "150 g"); await page.waitForTimeout(100);
+      const nums = await page.$eval("#flnums", e => e.textContent.replace(/\s+/g, " ").trim());
+      assert.match(nums, /^195kcal4(\.1)?protein42\.3carbs0\.5fat 150 g/, nums); // 130 kcal per 100 g × 1.5
+      await page.fill("#flamt", "100 ml"); await page.waitForTimeout(100);
+      assert.match(await page.$eval("#flnums", e => e.textContent), /Use .*grams/, "a per-100 g food refuses millilitres");
+      await page.fill("#flamt", "150 g"); await page.waitForTimeout(100);
+      await page.click('[data-fl="add"]'); await page.waitForTimeout(300);
+      const row = await page.evaluate(() => S.docs.days[TODAY].food.find(i => /Rice, white, cooked/.test(i.name)));
+      assert.ok(row, "row logged"); assert.strictEqual(row.kcal, 195); assert.strictEqual(row.grams, 150); assert.strictEqual(row.est, true); assert.strictEqual(row.eaten, false);
+      assert.strictEqual(row.src.kind, "catalog"); assert.strictEqual(row.src.grade, "estimate"); assert.strictEqual(row.src.basis, "100 g");
+      assert.ok((await page.evaluate(() => Object.keys(S.docs.prefs.main.foodRecents || {}))).includes("cat:rice-white-cooked"), "recent remembered");
+      // The USDA button goes through the service; with no service address the card says so and local results stay.
+      await page.fill("#flq", "salmon"); await page.waitForTimeout(350);
+      await page.click('[data-fl="search"]'); await page.waitForTimeout(300);
+      const hint = await page.$eval("#flres", e => e.textContent);
+      assert.match(hint, /USDA: (the Mizan service address is not set|sign in to Mizan to search)/); assert.ok(await page.$(".fl-item"), "local salmon still listed");
+      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(wide <= 1, "search sheet scrolls sideways by " + wide);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     for (const phone of PHONES) {
       await t.test(phone.name + ": every tab renders with no errors and no sideways scroll", async () => {
         for (const data of [null, seed]) {
