@@ -1165,11 +1165,18 @@ Power Clean (Barbell)|Other|Barbell|`;
   const formFor = id => { const fc = S.opts && S.opts.formCues; return fc ? fc.find(id) || fc.find(getEx(id).name) : null; };
   // Demos start collapsed: a small "Demo" toggle expands the built-in animation card in place (Gym mode, List view, About).
   const demoOpen = new Set();
-  function demoSlot(id) {
+  // part 'toggle' = only the Demo / Hide demo pill (for a header row), 'card' = only the open card.
+  // With no part, an open demo shows Hide demo at the top right, where the Demo pill was, above the card.
+  function demoSlot(id, part) {
     const an = S.opts && S.opts.anim; if (!an || !an.has(id)) return '';
-    return demoOpen.has(id)
-      ? '<div class="lb-demo-wrap">' + an.cardHtml(id) + '<button type="button" class="lb-link small" data-a="demoHide" data-id="' + esc(id) + '">Hide demo</button></div>'
+    const open = demoOpen.has(id);
+    const toggle = open
+      ? '<button type="button" class="lb-demo-toggle" data-a="demoHide" data-id="' + esc(id) + '" aria-expanded="true">&#9660; Hide demo</button>'
       : '<button type="button" class="lb-demo-toggle" data-a="demoShow" data-id="' + esc(id) + '" aria-expanded="false">&#9654; Demo</button>';
+    if (part === 'toggle') return toggle;
+    const card = open ? '<div class="lb-demo-wrap">' + an.cardHtml(id) + '</div>' : '';
+    if (part === 'card') return card;
+    return open ? '<div class="lb-demo-wrap"><div class="lb-demo-bar">' + toggle + '</div>' + an.cardHtml(id) + '</div>' : toggle;
   }
   function demoRerender() { if (E) renderEditor(); const sh = topSheet(); if (sh) sh.render(); }
   on('demoShow', t => { demoOpen.add(t.dataset.id); demoRerender(); });
@@ -1766,11 +1773,11 @@ Power Clean (Barbell)|Other|Barbell|`;
       const hint = E.mode === 'live' ? progressionHint(e.exId, e.unit, prev.e) : '';
       const xc = extraCols(ex);
       const cols = '2.1rem 1fr ' + f.map(() => '4.2rem').join(' ') + xc.map(() => ' 3rem').join('') + (live ? ' 2.6rem' : ' 2rem');
-      const dm = live ? demoSlot(e.exId) : '', dmHead = !!dm && !demoOpen.has(e.exId);
+      const dmHead = live ? demoSlot(e.exId, 'toggle') : '', dmCard = live ? demoSlot(e.exId, 'card') : '';
       html += '<article class="lb-exblock' + (e.ss ? ' ss ss' + (ssIdx % 4) : '') + '" data-ei="' + i + '">' +
         (e.ss ? '<div class="lb-sslabel">Superset ' + String.fromCharCode(65 + ssIdx) + '</div>' : '') +
-        '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button>' + (dmHead ? dm : '') + '<button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
-        (dm && !dmHead ? dm : '') +
+        '<div class="lb-exhead"><button class="lb-link strong" data-a="exOpen" data-id="' + e.exId + '">' + esc(ex.name) + '</button>' + dmHead + '<button class="lb-icon" data-a="exMenu" data-ei="' + i + '" aria-label="Exercise options">•••</button></div>' +
+        dmCard +
         (live && S.opts.formCues ? S.opts.formCues.inlineHtml(formFor(e.exId), e.exId) : '') + (live && S.opts.tips ? S.opts.tips.inlineHtml(e.exId) : '') +
         (ex.avoided ? '<p class="lb-warnbox small">Your plan avoids this lift.</p>' : '') +
         (e.tplNote ? '<p class="lb-muted small">' + esc(e.tplNote) + '</p>' : '') +
@@ -2538,7 +2545,7 @@ button.lb-card:hover{border-color:var(--lb-muted)}
 .lb-active-bar{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;margin:-4px 0 12px;border-radius:var(--lb-r);background:var(--lb-accent);color:var(--lb-accent-ink)}
 .lb-active-bar .dot{width:9px;height:9px;border-radius:50%;background:currentColor;animation:lbpulse 1.4s 6}
 .lb-demo-toggle{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;margin:2px 0 8px;border-radius:999px;border:1px solid var(--lb-line);background:var(--lb-surface);color:var(--lb-muted);font-size:.84rem;font-weight:600;font-family:inherit}
-.lb-demo-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin-bottom:6px}.lb-demo-wrap .ea-card{width:100%;margin:0}
+.lb-demo-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin-bottom:6px}.lb-demo-bar{align-self:stretch;display:flex;justify-content:flex-end}.lb-demo-bar .lb-demo-toggle{margin:0 0 4px}.lb-demo-wrap .ea-card{width:100%;margin:0}
 .lb-screen-title{font-family:var(--display,inherit);font-size:1.9rem;line-height:1;margin:2px 0 12px;font-weight:700}
 
 .lb-active-bar .lb-chev{margin-left:auto;font-weight:700}
