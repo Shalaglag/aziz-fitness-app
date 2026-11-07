@@ -223,7 +223,9 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.waitForSelector("#menuPicker .mi-opt.best");
       const pressed = await page.$eval('#menuPicker [data-mi="pri"][aria-pressed="true"]', e => e.textContent);
       assert.strictEqual(pressed, "Most protein");
-      assert.match(await page.$eval("#menuPicker .mi-opt.best .mi-whys", e => e.textContent), /Most protein of the \d+ meal pairs that fit your 2,000 kcal budget/);
+      // On a Saturday the picker adds the breakfast eggs first (menu-import `eggs`), so no two meals fit the 2,000 kcal budget and the reason says so.
+      const sat = await page.evaluate(() => dayType(TODAY) === "saturday");
+      assert.match(await page.$eval("#menuPicker .mi-opt.best .mi-whys", e => e.textContent), sat ? /Most protein this menu allows; no combination reaches your 2,000 kcal budget/ : /Most protein of the \d+ meal pairs that fit your 2,000 kcal budget/);
       assert.ok(/Chicken Burger with Fries/.test(await page.$eval("#menuPicker .mi-opt.best", e => e.textContent)), "the highest-protein meal is picked first");
       await page.click('#menuPicker [data-mi="avoid"][data-w="fries"]');
       const best = await page.$eval("#menuPicker .mi-opt.best", e => e.textContent);

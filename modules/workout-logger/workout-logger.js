@@ -2168,12 +2168,14 @@ Power Clean (Barbell)|Other|Barbell|`;
   const restNotify = () => (REST_NOTIFY.some(r => r[0] === S.settings.restNotify) ? S.settings.restNotify : 'big');
   // Persistent workout notification on Android (modules/android-shell RestTimerPlugin): what the shade shows between
   // rests. `focusEx` (set by its "Next exercise" button) overrides the resume point until that exercise is done.
+  function shadeCur(w) {
+    const exs = w.exercises || [];
+    if (w.focusEx != null && exs[w.focusEx] && exs[w.focusEx].sets.some(x => !x.done)) return [w.focusEx, exs[w.focusEx].sets.findIndex(x => !x.done)];
+    return resumePoint(exs);
+  }
   function workoutInfo() {
     const w = S.active; if (!w) return null;
-    const exs = w.exercises || [];
-    let cur = null;
-    if (w.focusEx != null && exs[w.focusEx] && exs[w.focusEx].sets.some(x => !x.done)) cur = [w.focusEx, exs[w.focusEx].sets.findIndex(x => !x.done)];
-    else cur = resumePoint(exs);
+    const exs = w.exercises || [], cur = shadeCur(w);
     const total = exs.reduce((n, e) => n + e.sets.length, 0), done = exs.reduce((n, e) => n + e.sets.filter(x => x.done).length, 0);
     let exercise = null, set = null, next = null;
     if (cur) {
@@ -2199,6 +2201,15 @@ Power Clean (Barbell)|Other|Barbell|`;
       if (E.view === 'gym') { const j = exs[pick].sets.findIndex(x => !x.done); gymGo(pick, j < 0 ? 0 : j); }
       else { const el = liveEl && liveEl.querySelector('.lb-exblock[data-ei="' + pick + '"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
     }
+  }
+  // "Complete set" on the notification: tick the set the shade shows (opens the workout if it was hidden).
+  function completeFromShade() {
+    const w = S.active; if (!w) return;
+    if (!E || E.mode !== 'live' || E.doc !== w) openEditor('live', w);
+    const c = shadeCur(w); if (!c) return;
+    if (!completeSet(c[0], c[1])) return; // no weight/reps yet: the toast says so and the notification stays
+    if (E.view === 'gym') { const nx = nextPending(w.exercises, c); if (nx) E.cur = nx; }
+    touch(); renderEditor(); renderRest();
   }
   // "Rest" on the notification: the current exercise's rest.
   function restFromShade() {
@@ -2238,6 +2249,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     window.addEventListener('lb:rest-skip', () => { if (rest) stopRest(); });
     window.addEventListener('lb:rest-adjust', e => restAdjust(+((e.detail || {}).d) || 15));
     window.addEventListener('lb:workout-next', () => nextExercise());
+    window.addEventListener('lb:workout-complete', () => completeFromShade());
     window.addEventListener('lb:rest-start', () => restFromShade());
   } catch (e) { }
   on('restMini', () => { if (!rest) return; rest.mini = true; persistRest(); renderRest(); });
