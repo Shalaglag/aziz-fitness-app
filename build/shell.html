@@ -2493,6 +2493,26 @@ function proteinGapHtml(day){
   return `<div class="note info" style="display:flex;flex-direction:column;gap:6px"><span>${esc(ProteinGap.summary(r))}</span>${can?`<div><button class="btn small" data-act="pgadd">Add to this day</button></div>`:""}</div>`;
 }
 // The Mizan service's BASE address (AI settings or cloud-config), without a pasted /v1/… suffix.
+// One door to the Mizan service's /v1/read for every image/description reader (menu, plate, label, describe).
+// The worker holds the prompts and the API key; the photo goes once, is not stored, and the call is counted
+// against the same spending cap as Ask Claude plus the daily scan allowance. Inside claude.ai the page's sample
+// capability is used instead (free), so readService is null there.
+const blobB64=b=>new Promise((ok,bad)=>{ const r=new FileReader(); r.onload=()=>ok(String(r.result).replace(/^data:[^,]*,/,"")); r.onerror=bad; r.readAsDataURL(b); });
+async function readService(kind,{images=[],text="",weightG=0,signal}={}){
+  const fail=code=>{ throw Object.assign(new Error(code),{code}); };
+  const base=coachBase(); if(!base) fail("no_endpoint");
+  if(navigator.onLine===false) fail("offline");
+  const token = window.CloudStore && CloudStore.idToken ? await CloudStore.idToken().catch(()=>null) : null;
+  if(!token) fail("not_signed_in");
+  const imgs = await Promise.all((images||[]).filter(Boolean).map(async b=>({media_type:/png|webp|gif/.test(b.type)?b.type:"image/jpeg", data:await blobB64(b)})));
+  const body={kind, images:imgs}; if(text) body.text=String(text).slice(0,600); if(weightG>0) body.weightG=Math.round(weightG);
+  let res; try{ res=await fetch(base+"/v1/read",{method:"POST",signal,headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify(body)}); }
+  catch(e){ fail(e && e.name==="AbortError" ? "cancelled" : "offline"); }
+  const j=await res.json().catch(()=>null);
+  if(!res.ok || !j) fail((j&&j.error)||"server_error");
+  return { text:j.text, costUsd:j.costUsd, kind:j.kind };
+}
+const aiReadService = () => window.claude ? null : readService;
 function coachBase(){ const b=String(S.docs.prefs.main?.coachService || (window.FITNESS_CLOUD_CONFIG||{}).coachEndpoint || "").trim().replace(/\/+$/,"").replace(/\/v1\/(health|chat|usage|cap|read|foods|food|tidy)$/,""); return /^https:\/\//i.test(b) ? b : null; }
 // Food search (Search tab of the Add food sheet): local records at once, USDA through the service (no AI cost), Open Food Facts on request.
 let flCache=null;
@@ -2556,6 +2576,7 @@ function mountLabelScan(){
   try{ LabelScan.mount(el,{
     slot:"Extra",
     getSample:()=>window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
+    readService: aiReadService(),
     library:{ all:()=>S.docs.barcodes||{}, get: code=>S.docs.barcodes?.[code], put:(code,prod)=>put("barcodes",code,prod,{quiet:true}) },
     prefs:()=>S.docs.prefs.main||{}, savePrefs:p=>put("prefs","main",p),
     drinkLabel:(p,k,v)=>window.SuppDrinks ? SuppDrinks.saveDrinkLabel(p,k,v) : p,
@@ -2708,6 +2729,10 @@ try{
     MacroTarget.bind(document, { date: () => view.date, render, onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items.map(it=>({id:uid(),eaten:false,...it}))); saveDay(day); toast("Added "+items[0].name+(items[0].eaten?"":". Tick it when you eat it.")); } }); }
   PhotoFood.bind(document, {
     getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
+    readService: aiReadService(),
+    // Components Claude names are priced from the food library (catalog, USDA cache, personal foods, recipes) × grams.
+    records: () => typeof foodLibRecords==="function" ? foodLibRecords() : [], lib: window.FoodLib || null,
+    showCost: () => !!(S.docs.prefs.main?.coachAI?.showCost),
     getDay, date: () => view.date, render, kcal: () => kcalTarget(view.date),
     onAdd(date, items){ const day=getDay(date); day.food=day.food.concat(items); saveDay(day); toast(items.length===1 ? "Added as an estimate" : "Added "+items.length+" items as estimates"); }
   });
@@ -2739,20 +2764,7 @@ try{
     }
     return k?{kcal:k}:null;
   };
-  const blobB64=b=>new Promise((ok,bad)=>{ const r=new FileReader(); r.onload=()=>ok(String(r.result).replace(/^data:[^,]*,/,"")); r.onerror=bad; r.readAsDataURL(b); });
-  const menuReadService=async(blobs)=>{
-    const fail=code=>{ throw Object.assign(new Error(code),{code}); };
-    let base=String(S.docs.prefs.main?.coachService || (window.FITNESS_CLOUD_CONFIG||{}).coachEndpoint || "").trim().replace(/\/+$/,"").replace(/\/v1\/(health|chat|usage|cap|read)$/,"");
-    if(!/^https:\/\//i.test(base)) fail("no_endpoint");
-    if(navigator.onLine===false) fail("offline");
-    const token = window.CloudStore && CloudStore.idToken ? await CloudStore.idToken().catch(()=>null) : null;
-    if(!token) fail("not_signed_in");
-    const images = await Promise.all(blobs.map(async b=>({media_type:/png|webp|gif/.test(b.type)?b.type:"image/jpeg", data:await blobB64(b)})));
-    let res; try{ res=await fetch(base+"/v1/read",{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({kind:"menu",images})}); }catch(e){ fail("offline"); }
-    const j=await res.json().catch(()=>null);
-    if(!res.ok || !j) fail((j&&j.error)||"server_error");
-    return j.text;
-  };
+  const menuReadService=async(blobs)=>(await readService("menu",{images:blobs})).text;
   MenuImport.bind(document, {
     engine: NutreezePicker,
     getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),

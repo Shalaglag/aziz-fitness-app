@@ -39,6 +39,7 @@ async function openTrain(page) {
 // The bottom bar is the default since Nov 1; its More button opens the same drawer when ☰ is hidden.
 async function go(page, tab) { await page.evaluate(() => { const m = document.getElementById("menuBtn"); (getComputedStyle(m).display === "none" ? document.querySelector("#bottomNav button[data-more]") : m).click(); }); await page.click(tab === "settings" ? "#openSettings" : `#tabs button[data-tab="${tab}"]`); await page.waitForTimeout(150); }
 
+const SHOTS = process.env.MIZAN_SHOTS || require("os").tmpdir();
 async function openApp(browser, phone, data, opts = {}) {
   const page = await browser.newPage({ viewport: { width: phone.width, height: phone.height }, isMobile: true, hasTouch: true });
   // opts.fixedTime pins the page clock (Date only; timers keep running) for checks whose result depends on the weekday.
@@ -887,6 +888,48 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       assert.match(names[0], /^My labneh Your entry · 100 g/, names.join(" | "));
       const prod = await page.evaluate(() => S.docs.barcodes["my-my-labneh"]);
       assert.deepStrictEqual(prod.per100, { kcal: 190, p: 7, c: 4, f: 16 }); assert.strictEqual(prod.source, "manual");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test("describe a meal: the Mizan service names components, the library prices them by grams, Add logs rows with a source", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      const seen = [];
+      await page.route(/\/v1\/read$/, async r => {
+        seen.push(JSON.parse(r.request().postData()));
+        const text = JSON.stringify({ components: [
+          { name: "white rice", prep: "cooked", grams: 200, kcal: 300, p: 5, c: 60, f: 2, confidence: "medium", fromLabel: false },
+          { name: "mystery sauce", prep: "", grams: 30, kcal: 90, p: 0, c: 5, f: 8, confidence: "low", fromLabel: false } ],
+          question: "Was the rice cooked with oil?", note: "Oil is not visible." });
+        await r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ kind: "describe", text, stop: "end_turn", costUsd: 0.0019, month: "2026-11" }) });
+      });
+      // Signed in (a fake ID token); the service address comes from cloud-config.
+      await page.evaluate(() => { window.CloudStore = Object.assign(window.CloudStore || {}, { idToken: async () => "test-token" }); });
+      await go(page, "food");
+      await page.click('button[data-act="foodadd"]'); await page.waitForTimeout(150);
+      await page.waitForSelector('#foodSheet[role="dialog"]');
+      await page.click('button[data-act="foodtab"][data-k="scan"]'); await page.waitForTimeout(150);
+      await page.waitForSelector("#pfText");
+      await page.fill("#pfText", "a plate of white rice with some sauce");
+      await page.click('[data-pf="go"]');
+      await page.waitForSelector(".pf-item");
+      const r = await page.evaluate(() => ({
+        items: [...document.querySelectorAll(".pf-item")].map(e => ({ name: e.querySelector('[data-pfk="name"]').value, src: e.querySelector(".pf-src").textContent.trim(), kcal: e.querySelector('[data-pfk="kcal"]') ? e.querySelector('[data-pfk="kcal"]').value : "" })),
+        question: (document.querySelector(".pf-q span") || {}).textContent, wide: document.documentElement.scrollWidth - window.innerWidth }));
+      assert.strictEqual(seen.length, 1); assert.strictEqual(seen[0].kind, "describe"); assert.deepStrictEqual(seen[0].images, []);
+      assert.strictEqual(r.items.length, 2);
+      assert.match(r.items[0].src, /Rice, white, cooked/, "rice is priced from the library record");
+      assert.strictEqual(r.items[0].kcal, "260", "130 kcal/100 g × 200 g, not Claude's 300");
+      assert.match(r.items[1].src, /AI estimate/);
+      assert.strictEqual(r.question, "Was the rice cooked with oil?");
+      assert.ok(r.wide <= 1, "no sideways scroll");
+      await page.waitForTimeout(400); await page.evaluate(() => document.querySelector(".pf-items").scrollIntoView({ block: "center" }));
+      await page.screenshot({ path: SHOTS + "/describe-review-360px.png" }).catch(() => {});
+      await page.click('[data-pf="add"]');
+      const added = await page.evaluate(() => S.docs.days[TODAY].food.filter(f => f.src && (f.src.kind === "describe")).map(f => ({ name: f.name, kcal: f.kcal, grams: f.grams, matched: f.src.matched, grade: f.src.grade, est: f.est })));
+      assert.strictEqual(added.length, 2);
+      assert.strictEqual(added[0].kcal, 260); assert.strictEqual(added[0].grams, 200); assert.match(String(added[0].matched), /^cat:/); assert.strictEqual(added[0].est, true);
+      assert.strictEqual(added[1].grade, "estimate"); assert.strictEqual(added[1].matched, null);
       assert.deepStrictEqual(errors, []);
       await page.close();
     });

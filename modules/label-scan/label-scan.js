@@ -1,5 +1,6 @@
 /* Nutrition label scanner for the Aziz Cut Tracker (Food tab card "Scan a nutrition label").
- * Photograph the nutrition facts panel of a product; Claude (page `sample` capability, images) copies the
+ * Photograph the nutrition facts panel of a product; Claude (the Mizan service's /v1/read kind "label" on Android,
+ * or the page `sample` capability inside claude.ai) copies the
  * numbers; every field stays editable; "Save" stores it as a custom food in the shared `barcodes` library
  * (the same one the barcode scanner reads, so a later barcode scan of the product is instant) and, when the
  * product is one of the labels the plan still owes (Gatorade, ISO100, milk, eggs), fills that in too.
@@ -159,6 +160,14 @@ const LabelScan = (() => {
       case "not_granted": return "Claude access wasn't granted, so labels can't be read here. The manual form still works.";
       case "images_unavailable": return "Photos aren't available in this app right now.";
       case "rate_limited": return "Too many requests. Wait a minute and try again.";
+      case "no_endpoint": return "The Mizan service address is not set (Settings > AI), so labels can't be read here. The manual form still works.";
+      case "not_signed_in": return "Sign in to Mizan to read labels with Claude. The manual form still works.";
+      case "not_allowed": return "Label reading is switched on for the app owner only.";
+      case "offline": return "No connection. Try again when you're online, or type the label in.";
+      case "cap_reached": case "out_of_credit": return "The AI spending limit has been reached, so labels can't be read right now. Type the label in instead.";
+      case "scan_limit": return "Today's scan allowance is used up. Type the label in, or try again tomorrow.";
+      case "no_text": case "image_rejected": case "bad_request": return "That photo couldn't be read. Take a closer, straight-on photo of the label.";
+      case "too_large": return "That photo is too big. Take a closer one of just the label.";
       case "image_too_large": return "That photo is too big. Take a closer one of just the label.";
       case "unavailable": case "timeout": return "Claude isn't reachable right now. Try again in a moment.";
       default: return "Something went wrong reading the label. Try again.";
@@ -169,11 +178,15 @@ const LabelScan = (() => {
 
   async function read() {
     if (S.busy || !S.image) return;
-    const sample = O.getSample ? await O.getSample() : null;
-    if (!sample) { S.hidden = true; view(); return; }
+    // Two ways to reach Claude: the Mizan service (the Android app; the worker holds the prompt and the key)
+    // or the claude.ai page's sample capability. Neither = the card offers the manual form only.
+    const sample = O.readService ? null : O.getSample ? await O.getSample() : null;
+    if (!sample && !O.readService) { S.hidden = true; view(); return; }
     S.busy = true; S.error = ""; S.ctl = new AbortController(); view();
     try {
-      const v = await sample.json(prompt(), { signal: S.ctl.signal, modelTier: "default", images: [S.image] });
+      let v;
+      if (O.readService) { const r = await O.readService("label", { images: [S.image], signal: S.ctl.signal }); v = r && r.text; S.costUsd = r && r.costUsd; }
+      else v = await sample.json(prompt(), { signal: S.ctl.signal, modelTier: "default", images: [S.image] });
       const d = parse(v);
       if (!d.readable) { S.error = d.note || "No nutrition label found. Take a closer, straight-on photo of the nutrition facts panel."; S.draft = Object.assign(emptyDraft(), d, { readable: true }); }
       else S.draft = d;
@@ -281,7 +294,8 @@ const LabelScan = (() => {
     EL = el; O = Object.assign({ library: lsLibrary() }, opts);
     bound = { click: onClick, change: onChange };
     el.addEventListener("click", bound.click); el.addEventListener("change", bound.change);
-    if (S.canImage == null && O.getSample) {
+    if (O.readService) S.canImage = true;
+    else if (S.canImage == null && O.getSample) {
       O.getSample().then(async s => {
         if (!s) { S.hidden = true; view(); return; }
         const lim = await s.limits().catch(() => null);
