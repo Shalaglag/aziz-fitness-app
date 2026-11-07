@@ -58624,15 +58624,21 @@ function avgWindow(endDate){ const ws=weightsSorted().filter(w=>w.date<=endDate 
 /* What's planned next comes from the person's own templates (WorkoutLogger.planNext): Aziz's Push / Pull / Lower
    rotation when those templates exist, otherwise the templates they added, in order. Nobody sees a programme they
    didn't pick: with no templates there is no planned session. */
-function lbPlan(){ try{ return window.WorkoutLogger && WorkoutLogger.planNext ? WorkoutLogger.planNext(S.docs.lb_templates, S.docs.lb_workouts, (lbSettings()||{}).rotOverride) : null; }catch(e){ return null; } }
-function lbTemplateByName(name){ return Object.values(S.docs.lb_templates||{}).find(t=>t && t.name===name) || null; }
+// Signed in: the synced lb_templates. Device-only ("use without an account"): the logger's own localStorage copy.
+function lbTemplates(){ if(S.mode==="sync") return S.docs.lb_templates||{}; try{ return JSON.parse(localStorage.getItem("lb:lb_templates")||"{}")||{}; }catch(e){ return {}; } }
+function lbPlan(){ try{ return window.WorkoutLogger && WorkoutLogger.planNext ? WorkoutLogger.planNext(lbTemplates(), S.docs.lb_workouts, (lbSettings()||{}).rotOverride) : null; }catch(e){ return null; } }
+function lbTemplateByName(name){ return Object.values(lbTemplates()).find(t=>t && t.name===name) || null; }
+// Session names the person can pick from: their own plan's list; Aziz's rotation only while no template exists and
+// the device-only app still runs the built-in plan (sync mode with no templates offers nothing of ours).
+function sessionChoices(){ const p=lbPlan(); return p ? p.list : []; }
+function exCountFor(session){ const t=lbTemplateByName(session); return t ? t.exercises.length : (PROGRAM[session] ? PROGRAM[session].length : null); }
 function lbExName(id){ const o=S.docs.lb_exercises && S.docs.lb_exercises[id]; if(o && o.name) return o.name; try{ const l=window.WorkoutLogger && WorkoutLogger.library && WorkoutLogger.library[id]; if(l && l.name) return l.name; }catch(e){} return id; }
 function sessionFor(date){
   const w = S.docs.workouts[date];
   if(w && w.session) return {session:w.session, idx:w.idx, chosen:true};
   const plan = lbPlan();
   if(plan) return {session:plan.name, idx:plan.idx, chosen:false, list:plan.list};
-  if(Object.keys(S.docs.lb_templates||{}).length) return null;
+  if(Object.keys(lbTemplates()).length) return null;
   const prev = Object.values(S.docs.workouts).filter(x=>x && x.date<date && x.session).sort((a,b)=>a.date<b.date?1:-1)[0];
   if(prev && Number.isInteger(prev.idx)){ const idx=(prev.idx+1)%8; return {session:ROTATION[idx], idx, chosen:false, after:prev}; }
   return null;
@@ -59041,10 +59047,12 @@ function vToday(){
   const waterTarget = training ? "3.5–4 L" : "3 L";
   const sesCard = ses ? `
       <div class="spread"><h2>${esc(ses.session)}</h2>${ses.chosen?`<span class="pill good">Set</span>`:`<span class="pill info">Next in rotation</span>`}</div>
-      ${ses.session==="Rest"?`<p class="muted">Rest day. Keep steps around 6k–10k and calories at ${fkc(kcalTarget(view.date))}.</p>`:`<p class="muted">${PROGRAM[ses.session].length} exercises, then 30 min treadmill.</p>`}
+      ${ses.session==="Rest"?`<p class="muted">Rest day. Keep steps around 6k–10k and calories at ${fkc(kcalTarget(view.date))}.</p>`:`<p class="muted">${exCountFor(ses.session)!=null?exCountFor(ses.session)+" exercises":"Your template"}${PROGRAM[ses.session]?", then 30 min treadmill":""}.</p>`}
       <div class="row">${ses.session!=="Rest"?`<button class="btn" data-act="gotrain">Open workout</button>`:""}${!ses.chosen?`<button class="btn ghost" data-act="setses" data-idx="${ses.idx}">Confirm</button>`:""}<button class="btn ghost" data-act="gotrain">Change</button></div>`
-    : `<h2>Which session is today?</h2><p class="muted">Pick once and the app follows the 8-day rotation from there.</p>
-      <div class="row">${ROTATION.map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}">${s}</button>`).join("")}</div>`;
+    : sessionChoices().length ? `<h2>Which session is today?</h2><p class="muted">Pick once and the app follows your rotation from there.</p>
+      <div class="row">${sessionChoices().map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}">${s}</button>`).join("")}</div>`
+    : `<h2>No workout plan yet</h2><p class="muted">Make a template in Train, or pick a ready-made program under New template (Help me choose finds one for you). The one you train with becomes your next workout here.</p>
+      <div class="row"><button class="btn" data-act="gotrain">Open Train</button></div>`;
   const checklist = `<div class="items">
         ${window.SuppDrinks?"":SUPPS.map(([k,l])=>`<label class="item" style="grid-template-columns:auto 1fr"><input type="checkbox" data-act="supp" data-k="${k}" ${day.supps[k]?"checked":""}><span>${l}</span></label>`).join("")}
         ${training?`<label class="item" style="grid-template-columns:auto 1fr"><input type="checkbox" data-act="tread" ${day.treadmill?"checked":""}><span>30 min treadmill after lifting</span></label>`:""}
@@ -59232,9 +59240,12 @@ function prevSets(name, d){ const w=Object.values(S.docs.workouts).filter(x=>x&&
 function vTrainSession(){
   const d=view.date, ses=sessionFor(d), wk=S.docs.workouts[d]||{};
   const cur = ses ? ses.session : null;
-  const picker = `<div class="row">${ROTATION.map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}" aria-pressed="${cur===s && (ses.idx===i)}">${s}</button>`).join("")}</div>`;
-  if(!cur) return `<div class="card"><h2>Pick today's session</h2>${picker}</div>`;
+  const choices=sessionChoices();
+  const picker = `<div class="row">${choices.map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}" aria-pressed="${cur===s && (ses.idx===i)}">${s}</button>`).join("")}</div>`;
+  if(!cur) return choices.length ? `<div class="card"><h2>Pick today's session</h2>${picker}</div>` : `<div class="card"><h2>No templates yet</h2><p class="muted">Quick log follows your templates. Make one in the full logger first.</p><div class="row"><button class="btn" data-act="tmode" data-m="full">Open the full logger</button></div></div>`;
   if(cur==="Rest") return `<div class="card"><h2>Rest day</h2><p class="muted">Recovery is where the strength comes back. Walk, stretch, sleep well, and keep food at ${fkc(kcalTarget(view.date))} kcal.</p>${picker}</div>`;
+  // Quick log has set rows only for the Push / Pull / Lower plan; any other template is logged in the full logger.
+  if(!PROGRAM[cur]) return `<div class="card"><h2>${esc(cur)}</h2><p class="muted">Quick log has set rows only for the Push / Pull / Lower plan. Log ${esc(cur)} in the full logger.</p><div class="row"><button class="btn" data-act="tmode" data-m="full">Open the full logger</button><button class="btn ghost" data-act="sesopen">Change</button></div>${view.sesPick?`<div class="card">${picker}</div>`:""}</div>`;
   const ex = PROGRAM[cur], showPick = !!view.sesPick || !ses.chosen, rest=restSec();
   const nameOf = planName => usedFor(wk, planName)||planName;
   return `
@@ -59856,7 +59867,7 @@ main.addEventListener("click",e=>{
   if(a==="lbtog"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, cur=lbSettings()||{}; WorkoutLogger.setSettings({[k]:!cur[k]}); render(); return; }
   if(a==="gotrain"){ view.tab="train"; render(); window.scrollTo(0,0); }
   else if(a==="gofood"){ view.tab="food"; render(); window.scrollTo(0,0); }
-  else if(a==="setses"){ const idx=+el.dataset.idx; const w=clone(S.docs.workouts[d]); put("workouts",d,{date:d,sets:{},...w,session:ROTATION[idx],idx}); }
+  else if(a==="setses"){ const idx=+el.dataset.idx, list=sessionChoices(); if(!list[idx]) return; const w=clone(S.docs.workouts[d]); put("workouts",d,{date:d,sets:{},...w,session:list[idx],idx}); }
   else if(a==="water"){ const day=getDay(d); day.water=Math.max(0,(day.water||0)+(+el.dataset.ml)); flash("water"); saveDay(day); }
   else if(a==="delweight"){ const old=S.docs.weights[d]; remove("weights",d); if(old) undoToast("Weigh-in removed", ()=>put("weights",d,old)); }
   else if(a==="timer"){ startTimer(+el.dataset.s); }
