@@ -32,6 +32,8 @@ async function go(page, tab) { await page.evaluate(() => { const m = document.ge
 
 async function openApp(browser, phone, data, opts = {}) {
   const page = await browser.newPage({ viewport: { width: phone.width, height: phone.height }, isMobile: true, hasTouch: true });
+  // opts.fixedTime pins the page clock (Date only; timers keep running) for checks whose result depends on the weekday.
+  if (opts.fixedTime) await page.clock.setFixedTime(opts.fixedTime);
   const errors = [];
   page.on("pageerror", e => errors.push(e.message));
   await page.route(/^https:\/\/(fonts\.|www\.gstatic\.com)/, r => r.fulfill({ body: "" }));
@@ -206,7 +208,8 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
     });
 
     await t.test("menu picker sits on the Food page above Food check: most protein by default, leave out fries, reasons shown, plan adds planned items", async () => {
-      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      // Pinned to a Tuesday: on Saturdays the picker adds the eggs breakfast (490 kcal) to every plan, so no meal pair fits 2,000 kcal and this check failed on the real date.
+      const { page, errors } = await openApp(browser, PHONES[0], seed, { fixedTime: new Date("2026-11-03T12:00:00") });
       await go(page, "food");
       const order = await page.evaluate(() => { const m = document.getElementById("menuPicker"), f = [...document.querySelectorAll("#main details, #main .fold, #main [data-fold]")].find(e => /Food check/.test(e.textContent)); return { has: !!m, before: !!(m && f && (m.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
       assert.ok(order.has, "menu picker card is on the Food page");
