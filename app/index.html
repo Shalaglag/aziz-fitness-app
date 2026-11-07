@@ -765,10 +765,12 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
         <button class="iconbtn" id="prevDay" aria-label="Previous day">‹</button>
         <div class="d" id="dateLabel"></div>
         <button class="iconbtn" id="nextDay" aria-label="Next day">›</button>
+        <span id="musicHead"></span>
         <button class="today-link" id="goToday">Today</button>
       </div>
     </div>
   </div>
+  <div id="musicStrip"></div>
 </header>
 <div class="drawer-wrap" id="drawer" hidden role="dialog" aria-modal="true" aria-label="Menu">
   <div class="scrim" data-close-drawer></div>
@@ -5407,6 +5409,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     if (!E || reorderOn) return;
     const d = E.doc, live = E.mode !== 'template';
     liveEl.querySelector('.lb-live-head').innerHTML = headHtml();
+    if (global.MusicControl && global.MusicControl.mountWorkout) try { global.MusicControl.mountWorkout(liveEl); } catch (e) { }
     liveEl.classList.toggle('gym', E.view === 'gym');
     if (E.view === 'gym') { const body = liveEl.querySelector('.lb-live-body'); body.innerHTML = gymHtml(); return; }
     const ssColors = {};
@@ -5999,12 +6002,14 @@ Power Clean (Barbell)|Other|Barbell|`;
   const restNotify = () => (REST_NOTIFY.some(r => r[0] === S.settings.restNotify) ? S.settings.restNotify : 'big');
   // Persistent workout notification on Android (modules/android-shell RestTimerPlugin): what the shade shows between
   // rests. `focusEx` (set by its "Next exercise" button) overrides the resume point until that exercise is done.
+  function shadeCur(w) {
+    const exs = w.exercises || [];
+    if (w.focusEx != null && exs[w.focusEx] && exs[w.focusEx].sets.some(x => !x.done)) return [w.focusEx, exs[w.focusEx].sets.findIndex(x => !x.done)];
+    return resumePoint(exs);
+  }
   function workoutInfo() {
     const w = S.active; if (!w) return null;
-    const exs = w.exercises || [];
-    let cur = null;
-    if (w.focusEx != null && exs[w.focusEx] && exs[w.focusEx].sets.some(x => !x.done)) cur = [w.focusEx, exs[w.focusEx].sets.findIndex(x => !x.done)];
-    else cur = resumePoint(exs);
+    const exs = w.exercises || [], cur = shadeCur(w);
     const total = exs.reduce((n, e) => n + e.sets.length, 0), done = exs.reduce((n, e) => n + e.sets.filter(x => x.done).length, 0);
     let exercise = null, set = null, next = null;
     if (cur) {
@@ -6030,6 +6035,15 @@ Power Clean (Barbell)|Other|Barbell|`;
       if (E.view === 'gym') { const j = exs[pick].sets.findIndex(x => !x.done); gymGo(pick, j < 0 ? 0 : j); }
       else { const el = liveEl && liveEl.querySelector('.lb-exblock[data-ei="' + pick + '"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
     }
+  }
+  // "Complete set" on the notification: tick the set the shade shows (opens the workout if it was hidden).
+  function completeFromShade() {
+    const w = S.active; if (!w) return;
+    if (!E || E.mode !== 'live' || E.doc !== w) openEditor('live', w);
+    const c = shadeCur(w); if (!c) return;
+    if (!completeSet(c[0], c[1])) return; // no weight/reps yet: the toast says so and the notification stays
+    if (E.view === 'gym') { const nx = nextPending(w.exercises, c); if (nx) E.cur = nx; }
+    touch(); renderEditor(); renderRest();
   }
   // "Rest" on the notification: the current exercise's rest.
   function restFromShade() {
@@ -6069,6 +6083,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     window.addEventListener('lb:rest-skip', () => { if (rest) stopRest(); });
     window.addEventListener('lb:rest-adjust', e => restAdjust(+((e.detail || {}).d) || 15));
     window.addEventListener('lb:workout-next', () => nextExercise());
+    window.addEventListener('lb:workout-complete', () => completeFromShade());
     window.addEventListener('lb:rest-start', () => restFromShade());
   } catch (e) { }
   on('restMini', () => { if (!rest) return; rest.mini = true; persistRest(); renderRest(); });
@@ -6515,6 +6530,213 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
     swipe: { swipeDecision }, reorder: { dropIndex, moveItem } };
   global.WorkoutLogger = api;
 })(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
+/* MusicControl: a small remote for the YouTube Music app (or whatever is playing) inside Mizan.
+ *
+ * It never plays audio itself. On Android it sends media key presses through the MediaKeys plugin
+ * (android/MediaKeysPlugin.kt): play/pause, previous, next; opens the saved workout playlist in YouTube Music;
+ * opens the app. Outside the Android app the buttons only show a toast and links open in a new tab.
+ * Track names are not shown: that would need notification access, which this app does not ask for.
+ *
+ *   MusicControl.init({ get, set, toast })      get() -> saved settings, set(obj) saves them (the host's prefs)
+ *   MusicControl.settings() / setSettings(patch) { on: true, look: 'strip'|'icon'|'workout', playlist: '' }
+ *   MusicControl.LOOKS                         [[key, label], …] for the Settings picker (B strip is the default)
+ *   MusicControl.validPlaylist(url)            a normalised YouTube / YouTube Music link, or null
+ *   MusicControl.mountHeader(iconSlot, stripSlot)  the host calls this on every render (main header)
+ *   MusicControl.mountWorkout(liveEl)          the workout logger calls this after it paints its live header
+ *   MusicControl.bind(root)                    one delegated click handler for every [data-mc] button
+ *   MusicControl.press(key) / open(url)        the actions (promise; false when there is no plugin)
+ *
+ * Looks: icon = a note button in the header that opens a compact panel (draft A); strip = a slim strip under the
+ * header, collapsed to a small tab (draft B, default); workout = a row above the rest timer on the live workout
+ * screen only (draft C). Expanded/collapsed is remembered on this device (localStorage mz-music-open).
+ */
+window.MusicControl = (function (global) {
+  const PKG = 'com.google.android.apps.youtube.music';
+  const APP_URL = 'https://music.youtube.com/';
+  const LOOKS = [['strip', 'Strip under the header'], ['icon', 'Icon in the header'], ['workout', 'Workout screen only']];
+  const DEF = { on: true, look: 'strip', playlist: '' };
+  const OPEN_KEY = 'mz-music-open';
+  let store = { get: () => null, set: () => { } }, toastFn = null;
+  let opened = null;          // strip / workout row expanded (null = not read yet)
+  let panel = null;           // the icon look's panel element while open
+  let installed = null;       // YouTube Music on the phone? null = unknown (browser)
+  let cssDone = false, bound = false;
+  let liveHost = null, headSlot = null, stripSlot = null, restWatch = null;
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function settings() { let s = null; try { s = store.get(); } catch (e) { } return Object.assign({}, DEF, s && typeof s === 'object' ? s : {}); }
+  function setSettings(patch) { const next = Object.assign(settings(), patch || {}); if (!LOOKS.some(l => l[0] === next.look)) next.look = DEF.look; store.set(next); render(); return next; }
+  function toast(m) { if (toastFn) try { toastFn(m); } catch (e) { } }
+  function isOpen() { if (opened == null) { try { opened = global.localStorage && global.localStorage.getItem(OPEN_KEY) === '1'; } catch (e) { opened = false; } } return !!opened; }
+  function setOpen(v) { opened = !!v; try { global.localStorage && global.localStorage.setItem(OPEN_KEY, v ? '1' : '0'); } catch (e) { } }
+
+  // Only YouTube / YouTube Music links are kept, so a typo can't send the user somewhere odd.
+  function validPlaylist(url) {
+    let u = String(url || '').trim(); if (!u) return null;
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    let p; try { p = new URL(u); } catch (e) { return null; }
+    const host = p.hostname.toLowerCase().replace(/^www\.|^m\./, '');
+    if (!['music.youtube.com', 'youtube.com', 'youtu.be'].includes(host)) return null;
+    p.protocol = 'https:';
+    return p.toString();
+  }
+
+  function plugin() {
+    try { const sh = global.AndroidShell; if (!sh || !sh.isNative || !sh.isNative()) return null; const c = global.Capacitor; return (c && c.Plugins && c.Plugins.MediaKeys) || null; } catch (e) { return null; }
+  }
+  async function press(key) {
+    const p = plugin();
+    if (!p || !p.press) { toast('Music buttons work in the Android app'); return false; }
+    try { await p.press({ key }); return true; } catch (e) { toast('Could not reach the music app'); return false; }
+  }
+  async function open(url) {
+    const target = url || APP_URL, p = plugin();
+    if (p && p.open) { try { await p.open({ url: target, pkg: PKG }); return true; } catch (e) { } }
+    try { const w = global.open(target, '_blank', 'noopener'); return !!w; } catch (e) { return false; }
+  }
+  function checkInstalled() {
+    const p = plugin(); if (!p || !p.isInstalled || installed != null) return;
+    p.isInstalled({ pkg: PKG }).then(r => { installed = !!(r && r.installed); render(); }).catch(() => { });
+  }
+
+  /* ---- markup ---- */
+  const NOTE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V6l11-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>';
+  const PREV = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zM19 5v14L9 12z"/></svg>';
+  const NEXT = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM5 5v14l10-7z"/></svg>';
+  const PP = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>';
+  const ctl = big => '<button type="button" class="mc-btn' + (big ? ' big' : '') + '" data-mc="prev" aria-label="Previous track">' + PREV + '</button><button type="button" class="mc-btn pp' + (big ? ' big' : '') + '" data-mc="pp" aria-label="Play or pause">' + PP + '</button><button type="button" class="mc-btn' + (big ? ' big' : '') + '" data-mc="next" aria-label="Next track">' + NEXT + '</button>';
+  const links = () => { const s = settings(); return (s.playlist ? '<button type="button" class="mc-link" data-mc="playlist">Workout playlist <span aria-hidden="true">›</span></button>' : '<button type="button" class="mc-link" data-mc="settings">Add a workout playlist <span aria-hidden="true">›</span></button>') + (installed === false ? '' : '<button type="button" class="mc-link" data-mc="open">Open YouTube Music <span aria-hidden="true">↗</span></button>'); };
+  function iconHtml(on) { return '<button type="button" class="mc-icon' + (on ? ' on' : '') + '" data-mc="toggle" aria-label="Music" aria-haspopup="dialog" aria-expanded="' + !!on + '">' + NOTE + '</button>'; }
+  function panelHtml() { return '<div class="mc-panel" role="dialog" aria-label="Music"><div class="mc-t"><span class="mc-dot" aria-hidden="true"></span>YouTube Music<button type="button" class="mc-x" data-mc="close" aria-label="Close">✕</button></div><div class="mc-ctl">' + ctl(true) + '</div>' + links() + '<button type="button" class="mc-link mute" data-mc="hide">Hide music controls</button></div>'; }
+  function stripHtml(open) {
+    if (!open) return '<div class="mc-handle"><button type="button" data-mc="toggle" aria-expanded="false" aria-label="Show music controls">' + NOTE + ' Music</button></div>';
+    const s = settings();
+    return '<div class="mc-strip" role="region" aria-label="Music"><span class="mc-dot" aria-hidden="true"></span><span class="mc-tx">' + (s.playlist ? '<button type="button" class="mc-plain" data-mc="playlist">Workout playlist <span aria-hidden="true">›</span></button>' : '<button type="button" class="mc-plain" data-mc="settings">Add a playlist <span aria-hidden="true">›</span></button>') + '<small>YouTube Music' + (installed === false ? '' : ' · <button type="button" class="mc-plain" data-mc="open">Open ↗</button>') + '</small></span>' + ctl(false) + '<button type="button" class="mc-btn x" data-mc="toggle" aria-expanded="true" aria-label="Collapse music controls">⌃</button></div>';
+  }
+  function workoutHtml(open) {
+    if (!open) return '<button type="button" class="mc-fab" data-mc="toggle" aria-expanded="false" aria-label="Show music controls">' + NOTE + '</button>';
+    return '<div class="mc-c" role="region" aria-label="Music"><div class="mc-row"><span class="mc-lbl"><span class="mc-dot" aria-hidden="true"></span>YouTube Music</span><span class="mc-ctl">' + ctl(false) + '</span><button type="button" class="mc-btn x" data-mc="toggle" aria-expanded="true" aria-label="Collapse music controls">⌄</button></div><div class="mc-sub">' + links() + '<button type="button" class="mc-link mute" data-mc="hide">Hide</button></div></div>';
+  }
+
+  const CSS = `
+.mc-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:1px solid var(--lb-line,var(--line));background:var(--lb-sunk,var(--sunk));color:var(--lb-ink,var(--ink));padding:0;cursor:pointer;flex:none}
+.mc-btn.big{width:46px;height:46px}
+.mc-btn.pp{background:var(--lb-accent,var(--accent));border-color:var(--lb-accent,var(--accent));color:var(--lb-accent-ink,var(--accent-ink,#fff))}
+.mc-btn.x{border:0;background:transparent;color:var(--lb-muted,var(--muted));width:30px}
+.mc-icon{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:50%;border:1px solid var(--lb-line,var(--line));background:var(--lb-sunk,var(--sunk));color:var(--lb-accent,var(--accent));padding:0;cursor:pointer;flex:none}
+.mc-icon.on{background:var(--lb-accent,var(--accent));border-color:var(--lb-accent,var(--accent));color:var(--lb-accent-ink,var(--accent-ink,#fff))}
+.datepick .mc-icon{border-radius:8px}
+.mc-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--lb-accent,var(--accent));flex:none}
+.mc-panel{position:fixed;z-index:60;width:min(240px,calc(100vw - 24px));background:var(--lb-surface,var(--surface));border:1px solid var(--lb-line,var(--line));border-radius:14px;box-shadow:0 10px 28px rgba(0,0,0,.18);padding:8px 12px 6px;display:flex;flex-direction:column;color:var(--lb-ink,var(--ink))}
+.mc-t{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.92rem;padding:2px 0 6px}
+.mc-x{margin-left:auto;border:0;background:none;color:var(--lb-muted,var(--muted));font-size:1rem;width:32px;height:32px;cursor:pointer}
+.mc-ctl{display:flex;align-items:center;justify-content:center;gap:14px;padding:4px 0 8px}
+.mc-link{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;padding:10px 2px;border:0;border-top:1px solid var(--lb-line,var(--line));background:none;color:var(--lb-ink,var(--ink));font:inherit;font-size:.9rem;text-align:left;cursor:pointer}
+.mc-link span{color:var(--lb-muted,var(--muted))}
+.mc-link.mute{color:var(--lb-muted,var(--muted));font-size:.82rem}
+.mc-plain{border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
+.mc-strip{display:flex;align-items:center;gap:8px;padding:5px 12px 5px 14px;background:var(--lb-sunk,var(--sunk));border-bottom:1px solid var(--lb-line,var(--line));font-size:.85rem;color:var(--lb-ink,var(--ink))}
+.mc-strip .mc-tx{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;white-space:nowrap}
+.mc-strip .mc-tx>*{overflow:hidden;text-overflow:ellipsis}
+.mc-strip .mc-tx small{color:var(--lb-muted,var(--muted));font-size:.72rem}
+.mc-strip .mc-btn{width:32px;height:32px;border:0;background:transparent}
+.mc-strip .mc-btn.pp{background:var(--lb-accent,var(--accent))}
+.mc-handle{display:flex;justify-content:center;padding:0;line-height:1}
+.mc-handle button{display:inline-flex;align-items:center;gap:6px;background:var(--lb-sunk,var(--sunk));border:1px solid var(--lb-line,var(--line));border-top:0;color:var(--lb-muted,var(--muted));border-radius:0 0 10px 10px;padding:3px 14px;font:inherit;font-size:.72rem;font-weight:600;cursor:pointer;min-height:24px}
+.mc-handle button svg{width:12px;height:12px}
+.mc-c{position:absolute;left:0;right:0;bottom:0;z-index:5;background:var(--lb-surface,var(--surface));border-top:1px solid var(--lb-line,var(--line));padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));color:var(--lb-ink,var(--ink))}
+.mc-c.edge{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.mc-row{display:flex;align-items:center;gap:8px}
+.mc-lbl{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.88rem;flex:1;min-width:0}
+.mc-row .mc-ctl{padding:0;gap:8px}
+.mc-row .mc-ctl .mc-btn{width:40px;height:40px}
+.mc-sub{display:flex;gap:4px 14px;margin-top:2px;font-size:.8rem;flex-wrap:wrap}
+.mc-sub .mc-link{width:auto;border:0;padding:6px 0;color:var(--lb-accent,var(--accent));font-weight:600}
+.mc-sub .mc-link span{color:inherit}
+.mc-sub .mc-link.mute{margin-left:auto;color:var(--lb-muted,var(--muted));font-weight:500}
+.mc-fab{position:absolute;left:14px;bottom:14px;z-index:6;width:42px;height:42px;border-radius:50%;background:var(--lb-surface,var(--surface));border:1px solid var(--lb-line,var(--line));color:var(--lb-accent,var(--accent));display:grid;place-items:center;box-shadow:0 4px 14px rgba(0,0,0,.14);cursor:pointer;padding:0}
+.mc-fab.edge{bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+.lb-live.mc-has-c .lb-live-body{padding-bottom:200px}
+.lb-live .mc-head-slot{display:inline-flex;align-items:center}
+`;
+  function injectCss() { if (cssDone || !global.document) return; cssDone = true; const s = global.document.createElement('style'); s.textContent = CSS; global.document.head.appendChild(s); }
+
+  /* ---- painting ---- */
+  function closePanel() { if (panel) { panel.remove(); panel = null; } global.document && global.document.querySelectorAll('.mc-icon.on').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-expanded', 'false'); }); }
+  function openPanel(anchor) {
+    closePanel(); const d = global.document; if (!d) return;
+    const w = d.createElement('div'); w.innerHTML = panelHtml(); panel = w.firstElementChild;
+    const r = anchor.getBoundingClientRect();
+    const pw = Math.min(240, global.innerWidth - 24); // right-aligned to the button, but never past the screen edge
+    panel.style.top = (r.bottom + 6) + 'px'; panel.style.right = Math.max(12, Math.min(global.innerWidth - r.right, global.innerWidth - pw - 12)) + 'px';
+    (anchor.closest('.lb-live') || d.body).appendChild(panel); // inside the live workout (its overlay sits above the page)
+    anchor.classList.add('on'); anchor.setAttribute('aria-expanded', 'true');
+    setTimeout(() => d.addEventListener('click', outside, { once: true }), 0);
+  }
+  function outside(e) { if (panel && !panel.contains(e.target) && !(e.target.closest && e.target.closest('[data-mc="toggle"]'))) closePanel(); else if (panel) setTimeout(() => global.document.addEventListener('click', outside, { once: true }), 0); }
+
+  function paintSlot(slot, html) { if (!slot) return; if (slot.innerHTML !== html) slot.innerHTML = html; }
+  function mountHeader(iconSlot, strip) {
+    injectCss(); headSlot = iconSlot || headSlot; stripSlot = strip || stripSlot; checkInstalled();
+    const s = settings();
+    paintSlot(headSlot, s.on && s.look === 'icon' ? iconHtml(false) : '');
+    paintSlot(stripSlot, s.on && s.look === 'strip' ? stripHtml(isOpen()) : '');
+  }
+  function placeC(live) {
+    const el = live.querySelector('.mc-c, .mc-fab'); if (!el) return;
+    const rest = live.querySelector('.lb-rest'), shown = rest && !rest.hidden && !rest.classList.contains('full');
+    const h = shown ? rest.offsetHeight : 0;
+    el.style.bottom = (h + (el.classList.contains('mc-fab') ? 14 : 0)) + 'px';
+    el.classList.toggle('edge', !shown);
+  }
+  function mountWorkout(live) {
+    injectCss(); if (!live) return; liveHost = live; checkInstalled();
+    const s = settings(), head = live.querySelector('.lb-live-head'), end = head && head.querySelector('.lb-headend');
+    // icon: in the live header, left of the mic / Finish
+    let slot = end && end.querySelector('.mc-head-slot');
+    if (s.on && s.look === 'icon' && end) { if (!slot) { slot = global.document.createElement('span'); slot.className = 'mc-head-slot'; end.prepend(slot); } paintSlot(slot, iconHtml(false)); }
+    else if (slot) slot.remove();
+    // strip: right under the live header
+    let st = live.querySelector(':scope > .mc-strip-host');
+    if (s.on && s.look === 'strip' && head) { if (!st) { st = global.document.createElement('div'); st.className = 'mc-strip-host'; head.after(st); } paintSlot(st, stripHtml(isOpen())); }
+    else if (st) st.remove();
+    // workout-only: above the rest timer
+    let c = live.querySelector(':scope > .mc-c, :scope > .mc-fab');
+    if (s.on && s.look === 'workout') {
+      const html = workoutHtml(isOpen());
+      if (!c || c.outerHTML !== html) { if (c) c.remove(); const w = global.document.createElement('div'); w.innerHTML = html; c = w.firstElementChild; live.appendChild(c); }
+      live.classList.toggle('mc-has-c', isOpen());
+      placeC(live);
+      const rest = live.querySelector('.lb-rest');
+      if (rest && !restWatch && global.MutationObserver) { restWatch = new MutationObserver(() => placeC(live)); restWatch.observe(rest, { attributes: true, childList: true, subtree: true }); }
+    } else { if (c) c.remove(); live.classList.remove('mc-has-c'); }
+  }
+  function render() {
+    closePanel();
+    if (headSlot || stripSlot) mountHeader(headSlot, stripSlot);
+    if (liveHost && !liveHost.hidden) mountWorkout(liveHost);
+  }
+
+  function act(el) {
+    const a = el.dataset.mc, s = settings();
+    if (a === 'toggle') { if (el.classList.contains('mc-icon')) { if (panel) closePanel(); else openPanel(el); } else { setOpen(!isOpen()); render(); } return true; }
+    if (a === 'close') { closePanel(); return true; }
+    if (a === 'prev' || a === 'next') { press(a); return true; }
+    if (a === 'pp') { press('toggle'); return true; }
+    if (a === 'playlist') { closePanel(); open(s.playlist || APP_URL); return true; }
+    if (a === 'open') { closePanel(); open(APP_URL); return true; }
+    if (a === 'hide') { closePanel(); setSettings({ on: false }); toast('Music controls are off. Turn them back on in Settings › Music.'); return true; }
+    if (a === 'settings') { closePanel(); try { global.dispatchEvent(new CustomEvent('mc:settings')); } catch (e) { } return true; }
+    return false;
+  }
+  function bind(root) { const r = root || global.document; if (!r || bound) return; bound = true; r.addEventListener('click', e => { const el = e.target.closest && e.target.closest('[data-mc]'); if (!el) return; e.preventDefault(); act(el); }); }
+  function init(o) { o = o || {}; if (o.get) store.get = o.get; if (o.set) store.set = o.set; if (o.toast) toastFn = o.toast; injectCss(); }
+
+  return { init, settings, setSettings, LOOKS, DEF, PKG, APP_URL, validPlaylist, press, open, bind, mountHeader, mountWorkout, render, html: { icon: iconHtml, panel: panelHtml, strip: stripHtml, workout: workoutHtml }, _act: act, _plugin: plugin };
+})(typeof window !== 'undefined' ? window : globalThis);
+if (typeof module !== 'undefined' && module.exports) module.exports = MusicControl;
 </script>
 <script>
 /*
@@ -60774,7 +60996,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = Friends;
  * notification is scheduled 1 s after the end so the in-app beep (which cancels it) wins while the app is open,
  * and the RestTimer plugin keeps a persistent workout notification in the shade ("lb:workout" {name,start,exercise,
  * set,next,done,total,look} / "lb:workout-stop" from the logger) that turns into the live countdown during a rest.
- * Its buttons fire "lb:rest-skip", "lb:rest-adjust" {d: ±15}, "lb:workout-next" and "lb:rest-start" on window.
+ * Its buttons fire "lb:rest-skip", "lb:rest-adjust" {d: ±15}, "lb:workout-complete" and "lb:rest-start" on window.
  */
 window.AndroidShell = (function () {
   const handlers = [];
@@ -60894,7 +61116,7 @@ window.AndroidShell = (function () {
     } catch (e) { return false; }
   }
   // Persistent workout notification (Strong-style), RestTimerPlugin.kt. Between rests it shows the workout's
-  // elapsed time, the current exercise and set and the next exercise, with "Next exercise" / "Rest" buttons;
+  // elapsed time, the current exercise and set and the next exercise, with "Complete set" / "Rest" buttons;
   // during a rest its chronometer counts down to d.end on its own with −15 s / +15 s / Skip. The plugin flips
   // back to the workout view when the rest ends. A rest with no workout (Quick log) is a countdown that clears
   // itself. Buttons come back as "skip" / "adjust" {seconds} / "next" / "rest" and are fired on window.
@@ -60924,6 +61146,7 @@ window.AndroidShell = (function () {
       rt.addListener("skip", () => fire("lb:rest-skip", {}));
       rt.addListener("adjust", d => fire("lb:rest-adjust", { d: (d && +d.seconds) || 15 }));
       rt.addListener("next", () => fire("lb:workout-next", {}));
+      rt.addListener("complete", () => fire("lb:workout-complete", {}));
       rt.addListener("rest", () => fire("lb:rest-start", {}));
     } catch (e) { }
   }
@@ -61501,15 +61724,21 @@ function avgWindow(endDate){ const ws=weightsSorted().filter(w=>w.date<=endDate 
 /* What's planned next comes from the person's own templates (WorkoutLogger.planNext): Aziz's Push / Pull / Lower
    rotation when those templates exist, otherwise the templates they added, in order. Nobody sees a programme they
    didn't pick: with no templates there is no planned session. */
-function lbPlan(){ try{ return window.WorkoutLogger && WorkoutLogger.planNext ? WorkoutLogger.planNext(S.docs.lb_templates, S.docs.lb_workouts, (lbSettings()||{}).rotOverride) : null; }catch(e){ return null; } }
-function lbTemplateByName(name){ return Object.values(S.docs.lb_templates||{}).find(t=>t && t.name===name) || null; }
+// Signed in: the synced lb_templates. Device-only ("use without an account"): the logger's own localStorage copy.
+function lbTemplates(){ if(S.mode==="sync") return S.docs.lb_templates||{}; try{ return JSON.parse(localStorage.getItem("lb:lb_templates")||"{}")||{}; }catch(e){ return {}; } }
+function lbPlan(){ try{ return window.WorkoutLogger && WorkoutLogger.planNext ? WorkoutLogger.planNext(lbTemplates(), S.docs.lb_workouts, (lbSettings()||{}).rotOverride) : null; }catch(e){ return null; } }
+function lbTemplateByName(name){ return Object.values(lbTemplates()).find(t=>t && t.name===name) || null; }
+// Session names the person can pick from: their own plan's list; Aziz's rotation only while no template exists and
+// the device-only app still runs the built-in plan (sync mode with no templates offers nothing of ours).
+function sessionChoices(){ const p=lbPlan(); return p ? p.list : []; }
+function exCountFor(session){ const t=lbTemplateByName(session); return t ? t.exercises.length : (PROGRAM[session] ? PROGRAM[session].length : null); }
 function lbExName(id){ const o=S.docs.lb_exercises && S.docs.lb_exercises[id]; if(o && o.name) return o.name; try{ const l=window.WorkoutLogger && WorkoutLogger.library && WorkoutLogger.library[id]; if(l && l.name) return l.name; }catch(e){} return id; }
 function sessionFor(date){
   const w = S.docs.workouts[date];
   if(w && w.session) return {session:w.session, idx:w.idx, chosen:true};
   const plan = lbPlan();
   if(plan) return {session:plan.name, idx:plan.idx, chosen:false, list:plan.list};
-  if(Object.keys(S.docs.lb_templates||{}).length) return null;
+  if(Object.keys(lbTemplates()).length) return null;
   const prev = Object.values(S.docs.workouts).filter(x=>x && x.date<date && x.session).sort((a,b)=>a.date<b.date?1:-1)[0];
   if(prev && Number.isInteger(prev.idx)){ const idx=(prev.idx+1)%8; return {session:ROTATION[idx], idx, chosen:false, after:prev}; }
   return null;
@@ -61623,6 +61852,7 @@ function render(){
   main.innerHTML = safe(view.tab+" tab", tabFn);
   [["Workout logger",syncLogger],["Food search",mountFoodSearch],["Recipe editor",mountRecipeEditor],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
   if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); if(lastTab) tabMotion(lastTab, view.tab); lastTab=view.tab; }
+  if(window.MusicControl){ try{ MusicControl.mountHeader(document.getElementById("musicHead"), document.getElementById("musicStrip")); }catch(e){ console.error("[music]", e); } }
   applyFlash();
   window.scrollTo(0,y);
   try{ foodDraftRestore(); }catch(e){}
@@ -61918,10 +62148,12 @@ function vToday(){
   const waterTarget = training ? "3.5–4 L" : "3 L";
   const sesCard = ses ? `
       <div class="spread"><h2>${esc(ses.session)}</h2>${ses.chosen?`<span class="pill good">Set</span>`:`<span class="pill info">Next in rotation</span>`}</div>
-      ${ses.session==="Rest"?`<p class="muted">Rest day. Keep steps around 6k–10k and calories at ${fkc(kcalTarget(view.date))}.</p>`:`<p class="muted">${PROGRAM[ses.session].length} exercises, then 30 min treadmill.</p>`}
+      ${ses.session==="Rest"?`<p class="muted">Rest day. Keep steps around 6k–10k and calories at ${fkc(kcalTarget(view.date))}.</p>`:`<p class="muted">${exCountFor(ses.session)!=null?exCountFor(ses.session)+" exercises":"Your template"}${PROGRAM[ses.session]?", then 30 min treadmill":""}.</p>`}
       <div class="row">${ses.session!=="Rest"?`<button class="btn" data-act="gotrain">Open workout</button>`:""}${!ses.chosen?`<button class="btn ghost" data-act="setses" data-idx="${ses.idx}">Confirm</button>`:""}<button class="btn ghost" data-act="gotrain">Change</button></div>`
-    : `<h2>Which session is today?</h2><p class="muted">Pick once and the app follows the 8-day rotation from there.</p>
-      <div class="row">${ROTATION.map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}">${s}</button>`).join("")}</div>`;
+    : sessionChoices().length ? `<h2>Which session is today?</h2><p class="muted">Pick once and the app follows your rotation from there.</p>
+      <div class="row">${sessionChoices().map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}">${s}</button>`).join("")}</div>`
+    : `<h2>No workout plan yet</h2><p class="muted">Make a template in Train, or pick a ready-made program under New template (Help me choose finds one for you). The one you train with becomes your next workout here.</p>
+      <div class="row"><button class="btn" data-act="gotrain">Open Train</button></div>`;
   const checklist = `<div class="items">
         ${window.SuppDrinks?"":SUPPS.map(([k,l])=>`<label class="item" style="grid-template-columns:auto 1fr"><input type="checkbox" data-act="supp" data-k="${k}" ${day.supps[k]?"checked":""}><span>${l}</span></label>`).join("")}
         ${training?`<label class="item" style="grid-template-columns:auto 1fr"><input type="checkbox" data-act="tread" ${day.treadmill?"checked":""}><span>30 min treadmill after lifting</span></label>`:""}
@@ -62109,9 +62341,12 @@ function prevSets(name, d){ const w=Object.values(S.docs.workouts).filter(x=>x&&
 function vTrainSession(){
   const d=view.date, ses=sessionFor(d), wk=S.docs.workouts[d]||{};
   const cur = ses ? ses.session : null;
-  const picker = `<div class="row">${ROTATION.map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}" aria-pressed="${cur===s && (ses.idx===i)}">${s}</button>`).join("")}</div>`;
-  if(!cur) return `<div class="card"><h2>Pick today's session</h2>${picker}</div>`;
+  const choices=sessionChoices();
+  const picker = `<div class="row">${choices.map((s,i)=>`<button class="chip ${s==="Rest"?"rest":""}" data-act="setses" data-idx="${i}" aria-pressed="${cur===s && (ses.idx===i)}">${s}</button>`).join("")}</div>`;
+  if(!cur) return choices.length ? `<div class="card"><h2>Pick today's session</h2>${picker}</div>` : `<div class="card"><h2>No templates yet</h2><p class="muted">Quick log follows your templates. Make one in the full logger first.</p><div class="row"><button class="btn" data-act="tmode" data-m="full">Open the full logger</button></div></div>`;
   if(cur==="Rest") return `<div class="card"><h2>Rest day</h2><p class="muted">Recovery is where the strength comes back. Walk, stretch, sleep well, and keep food at ${fkc(kcalTarget(view.date))} kcal.</p>${picker}</div>`;
+  // Quick log has set rows only for the Push / Pull / Lower plan; any other template is logged in the full logger.
+  if(!PROGRAM[cur]) return `<div class="card"><h2>${esc(cur)}</h2><p class="muted">Quick log has set rows only for the Push / Pull / Lower plan. Log ${esc(cur)} in the full logger.</p><div class="row"><button class="btn" data-act="tmode" data-m="full">Open the full logger</button><button class="btn ghost" data-act="sesopen">Change</button></div>${view.sesPick?`<div class="card">${picker}</div>`:""}</div>`;
   const ex = PROGRAM[cur], showPick = !!view.sesPick || !ses.chosen, rest=restSec();
   const nameOf = planName => usedFor(wk, planName)||planName;
   return `
@@ -62574,6 +62809,12 @@ function vSettings(){
     ${lb&&window.GymSounds&&GymSounds.SET_SOUNDS?(()=>{ const cur=lb.setSound||"check"; return row("Sound when you tick a set","Check is your own sound. Tap one to hear it.",`<span class="row" style="gap:6px;justify-content:flex-end">${GymSounds.SET_SOUNDS.concat([{id:"off",label:"Off"}]).map(s=>`<button type="button" class="chip" data-act="lbpick" data-s="setSound" data-k="${s.id}" aria-pressed="${cur===s.id}">${esc(s.label)}</button>`).join("")}</span>`); })():""}
     ${lb?row("Play a sound when rest ends","",sw("lbtog",lb.sound,"Play a sound when rest ends",'data-s="sound"'))+row("Vibrate when rest ends","",sw("lbtog",lb.vibrate,"Vibrate when rest ends",'data-s="vibrate"'))+row("Buzz at 3, 2, 1","One short buzz for each of the last three seconds",sw("lbtog",lb.countBuzz!==false,"Buzz at 3, 2 and 1 seconds left",'data-s="countBuzz"'))+row("Keep the screen on","During a workout",sw("lbtog",lb.wake,"Keep the screen on during a workout",'data-s="wake"')):""}
   </div></div>
+  ${window.MusicControl?(()=>{ const mc=MusicControl.settings(); return `<div class="card"><h3>Music</h3><div class="set-list">
+    ${row("Music controls","Play, pause and skip whatever is playing in YouTube Music (or any music app). Mizan never plays music itself.",sw("musictog",mc.on,"Music controls"))}
+    ${mc.on?row("Where",'Strip: a slim bar under the header. Icon: a note button that opens a panel. Workout: only on the live workout screen, above the rest timer.',seg("musiclook",MusicControl.LOOKS.map(([k,l])=>[k,l.replace(/ .*/,"")]),mc.look)):""}
+    ${mc.on?row("Workout playlist","Paste a YouTube Music playlist or song link. Opens in the YouTube Music app with one tap.",`<input type="url" id="musicUrl" data-music-url inputmode="url" enterkeyhint="done" placeholder="https://music.youtube.com/playlist?list=…" value="${esc(mc.playlist||"")}" style="width:min(100%,22em)" aria-label="Workout playlist link">`):""}
+    ${mc.on?`<p class="note info" style="margin-top:8px">YouTube Music keeps playing while you use Mizan only with YouTube Music Premium or YouTube Premium. The free app stops when it leaves the screen.</p>`:""}
+  </div></div>`; })():""}
   <div class="card"><h3>Units</h3><div class="set-list">
     ${lb?row("Default unit","New exercises in the full logger",seg("lbset",[["kg","kg"],["lb","lb"]],lb.unit,'data-s="unit"')):""}
     ${row("Per exercise","Full logger: ••• menu on the exercise → Switch to lb. The plan's exercises are below. History keeps the unit it was logged in.","")}
@@ -62603,6 +62844,7 @@ function vSettings(){
 // In-app updates (modules/app-update): Settings card + Today banner; reads the public releases repo (no key), private release with a key as a fallback.
 if(window.AppUpdate){ try{ const st=document.createElement("style"); st.textContent=AppUpdate.css; document.head.appendChild(st); AppUpdate.bind({ render, toast }); }catch(e){} }
 if(window.AndroidShell) AndroidShell.init({ isHome:()=>view.tab==="today", setTab:(t,y)=>{ view.tab=t; try{localStorage.setItem("aziz-cut-tab",t)}catch(_){} render(); window.scrollTo(0,y||0); }, goHome:()=>{ view.tab="today"; try{localStorage.setItem("aziz-cut-tab","today")}catch(_){} render(); window.scrollTo(0,0); } });
+if(window.MusicControl){ MusicControl.init({ get:()=>S.docs.prefs.main?.music||null, set:m=>{ const p=clone(S.docs.prefs.main||{}); p.music=m; put("prefs","main",p,{quiet:true}); }, toast }); MusicControl.bind(document); window.addEventListener("mc:settings",()=>{ view.tab="settings"; render(); setTimeout(()=>{ const el=document.getElementById("musicUrl"); if(el){ el.scrollIntoView({block:"center"}); el.focus(); } },50); }); }
 function openDrawer(on){ const d=document.getElementById("drawer"); clearTimeout(d._closeT);
   if(!on){ if(d.hidden) return; d.classList.add("closing"); d._closeT=setTimeout(()=>{ d.hidden=true; d.classList.remove("closing"); }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200); return; }
   d.classList.remove("closing"); d.hidden=false; if(on){ document.getElementById("drawerFoot").textContent=document.getElementById("sync").textContent; const cur=d.querySelector('button[aria-current="page"]'); if(cur) cur.focus({preventScroll:true}); } }
@@ -62731,6 +62973,8 @@ main.addEventListener("click",e=>{
   if(a==="scalereset"){ const p=Object.assign({},clone(S.docs.prefs.main)); p.uiScale=1; applyScale(1); put("prefs","main",p); return; }
   if(a==="theme"){ const p=clone(S.docs.prefs.main); p.theme=el.dataset.k; applyTheme(p.theme); put("prefs","main",p); return; }
   if(a==="rest"){ const p=clone(S.docs.prefs.main); p.restSec=+el.dataset.k; put("prefs","main",p); return; }
+  if(a==="musictog"){ MusicControl.setSettings({on:!MusicControl.settings().on}); render(); return; }
+  if(a==="musiclook"){ MusicControl.setSettings({look:el.dataset.k}); render(); return; }
   if(a==="restauto"){ const p=clone(S.docs.prefs.main); p.restAuto=!(p.restAuto!==false); put("prefs","main",p); return; }
   if(a==="lbset"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings(k==="gym" ? {gym:v==="gym"} : k==="unit" ? {unit:v} : {[k]:+v}); if(k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=+v; put("prefs","main",p); } else render(); return; }
   if(a==="lbpick"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings({[k]:v}); if((k==="restSound"||k==="setSound")&&v!=="off"&&window.GymSounds){ GymSounds.prime(); GymSounds.play(v); } render(); return; }
@@ -62739,7 +62983,7 @@ main.addEventListener("click",e=>{
   if(a==="lbtog"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, cur=lbSettings()||{}; WorkoutLogger.setSettings({[k]:!cur[k]}); render(); return; }
   if(a==="gotrain"){ view.tab="train"; render(); window.scrollTo(0,0); }
   else if(a==="gofood"){ view.tab="food"; render(); window.scrollTo(0,0); }
-  else if(a==="setses"){ const idx=+el.dataset.idx; const w=clone(S.docs.workouts[d]); put("workouts",d,{date:d,sets:{},...w,session:ROTATION[idx],idx}); }
+  else if(a==="setses"){ const idx=+el.dataset.idx, list=sessionChoices(); if(!list[idx]) return; const w=clone(S.docs.workouts[d]); put("workouts",d,{date:d,sets:{},...w,session:list[idx],idx}); }
   else if(a==="water"){ const day=getDay(d); day.water=Math.max(0,(day.water||0)+(+el.dataset.ml)); flash("water"); saveDay(day); }
   else if(a==="delweight"){ const old=S.docs.weights[d]; remove("weights",d); if(old) undoToast("Weigh-in removed", ()=>put("weights",d,old)); }
   else if(a==="timer"){ startTimer(+el.dataset.s); }
@@ -62795,6 +63039,7 @@ main.addEventListener("change",e=>{
   const el=e.target, d=view.date;
   if(el.id==="strongFile" && el.files && el.files[0]){ importStrong(el.files[0]); return; }
   if(el.id==="stepsFile" && el.files && el.files[0]){ const fr=new FileReader(); fr.onload=()=>applyStepsText(String(fr.result)); fr.readAsText(el.files[0]); return; }
+  if(el.dataset.musicUrl!=null && window.MusicControl){ const raw=el.value.trim(), v=MusicControl.validPlaylist(raw); if(raw && !v){ toast("Paste a YouTube Music or YouTube link"); return; } MusicControl.setSettings({playlist:v||""}); toast(v?"Playlist saved":"Playlist removed"); render(); return; }
   if(el.dataset.restK){ const k=el.dataset.restK, v=window.WorkoutLogger&&WorkoutLogger.parseRest?WorkoutLogger.parseRest(el.value):(parseFloat(el.value)||null);
     if(v==null||v<5){ toast("Type a time like 1:45 or 105"); render(); return; }
     if(k==="restSec"||k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=v; put("prefs","main",p); }

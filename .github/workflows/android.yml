@@ -79,6 +79,7 @@ jobs:
         continue-on-error: true
         with:
           name: aziz-fitness-android
+          retention-days: 3
           path: |
             aziz-fitness.apk
             aziz-fitness.aab

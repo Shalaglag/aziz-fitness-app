@@ -28,14 +28,14 @@ import java.util.Date
  *
  * `show({title, body, sub, look, workout, start, end, total})` posts one ongoing, silent notification:
  *  - workout view (`end` = 0): a chronometer counting up from `start` (the workout's elapsed time), the current
- *    exercise and set in `body`, the next exercise in `sub`, and "Next exercise" / "Rest" buttons;
+ *    exercise and set in `body`, the next exercise in `sub`, and "Complete set" / "Rest" buttons;
  *  - rest view (`end` > now): the chronometer counts down to `end` on its own, with "−15 s" / "+15 s" / "Skip".
  *    When the rest ends this plugin flips back to the workout view by itself (a Handler, so it works while the
  *    web view's timers are throttled in the background). With `workout` false (Quick log) the countdown clears
  *    itself through `setTimeoutAfter` instead.
  * The notification id (7002) differs from the "Rest is over" one AndroidShell schedules via LocalNotifications
  * (7001), so the end sound shows as its own dismissable notification and the workout one stays.
- * The buttons broadcast back to this plugin, which tells the web app ("skip", "adjust" {seconds}, "next", "rest").
+ * The buttons broadcast back to this plugin, which tells the web app ("skip", "adjust" {seconds}, "complete", "rest").
  * `look` (the logger's restNotify setting) picks the rest layout: big (default, time large on the right), clock
  * (time only), bar (time over a loading bar refreshed once a second while the process lives), plain (standard
  * notification, countdown in the header), endsAt (plain plus the clock time the rest ends).
@@ -51,7 +51,7 @@ class RestTimerPlugin : Plugin() {
         const val CHANNEL_ID = "rest_live_v1"
         const val ACTION_SKIP = "com.azizfitness.app.REST_SKIP"
         const val ACTION_ADD = "com.azizfitness.app.REST_ADD"
-        const val ACTION_NEXT = "com.azizfitness.app.WORKOUT_NEXT"
+        const val ACTION_COMPLETE = "com.azizfitness.app.WORKOUT_COMPLETE"
         const val ACTION_REST = "com.azizfitness.app.WORKOUT_REST"
     }
 
@@ -69,12 +69,12 @@ class RestTimerPlugin : Plugin() {
                 when (intent.action) {
                     ACTION_SKIP -> notifyListeners("skip", JSObject())
                     ACTION_ADD -> notifyListeners("adjust", JSObject().put("seconds", intent.getIntExtra("seconds", 15)))
-                    ACTION_NEXT -> notifyListeners("next", JSObject())
+                    ACTION_COMPLETE -> notifyListeners("complete", JSObject())
                     ACTION_REST -> notifyListeners("rest", JSObject())
                 }
             }
         }
-        val filter = IntentFilter().apply { addAction(ACTION_SKIP); addAction(ACTION_ADD); addAction(ACTION_NEXT); addAction(ACTION_REST) }
+        val filter = IntentFilter().apply { addAction(ACTION_SKIP); addAction(ACTION_ADD); addAction(ACTION_COMPLETE); addAction(ACTION_REST) }
         ContextCompat.registerReceiver(context, r, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         receiver = r
     }
@@ -184,7 +184,7 @@ class RestTimerPlugin : Plugin() {
              .addAction(0, "Skip", broadcast(ACTION_SKIP, 2))
             if (!s.workout) b.setTimeoutAfter(leftMs + 2000)
         } else {
-            b.addAction(0, "Next exercise", broadcast(ACTION_NEXT, 4))
+            b.addAction(0, "Complete set", broadcast(ACTION_COMPLETE, 4))
              .addAction(0, "Rest", broadcast(ACTION_REST, 5))
         }
 
