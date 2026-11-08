@@ -49,7 +49,8 @@ test('Skip to next overrides until the next finished workout', () => {
 });
 
 test('a workout opened yesterday with nothing ticked is dated from its first set', () => {
-  const now = Date.now();
+  // Pinned to local noon: run at 00:30, "an hour ago" would fall on the previous day and this check would fail (main, Nov 8 00:03 UTC).
+  const now = new Date().setHours(12, 0, 0, 0);
   const d = { start: now - 2 * DAY, exercises: [{ sets: [{ done: false }] }] };
   assert.strictEqual(freshStart(d, now), true); assert.strictEqual(d.start, now);
   const today = { start: now - 36e5, exercises: [{ sets: [{ done: false }] }] };

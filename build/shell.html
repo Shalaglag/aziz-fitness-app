@@ -679,6 +679,7 @@ body:has(#timer:not([hidden])) .co-fab{display:none}
 .sheet-wrap{position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;background:var(--overlay);animation:fit-fade-in 260ms var(--ease-out)}
 .fsheet{width:100%;max-width:640px;max-height:92%;background:var(--bg);border-radius:18px 18px 0 0;display:flex;flex-direction:column;animation:fit-sheet-up 260ms var(--ease-out)}
 @keyframes fit-sheet-up{from{transform:translateY(48px);opacity:0}}
+.sheet-wrap.sw-keep,.sheet-wrap.sw-keep .fsheet{animation:none}
 .sheet-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
 .sheet-head h2{font-size:1.2rem;text-align:center}
 .sheet-body{overflow-y:auto;padding:12px 16px calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
@@ -1214,8 +1215,13 @@ function render(){
   document.getElementById("goToday").hidden = view.date===TODAY;
   const y = window.scrollY;
   try{ foodDraftCapture(); }catch(e){ console.error("[food draft]", e); }
+  // A sheet that is already open must not replay its slide-up when the page re-renders behind it (sync snapshot,
+  // a module calling render, the deferred render after typing): remember which sheets are open and where they
+  // were scrolled, then mark the re-created ones so their open animation is skipped.
+  const openSheets={}; main.querySelectorAll(".sheet-wrap[id]").forEach(w=>{ const b=w.querySelector(".sheet-body"); openSheets[w.id]=b?b.scrollTop:0; });
   const tabFn = ({today:vToday,train:vTrain,food:vFood,progress:vProgress,friends:vFriends,guide:vGuide,settings:vSettings})[view.tab] || vToday;
   main.innerHTML = safe(view.tab+" tab", tabFn);
+  main.querySelectorAll(".sheet-wrap[id]").forEach(w=>{ if(!(w.id in openSheets)) return; w.classList.add("sw-keep"); const b=w.querySelector(".sheet-body"); if(b && openSheets[w.id]) b.scrollTop=openSheets[w.id]; });
   [["Workout logger",syncLogger],["Food search",mountFoodSearch],["Recipe editor",mountRecipeEditor],["Barcode scanner",mountBarcode],["Label scanner",mountLabelScan],["Exercise swap",mountSwapNotice],["Progress photos",syncPhotos],["Your data",syncDataCard]].forEach(([l,f])=>{ try{ f(); }catch(e){ console.error("[mount] "+l, e); brokenCards.push(l); showErrBanner(); } });
   if(lastTab!==view.tab){ [...main.children].forEach((c,i)=>{ c.classList.add("anim-rise"); c.style.setProperty("--i",i); }); if(lastTab) tabMotion(lastTab, view.tab); lastTab=view.tab; }
   if(window.MusicControl){ try{ MusicControl.mountHeader(document.getElementById("musicHead"), document.getElementById("musicStrip")); }catch(e){ console.error("[music]", e); } }
