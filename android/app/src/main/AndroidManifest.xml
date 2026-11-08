@@ -43,6 +43,16 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+        <!-- Music controls: song name / cover / play state need a notification listener the user turns on
+             in Android Settings › Notification access (opt-in from Mizan's Settings › Music). It reads nothing. -->
+        <service
+            android:name=".NowPlayingListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 
     <!-- Permissions -->

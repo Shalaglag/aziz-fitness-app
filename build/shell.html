@@ -2216,6 +2216,7 @@ function vSettings(){
   ${window.MusicControl?(()=>{ const mc=MusicControl.settings(); return `<div class="card"><h3>Music</h3><div class="set-list">
     ${row("Music controls","Play, pause and skip whatever is playing in YouTube Music (or any music app). Mizan never plays music itself.",sw("musictog",mc.on,"Music controls"))}
     ${mc.on?row("Where",'Strip: a slim bar under the header. Icon: a note button that opens a panel. Workout: only on the live workout screen, above the rest timer.',seg("musiclook",MusicControl.LOOKS.map(([k,l])=>[k,l.replace(/ .*/,"")]),mc.look)):""}
+    ${mc.on?row("Show song and cover","Song name, artist, a small cover and the real play/pause state. Needs Android's notification access (one switch, asked once). Mizan reads only what is playing.",sw("musicmeta",mc.meta,"Show song name and cover")):""}
     ${mc.on?row("Workout playlist","Paste a YouTube Music playlist or song link. Opens in the YouTube Music app with one tap.",`<input type="url" id="musicUrl" data-music-url inputmode="url" enterkeyhint="done" placeholder="https://music.youtube.com/playlist?list=…" value="${esc(mc.playlist||"")}" style="width:min(100%,22em)" aria-label="Workout playlist link">`):""}
     ${mc.on?`<p class="note info" style="margin-top:8px">YouTube Music keeps playing while you use Mizan only with YouTube Music Premium or YouTube Premium. The free app stops when it leaves the screen.</p>`:""}
   </div></div>`; })():""}
@@ -2382,6 +2383,7 @@ main.addEventListener("click",e=>{
   if(a==="theme"){ const p=clone(S.docs.prefs.main); p.theme=el.dataset.k; applyTheme(p.theme); put("prefs","main",p); return; }
   if(a==="rest"){ const p=clone(S.docs.prefs.main); p.restSec=+el.dataset.k; put("prefs","main",p); return; }
   if(a==="musictog"){ MusicControl.setSettings({on:!MusicControl.settings().on}); render(); return; }
+  if(a==="musicmeta"){ MusicControl.enableMeta(!MusicControl.settings().meta).then(()=>render()); render(); return; }
   if(a==="musiclook"){ MusicControl.setSettings({look:el.dataset.k}); render(); return; }
   if(a==="restauto"){ const p=clone(S.docs.prefs.main); p.restAuto=!(p.restAuto!==false); put("prefs","main",p); return; }
   if(a==="lbset"){ if(!window.WorkoutLogger||!WorkoutLogger.setSettings) return; const k=el.dataset.s, v=el.dataset.k; WorkoutLogger.setSettings(k==="gym" ? {gym:v==="gym"} : k==="unit" ? {unit:v} : {[k]:+v}); if(k==="restCompound"){ const p=clone(S.docs.prefs.main); p.restSec=+v; put("prefs","main",p); } else render(); return; }
