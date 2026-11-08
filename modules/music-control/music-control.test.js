@@ -5,7 +5,7 @@ const MC = require("./music-control.js");
 test("settings: strip look on by default, bad looks fall back, store is used", () => {
   let saved = null;
   MC.init({ get: () => saved, set: v => { saved = v; } });
-  assert.deepEqual(MC.settings(), { on: true, look: "strip", playlist: "" });
+  assert.deepEqual(MC.settings(), { on: true, look: "strip", playlist: "", meta: false });
   MC.setSettings({ look: "workout" }); assert.equal(saved.look, "workout");
   MC.setSettings({ look: "nope" }); assert.equal(saved.look, "strip");
   MC.setSettings({ on: false }); assert.equal(MC.settings().on, false);
@@ -57,5 +57,40 @@ test("MediaKeysPlugin.kt is copied into the Android project, registered, and You
   assert.ok(main.includes("registerPlugin(MediaKeysPlugin.class)"));
   const manifest = fs.readFileSync(path.join(root, "android/app/src/main/AndroidManifest.xml"), "utf8");
   assert.ok(manifest.includes('<package android:name="' + MC.PKG + '" />'));
-  assert.ok(!manifest.includes("BIND_NOTIFICATION_LISTENER_SERVICE") && !manifest.includes("MEDIA_CONTENT_CONTROL"), "no new permissions");
+  assert.ok(!manifest.includes("MEDIA_CONTENT_CONTROL") && !/uses-permission[^>]*NOTIFICATION_LISTENER/.test(manifest), "no new uses-permission");
+  assert.ok(manifest.includes('android:name=".NowPlayingListener"') && manifest.includes("android.service.notification.NotificationListenerService"), "notification listener declared (opt-in from Settings)");
+  assert.equal(fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/NowPlayingListener.kt"), "utf8"), fs.readFileSync(path.join(__dirname, "android/NowPlayingListener.kt"), "utf8"), "copy NowPlayingListener.kt into android/");
+});
+
+test("now playing: off by default; with the switch on it shows the song, the access nudge, or nothing-playing; pause icon follows the state", async () => {
+  let saved = { on: true, look: "strip", playlist: "", meta: false };
+  MC.init({ get: () => saved, set: v => { saved = v; }, toast: () => {} });
+  MC._setNp(null);
+  assert.ok(!MC.html.strip(true).includes("mc-art"), "meta off: plain strip");
+  saved.meta = true;
+  globalThis.AndroidShell = { isNative: () => true };
+  const calls = [];
+  let answer = { access: false };
+  globalThis.Capacitor = { Plugins: { MediaKeys: { nowPlaying: async () => answer, hasAccess: async () => ({ access: answer.access }), requestAccess: async () => { calls.push("requestAccess"); return { opened: true }; }, press: async o => { calls.push(o.key); } } } };
+  await MC.poll();
+  assert.ok(MC.html.strip(true).includes('data-mc="access"'), "no access → Allow notification access");
+  assert.ok(MC.html.panel().includes('data-mc="access"') && MC.html.workout(true).includes('data-mc="access"'));
+  answer = { access: true, session: true, title: "Eye of the Tiger", artist: "Survivor", playing: true, art: "data:image/jpeg;base64,AAA=" };
+  await MC.poll();
+  const h = MC.html.strip(true);
+  assert.ok(h.includes("Eye of the Tiger") && h.includes("Survivor") && h.includes('class="mc-art"'), "song, artist and cover shown");
+  assert.ok(h.includes('aria-label="Pause"'), "playing → pause icon");
+  answer = { access: true, session: false };
+  await MC.poll();
+  assert.ok(MC.html.strip(true).includes("Nothing playing"));
+  assert.ok(MC.html.strip(true).includes('aria-label="Play"'));
+  // enableMeta without access sends the user to the Android settings page once
+  answer = { access: false };
+  assert.equal(await MC.enableMeta(true), false);
+  assert.deepEqual(calls, ["requestAccess"]);
+  assert.equal(MC.settings().meta, true);
+  await MC.enableMeta(false);
+  assert.equal(MC.settings().meta, false);
+  assert.equal(MC.nowPlaying(), null);
+  delete globalThis.AndroidShell; delete globalThis.Capacitor;
 });
