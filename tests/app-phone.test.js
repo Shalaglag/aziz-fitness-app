@@ -980,6 +980,24 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("an open Add food sheet does not replay its slide-up when the page re-renders behind it", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await go(page, "food");
+      await page.click('button[data-act="foodadd"]'); await page.waitForTimeout(150);
+      const fresh = await page.evaluate(() => ({ keep: document.getElementById("foodSheet").classList.contains("sw-keep"), anim: getComputedStyle(document.querySelector("#foodSheet .fsheet")).animationName }));
+      assert.deepStrictEqual([fresh.keep, fresh.anim], [false, "fit-sheet-up"], "a newly opened sheet slides up once");
+      // Scroll the sheet body, then re-render as a sync snapshot or a module would (Aziz, Nov 8: "the tab opens and closes fast")
+      const before = await page.evaluate(() => { const b = document.querySelector("#foodSheet .sheet-body"); b.scrollTop = 120; const v = b.scrollTop; render(); return v; });
+      const again = await page.evaluate(() => ({ keep: document.getElementById("foodSheet").classList.contains("sw-keep"), anim: getComputedStyle(document.querySelector("#foodSheet .fsheet")).animationName, wrap: getComputedStyle(document.getElementById("foodSheet")).animationName, scroll: document.querySelector("#foodSheet .sheet-body").scrollTop }));
+      assert.deepStrictEqual([again.keep, again.anim, again.wrap], [true, "none", "none"], "the re-created sheet does not animate again");
+      assert.strictEqual(again.scroll, before, "the sheet keeps its scroll position across the re-render");
+      // Closing and reopening animates again
+      await page.click('[data-act="foodclose"]'); await page.click('button[data-act="foodadd"]'); await page.waitForTimeout(150);
+      assert.strictEqual(await page.evaluate(() => document.getElementById("foodSheet").classList.contains("sw-keep")), false);
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     for (const phone of PHONES) {
       await t.test(phone.name + ": every tab renders with no errors and no sideways scroll", async () => {
         for (const data of [null, seed]) {
