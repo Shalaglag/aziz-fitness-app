@@ -94,3 +94,33 @@ test("now playing: off by default; with the switch on it shows the song, the acc
   assert.equal(MC.nowPlaying(), null);
   delete globalThis.AndroidShell; delete globalThis.Capacitor;
 });
+
+test("icon pop-up: a song change repaints the open panel instead of closing it; a look change closes it", async () => {
+  // minimal DOM stand-in: document with createElement/body, an anchor with a rect
+  const made = [];
+  const mk = () => { const el = { children: [], _html: "", style: {}, classList: { add() {}, remove() {}, toggle() {}, contains: () => false }, setAttribute() {}, getAttribute() { return null; }, remove() { el.removed = true; }, contains: () => false, querySelector: () => null, querySelectorAll: () => [], appendChild(c) { el.children.push(c); c.parent = el; }, prepend() {}, after() {}, closest: () => null };
+    Object.defineProperty(el, "innerHTML", { get() { return el._html; }, set(v) { el._html = v; el.firstElementChild = v ? mk() : null; if (el.firstElementChild) el.firstElementChild._html = v.replace(/^<div class="mc-panel"[^>]*>|<\/div>$/g, ""); } });
+    return el; };
+  const body = mk();
+  globalThis.document = { createElement: () => mk(), body, head: { appendChild() {} }, querySelectorAll: () => [], addEventListener() {} };
+  globalThis.innerWidth = 360;
+  let saved = { on: true, look: "icon", playlist: "", meta: true };
+  MC.init({ get: () => saved, set: v => { saved = v; }, toast: () => {} });
+  globalThis.AndroidShell = { isNative: () => true };
+  let answer = { access: true, session: true, title: "Song A", artist: "X", playing: true };
+  globalThis.Capacitor = { Plugins: { MediaKeys: { nowPlaying: async () => answer, press: async () => ({}) } } };
+  const anchor = mk(); anchor.getBoundingClientRect = () => ({ bottom: 50, right: 300 }); anchor.classList.contains = c => c === "mc-icon";
+  anchor.dataset = { mc: "toggle" };
+  MC._act(anchor);                       // opens the panel
+  assert.equal(body.children.length, 1, "panel appended");
+  const panel = body.children[0];
+  await MC.poll();
+  assert.ok(panel.innerHTML.includes("Song A"));
+  answer = { access: true, session: true, title: "Song B", artist: "Y", playing: true };
+  await MC.poll();                        // song changed → render()
+  assert.ok(!panel.removed, "panel still open after the song changed");
+  assert.ok(panel.innerHTML.includes("Song B"), "panel repainted with the new song");
+  MC.setSettings({ look: "strip" });     // a look change does close it
+  assert.ok(panel.removed, "panel closed when the look changes");
+  delete globalThis.document; delete globalThis.innerWidth; delete globalThis.AndroidShell; delete globalThis.Capacitor;
+});
