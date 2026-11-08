@@ -240,8 +240,17 @@ const MusicControl = (function (global) {
       if (rest && !restWatch && global.MutationObserver) { restWatch = new MutationObserver(() => placeC(live)); restWatch.observe(rest, { attributes: true, childList: true, subtree: true }); }
     } else { if (c) c.remove(); live.classList.remove('mc-has-c'); }
   }
+  // The icon pop-up stays open across song changes and button presses: repaint it in place; only ✕, a tap
+  // outside, Hide or a look change close it (Aziz, Nov 8).
+  function refreshPanel() {
+    if (!panel) return;
+    const w = global.document.createElement('div'); w.innerHTML = panelHtml();
+    const fresh = w.firstElementChild;
+    if (panel.innerHTML !== fresh.innerHTML) panel.innerHTML = fresh.innerHTML;
+  }
   function render() {
-    closePanel();
+    const s = settings();
+    if (panel && (!s.on || s.look !== 'icon')) closePanel(); else refreshPanel();
     if (headSlot || stripSlot) mountHeader(headSlot, stripSlot);
     if (liveHost && !liveHost.hidden) mountWorkout(liveHost);
   }
