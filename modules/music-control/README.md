@@ -1,7 +1,7 @@
 # Music controls (modules/music-control)
 
 A small remote for the YouTube Music app (or whatever is playing) inside Mizan. Mizan never plays music itself,
-never reads the user's library and asks for no permission. Settings › Music: on/off, where it shows, playlist link.
+never reads the user's library and asks for no permission. Settings › Music: on/off, where it shows, playlist link, and an opt-in "Show song and cover" switch (needs Android's notification access).
 
 - `MusicControl.init({ get, set, toast })` – `get()` returns the saved settings, `set(obj)` stores them (the shell keeps
   them in `prefs/main.music`). Settings: `{ on: true, look: 'strip' | 'icon' | 'workout', playlist: '' }`.
@@ -21,7 +21,13 @@ never reads the user's library and asks for no permission. Settings › Music: o
   `com.google.android.apps.youtube.music` (listed in `<queries>`) and falls back to any app. In a browser: toast / new tab.
 - `MusicControl.validPlaylist(url)` – only youtube.com, music.youtube.com and youtu.be links are kept.
 - Expanded/collapsed is remembered per device (`localStorage` `mz-music-open`). Nothing plays when the app opens.
-- Limits: no track name or playing state (that needs notification access, deliberately not requested). The free
-  YouTube Music app stops when it leaves the screen; keeping music going behind Mizan needs Premium.
+- Song name, artist, small cover and play state (`meta`, Settings › Music › "Show song and cover", off by default):
+  `MusicControl.enableMeta(on)` saves the switch and, when Android's notification access is missing, opens that
+  settings page once (`MediaKeys.requestAccess`); `MediaKeys.hasAccess` / `nowPlaying({art})` read the active media
+  session through the empty `NowPlayingListener` (declared in the manifest, reads nothing). The module polls every
+  3 s while the switch is on and the app is open, after each button press and on app resume, and repaints only when
+  the song, state or cover changed. Without access the strip shows "Allow notification access"; with no session,
+  "Nothing playing". The play/pause button shows the real state when known.
+- Limits: the free YouTube Music app stops when it leaves the screen; keeping music going behind Mizan needs Premium.
 
 Tests: `node --test modules/music-control/music-control.test.js`.
