@@ -317,3 +317,28 @@ test('real PDF: a scan has no text layer, so it goes to Claude as images', { ski
   const t = await M.textFromPdf(pdfjs, sample('scanned-menu.pdf'));
   assert.equal(t.hasText, false);
 });
+
+test("Claude's answer cut off mid-list keeps every complete item and says so", () => {
+  const cut = '{"items":[{"name":"A","section":"meal","kcal":500,"protein":40,"carbs":50,"fat":10,"unsure":false},' +
+    '{"name":"B","section":"snack","kcal":200,"protein":10,"carbs":20,"fat":8,"unsure":false},{"name":"C","section":"meal","kcal":6';
+  const r = M.parseRead(cut);
+  assert.deepEqual(r.items.map(i => i.name), ['A', 'B']);
+  assert.ok(r.truncated);
+  assert.ok(r.warnings.some(w => /cut off after 2 items/.test(w)));
+  // The service answer object: the stop reason marks the cut even when the JSON happens to close.
+  const whole = M.parseRead({ text: '{"items":[{"name":"A","kcal":500,"protein":40,"carbs":50,"fat":10}]}', stop: 'max_tokens' });
+  assert.equal(whole.items.length, 1);
+  assert.ok(whole.truncated);
+  const fine = M.parseRead({ text: '{"items":[{"name":"A","kcal":500,"protein":40,"carbs":50,"fat":10}]}', stop: 'end_turn' });
+  assert.equal(fine.truncated, false);
+});
+
+test('pages read in batches are merged into one menu, repeats kept once', () => {
+  const p1 = M.parseRead('{"items":[{"name":"Chicken Rice","section":"meal","kcal":500,"protein":40,"carbs":50,"fat":10},{"name":"Nuts","section":"snack","kcal":200,"protein":6,"carbs":8,"fat":16}]}');
+  const p2 = M.parseRead('{"items":[{"name":"Nuts","section":"snack","kcal":200,"protein":6,"carbs":8,"fat":16},{"name":"Beef Pasta","section":"meal","kcal":600,"protein":45,"carbs":60,"fat":15}],"note":"Page 2 footer cut."}');
+  const m = M.mergeReads([p1, p2]);
+  assert.deepEqual(m.items.map(i => i.name), ['Chicken Rice', 'Nuts', 'Beef Pasta']);
+  assert.equal(m.warnings.filter(w => /^Read from an image/.test(w)).length, 1);
+  assert.ok(m.warnings.some(w => /Page 2 footer/.test(w)));
+  assert.ok(m.warnings.some(w => /appeared on two pages/.test(w)));
+});

@@ -380,7 +380,8 @@
   }
 
   // Render pages to JPEG blobs for Claude when the PDF has no text layer (a scan or a photo saved as PDF).
-  async function pdfPageImages(doc, { maxPages = 4, maxSide = 1800 } = {}) {
+  // Up to 12 pages: readImages sends them to Claude in batches of 4, so a long menu is read whole, not just its first page or two.
+  async function pdfPageImages(doc, { maxPages = 12, maxSide = 1800 } = {}) {
     const blobs = [];
     for (let i = 1; i <= Math.min(doc.numPages, maxPages); i++) {
       const page = await doc.getPage(i);
@@ -406,17 +407,38 @@
       '- section is the heading the item sits under, mapped to one of: meal, snack, salad, soup, drink, other. Desserts, fruit, nuts and sweets are snack. Breakfast and main dishes are meal.',
       '- Use the item name as printed (English if both English and Arabic are shown). Ignore prices.',
       '- Skip items with no nutrition numbers at all, and say how many you skipped in note.',
+      '- Include every item on every page, however long the list gets. Never stop early or summarise.',
       'Reply with only JSON in this shape:',
       '{"items":[{"name":"Buffalo Chicken with Sweet Potato","section":"meal","kcal":496,"protein":65,"carbs":41,"fat":8,"unsure":false}],"note":"One short sentence on anything hard to read."}',
     ].join('\n');
   }
 
+  // When the answer was cut off mid-list (max_tokens), keep every item that was closed properly.
+  function salvageItems(t) {
+    const a = t.indexOf('"items"');
+    const start = a >= 0 ? t.indexOf('[', a) : -1;
+    if (start < 0) return null;
+    const items = [];
+    let depth = 0, from = -1, inStr = false, esc = false;
+    for (let i = start + 1; i < t.length; i++) {
+      const ch = t[i];
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') { if (depth === 0) from = i; depth++; }
+      else if (ch === '}') { depth--; if (depth === 0 && from >= 0) { try { items.push(JSON.parse(t.slice(from, i + 1))); } catch (e) { /* skip */ } from = -1; } }
+      else if (ch === ']' && depth === 0) break;
+    }
+    return items.length ? { items, truncated: true } : null;
+  }
+
   function parseRead(value) {
-    let v = value;
+    let v = value, stop = null;
+    if (v && typeof v === 'object' && !Array.isArray(v) && typeof v.text === 'string' && !Array.isArray(v.items)) { stop = v.stop || null; v = v.text; }
+    let cut = stop === 'max_tokens';
     if (typeof v === 'string') {
       const t = v.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '');
       const a = t.indexOf('{'), b = t.lastIndexOf('}');
-      try { v = JSON.parse(a >= 0 && b > a ? t.slice(a, b + 1) : t); } catch (e) { v = null; }
+      try { v = JSON.parse(a >= 0 && b > a ? t.slice(a, b + 1) : t); } catch (e) { v = salvageItems(t); if (v) cut = true; }
     }
     if (Array.isArray(v)) v = { items: v };
     if (!v || typeof v !== 'object' || !Array.isArray(v.items)) return { items: [], warnings: ['Claude\'s answer couldn\'t be read. Try again.'] };
@@ -429,8 +451,9 @@
       item(cleanName(x.name).slice(0, 100), { kcal: n(x.kcal ?? x.calories), protein: n(x.protein), carbs: n(x.carbs), fat: n(x.fat) },
         SECTIONS.includes(x.section) ? x.section : 'meal', x.unsure ? ['Claude wasn\'t sure it read this right'] : []))).items;
     const warnings = ['Read from an image by Claude. Numbers are copied, not estimated, but compare anything flagged with the menu.'];
+    if (cut) warnings.push(`Claude's list was cut off after ${items.length} item${items.length === 1 ? '' : 's'}. Send fewer pages at a time to get the rest.`);
     if (v.note) warnings.push(String(v.note).slice(0, 300));
-    return { items, warnings };
+    return { items, warnings, truncated: !!cut };
   }
 
   /* ---------------- preferences + optimiser ---------------- */
@@ -640,22 +663,39 @@
 
   async function sampleOrNull() { try { return await H.getSample(); } catch (e) { return null; } }
 
+  // Merge the answers from several batches of pages into one menu (same item on two pages is kept once).
+  function mergeReads(parts) {
+    const all = [].concat(...parts.map(p => p.items));
+    const warnings = [];
+    parts.forEach((p, i) => (p.warnings || []).forEach(w => { if (i === 0 || !/^Read from an image by Claude/.test(w)) warnings.push(w); }));
+    const merged = dedupe(all);
+    if (merged.dupes) warnings.push(`${merged.dupes} item${merged.dupes > 1 ? 's' : ''} appeared on two pages and ${merged.dupes > 1 ? 'were' : 'was'} kept once.`);
+    return { items: merged.items, warnings };
+  }
+
+  const MAX_READ_PAGES = 12;
+
+  // Every page goes to Claude, a few at a time (the service takes at most 4 images a call), so a long menu
+  // is read whole instead of only its first pages.
   async function readImages(blobs, source) {
     const sample = await sampleOrNull();
     const lim = sample ? await sample.limits().catch(() => null) : null;
-    if (!(lim && lim.images)) {
-      // The Android app: the Mizan coach service reads the pictures (Claude Haiku, same spending cap as Ask Claude).
-      if (!H.readService) { ST.error = 'Reading images needs Claude, which isn\'t available here. Upload a PDF with text, or paste the menu text.'; ST.showText = true; return; }
-      if (blobs.length > 4) ST.warnings.push('Only the first 4 pages were read.');
-      const v = await H.readService(blobs.slice(0, 4), { pages: Math.min(blobs.length, 4) });
-      setItems(parseRead(v), source);
-      return;
+    const viaService = !(lim && lim.images);
+    if (viaService && !H.readService) { ST.error = 'Reading images needs Claude, which isn\'t available here. Upload a PDF with text, or paste the menu text.'; ST.showText = true; return; }
+    const per = viaService ? 4 : (lim.images.maxCount || 4);
+    if (blobs.length > MAX_READ_PAGES) ST.warnings.push(`Only the first ${MAX_READ_PAGES} pages were read.`);
+    const pages = blobs.slice(0, MAX_READ_PAGES);
+    const batches = []; for (let i = 0; i < pages.length; i += per) batches.push(pages.slice(i, i + per));
+    if (!viaService) ST.ctl = new AbortController();
+    const parts = [];
+    for (let b = 0; b < batches.length; b++) {
+      if (batches.length > 1) { ST.busy = `Asking Claude to read pages ${b * per + 1}–${b * per + batches[b].length} of ${pages.length}…`; H.render(); }
+      const v = viaService
+        ? await H.readService(batches[b], { pages: batches[b].length })
+        : await sample.json(readPrompt({ pages: batches[b].length }), { images: batches[b], signal: ST.ctl.signal, modelTier: 'default' });
+      parts.push(parseRead(v));
     }
-    const max = lim.images.maxCount || 4;
-    if (blobs.length > max) ST.warnings.push(`Only the first ${max} pages were read.`);
-    ST.ctl = new AbortController();
-    const v = await sample.json(readPrompt({ pages: Math.min(blobs.length, max) }), { images: blobs.slice(0, max), signal: ST.ctl.signal, modelTier: 'default' });
-    setItems(parseRead(v), source);
+    setItems(batches.length > 1 ? mergeReads(parts) : parts[0], source);
   }
 
   async function shrink(file, max = 1800) {
@@ -975,5 +1015,5 @@
     </div>`;
   }
 
-  return { SECTIONS, PRIORITIES, explain, avoidSuggestions, makeBanned, containsPhrase, parseText, linesFromTextContent, textFromPdf, pdfPageImages, readPrompt, parseRead, check, annotate, optimize, toRecord, fromRecord, errorText, css, bind, html, _state: ST };
+  return { SECTIONS, PRIORITIES, explain, avoidSuggestions, makeBanned, containsPhrase, parseText, linesFromTextContent, textFromPdf, pdfPageImages, readPrompt, parseRead, mergeReads, check, annotate, optimize, toRecord, fromRecord, errorText, css, bind, html, _state: ST };
 });

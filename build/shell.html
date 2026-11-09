@@ -2560,7 +2560,7 @@ async function readService(kind,{images=[],text="",weightG=0,signal}={}){
   catch(e){ fail(e && e.name==="AbortError" ? "cancelled" : "offline"); }
   const j=await res.json().catch(()=>null);
   if(!res.ok || !j) fail((j&&j.error)||"server_error");
-  return { text:j.text, costUsd:j.costUsd, kind:j.kind };
+  return { text:j.text, costUsd:j.costUsd, kind:j.kind, stop:j.stop||null };
 }
 const aiReadService = () => window.claude ? null : readService;
 function coachBase(){ const b=String(S.docs.prefs.main?.coachService || (window.FITNESS_CLOUD_CONFIG||{}).coachEndpoint || "").trim().replace(/\/+$/,"").replace(/\/v1\/(health|chat|usage|cap|read|foods|food|tidy)$/,""); return /^https:\/\//i.test(b) ? b : null; }
@@ -2814,7 +2814,7 @@ try{
     }
     return k?{kcal:k}:null;
   };
-  const menuReadService=async(blobs)=>(await readService("menu",{images:blobs})).text;
+  const menuReadService=async(blobs)=>{ const r=await readService("menu",{images:blobs}); return {text:r.text, stop:r.stop}; };
   MenuImport.bind(document, {
     engine: NutreezePicker,
     getSample: () => window.claude && window.claude.use ? window.claude.use("sample").catch(()=>null) : Promise.resolve(null),
