@@ -342,3 +342,41 @@ test('pages read in batches are merged into one menu, repeats kept once', () => 
   assert.ok(m.warnings.some(w => /Page 2 footer/.test(w)));
   assert.ok(m.warnings.some(w => /appeared on two pages/.test(w)));
 });
+
+test('a menu with no Snacks heading still gets its snacks: name-based guess, with a warning', () => {
+  const { items, warnings } = M.parseText([
+    'Item Calories Protein Carbs Fat',
+    'Grilled Chicken Rice 550 48 60 12',
+    'Beef Pasta 620 45 65 18',
+    'Salmon Quinoa 580 42 50 20',
+    'Protein Brownie 210 12 22 8',
+    'Mixed Nuts 180 6 7 15',
+    'Greek Yoghurt Cup 150 15 12 4',
+  ]);
+  assert.deepEqual(items.filter(i => i.section === 'snack').map(i => i.name), ['Protein Brownie', 'Mixed Nuts', 'Greek Yoghurt Cup']);
+  assert.equal(items.filter(i => i.section === 'meal').length, 3);
+  assert.ok(warnings.some(w => /no Snacks heading/.test(w)));
+  // With a heading the guess is off: a "Date Night Chicken" main stays a meal.
+  const r2 = M.parseText(['Mains', 'Date Night Chicken 600 50 55 15', 'Beef Pasta 620 45 65 18', 'Snacks', 'Mixed Nuts 180 6 7 15', 'Brownie 210 12 22 8']);
+  assert.equal(r2.items.find(i => i.name === 'Date Night Chicken').section, 'meal');
+  assert.equal(r2.warnings.filter(w => /no Snacks heading/.test(w)).length, 0);
+});
+
+test('best option lists other snack pairs that fit, and a locked pair is used', () => {
+  const items = M.parseText([
+    'Mains', 'Chicken Rice 560 52 60 12', 'Beef Pasta 600 48 62 16', 'Salmon Bowl 580 45 55 18',
+    'Snacks', 'Protein Brownie 220 12 24 8', 'Mixed Nuts 200 6 8 17', 'Greek Yoghurt 160 16 12 4', 'Fruit Cup 120 1 28 0', 'Protein Bar 210 20 22 7',
+  ]).items;
+  const r = M.optimize(items, E, { dayType: 'training', priority: 'protein' });
+  const best = r.options[0];
+  assert.ok(Array.isArray(best.snackAlts) && best.snackAlts.length >= 1, 'has snack alternatives');
+  const chosen = best.snacks.map(s => s.name).sort().join('|');
+  for (const a of best.snackAlts) {
+    assert.notEqual(a.names.slice().sort().join('|'), chosen, 'alternatives differ from the chosen pair');
+    assert.equal(a.names.length, 2);
+  }
+  const pick = best.snackAlts[0].names;
+  const locked = M.optimize(items, E, { dayType: 'training', priority: 'protein', lockSnacks: pick });
+  assert.deepEqual(locked.options[0].snacks.map(s => s.name).sort(), pick.slice().sort());
+  assert.ok(locked.options[0].snackLocked);
+});
