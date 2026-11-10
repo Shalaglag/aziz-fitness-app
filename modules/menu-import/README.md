@@ -49,3 +49,6 @@ New synced collection `menus/{date}` in the Nutreeze menu format (`docs/nutreeze
 
 ## Long menus (Nov 9)
 A scanned or image PDF is read whole: up to 12 pages, sent to Claude in batches of 4 (one call each), merged with `MenuImport.mergeReads` (an item on two pages is kept once). An answer cut off by the token limit (`stop: "max_tokens"`, or JSON that does not close) keeps every complete item and warns "Claude's list was cut off after N items"; the service's menu limit is 8,000 output tokens. The prompts tell Claude to list every item and never stop early.
+
+## Snacks (Nov 10)
+Aziz: "the snacks are always the same". Two changes. (1) A menu with no Snacks/Desserts heading used to put every item under meals, so the planner fell back to the fixed Nutreeze snack list every time; now, only when no heading was found, items whose name reads as a snack (`MenuImport.looksLikeSnack`: brownie, nuts, yoghurt, fruit, bar, balls…) become `snack`, with a warning naming them. (2) The best option carries `snackAlts`: up to 6 other snack pairs for the same two meals that stay within ±100 kcal, shown as chips ("Other snacks that fit"); tapping one plans the day with that pair (`optimize(..., {lockSnacks})`, `best.snackLocked`), "Any snacks" frees it again. The lock is per session and cleared on Clear.

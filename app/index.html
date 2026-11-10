@@ -59272,6 +59272,10 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     return cols.length >= 3 ? cols : null;
   }
 
+  // Items that read as snacks by name alone, used only when a menu has no section headings at all.
+  const SNACK_NAME = /\b(snack|dessert|sweet|cookie|cookies|brownie|brownies|muffin|muffins|cake|cheesecake|tart|pudding|mousse|bar|bars|balls?|bites|truffles?|cups?|nuts|almonds|cashews|pistachios|peanuts|trail mix|granola|yogh?urt|skyr|labneh|fruit|fruits|apple|banana|mango|grapes|berries|dates|date|popcorn|chips|crackers|jerky|smoothie)\b/i;
+  function looksLikeSnack(name) { return SNACK_NAME.test(String(name || '').replace(/[^a-z ]/gi, ' ')); }
+
   function sectionOf(line) {
     const t = line.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!t || t.length > 24) return null;
@@ -59355,7 +59359,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     if (nutreeze) return nutreeze;
     const lines = (Array.isArray(input) ? input : String(input || '').split(/\r?\n/)).map(l => String(l).replace(/\s+/g, ' ').trim());
     const items = [], warnings = [];
-    let section = 'meal', cols = null, buffer = [], pending = null, sawUnlabelled = false, sawReorder = false;
+    let section = 'meal', cols = null, buffer = [], pending = null, sawUnlabelled = false, sawReorder = false, sawSection = false;
 
     const nameFromBuffer = () => {
       const texts = buffer.filter(t => /[a-z]/i.test(t));
@@ -59375,7 +59379,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
       if (!line || /^#/.test(line)) continue;
 
       const sec = sectionOf(line);
-      if (sec) { flush(); section = sec; buffer = []; continue; }
+      if (sec) { flush(); section = sec; sawSection = true; buffer = []; continue; }
       const head = headerColumns(line);
       if (head) { flush(); cols = head; buffer = []; continue; }
 
@@ -59439,6 +59443,15 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     flush();
 
     const merged = dedupe(items);
+    if (!sawSection) {
+      // No "Snacks"/"Desserts" heading anywhere: items that read as snacks by name become snacks, so the
+      // planner can pick from the menu's own snacks instead of the fixed list.
+      const guessed = merged.items.filter(it => it.section === 'meal' && looksLikeSnack(it.name));
+      if (guessed.length) {
+        guessed.forEach(it => { it.section = 'snack'; });
+        warnings.push(`The menu has no Snacks heading, so ${guessed.length} item${guessed.length > 1 ? 's' : ''} that read like snacks ${guessed.length > 1 ? 'were' : 'was'} put under Snacks: ${guessed.map(it => it.name).join(', ')}. Change the section on any that is wrong.`);
+      }
+    }
     if (sawUnlabelled && !cols) warnings.unshift('The menu didn\'t label its number columns. They were read as kcal, protein, carbs, fat' + (sawReorder ? ' (some reordered to match the kcal)' : '') + '. Protein and carbs can\'t be told apart by the numbers alone, so check one item against the menu.');
     if (merged.dupes) warnings.push(`${merged.dupes} item${merged.dupes > 1 ? 's' : ''} appeared twice and ${merged.dupes > 1 ? 'were' : 'was'} kept once.`);
     return { items: merged.items, warnings };
@@ -59704,8 +59717,22 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     const ctx = { options, priority: o.priority, T, dayType: o.dayType, fitCount: new Set(ranked.filter(c => fitsFor(c, o.priority, T)).map(pairKey)).size,
       avoided: avoid.filter(w => skipped.some(sk => /^You asked to leave out/.test(sk.reason) && containsPhrase(sk.name, w)) || (!usedMenuSnacks && (engine.SNACKS || []).some(sn => containsPhrase(sn.name, w)))), likeOf: engine.likeOf };
     options.forEach((c, i) => { c.why = explain(c, i, ctx); });
+    // Other snack pairs that keep the best option's meals inside the day's budget, so the snacks are a choice,
+    // not whatever scored first.
+    const best = options[0];
+    const alt = engine.pick({
+      meals: [best.meal1, best.meal2].map(m => ({ ...m })), snacks: usedMenuSnacks ? menuSnacks.map(toEngine) : undefined,
+      dayType: o.dayType, adonis: o.adonis, gatorade: o.gatorade, eggs: o.eggs, targets: o.targets || undefined,
+      exclude: usedMenuSnacks ? [] : (engine.SNACKS || []).filter(sn => isBanned(sn.name)).map(sn => sn.name),
+      lockMeals: [best.meal1.name, best.meal2.name], lockSnacks: [], top: 60,
+    });
+    const chosen = snackKey(best);
+    best.snackAlts = (alt.options || []).filter(c => snackKey(c) !== chosen && kcalFits(c, T)).slice(0, 6)
+      .map(c => ({ names: c.snacks.map(x => x.name), kcal: Math.round(c.totals.kcal), p: Math.round(c.totals.p), fits: !!(c.check && c.check.fits) }));
+    best.snackLocked = !!(o.lockSnacks && o.lockSnacks.length);
     return { options, fixed: r.fixed, fixedTotals: r.fixedTotals, labels: r.labels, skipped, usedMenuSnacks, notes, priority: o.priority, avoid };
   }
+  const snackKey = c => c.snacks.map(x => x.name.toLowerCase()).sort().join('|');
 
   /* ---------------- priorities + reasons ---------------- */
 
@@ -59800,7 +59827,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
 
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const r0 = n => Math.round(n);
-  const ST = { date: '', items: null, warnings: [], source: '', busy: '', error: '', text: '', showText: false, result: null, opts: { adonis: true, onlyConfirmed: false, priority: 'protein', avoid: [] }, canImage: null, ctl: null, loadedFor: '' };
+  const ST = { date: '', items: null, warnings: [], source: '', busy: '', error: '', text: '', showText: false, result: null, opts: { adonis: true, onlyConfirmed: false, priority: 'protein', avoid: [], lockSnacks: [] }, canImage: null, ctl: null, loadedFor: '' };
   let H = null;
 
   function sync() {
@@ -59933,7 +59960,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
   function runOptimizer() {
     const d = H.date();
     const dt = H.dayType(d);
-    ST.result = optimize(ST.items, H.engine, { dayType: dt, adonis: ST.opts.adonis, dislikes: H.dislikes(), targets: H.targets ? H.targets(d) : null, onlyConfirmed: ST.opts.onlyConfirmed, top: 3, priority: ST.opts.priority, avoid: ST.opts.avoid });
+    ST.result = optimize(ST.items, H.engine, { dayType: dt, adonis: ST.opts.adonis, dislikes: H.dislikes(), targets: H.targets ? H.targets(d) : null, onlyConfirmed: ST.opts.onlyConfirmed, top: 3, priority: ST.opts.priority, avoid: ST.opts.avoid, lockSnacks: ST.opts.lockSnacks });
+    // A locked snack pair that no longer fits (menu changed, items skipped): fall back to free snacks.
+    if (ST.opts.lockSnacks.length && (!ST.result.options || !ST.result.options.length)) { ST.opts.lockSnacks = []; ST.result = optimize(ST.items, H.engine, { dayType: dt, adonis: ST.opts.adonis, dislikes: H.dislikes(), targets: H.targets ? H.targets(d) : null, onlyConfirmed: ST.opts.onlyConfirmed, top: 3, priority: ST.opts.priority, avoid: ST.opts.avoid }); }
     ST.result.dayType = dt;
   }
   // Priority and leave-out words are remembered (host.setPickPrefs, synced) so the next menu uses them too.
@@ -59977,7 +60006,8 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
         H.toast('Left out ' + name + '. Tap Use in the menu list to bring it back.'); H.render();
       }
       else if (a === 'use' && ST.result && ST.result.options[i]) { H.onUsePlan(H.date(), ST.result.options[i], ST.result.fixed); ST.result = null; H.render(); }
-      else if (a === 'clear') { ST.items = null; ST.result = null; ST.warnings = []; ST.error = ''; H.saveMenu(H.date(), null); H.render(); }
+      else if (a === 'snacks') { ST.opts.lockSnacks = b.dataset.s ? b.dataset.s.split('\u0001') : []; ST.result = null; H.render(); }
+      else if (a === 'clear') { ST.items = null; ST.result = null; ST.opts.lockSnacks = []; ST.warnings = []; ST.error = ''; H.saveMenu(H.date(), null); H.render(); }
     });
     rootEl.addEventListener('input', e => {
       const t = e.target;
@@ -60111,6 +60141,16 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     if (o.check.fits) return '<span class="mi-tag ok">Fits your day</span>';
     return `<span class="mi-tag warn">${Math.abs(dk) > 100 ? fmtN(Math.abs(dk)) + ' kcal ' + (dk > 0 ? 'over' : 'under') : Math.round(T.proteinMin - o.totals.p) + ' g protein short'}</span>`;
   }
+  // "Other snacks that fit": tap a pair to plan the day around it; "Any snacks" frees the choice again.
+  function snackAltsHtml(best) {
+    const alts = best.snackAlts || [];
+    if (!alts.length && !best.snackLocked) return '';
+    return `<p class="mi-lbl">${best.snackLocked ? 'Snacks you chose' : 'Other snacks that fit'}</p>
+      <div class="mi-chips" role="group" aria-label="Other snacks">
+        ${best.snackLocked ? `<button type="button" class="chip" data-mi="snacks" data-s="" aria-pressed="false">Any snacks</button>` : ''}
+        ${alts.map(a => `<button type="button" class="chip" data-mi="snacks" data-s="${esc(a.names.join('\u0001'))}" aria-pressed="false" title="${a.kcal} kcal · ${a.p} g protein">${esc(a.names.join(' + '))}${a.fits ? '' : ' ·' + ' ' + a.kcal + ' kcal'}</button>`).join('')}
+      </div>`;
+  }
   function resultHtml(res, T) {
     if (!res) return '';
     const fixed = res.fixed || [];
@@ -60124,6 +60164,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
         ${fixed.length ? `<p class="mi-fixed">Plus ${esc(fixed.map(x => x.name.replace(/\s*\(.*\)$/, '')).join(', '))} · ${fmtN(fixedKcal)} kcal</p>` : ''}
         ${tiles(best.totals)}
         ${best.why && best.why.length ? `<ul class="mi-whys">${best.why.slice(0, 3).map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+        ${snackAltsHtml(best)}
         <button class="btn mi-plan" data-mi="use" data-i="0">Plan this day</button>
       </div>` : ''}
       ${res.options.length > 1 ? `<p class="mi-lbl">Other options</p>${res.options.slice(1).map((o, j) => `<details class="mi-alt">
@@ -60178,7 +60219,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = CalendarRe
     </div>`;
   }
 
-  return { SECTIONS, PRIORITIES, explain, avoidSuggestions, makeBanned, containsPhrase, parseText, linesFromTextContent, textFromPdf, pdfPageImages, readPrompt, parseRead, mergeReads, check, annotate, optimize, toRecord, fromRecord, errorText, css, bind, html, _state: ST };
+  return { SECTIONS, PRIORITIES, explain, avoidSuggestions, makeBanned, containsPhrase, parseText, linesFromTextContent, textFromPdf, pdfPageImages, readPrompt, parseRead, mergeReads, looksLikeSnack, check, annotate, optimize, toRecord, fromRecord, errorText, css, bind, html, _state: ST };
 });
 </script>
 <script>
