@@ -124,3 +124,15 @@ test("icon pop-up: a song change repaints the open panel instead of closing it; 
   assert.ok(panel.removed, "panel closed when the look changes");
   delete globalThis.document; delete globalThis.innerWidth; delete globalThis.AndroidShell; delete globalThis.Capacitor;
 });
+
+test("every class in the music markup and CSS carries the mc- prefix (a bare .pp from Progress photos once blanked the play button)", () => {
+  MC.init({ get: () => ({ on: true, look: "strip", playlist: "", meta: false }), set: () => {}, toast: () => {} });
+  const html = [MC.html.icon(false), MC.html.panel(), MC.html.strip(true), MC.html.strip(false), MC.html.workout(true), MC.html.workout(false)].join("");
+  const classes = new Set(); for (const m of html.matchAll(/class="([^"]+)"/g)) m[1].split(/\s+/).forEach(c => classes.add(c));
+  const bare = [...classes].filter(c => !c.startsWith("mc-"));
+  assert.deepEqual(bare, [], "classes without the mc- prefix: " + bare.join(", "));
+  const src = require("fs").readFileSync(__dirname + "/music-control.js", "utf8");
+  const css = src.slice(src.indexOf("const CSS = `") + 13, src.indexOf("`;", src.indexOf("const CSS = `")));
+  const bareSel = [...css.matchAll(/\.([a-z][\w-]*)/g)].map(m => m[1]).filter(c => !c.startsWith("mc-") && !/^\d/.test(c) && !["datepick", "lb-live", "lb-live-body"].includes(c));   // shell and workout-logger hooks the control sits in
+  assert.deepEqual([...new Set(bareSel)], [], "CSS selectors without the mc- prefix");
+});

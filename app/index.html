@@ -6649,7 +6649,7 @@ window.MusicControl = (function (global) {
   const PLAY = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>';
   const PAUSE = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
   const ppIcon = () => (np && np.session && np.playing ? PAUSE : PLAY);
-  const ctl = big => '<button type="button" class="mc-btn' + (big ? ' big' : '') + '" data-mc="prev" aria-label="Previous track">' + PREV + '</button><button type="button" class="mc-btn pp' + (big ? ' big' : '') + '" data-mc="pp" aria-label="' + (np && np.session && np.playing ? 'Pause' : 'Play') + '">' + ppIcon() + '</button><button type="button" class="mc-btn' + (big ? ' big' : '') + '" data-mc="next" aria-label="Next track">' + NEXT + '</button>';
+  const ctl = big => '<button type="button" class="mc-btn' + (big ? ' mc-big' : '') + '" data-mc="prev" aria-label="Previous track">' + PREV + '</button><button type="button" class="mc-btn mc-pp' + (big ? ' mc-big' : '') + '" data-mc="pp" aria-label="' + (np && np.session && np.playing ? 'Pause' : 'Play') + '">' + ppIcon() + '</button><button type="button" class="mc-btn' + (big ? ' mc-big' : '') + '" data-mc="next" aria-label="Next track">' + NEXT + '</button>';
   const links = () => { const s = settings(); return (s.playlist ? '<button type="button" class="mc-link" data-mc="playlist">Workout playlist <span aria-hidden="true">›</span></button>' : '<button type="button" class="mc-link" data-mc="settings">Add a workout playlist <span aria-hidden="true">›</span></button>') + (installed === false ? '' : '<button type="button" class="mc-link" data-mc="open">Open YouTube Music <span aria-hidden="true">↗</span></button>'); };
   // What the left side says: the song (meta on + access), a nudge to allow access, or just the app name.
   function trackHtml(kind) {
@@ -6665,28 +6665,28 @@ window.MusicControl = (function (global) {
   function panelHtml() {
     const t = trackHtml('panel');
     const track = t ? '<div class="mc-track">' + t.cover + '<span class="mc-tx"><b>' + t.main + '</b><small>' + t.sub + '</small></span></div>' : '';
-    return '<div class="mc-panel" role="dialog" aria-label="Music"><div class="mc-t"><span class="mc-dot" aria-hidden="true"></span>YouTube Music<button type="button" class="mc-x" data-mc="close" aria-label="Close">✕</button></div>' + track + '<div class="mc-ctl">' + ctl(true) + '</div>' + links() + '<button type="button" class="mc-link mute" data-mc="hide">Hide music controls</button></div>';
+    return '<div class="mc-panel" role="dialog" aria-label="Music"><div class="mc-t"><span class="mc-dot" aria-hidden="true"></span>YouTube Music<button type="button" class="mc-x" data-mc="close" aria-label="Close">✕</button></div>' + track + '<div class="mc-ctl">' + ctl(true) + '</div>' + links() + '<button type="button" class="mc-link mc-mute" data-mc="hide">Hide music controls</button></div>';
   }
   function stripHtml(open) {
     if (!open) return '<div class="mc-handle"><button type="button" data-mc="toggle" aria-expanded="false" aria-label="Show music controls">' + NOTE + ' Music</button></div>';
     const s = settings(), t = trackHtml('strip');
-    if (t) return '<div class="mc-strip" role="region" aria-label="Music">' + t.cover + '<span class="mc-tx"><b>' + t.main + '</b><small>' + t.sub + '</small></span>' + ctl(false) + '<button type="button" class="mc-btn x" data-mc="toggle" aria-expanded="true" aria-label="Collapse music controls">⌃</button></div>';
-    return '<div class="mc-strip" role="region" aria-label="Music"><span class="mc-dot" aria-hidden="true"></span><span class="mc-tx">' + (s.playlist ? '<button type="button" class="mc-plain" data-mc="playlist">Workout playlist <span aria-hidden="true">›</span></button>' : '<button type="button" class="mc-plain" data-mc="settings">Add a playlist <span aria-hidden="true">›</span></button>') + '<small>YouTube Music' + (installed === false ? '' : ' · <button type="button" class="mc-plain" data-mc="open">Open ↗</button>') + '</small></span>' + ctl(false) + '<button type="button" class="mc-btn x" data-mc="toggle" aria-expanded="true" aria-label="Collapse music controls">⌃</button></div>';
+    if (t) return '<div class="mc-strip" role="region" aria-label="Music">' + t.cover + '<span class="mc-tx"><b>' + t.main + '</b><small>' + t.sub + '</small></span>' + ctl(false) + '<button type="button" class="mc-btn mc-tog" data-mc="toggle" aria-expanded="true" aria-label="Collapse music controls">⌃</button></div>';
+    return '<div class="mc-strip" role="region" aria-label="Music"><span class="mc-dot" aria-hidden="true"></span><span class="mc-tx">' + (s.playlist ? '<button type="button" class="mc-plain" data-mc="playlist">Workout playlist <span aria-hidden="true">›</span></button>' : '<button type="button" class="mc-plain" data-mc="settings">Add a playlist <span aria-hidden="true">›</span></button>') + '<small>YouTube Music' + (installed === false ? '' : ' · <button type="button" class="mc-plain" data-mc="open">Open ↗</button>') + '</small></span>' + ctl(false) + '<button type="button" class="mc-btn mc-tog" data-mc="toggle" aria-expanded="true" aria-label="Collapse music controls">⌃</button></div>';
   }
   function workoutHtml(open) {
     if (!open) return '<button type="button" class="mc-fab" data-mc="toggle" aria-expanded="false" aria-label="Show music controls">' + NOTE + '</button>';
     const t = trackHtml('workout');
     const lbl = t ? t.cover + '<span class="mc-tx"><b>' + t.main + '</b><small>' + t.sub + '</small></span>' : '<span class="mc-dot" aria-hidden="true"></span>YouTube Music';
-    return '<div class="mc-c" role="region" aria-label="Music"><div class="mc-row"><span class="mc-lbl">' + lbl + '</span><span class="mc-ctl">' + ctl(false) + '</span><button type="button" class="mc-btn x" data-mc="toggle" aria-expanded="true" aria-label="Collapse music controls">⌄</button></div><div class="mc-sub">' + links() + '<button type="button" class="mc-link mute" data-mc="hide">Hide</button></div></div>';
+    return '<div class="mc-c" role="region" aria-label="Music"><div class="mc-row"><span class="mc-lbl">' + lbl + '</span><span class="mc-ctl">' + ctl(false) + '</span><button type="button" class="mc-btn mc-tog" data-mc="toggle" aria-expanded="true" aria-label="Collapse music controls">⌄</button></div><div class="mc-sub">' + links() + '<button type="button" class="mc-link mc-mute" data-mc="hide">Hide</button></div></div>';
   }
 
   const CSS = `
 .mc-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:1px solid var(--lb-line,var(--line));background:var(--lb-sunk,var(--sunk));color:var(--lb-ink,var(--ink));padding:0;cursor:pointer;flex:none}
-.mc-btn.big{width:46px;height:46px}
-.mc-btn.pp{background:var(--lb-accent,var(--accent));border-color:var(--lb-accent,var(--accent));color:var(--lb-accent-ink,var(--accent-ink,#fff))}
-.mc-btn.x{border:0;background:transparent;color:var(--lb-muted,var(--muted));width:30px}
+.mc-btn.mc-big{width:46px;height:46px}
+.mc-btn.mc-pp{background:var(--lb-accent,var(--accent));border-color:var(--lb-accent,var(--accent));color:var(--lb-accent-ink,var(--accent-ink,#fff))}
+.mc-btn.mc-tog{border:0;background:transparent;color:var(--lb-muted,var(--muted));width:30px}
 .mc-icon{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:50%;border:1px solid var(--lb-line,var(--line));background:var(--lb-sunk,var(--sunk));color:var(--lb-accent,var(--accent));padding:0;cursor:pointer;flex:none}
-.mc-icon.on{background:var(--lb-accent,var(--accent));border-color:var(--lb-accent,var(--accent));color:var(--lb-accent-ink,var(--accent-ink,#fff))}
+.mc-icon.mc-on{background:var(--lb-accent,var(--accent));border-color:var(--lb-accent,var(--accent));color:var(--lb-accent-ink,var(--accent-ink,#fff))}
 .datepick .mc-icon{border-radius:8px}
 .mc-art{width:36px;height:36px;border-radius:8px;object-fit:cover;flex:none;background:var(--lb-sunk,var(--sunk))}
 .mc-tx b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -6701,7 +6701,7 @@ window.MusicControl = (function (global) {
 .mc-ctl{display:flex;align-items:center;justify-content:center;gap:14px;padding:4px 0 8px}
 .mc-link{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;padding:10px 2px;border:0;border-top:1px solid var(--lb-line,var(--line));background:none;color:var(--lb-ink,var(--ink));font:inherit;font-size:.9rem;text-align:left;cursor:pointer}
 .mc-link span{color:var(--lb-muted,var(--muted))}
-.mc-link.mute{color:var(--lb-muted,var(--muted));font-size:.82rem}
+.mc-link.mc-mute{color:var(--lb-muted,var(--muted));font-size:.82rem}
 .mc-plain{border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
 .mc-strip{display:flex;align-items:center;gap:8px;padding:5px 12px 5px 14px;background:var(--lb-sunk,var(--sunk));border-bottom:1px solid var(--lb-line,var(--line));font-size:.85rem;color:var(--lb-ink,var(--ink))}
 .mc-strip .mc-tx{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;white-space:nowrap}
@@ -6709,12 +6709,12 @@ window.MusicControl = (function (global) {
 .mc-strip .mc-tx small{color:var(--lb-muted,var(--muted));font-size:.72rem}
 .mc-strip .mc-art{width:34px;height:34px}
 .mc-strip .mc-btn{width:32px;height:32px;border:0;background:transparent}
-.mc-strip .mc-btn.pp{background:var(--lb-accent,var(--accent))}
+.mc-strip .mc-btn.mc-pp{background:var(--lb-accent,var(--accent))}
 .mc-handle{display:flex;justify-content:center;padding:0;line-height:1}
 .mc-handle button{display:inline-flex;align-items:center;gap:6px;background:var(--lb-sunk,var(--sunk));border:1px solid var(--lb-line,var(--line));border-top:0;color:var(--lb-muted,var(--muted));border-radius:0 0 10px 10px;padding:3px 14px;font:inherit;font-size:.72rem;font-weight:600;cursor:pointer;min-height:24px}
 .mc-handle button svg{width:12px;height:12px}
 .mc-c{position:absolute;left:0;right:0;bottom:0;z-index:5;background:var(--lb-surface,var(--surface));border-top:1px solid var(--lb-line,var(--line));padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));color:var(--lb-ink,var(--ink))}
-.mc-c.edge{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.mc-c.mc-edge{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
 .mc-row{display:flex;align-items:center;gap:8px}
 .mc-lbl{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.88rem;flex:1;min-width:0}
 .mc-row .mc-ctl{padding:0;gap:8px}
@@ -6722,16 +6722,16 @@ window.MusicControl = (function (global) {
 .mc-sub{display:flex;gap:4px 14px;margin-top:2px;font-size:.8rem;flex-wrap:wrap}
 .mc-sub .mc-link{width:auto;border:0;padding:6px 0;color:var(--lb-accent,var(--accent));font-weight:600}
 .mc-sub .mc-link span{color:inherit}
-.mc-sub .mc-link.mute{margin-left:auto;color:var(--lb-muted,var(--muted));font-weight:500}
+.mc-sub .mc-link.mc-mute{margin-left:auto;color:var(--lb-muted,var(--muted));font-weight:500}
 .mc-fab{position:absolute;left:14px;bottom:14px;z-index:6;width:42px;height:42px;border-radius:50%;background:var(--lb-surface,var(--surface));border:1px solid var(--lb-line,var(--line));color:var(--lb-accent,var(--accent));display:grid;place-items:center;box-shadow:0 4px 14px rgba(0,0,0,.14);cursor:pointer;padding:0}
-.mc-fab.edge{bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+.mc-fab.mc-edge{bottom:calc(14px + env(safe-area-inset-bottom,0px))}
 .lb-live.mc-has-c .lb-live-body{padding-bottom:200px}
 .lb-live .mc-head-slot{display:inline-flex;align-items:center}
 `;
   function injectCss() { if (cssDone || !global.document) return; cssDone = true; const s = global.document.createElement('style'); s.textContent = CSS; global.document.head.appendChild(s); }
 
   /* ---- painting ---- */
-  function closePanel() { if (panel) { panel.remove(); panel = null; } global.document && global.document.querySelectorAll('.mc-icon.on').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-expanded', 'false'); }); }
+  function closePanel() { if (panel) { panel.remove(); panel = null; } global.document && global.document.querySelectorAll('.mc-icon.mc-on').forEach(b => { b.classList.remove('mc-on'); b.setAttribute('aria-expanded', 'false'); }); }
   function openPanel(anchor) {
     closePanel(); const d = global.document; if (!d) return;
     const w = d.createElement('div'); w.innerHTML = panelHtml(); panel = w.firstElementChild;
@@ -6739,7 +6739,7 @@ window.MusicControl = (function (global) {
     const pw = Math.min(240, global.innerWidth - 24); // right-aligned to the button, but never past the screen edge
     panel.style.top = (r.bottom + 6) + 'px'; panel.style.right = Math.max(12, Math.min(global.innerWidth - r.right, global.innerWidth - pw - 12)) + 'px';
     (anchor.closest('.lb-live') || d.body).appendChild(panel); // inside the live workout (its overlay sits above the page)
-    anchor.classList.add('on'); anchor.setAttribute('aria-expanded', 'true');
+    anchor.classList.add('mc-on'); anchor.setAttribute('aria-expanded', 'true');
     setTimeout(() => d.addEventListener('click', outside, { once: true }), 0);
   }
   function outside(e) { if (panel && !panel.contains(e.target) && !(e.target.closest && e.target.closest('[data-mc="toggle"]'))) closePanel(); else if (panel) setTimeout(() => global.document.addEventListener('click', outside, { once: true }), 0); }
@@ -6757,7 +6757,7 @@ window.MusicControl = (function (global) {
     const rest = live.querySelector('.lb-rest'), shown = rest && !rest.hidden && !rest.classList.contains('full');
     const h = shown ? rest.offsetHeight : 0;
     el.style.bottom = (h + (el.classList.contains('mc-fab') ? 14 : 0)) + 'px';
-    el.classList.toggle('edge', !shown);
+    el.classList.toggle('mc-edge', !shown);
   }
   function mountWorkout(live) {
     injectCss(); if (!live) return; liveHost = live; checkInstalled();
