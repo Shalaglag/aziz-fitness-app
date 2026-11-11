@@ -5342,9 +5342,40 @@ Power Clean (Barbell)|Other|Barbell|`;
   }
   on('minimize', () => { closeEditor(); });
   function headHtml() {
-    if (E.mode === 'live') return '<button class="lb-link" data-a="minimize" aria-label="Minimize workout">Hide</button><span class="lb-headmid"><span class="lb-mono lb-elapsed" data-clock="' + E.doc.start + '">' + clock(Date.now() - E.doc.start) + '</span><button class="lb-link small" data-a="gymToggle">' + (E.view === 'gym' ? 'List view' : 'Gym mode') + '</button></span><span class="lb-headend">' + (global.VoiceLog ? '<button class="lb-mic" data-a="voice" aria-label="Log by voice" title="Log by voice">' + MIC_ICON + '</button>' : '') + '<button class="lb-btn primary small" data-a="finish">Finish</button></span>';
+    if (E.mode === 'live') return '<span class="lb-headstart"><button class="lb-link" data-a="minimize" aria-label="Minimize workout">Hide</button>' + headRestHtml() + '</span><span class="lb-headmid"><span class="lb-mono lb-elapsed" data-clock="' + E.doc.start + '">' + clock(Date.now() - E.doc.start) + '</span><button class="lb-link small" data-a="gymToggle">' + (E.view === 'gym' ? 'List view' : 'Gym mode') + '</button></span><span class="lb-headend">' + (global.VoiceLog ? '<button class="lb-mic" data-a="voice" aria-label="Log by voice" title="Log by voice">' + MIC_ICON + '</button>' : '') + '<button class="lb-btn primary small" data-a="finish">Finish</button></span>';
     return '<button class="lb-link" data-a="cancelEdit">Cancel</button><b>' + (E.mode === 'template' ? 'Edit template' : 'Edit workout') + '</b><button class="lb-btn primary small" data-a="saveEdit">Save</button>';
   }
+  // Rest timer pill next to Hide: shows the countdown while a rest runs (paintLines keeps it ticking), "Rest" otherwise.
+  // Tap it to start a rest by hand, or to change / skip the one that is running.
+  function headRestHtml() {
+    const on = !!rest;
+    return '<button type="button" class="lb-headrest' + (on ? ' on' : '') + '" data-a="restHead" aria-label="' + (on ? 'Rest timer running. Tap to change it' : 'Start a rest timer') + '"><span aria-hidden="true">⏱</span><span class="lb-mono">' + (on ? mmss(restLeft()) : 'Rest') + '</span></button>';
+  }
+  // The rest the next set would use: the current set in Gym mode, else the next unchecked set.
+  function headRestSec() {
+    if (!E) return S.settings.restIso;
+    const exs = E.doc.exercises, p = (E.view === 'gym' && fixCur()) || resumePoint(exs);
+    const e = p && exs[p[0]];
+    const v = e ? setRestOf(e, e.sets[p[1]]) : 0;
+    return v >= 5 ? v : S.settings.restIso;
+  }
+  function headRestSheet() {
+    openSheet({
+      title: 'Rest timer',
+      body: () => {
+        const def = headRestSec(), picks = [...new Set([def, 60, 90, 120, 150, 180])];
+        return (rest ? '<p class="lb-muted">Resting: <b class="lb-mono">' + mmss(restLeft()) + '</b> left of ' + mmss(rest.total) + '</p><div class="lb-row tight"><button class="lb-btn small ghost" data-a="restHeadAdj" data-d="-15">−15</button><button class="lb-btn small ghost" data-a="restHeadAdj" data-d="15">+15</button><button class="lb-btn small" data-a="restHeadSkip">Skip rest</button></div><h4>Start a new rest</h4>' : '') +
+          '<div class="lb-row tight lb-chips">' + picks.map((v, i) => '<button type="button" class="lb-btn small' + (i ? ' ghost' : ' primary') + '" data-a="restHeadGo" data-s="' + v + '">' + mmss(v) + '</button>').join('') + '</div>' +
+          '<div class="lb-row tight"><input id="lb-resthead" class="lb-input lb-restin" style="flex:1;min-width:0" inputmode="text" enterkeyhint="go" autocomplete="off" placeholder="Any time, e.g. 2:15" aria-label="Rest time"><button class="lb-btn small primary" data-a="restHeadTyped">Start</button></div>';
+      },
+      mount: el => { const inp = el.querySelector('#lb-resthead'); if (inp) inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); const b = el.querySelector('[data-a="restHeadTyped"]'); b && b.click(); } }); }
+    });
+  }
+  on('restHead', () => headRestSheet());
+  on('restHeadGo', t => { primeAudio(); closeSheet(); startRest(+t.dataset.s); });
+  on('restHeadTyped', () => { const inp = document.getElementById('lb-resthead'), v = inp && parseRest(inp.value); if (!v || v < 5) { toast('Type a time like 2:15 or 135'); return; } primeAudio(); closeSheet(); startRest(v); });
+  on('restHeadAdj', t => { closeSheet(); restAdjust(+t.dataset.d); });
+  on('restHeadSkip', () => { closeSheet(); stopRest(); });
   // ---------- Voice logging (VoiceLog module, optional) ----------
   const MIC_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4zm6-4a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.06A8 8 0 0 1 4 11a1 1 0 1 1 2 0 6 6 0 0 0 12 0z"/></svg>';
   on('voice', () => {
@@ -6114,6 +6145,8 @@ Power Clean (Barbell)|Other|Barbell|`;
   function paintLines() {
     if (!liveEl) return;
     const left = rest ? restLeft() : 0, p = rest ? restFrac() : 0;
+    const hr = liveEl.querySelector('.lb-headrest');
+    if (hr) { hr.classList.toggle('on', !!rest); const t = hr.querySelector('.lb-mono'), txt = rest ? mmss(left) : 'Rest'; if (t && t.textContent !== txt) t.textContent = txt; hr.setAttribute('aria-label', rest ? 'Rest timer running. Tap to change it' : 'Start a rest timer'); }
     liveEl.querySelectorAll('.lb-restline').forEach(b => {
       const on = !!(rest && rest.at && +b.dataset.ei === rest.at[0] && +b.dataset.si === rest.at[1]), sp = b.querySelector('span');
       b.classList.toggle('on', on);
@@ -6432,6 +6465,9 @@ td.lb-settag{display:table-cell;text-align:center;width:2.2rem;background:none}
 .lb-rest-time{font-size:1.7rem;font-weight:700;min-width:5.5rem;text-align:center}
 .lb-headmid{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.15}
 .lb-headend{display:flex;align-items:center;gap:8px}
+.lb-headstart{display:flex;align-items:center;gap:8px;min-width:0}
+.lb-headrest{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;border:1px solid var(--lb-line);background:transparent;color:var(--lb-ink);font-size:.85rem;font-weight:600;line-height:1.2;white-space:nowrap}
+.lb-headrest.on{background:var(--lb-accent);border-color:var(--lb-accent);color:var(--lb-accent-ink)}
 .lb-mic{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:1px solid var(--lb-line);background:var(--lb-sunk);color:var(--lb-accent);cursor:pointer;padding:0}
 .lb-live.gym .lb-live-body{padding-bottom:200px}
 .lb-gym{display:flex;flex-direction:column;gap:12px}

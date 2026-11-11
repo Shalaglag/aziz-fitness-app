@@ -371,6 +371,37 @@ test("phone checks", { skip: !chromium && "playwright not installed" }, async t 
       await page.close();
     });
 
+    await t.test("rest timer pill next to Hide: starts a rest, counts down, Skip clears it, header fits a 360 px phone", async () => {
+      const { page, errors } = await openApp(browser, PHONES[0], seed);
+      await openTrain(page);
+      const r = await page.evaluate(async () => {
+        const w = ms => new Promise(r => setTimeout(r, ms)), out = {};
+        WorkoutLogger.setSettings({ restStyle: "bar", gym: false });
+        document.querySelector('#lbHost [data-a="startTplName"],#lbHost [data-a="startTpl"]').click(); await w(400);
+        const pill = () => document.querySelector('.lb-live-head [data-a="restHead"]');
+        const hide = document.querySelector('.lb-live-head [data-a="minimize"]');
+        out.beside = !!(pill() && hide && pill().parentElement === hide.parentElement);
+        out.idle = pill() && pill().textContent.trim();
+        pill().click(); await w(150);
+        const go = [...document.querySelectorAll('[data-a="restHeadGo"]')].find(b => b.dataset.s === "90"); go.click(); await w(700);
+        out.running = pill().textContent.trim(); out.on = pill().classList.contains("on");
+        out.bar = !!document.querySelector(".lb-rest:not([hidden])");
+        const head = document.querySelector(".lb-live-head"); out.fits = head.scrollWidth <= head.clientWidth + 1;
+        pill().click(); await w(150);
+        [...document.querySelectorAll('[data-a="restHeadSkip"]')].pop().click(); await w(300);
+        out.after = pill().textContent.trim(); out.offAfter = !pill().classList.contains("on");
+        return out;
+      });
+      assert.ok(r.beside, "the pill sits in the same group as Hide");
+      assert.match(r.idle, /Rest/);
+      assert.match(r.running, /1:2\d|1:30/, "it counts down from 1:30: " + r.running);
+      assert.ok(r.on && r.bar, "the pill lights up and the usual rest bar shows");
+      assert.ok(r.fits, "the workout header has no overflow at 360 px");
+      assert.match(r.after, /Rest/); assert.ok(r.offAfter, "Skip rest clears it");
+      assert.deepStrictEqual(errors, []);
+      await page.close();
+    });
+
     await t.test("rest timer: every look renders, full-screen looks minimise, the picked sound plays", async () => {
       const { page, errors } = await openApp(browser, PHONES[0], seed);
       await go(page, "settings");
