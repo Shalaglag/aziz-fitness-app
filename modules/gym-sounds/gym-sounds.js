@@ -197,7 +197,17 @@
   function clearCustom() { custom = null; delete buffers.custom; return tx('readwrite', s => s.delete('rest')).catch(() => {}); }
   function customInfo() { return custom ? { name: custom.name, seconds: custom.seconds } : null; }
 
+  // Inside the Android app, AndroidShell sets a native player for rest sounds so music ducks under them
+  // (setNative(fn): fn(name, webPlay) returns true when it took the sound). Everything else plays here.
+  let native = null;
+  function setNative(fn) { native = typeof fn === 'function' ? fn : null; }
+  const isRest = name => name === 'custom' || REST_SOUNDS.some(s => s.id === name);
   function play(name) {
+    if (native && isRest(name)) { try { if (native(name, playWeb)) return true; } catch (e) { } }
+    return playWeb(name);
+  }
+  function customMs() { const b = buffers.custom; return b ? Math.round(Math.min(b.duration, MAX_SECONDS) * 1000) : 0; }
+  function playWeb(name) {
     try {
       if (name === 'custom') {
         const c = context(), b = buffers.custom; if (!c || !b) return false;
@@ -217,7 +227,7 @@
     } catch (e) { return false; }
   }
 
-  const GymSounds = { NAMES, REST_SOUNDS, SET_SOUNDS, CLIPS: Object.keys(CLIPS), rawName, prime, play, render, wav, setCustom, loadCustom, clearCustom, customInfo };
+  const GymSounds = { NAMES, REST_SOUNDS, SET_SOUNDS, CLIPS: Object.keys(CLIPS), rawName, prime, play, playWeb, setNative, customMs, render, wav, setCustom, loadCustom, clearCustom, customInfo };
   if (root.indexedDB && (root.AudioContext || root.webkitAudioContext)) loadCustom();
   root.GymSounds = GymSounds;
   if (typeof module !== 'undefined' && module.exports) module.exports = GymSounds;

@@ -103,3 +103,15 @@ test("check clip plays through Web Audio once decoded (fake AudioContext)", asyn
     assert.equal(started.length, 2, "second tap plays straight away");
   } finally { delete globalThis.AudioContext; }
 });
+
+test("setNative: rest sounds go to the native player, other sounds stay in the web view", () => {
+  const GS = require("./gym-sounds.js"), got = [];
+  GS.setNative((n, web) => { got.push(n); return typeof web === "function"; });
+  assert.equal(GS.play("gong"), true);
+  assert.equal(GS.play("custom"), true);
+  GS.play("finish"); GS.play("check");
+  assert.deepEqual(got, ["gong", "custom"]);
+  GS.setNative((n) => false); // declined: falls back to the web player (no Web Audio in node, so false)
+  assert.equal(GS.play("restDone"), false);
+  GS.setNative(null);
+});

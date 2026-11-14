@@ -160,9 +160,56 @@ test("workout notification: shows the workout, turns into the rest countdown, bu
 
 test("RestTimerPlugin.kt and its layout are copied into the Android project unchanged", () => {
   const fs = require("fs"), path = require("path"), root = path.join(__dirname, "..", "..");
-  for (const [src, dst] of [["RestTimerPlugin.kt", "android/app/src/main/java/com/azizfitness/app/RestTimerPlugin.kt"], ["notification_rest.xml", "android/app/src/main/res/layout/notification_rest.xml"], ["notification_rest_clock.xml", "android/app/src/main/res/layout/notification_rest_clock.xml"], ["notification_rest_bar.xml", "android/app/src/main/res/layout/notification_rest_bar.xml"]]) {
+  for (const [src, dst] of [["RestTimerPlugin.kt", "android/app/src/main/java/com/azizfitness/app/RestTimerPlugin.kt"], ["RestRing.kt", "android/app/src/main/java/com/azizfitness/app/RestRing.kt"], ["RestRingReceiver.kt", "android/app/src/main/java/com/azizfitness/app/RestRingReceiver.kt"], ["notification_rest.xml", "android/app/src/main/res/layout/notification_rest.xml"], ["notification_rest_clock.xml", "android/app/src/main/res/layout/notification_rest_clock.xml"], ["notification_rest_bar.xml", "android/app/src/main/res/layout/notification_rest_bar.xml"]]) {
     assert.equal(fs.readFileSync(path.join(root, dst), "utf8"), fs.readFileSync(path.join(__dirname, "android", src), "utf8"), "copy modules/android-shell/android/" + src + " into " + dst);
   }
   const main = fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/MainActivity.java"), "utf8");
   assert.ok(main.includes("registerPlugin(RestTimerPlugin.class)"), "RestTimerPlugin registered in MainActivity");
+});
+
+test("rest-over sound: native alarm + ducked ring, once per rest, skip disarms", async () => {
+  delete require.cache[require.resolve("./android-shell.js")];
+  const listeners = {}, calls = [];
+  const LocalNotifications = { checkPermissions: async () => ({ display: "granted" }), createChannel: async () => {}, schedule: async () => { calls.push(["schedule"]); }, cancel: async () => {} };
+  const RestTimer = { show: async () => ({ shown: true }), stop: async () => {}, addListener() {},
+    arm: async o => { calls.push(["arm", o]); return { mode: "exact" }; }, disarm: async () => { calls.push(["disarm"]); },
+    ring: async o => { calls.push(["ring", o]); return { played: true }; } };
+  let hook = null, settings = { sound: true, restSound: "gong" };
+  const GymSounds = { setNative: fn => { hook = fn; }, customMs: () => 4000 };
+  global.CustomEvent = class { constructor(name, o) { this.type = name; this.detail = o && o.detail; } };
+  global.window = { Capacitor: { isNativePlatform: () => true, Plugins: { LocalNotifications, RestTimer } }, GymSounds, WorkoutLogger: { settings: () => settings }, addEventListener: (k, fn) => { listeners[k] = fn; }, dispatchEvent() {} };
+  global.WorkoutLogger = global.window.WorkoutLogger;
+  global.document = { documentElement: { classList: { add() {} } }, body: {} };
+  const A = require("./android-shell.js");
+  A.init({});
+  assert.equal(hook, A.ringRest, "GymSounds rest sounds go native");
+  // A rest: exact alarm at its end with the picked sound, no LocalNotifications schedule
+  let end = Date.now() + 60000;
+  listeners["lb:rest"]({ detail: { end, total: 60, sound: "gong" } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.deepEqual(calls.filter(c => c[0] !== "disarm"), [["arm", { end, sound: "gong", silent: false }]]);
+  // Skipped early: disarmed
+  calls.length = 0; listeners["lb:rest-stop"]();
+  assert.deepEqual(calls, [["disarm"]]);
+  // A rest that ends on time: the alarm stays, and the ring right after lb:rest-stop still carries its end
+  end = Date.now() + 500;
+  listeners["lb:rest"]({ detail: { end, total: 30, sound: "gong" } });
+  await new Promise(r => setTimeout(r, 10));
+  calls.length = 0; listeners["lb:rest-stop"]();
+  assert.equal(hook("gong", () => assert.fail("web fallback")), true);
+  await new Promise(r => setTimeout(r, 10));
+  assert.deepEqual(calls, [["ring", { sound: "gong", end }]]);
+  // A preview in Settings: end 0. The user's own sound: native only ducks, the web view plays it.
+  calls.length = 0; let web = [];
+  RestTimer.ring = async o => { calls.push(["ring", o]); return { played: false, ducked: o.sound === "custom" }; };
+  await new Promise(r => setTimeout(r, 3600));
+  assert.equal(hook("custom", n => web.push(n)), true);
+  await new Promise(r => setTimeout(r, 260));
+  assert.deepEqual([calls, web], [[["ring", { sound: "custom", end: 0, ms: 4000 }]], ["custom"]]);
+  // Beep off: the alarm only buzzes
+  settings = { sound: false }; calls.length = 0;
+  listeners["lb:rest"]({ detail: { end: Date.now() + 90000, total: 90, sound: "restDone" } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(calls[0][1].silent, true);
+  delete global.document; delete global.CustomEvent; delete global.WorkoutLogger; global.window = {};
 });
