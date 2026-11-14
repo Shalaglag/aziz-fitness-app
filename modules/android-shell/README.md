@@ -23,6 +23,14 @@ still runs in a browser and inside Claude.
   bar, plain, endsAt; the logger's `restNotify` setting). Buttons: **Complete set** / **Rest** between rests
   (`lb:workout-complete`, `lb:rest-start`), **−15 s** / **+15 s** / **Skip** during one (`lb:rest-adjust` {d}, `lb:rest-skip`). Its **+15 s** / **Skip** buttons come back as `lb:rest-adjust`
   (`detail: {d}`) / `lb:rest-skip` on `window`.
+- Rest-over sound (Nov 14 2026, `android/RestRing.kt` + `android/RestRingReceiver.kt`): `lb:rest` arms an exact native
+  alarm (`RestTimer.arm({end, sound, silent})`, `USE_EXACT_ALARM`) instead of the LocalNotifications one, and
+  `GymSounds.setNative(AndroidShell.ringRest)` sends every rest sound to `RestTimer.ring({sound, end, ms})`. The native
+  player asks for audio focus `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`, so music dips, plays `res/raw/rest_<id>.wav` on the
+  media stream, then gives focus back and the music returns. Each rest end rings once (whichever of the alarm and the
+  in-app timer is first); the locked phone also gets a quiet "Rest is over" heads-up (channel `rest_over_v2`, buzz
+  only). Skipping early disarms. The user's own sound: native ducks for `ms`, the web view plays it. "Beep when rest
+  ends" off = buzz only. On silent/vibrate with no music, a locked phone only buzzes.
 - `<html class="android-app">` is set inside the app; CSS can use it for native-only tweaks.
 
 Tests: `node --test modules/android-shell/android-shell.test.js`. The Android project itself is in `android/`;

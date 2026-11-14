@@ -43,6 +43,8 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+        <!-- Rest-over ring at the rest's end, also with the phone locked (modules/android-shell RestRing.kt) -->
+        <receiver android:name=".RestRingReceiver" android:exported="false" />
         <!-- Music controls: song name / cover / play state need a notification listener the user turns on
              in Android Settings › Notification access (opt-in from Mizan's Settings › Music). It reads nothing. -->
         <service
@@ -61,7 +63,9 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <!-- Android 13+: the rest bell is a timer the user starts, so it rings on time (granted at install; not a Play Store app) -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Voice logging (modules/voice-log SpeechPlugin): asked the first time the mic is tapped -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

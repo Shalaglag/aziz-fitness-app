@@ -40,6 +40,9 @@ import java.util.Date
  * (time only), bar (time over a loading bar refreshed once a second while the process lives), plain (standard
  * notification, countdown in the header), endsAt (plain plus the clock time the rest ends).
  *
+ * The rest-over sound (Nov 14 2026): `arm({end, sound, silent})` / `disarm()` set and clear the exact alarm that rings
+ * at the rest's end with the phone locked, and `ring({sound, end, ms})` rings now from the in-app timer; both duck the
+ * music (RestRing). `ring` with sound "custom" only ducks for `ms` while the web view plays the user's own file.
  * Registered in MainActivity before super.onCreate. The compiled copy lives next to MainActivity;
  * this file is the source of truth and modules/android-shell/android-shell.test.js checks they are identical.
  */
@@ -78,6 +81,9 @@ class RestTimerPlugin : Plugin() {
         ContextCompat.registerReceiver(context, r, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         receiver = r
     }
+
+    override fun handleOnResume() { RestRing.foreground = true }
+    override fun handleOnPause() { RestRing.foreground = false }
 
     override fun handleOnDestroy() {
         stopTick()
@@ -227,6 +233,40 @@ class RestTimerPlugin : Plugin() {
         } catch (e: SecurityException) {
             false
         }
+    }
+
+    /** Rings at `end` even if the web view is asleep (exact alarm). Resolves {mode: "exact" | "inexact"}. */
+    @PluginMethod
+    fun arm(call: PluginCall) {
+        val end = call.getLong("end") ?: 0L
+        if (end <= System.currentTimeMillis()) { call.resolve(JSObject().put("mode", "none")); return }
+        val mode = RestRing.arm(context, end, call.getString("sound") ?: "restDone", call.getBoolean("silent") ?: false)
+        call.resolve(JSObject().put("mode", mode))
+    }
+
+    /** A skipped or cancelled rest: no alarm, and no "Rest is over" left on screen. */
+    @PluginMethod
+    fun disarm(call: PluginCall) {
+        RestRing.disarm(context)
+        RestRing.cancelOver(context)
+        call.resolve()
+    }
+
+    /** The in-app timer reached 0 (or a Settings preview, end 0): ring now with the music ducked, once per rest. */
+    @PluginMethod
+    fun ring(call: PluginCall) {
+        val end = call.getLong("end") ?: 0L
+        val sound = call.getString("sound") ?: "restDone"
+        if (!RestRing.claim(end)) { call.resolve(JSObject().put("played", false).put("again", true)); return }
+        if (end > 0 && end == RestRing.armedEnd) RestRing.disarm(context)
+        if (end > 0 && !RestRing.foreground) RestRing.postOver(context)
+        if (sound == "custom") {
+            RestRing.duck(context, (call.getInt("ms") ?: 3000).toLong())
+            call.resolve(JSObject().put("played", false).put("ducked", true))
+            return
+        }
+        val played = RestRing.play(context, sound)
+        call.resolve(JSObject().put("played", played))
     }
 
     @PluginMethod

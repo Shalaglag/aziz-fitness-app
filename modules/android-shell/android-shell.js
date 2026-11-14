@@ -18,6 +18,10 @@
  * and the RestTimer plugin keeps a persistent workout notification in the shade ("lb:workout" {name,start,exercise,
  * set,next,done,total,look} / "lb:workout-stop" from the logger) that turns into the live countdown during a rest.
  * Its buttons fire "lb:rest-skip", "lb:rest-adjust" {d: ±15}, "lb:workout-complete" and "lb:rest-start" on window.
+ * Rest-over sound (Nov 14 2026): with RestTimer.arm present, the rest's end is an exact native alarm instead of the
+ * LocalNotifications one, and GymSounds rest sounds play natively (RestTimer.ring) with Android audio focus
+ * "may duck", so music dips, the bell plays, and the music comes back. Each rest end rings once, from whichever of
+ * the alarm (phone locked) and the in-app timer gets there first. "Beep when rest ends" off = buzz only.
  */
 const AndroidShell = (function () {
   const handlers = [];
@@ -174,6 +178,42 @@ const AndroidShell = (function () {
   function fire(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch (e) { } }
   function mmss(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
 
+  // ---- Native rest ring (RestRing.kt via RestTimer.arm / disarm / ring) ----
+  let lastRest = null; // the rest that just ended, so a ring right after lb:rest-stop still knows its end
+  function nativeRing() { const rt = plugin("RestTimer"); return rt && rt.arm && rt.ring ? rt : null; }
+  function soundOn() { try { return !(window.WorkoutLogger && WorkoutLogger.settings && WorkoutLogger.settings().sound === false); } catch (e) { return true; } }
+  function restEnd() {
+    if (live.rest) return live.rest.end;
+    return lastRest && Math.abs(Date.now() - lastRest.end) < 3000 ? lastRest.end : 0;
+  }
+  // GymSounds.setNative hook: true when the native side takes the sound.
+  function ringRest(name, webPlay) {
+    const rt = nativeRing(); if (!rt) return false;
+    const end = restEnd();
+    if (name === "custom") {
+      const GS = window.GymSounds, ms = GS && GS.customMs ? GS.customMs() : 0;
+      if (!ms) return false; // not loaded: the caller falls back to the bell
+      Promise.resolve(rt.ring({ sound: "custom", end, ms })).then(r => { if (!r || r.ducked) setTimeout(() => webPlay("custom"), 200); }, () => webPlay("custom"));
+      return true;
+    }
+    Promise.resolve(rt.ring({ sound: name, end })).then(r => { if (r && !r.played && !r.again) webPlay(name); }, () => webPlay(name));
+    return true;
+  }
+  async function notifPermission() {
+    const ln = plugin("LocalNotifications"); if (!ln || !ln.checkPermissions) return true;
+    try { let p = await ln.checkPermissions(); if (p.display !== "granted" && ln.requestPermissions) p = await ln.requestPermissions(); return p.display === "granted"; } catch (e) { return false; }
+  }
+  function armRest(d) {
+    const rt = nativeRing();
+    return notifPermission().then(() => Promise.resolve(rt.arm({ end: d.end, sound: restSound(d) || "restDone", silent: !soundOn() }))).catch(() => null);
+  }
+  function restStopped() {
+    const r = live.rest; lastRest = r ? { end: r.end } : null;
+    const rt = nativeRing();
+    // Ended on time: leave the alarm, the ring dedupes. Skipped early: no alarm, no "Rest is over".
+    if (rt && !(r && r.end <= Date.now() + 1000)) { try { rt.disarm(); } catch (e) { } }
+  }
+
   async function cancel(id) { const ln = plugin("LocalNotifications"); if (!ln) return; try { await ln.cancel({ notifications: [{ id }] }); } catch (e) { } }
 
   function init(o) {
@@ -186,14 +226,16 @@ const AndroidShell = (function () {
     syncStatusBar(document);
     try { new MutationObserver(() => syncStatusBar(document)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) { }
     if (window.matchMedia) { try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => syncStatusBar(document)); } catch (e) { } }
+    if (nativeRing() && window.GymSounds && window.GymSounds.setNative) window.GymSounds.setNative(ringRest);
     window.addEventListener("lb:rest", e => {
       const d = (e && e.detail) || {}; if (!d.end) return;
+      if (nativeRing()) { cancel(REST_ID); armRest(d).then(() => liveRest(d)); return; }
       const ch = channelFor(restSound(d));
       restChannel(plugin("LocalNotifications") || {}, ch)
         .then(ok => notifyAt(REST_ID, d.end + 1000, "Rest is over", "Back to the next set.", ok ? { channelId: ch.id, sound: ch.sound } : null))
         .then(() => liveRest(d)); // after notifyAt, so the notification permission has been asked for
     });
-    window.addEventListener("lb:rest-stop", () => { cancel(REST_ID); liveRestStop(); });
+    window.addEventListener("lb:rest-stop", () => { if (nativeRing()) restStopped(); else cancel(REST_ID); liveRestStop(); });
     window.addEventListener("lb:workout", e => liveWorkout((e && e.detail) || null));
     window.addEventListener("lb:workout-stop", () => liveWorkout(null));
     liveRestButtons();
@@ -202,6 +244,6 @@ const AndroidShell = (function () {
     return true;
   }
 
-  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, liveRest, liveRestStop, liveWorkout, LOOKS, _live: live, _handlers: handlers };
+  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, ringRest, liveRest, liveRestStop, liveWorkout, LOOKS, _live: live, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;
