@@ -18,6 +18,7 @@ Train > Templates > **New template** now opens a chooser: *Blank template* or on
 | Powerbuilding 3.0 · 5x/week | Powerbuilding 3.0 text | Week 1 |
 | Pure Bodybuilding Phase 2 · Full Body 5x | PBB Phase 2 PDF | Week 1 of block 1 (weak-point slots left out) |
 | Bodybuilding Transformation System · Beginner, Intermediate/Advanced | BTS spreadsheets | Week 1 exercises with week 3 sets and RPEs (weeks 1–2 are intro weeks) |
+| Classic splits · Bro split 5x/week (`classic-bro5`) | Standard bodybuilding template (Aziz, Nov 13 2026), not a Nippard plan | Chest, Back, Legs, Shoulders, Arms (biceps & triceps), one day each; no tips attached. Differs from Fundamentals' body-part split, which pairs chest+triceps, back+biceps and has two leg days |
 
 Tips come from the exercise chapter of *The Muscle Ladder*, its pre-order bonus ("best exercise for each muscle"), and the NOTES columns of the programs above. Everything is quoted, not paraphrased, and credited to Jeff Nippard with the title. The C.A.R.D. at-home card workout, the Get Ready manual and the nutrition booklet have no fixed workouts, so nothing was built from them.
 
