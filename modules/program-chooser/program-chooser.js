@@ -34,7 +34,8 @@ const ProgramChooser = (() => {
     'pbb2-fb5': { split: 'fb', gear: 'machine', push: 'hard', lvl: ['middle', 'advanced'], goal: ['muscle'], time: 'long', variety: true, arms: true },
     'bts-beginner': { split: 'mix', gear: 'mixed', push: 'steady', lvl: ['beginner'], goal: ['muscle'], time: 'medium', simple: true },
     'bts-intermediate': { split: 'mix', gear: 'mixed', push: 'hard', lvl: ['middle', 'advanced'], goal: ['muscle'], time: 'long', variety: true },
-    'powerbuilding-5x': { split: 'ul', gear: 'barbell', push: 'hard', lvl: ['middle', 'advanced'], goal: ['strength', 'both'], pb: true, time: 'long' }
+    'powerbuilding-5x': { split: 'ul', gear: 'barbell', push: 'hard', lvl: ['middle', 'advanced'], goal: ['strength', 'both'], pb: true, time: 'long' },
+    'classic-bro5': { split: 'bro', gear: 'mixed', push: 'steady', lvl: ['middle', 'advanced'], goal: ['muscle'], time: 'long', arms: true, variety: true }
   };
   const SPLIT_NAME = { fb: 'full body', ul: 'upper / lower', ppl: 'push / pull / legs', bro: 'one body part a day', mix: 'a mixed split' };
   const TIME_RANK = { short: 0, medium: 1, long: 2, xl: 3 };

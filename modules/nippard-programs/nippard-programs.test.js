@@ -82,3 +82,17 @@ test('tips(): html quotes Jeff Nippard with the source, escapes, and is empty fo
   assert.ok(d.includes('&#39;') || !d.includes("'"), 'quotes are escaped');
   assert.ok(T.css.includes('.nt-inline'));
 });
+
+test('classic bro split: chest, back, legs, shoulders, then arms, each on its own day', () => {
+  const P = NP.create(programs);
+  const p = P.get('classic-bro5');
+  assert.ok(p, 'classic-bro5 exists');
+  assert.strictEqual(p.days, 5);
+  assert.deepStrictEqual(p.workouts.map(w => w.name), ['Chest', 'Back', 'Legs', 'Shoulders', 'Arms (Biceps & Triceps)']);
+  const arms = p.workouts[4].exercises.map(e => e.ex);
+  assert.ok(arms.some(id => /curl/.test(id)) && arms.some(id => /triceps|skull|close-grip/.test(id)));
+  const t = P.templates('classic-bro5', { unit: 'kg' });
+  assert.deepStrictEqual(t.map(x => x.id), ['np-classic-bro5-1', 'np-classic-bro5-2', 'np-classic-bro5-3', 'np-classic-bro5-4', 'np-classic-bro5-5']);
+  assert.ok(t.every(x => x.folder === p.name));
+  assert.ok(!t[0].notes.includes('Nippard'));
+});

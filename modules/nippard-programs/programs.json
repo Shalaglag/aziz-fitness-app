@@ -1,5 +1,5 @@
 {
- "_comment": "Ready-made programs from Jeff Nippard's published plans, one representative week each. Built by tools/nippard-programs (see modules/nippard-programs/README.md). Exercise ids are the workout logger library ids.",
+ "_comment": "Ready-made programs, one representative week each: Jeff Nippard's published plans (built by tools/nippard-programs, see modules/nippard-programs/README.md) plus a classic bro split (source 'Classic splits'). Exercise ids are the workout logger library ids.",
  "programs": [
   {
    "id": "ml-fb2",
@@ -12447,6 +12447,820 @@
        ],
        "notes": "12-15 reps · RPE 8 · rest 1-2 min — Machine, band or weighted, squeeze and hold for 1 second at the top of each rep.",
        "rest": 90
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "classic-bro5",
+   "name": "Classic splits · Bro split 5x/week",
+   "source": "Classic splits",
+   "level": "Intermediate",
+   "days": 5,
+   "time": "60–75 min",
+   "blurb": "The classic bodybuilding week: one muscle group a day. Chest, back, legs, shoulders, then arms (biceps and triceps), each trained once a week with plenty of sets. A standard template, not from a specific book.",
+   "workouts": [
+    {
+     "name": "Chest",
+     "exercises": [
+      {
+       "name": "Barbell Bench Press",
+       "ex": "bench-press-barbell",
+       "sets": [
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        }
+       ],
+       "notes": "6-8 reps · 1-2 reps in reserve · rest 3 min",
+       "rest": 180
+      },
+      {
+       "name": "Incline Dumbbell Press",
+       "ex": "incline-bench-press-dumbbell",
+       "sets": [
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        }
+       ],
+       "notes": "8-10 reps · 1-2 reps in reserve · rest 2.5 min",
+       "rest": 150
+      },
+      {
+       "name": "Machine Chest Press",
+       "ex": "chest-press-machine",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-12 reps · 1-2 reps in reserve · rest 2 min",
+       "rest": 120
+      },
+      {
+       "name": "Cable Chest Fly",
+       "ex": "chest-fly-cable",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        }
+       ],
+       "notes": "12-15 reps · 1-2 reps in reserve · rest 90 sec",
+       "rest": 90
+      },
+      {
+       "name": "Chest Dip",
+       "ex": "chest-dip",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        }
+       ],
+       "notes": "8-12 reps · 1-2 reps in reserve · rest 90 sec",
+       "rest": 90
+      }
+     ]
+    },
+    {
+     "name": "Back",
+     "exercises": [
+      {
+       "name": "Pull-Up",
+       "ex": "pull-up",
+       "sets": [
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        }
+       ],
+       "notes": "6-10 reps · 1-2 reps in reserve · rest 2.5 min",
+       "rest": 150
+      },
+      {
+       "name": "Barbell Bent-Over Row",
+       "ex": "bent-over-row-barbell",
+       "sets": [
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        }
+       ],
+       "notes": "6-8 reps · 1-2 reps in reserve · rest 2.5 min",
+       "rest": 150
+      },
+      {
+       "name": "Wide-Grip Lat Pulldown",
+       "ex": "lat-pulldown-wide-grip-cable",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-12 reps · 1-2 reps in reserve · rest 2 min",
+       "rest": 120
+      },
+      {
+       "name": "Seated Cable Row",
+       "ex": "seated-row-cable",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-12 reps · 1-2 reps in reserve · rest 2 min",
+       "rest": 120
+      },
+      {
+       "name": "Straight-Arm Pulldown",
+       "ex": "straight-arm-pulldown-cable",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        }
+       ],
+       "notes": "12-15 reps · 1-2 reps in reserve · rest 90 sec",
+       "rest": 90
+      },
+      {
+       "name": "Dumbbell Shrug",
+       "ex": "shrug-dumbbell",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-12 reps · 1-2 reps in reserve · rest 90 sec",
+       "rest": 90
+      }
+     ]
+    },
+    {
+     "name": "Legs",
+     "exercises": [
+      {
+       "name": "Barbell Back Squat",
+       "ex": "squat-barbell",
+       "sets": [
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        }
+       ],
+       "notes": "6-8 reps · 1-2 reps in reserve · rest 3 min",
+       "rest": 180
+      },
+      {
+       "name": "Barbell Romanian Deadlift",
+       "ex": "romanian-deadlift-barbell",
+       "sets": [
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        }
+       ],
+       "notes": "8-10 reps · 1-2 reps in reserve · rest 2.5 min",
+       "rest": 150
+      },
+      {
+       "name": "Leg Press",
+       "ex": "leg-press-machine",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-12 reps · 1-2 reps in reserve · rest 2.5 min",
+       "rest": 150
+      },
+      {
+       "name": "Leg Extension",
+       "ex": "leg-extension-machine",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        }
+       ],
+       "notes": "12-15 reps · 1-2 reps in reserve · rest 90 sec",
+       "rest": 90
+      },
+      {
+       "name": "Lying Leg Curl",
+       "ex": "lying-leg-curl-machine",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-12 reps · 1-2 reps in reserve · rest 90 sec",
+       "rest": 90
+      },
+      {
+       "name": "Standing Calf Raise",
+       "ex": "standing-calf-raise-machine",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-15 reps · 1-2 reps in reserve · rest 60 sec",
+       "rest": 60
+      }
+     ]
+    },
+    {
+     "name": "Shoulders",
+     "exercises": [
+      {
+       "name": "Barbell Overhead Press",
+       "ex": "overhead-press-barbell",
+       "sets": [
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        }
+       ],
+       "notes": "6-8 reps · 1-2 reps in reserve · rest 3 min",
+       "rest": 180
+      },
+      {
+       "name": "Machine Shoulder Press",
+       "ex": "shoulder-press-machine",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        }
+       ],
+       "notes": "8-10 reps · 1-2 reps in reserve · rest 2 min",
+       "rest": 120
+      },
+      {
+       "name": "Dumbbell Lateral Raise",
+       "ex": "lateral-raise-dumbbell",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        }
+       ],
+       "notes": "12-15 reps · 1-2 reps in reserve · rest 60 sec",
+       "rest": 60
+      },
+      {
+       "name": "Cable Lateral Raise",
+       "ex": "lateral-raise-cable",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        }
+       ],
+       "notes": "12-15 reps · 1-2 reps in reserve · rest 60 sec",
+       "rest": 60
+      },
+      {
+       "name": "Reverse Pec Deck",
+       "ex": "reverse-fly-machine",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        }
+       ],
+       "notes": "12-15 reps · 1-2 reps in reserve · rest 60 sec",
+       "rest": 60
+      },
+      {
+       "name": "Face Pull",
+       "ex": "face-pull-cable",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 15
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 15
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 15
+        }
+       ],
+       "notes": "15-20 reps · 1-2 reps in reserve · rest 60 sec",
+       "rest": 60
+      }
+     ]
+    },
+    {
+     "name": "Arms (Biceps & Triceps)",
+     "exercises": [
+      {
+       "name": "EZ-Bar Curl",
+       "ex": "bicep-curl-ez-bar",
+       "sets": [
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 8
+        }
+       ],
+       "notes": "8-10 reps · 1-2 reps in reserve · rest 90 sec",
+       "rest": 90
+      },
+      {
+       "name": "Close-Grip Bench Press",
+       "ex": "close-grip-bench-press-barbell",
+       "sets": [
+        {
+         "t": "w",
+         "w": "",
+         "r": ""
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 6
+        }
+       ],
+       "notes": "6-8 reps · 1-2 reps in reserve · rest 2.5 min",
+       "rest": 150
+      },
+      {
+       "name": "Incline Dumbbell Curl",
+       "ex": "incline-curl-dumbbell",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-12 reps · 1-2 reps in reserve · rest 90 sec",
+       "rest": 90
+      },
+      {
+       "name": "EZ-Bar Skullcrusher",
+       "ex": "skull-crusher-ez-bar",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-12 reps · 1-2 reps in reserve · rest 90 sec",
+       "rest": 90
+      },
+      {
+       "name": "Hammer Curl",
+       "ex": "hammer-curl-dumbbell",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 10
+        }
+       ],
+       "notes": "10-12 reps · 1-2 reps in reserve · rest 60 sec",
+       "rest": 60
+      },
+      {
+       "name": "Rope Pushdown",
+       "ex": "triceps-rope-pushdown-cable",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        }
+       ],
+       "notes": "12-15 reps · 1-2 reps in reserve · rest 60 sec",
+       "rest": 60
+      },
+      {
+       "name": "Machine Preacher Curl",
+       "ex": "preacher-curl-machine",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        }
+       ],
+       "notes": "12-15 reps · 1-2 reps in reserve · rest 60 sec",
+       "rest": 60
+      },
+      {
+       "name": "Overhead Dumbbell Triceps Extension",
+       "ex": "overhead-triceps-extension-dumbbell",
+       "sets": [
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        },
+        {
+         "t": "n",
+         "w": "",
+         "r": 12
+        }
+       ],
+       "notes": "12-15 reps · 1-2 reps in reserve · rest 60 sec",
+       "rest": 60
       }
      ]
     }

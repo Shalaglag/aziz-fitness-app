@@ -1635,7 +1635,7 @@ Power Clean (Barbell)|Other|Barbell|`;
       title: 'New template',
       body: () => (S.opts.chooser ? '<button class="lb-card lb-help" data-a="progHelp"><b>Help me choose</b><span>Answer a few questions about your goal, schedule, gym and any injuries, and get the best-fitting programme.</span></button>' : '') +
         '<div class="lb-row"><button class="lb-btn primary wide" data-a="blankTpl">Blank template</button></div>' +
-        '<h4 class="lb-folder">Ready-made programs <span class="lb-muted">' + list.length + '</span></h4><p class="lb-muted small">No split yet? Pick a programme and its days are added to your templates, with Jeff Nippard\'s sets, reps, RPE, rest and notes. Edit anything after.</p>' +
+        '<h4 class="lb-folder">Ready-made programs <span class="lb-muted">' + list.length + '</span></h4><p class="lb-muted small">No split yet? Pick a programme and its days are added to your templates, with their sets, reps, rest and notes. Edit anything after.</p>' +
         Object.keys(groups).map(src => '<p class="lb-eyebrow">' + esc(src) + '</p><div class="lb-grid">' + groups[src].map(p => '<button class="lb-card lb-tpl" data-a="progPreview" data-id="' + esc(p.id) + '"><div class="lb-tpl-top"><b>' + esc(p.name.replace(/^.*· /, '')) + '</b><span class="lb-muted small">' + p.days + 'x/week</span></div><p>' + esc(p.level) + ' · ' + p.workouts + ' days · ' + esc(p.time) + (S.data.templates['np-' + p.id + '-1'] ? ' · added' : '') + '</p></button>').join('') + '</div>').join('')
     });
   }
