@@ -213,3 +213,34 @@ test("rest-over sound: native alarm + ducked ring, once per rest, skip disarms",
   assert.equal(calls[0][1].silent, true);
   delete global.document; delete global.CustomEvent; delete global.WorkoutLogger; global.window = {};
 });
+
+test("iPhone: platform() says ios, <html> gets ios-app, and the rest bell is a plain local notification (no Android channel, no RestTimer)", async () => {
+  delete require.cache[require.resolve("./android-shell.js")];
+  const listeners = {}, scheduled = [], classes = [];
+  const LocalNotifications = {
+    checkPermissions: async () => ({ display: "granted" }),
+    createChannel: async () => { throw new Error("not implemented on iOS"); },
+    schedule: async o => { scheduled.push(...o.notifications); },
+    cancel: async () => {}
+  };
+  global.window = { Capacitor: { isNativePlatform: () => true, getPlatform: () => "ios", Plugins: { LocalNotifications } }, addEventListener: (k, fn) => { listeners[k] = fn; } };
+  global.document = { documentElement: { classList: { add(c) { classes.push(c); } } }, body: {} };
+  const A = require("./android-shell.js");
+  assert.equal(A.platform(), "ios");
+  assert.equal(A.init({}), true);
+  assert.deepEqual(classes, ["ios-app"]);
+  listeners["lb:rest"]({ detail: { end: 1e12, total: 90 } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].title, "Rest is over");
+  assert.equal(scheduled[0].channelId, undefined, "no Android channel on iOS");
+});
+
+test("platform(): android inside the APK, web in a browser", () => {
+  delete require.cache[require.resolve("./android-shell.js")];
+  global.window = { Capacitor: { isNativePlatform: () => true, getPlatform: () => "android", Plugins: {} } };
+  assert.equal(require("./android-shell.js").platform(), "android");
+  delete require.cache[require.resolve("./android-shell.js")];
+  global.window = {};
+  assert.equal(require("./android-shell.js").platform(), "web");
+});

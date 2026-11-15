@@ -52,6 +52,8 @@ const AndroidShell = (function () {
   function cap() { return (typeof window !== "undefined" && window.Capacitor) || null; }
   function plugin(name) { const c = cap(); return (c && c.Plugins && c.Plugins[name]) || null; }
   function isNative() { const c = cap(); try { return !!(c && c.isNativePlatform && c.isNativePlatform()); } catch (e) { return false; } }
+  // "android" | "ios" | "web". The same app/ runs in both native wrappers; Android-only plugins are simply absent on iOS.
+  function platform() { if (!isNative()) return "web"; const c = cap(); try { const p = c.getPlatform && c.getPlatform(); return p === "ios" ? "ios" : "android"; } catch (e) { return "android"; } }
 
   function onBack(fn) { handlers.push(fn); return function () { const i = handlers.indexOf(fn); if (i >= 0) handlers.splice(i, 1); }; }
 
@@ -220,7 +222,7 @@ const AndroidShell = (function () {
     opts = o || {};
     tabStack = []; curTab = null;
     if (!isNative()) return false;
-    document.documentElement.classList.add("android-app");
+    document.documentElement.classList.add(platform() === "ios" ? "ios-app" : "android-app");
     const app = plugin("App");
     if (app && app.addListener) app.addListener("backButton", () => backPress(document));
     syncStatusBar(document);
@@ -244,6 +246,6 @@ const AndroidShell = (function () {
     return true;
   }
 
-  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, ringRest, liveRest, liveRestStop, liveWorkout, LOOKS, _live: live, _handlers: handlers };
+  return { isNative, platform, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, ringRest, liveRest, liveRestStop, liveWorkout, LOOKS, _live: live, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;

@@ -11,6 +11,9 @@ window.FITNESS_CLOUD_CONFIG = {
   // Sign-in method → Google → Web SDK configuration (…apps.googleusercontent.com). Empty = the Google button
   // says it isn't switched on yet; email sign-in keeps working. Not a secret (docs/GOOGLE-SIGN-IN.md).
   googleClientId: "323272267870-3msmnmomuj6l9k89kkegq4vu2qv7ev70.apps.googleusercontent.com",
+  // "Continue with Google" in the iPhone app: the iOS client ID (CLIENT_ID in the GoogleService-Info.plist that Firebase
+  // console → Project settings → Your apps → iOS app gives you). Empty = email sign-in only on iPhone. Not a secret (docs/IOS.md).
+  googleIosClientId: "",
   // Ask Claude: the BASE address of the Mizan coach service (worker/, Cloudflare Workers; deployed Nov 2 2026).
   // Not a secret; the API key stays in the service, which only answers the owner's account. A custom address saved in
   // Ask Claude → ⚙ AI settings (prefs/main.coachService) takes precedence.
