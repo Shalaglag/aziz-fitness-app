@@ -71,6 +71,7 @@
 
   const cap = () => root.Capacitor || null;
   const native = () => { const c = cap(); try { return !!(c && c.isNativePlatform && c.isNativePlatform()); } catch (e) { return false; } };
+  const ios = () => { const c = cap(); try { return !!(c && c.getPlatform && c.getPlatform() === "ios"); } catch (e) { return false; } };
   const plugin = () => { const c = cap(); return (c && c.Plugins && c.Plugins.AppUpdate) || null; };
   const store = () => { try { return root.localStorage || null; } catch (e) { return null; } };
   function getToken() { try { return (store() && store().getItem(KEY)) || ""; } catch (e) { return ""; } }
@@ -132,6 +133,7 @@
     const cur = S.current, has = !!getToken();
     const ver = cur ? `Installed: build ${esc(cur.versionCode)}${cur.versionName ? " · " + esc(cur.versionName) : ""}` : "";
     let body = "";
+    if (native() && !plugin() && ios()) return `<div class="card au"><h3>App updates</h3><p class="muted">On iPhone, new versions come through Apple's TestFlight app. Open TestFlight and tap Update next to Mizan (or turn on automatic updates there).</p></div>`;
     if (S.phase === "web" || !native()) return `<div class="card au"><h3>App updates</h3><p class="muted">Updates install from inside the Android app. Here, get the newest APK from the release page.</p></div>`;
     if (S.editing) {
       body = `<p class="muted">Advanced: a read-only GitHub key for the private code repository. Not needed for normal updates.</p>

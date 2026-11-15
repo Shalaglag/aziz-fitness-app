@@ -150,3 +150,30 @@ test("the native plugin source is the one compiled into the Android app", () => 
   assert.match(gradle, /androidx\.credentials:credentials-play-services-auth/);
   assert.match(gradle, /com\.google\.android\.libraries\.identity\.googleid:googleid/);
 });
+
+test("Google on iPhone: uses googleIosClientId (not the Android/Web one) and the same idToken → Firebase path", async () => {
+  const log = []; const { fb, auth } = fakeFb(log);
+  const prev = global.window;
+  global.window = { FITNESS_CLOUD_CONFIG: { googleClientId: "web-id.apps.googleusercontent.com", googleIosClientId: "ios-id.apps.googleusercontent.com" } };
+  try {
+    const plugin = { signIn: o => (log.push(["plugin", o]), Promise.resolve({ idToken: "iostok" })) };
+    const u = await C.signInWithGoogle({ fb, auth, native: true, ios: true, plugin });
+    assert.strictEqual(u.uid, "nat1");
+    assert.deepStrictEqual(log, [["plugin", { clientId: "ios-id.apps.googleusercontent.com" }], ["credential", { providerId: "google.com", idToken: "iostok" }]]);
+    global.window.FITNESS_CLOUD_CONFIG = { googleClientId: "web-id.apps.googleusercontent.com" };
+    await assert.rejects(C.signInWithGoogle({ fb, auth, native: true, ios: true, plugin }), e => e.code === "google/not-set-up", "no iOS client yet: email still works");
+  } finally { global.window = prev; }
+});
+
+test("iOS Google plugin: repo copy matches the module source, registered and in the Xcode target", () => {
+  const fs = require("fs"), path = require("path");
+  const root = path.join(__dirname, "../..");
+  const src = fs.readFileSync(path.join(__dirname, "ios/GoogleSignInPlugin.swift"), "utf8");
+  assert.strictEqual(fs.readFileSync(path.join(root, "ios/App/App/GoogleSignInPlugin.swift"), "utf8"), src);
+  assert.match(src, /jsName = "GoogleSignIn"/);
+  assert.match(fs.readFileSync(path.join(root, "ios/App/App/MainViewController.swift"), "utf8"), /registerPluginInstance\(GoogleSignInPlugin\(\)\)/);
+  const pbx = fs.readFileSync(path.join(root, "ios/App/App.xcodeproj/project.pbxproj"), "utf8");
+  assert.match(pbx, /GoogleSignInPlugin\.swift in Sources/);
+  assert.match(pbx, /MainViewController\.swift in Sources/);
+  assert.match(fs.readFileSync(path.join(root, "ios/App/App/Base.lproj/Main.storyboard"), "utf8"), /customClass="MainViewController" customModule="App"/);
+});

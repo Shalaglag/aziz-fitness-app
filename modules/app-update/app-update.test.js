@@ -176,6 +176,15 @@ test("off Android the card points to the release page and never asks for a key",
   assert.doesNotMatch(html, /auToken/);
 });
 
+test("iPhone: no AppUpdate plugin, the card points to TestFlight and never asks for a key", () => {
+  globalThis.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", Plugins: {} };
+  Object.assign(A._state, { phase: "web" });
+  const html = A.cardHTML();
+  assert.match(html, /TestFlight/);
+  assert.doesNotMatch(html, /auToken|APK/);
+  globalThis.Capacitor = undefined;
+});
+
 test("native plugin: compiled copy matches, registered, permission declared, key never stored natively", () => {
   const src = fs.readFileSync(path.join(__dirname, "android/AppUpdatePlugin.kt"), "utf8");
   const built = fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/AppUpdatePlugin.kt"), "utf8");

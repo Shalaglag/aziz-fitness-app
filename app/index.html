@@ -61354,6 +61354,10 @@ window.CloudStore = (() => {
     const c = typeof window !== "undefined" ? window.Capacitor : null;
     try { return !!(c && c.isNativePlatform && c.isNativePlatform()); } catch (e) { return false; }
   }
+  function isIOS() {
+    const c = typeof window !== "undefined" ? window.Capacitor : null;
+    try { return !!(c && c.getPlatform && c.getPlatform() === "ios"); } catch (e) { return false; }
+  }
   function nativeGooglePlugin() {
     const c = typeof window !== "undefined" ? window.Capacitor : null;
     return c && c.Plugins && c.Plugins[GOOGLE_PLUGIN] ? c.Plugins[GOOGLE_PLUGIN] : null;
@@ -61363,7 +61367,7 @@ window.CloudStore = (() => {
   // GoogleSignIn plugin, matched to the app by package name + signing-key SHA-1) and its ID token signs
   // the same Firebase account in, so Firestore and the rules see one uid whether a person used email or
   // Google. On the website Firebase's own Google pop-up does it. Errors carry a code authMessage() knows.
-  //   deps: { auth, fb, native, plugin, clientId } (defaults come from the page; tests inject fakes)
+  //   deps: { auth, fb, native, ios, plugin, clientId } (defaults come from the page; tests inject fakes)
   async function signInWithGoogle(deps) {
     const d = deps || {};
     const fb = d.fb || (typeof window !== "undefined" ? window.firebase : null);
@@ -61378,7 +61382,9 @@ window.CloudStore = (() => {
     }
     const plugin = d.plugin || nativeGooglePlugin();
     const cfg = (typeof window !== "undefined" && window.FITNESS_CLOUD_CONFIG) || {};
-    const clientId = typeof d.clientId === "string" ? d.clientId : (cfg.googleClientId || "");
+    // iPhone (ios/App/App/GoogleSignInPlugin.swift) needs the iOS OAuth client; Android uses the Web client ID.
+    const ios = typeof d.ios === "boolean" ? d.ios : isIOS();
+    const clientId = typeof d.clientId === "string" ? d.clientId : ((ios ? cfg.googleIosClientId : cfg.googleClientId) || "");
     if (!plugin || !clientId.trim()) fail("google/not-set-up");
     let r;
     try { r = await plugin.signIn({ clientId: clientId.trim() }); }
@@ -62144,6 +62150,8 @@ window.AndroidShell = (function () {
   function cap() { return (typeof window !== "undefined" && window.Capacitor) || null; }
   function plugin(name) { const c = cap(); return (c && c.Plugins && c.Plugins[name]) || null; }
   function isNative() { const c = cap(); try { return !!(c && c.isNativePlatform && c.isNativePlatform()); } catch (e) { return false; } }
+  // "android" | "ios" | "web". The same app/ runs in both native wrappers; Android-only plugins are simply absent on iOS.
+  function platform() { if (!isNative()) return "web"; const c = cap(); try { const p = c.getPlatform && c.getPlatform(); return p === "ios" ? "ios" : "android"; } catch (e) { return "android"; } }
 
   function onBack(fn) { handlers.push(fn); return function () { const i = handlers.indexOf(fn); if (i >= 0) handlers.splice(i, 1); }; }
 
@@ -62312,7 +62320,7 @@ window.AndroidShell = (function () {
     opts = o || {};
     tabStack = []; curTab = null;
     if (!isNative()) return false;
-    document.documentElement.classList.add("android-app");
+    document.documentElement.classList.add(platform() === "ios" ? "ios-app" : "android-app");
     const app = plugin("App");
     if (app && app.addListener) app.addListener("backButton", () => backPress(document));
     syncStatusBar(document);
@@ -62336,7 +62344,7 @@ window.AndroidShell = (function () {
     return true;
   }
 
-  return { isNative, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, ringRest, liveRest, liveRestStop, liveWorkout, LOOKS, _live: live, _handlers: handlers };
+  return { isNative, platform, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, ringRest, liveRest, liveRestStop, liveWorkout, LOOKS, _live: live, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;
 </script>
@@ -62414,6 +62422,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
 
   const cap = () => root.Capacitor || null;
   const native = () => { const c = cap(); try { return !!(c && c.isNativePlatform && c.isNativePlatform()); } catch (e) { return false; } };
+  const ios = () => { const c = cap(); try { return !!(c && c.getPlatform && c.getPlatform() === "ios"); } catch (e) { return false; } };
   const plugin = () => { const c = cap(); return (c && c.Plugins && c.Plugins.AppUpdate) || null; };
   const store = () => { try { return root.localStorage || null; } catch (e) { return null; } };
   function getToken() { try { return (store() && store().getItem(KEY)) || ""; } catch (e) { return ""; } }
@@ -62475,6 +62484,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = AndroidShe
     const cur = S.current, has = !!getToken();
     const ver = cur ? `Installed: build ${esc(cur.versionCode)}${cur.versionName ? " · " + esc(cur.versionName) : ""}` : "";
     let body = "";
+    if (native() && !plugin() && ios()) return `<div class="card au"><h3>App updates</h3><p class="muted">On iPhone, new versions come through Apple's TestFlight app. Open TestFlight and tap Update next to Mizan (or turn on automatic updates there).</p></div>`;
     if (S.phase === "web" || !native()) return `<div class="card au"><h3>App updates</h3><p class="muted">Updates install from inside the Android app. Here, get the newest APK from the release page.</p></div>`;
     if (S.editing) {
       body = `<p class="muted">Advanced: a read-only GitHub key for the private code repository. Not needed for normal updates.</p>

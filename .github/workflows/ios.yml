@@ -1,0 +1,116 @@
+# Builds the iPhone app (the same Capacitor wrapper around app/ as Android, in ios/). See docs/IOS.md.
+#
+# - Pull requests that touch the iOS project: an unsigned simulator build (proves it compiles; kept 3 days).
+# - Run workflow (Actions tab), or every push to main once the repository variable IOS_TESTFLIGHT is "true":
+#   a signed build uploaded to TestFlight, when the four Apple secrets below exist. Without them it stops
+#   after the simulator build, so nothing fails while the Apple account is not set up yet.
+#
+# Secrets (Settings → Secrets and variables → Actions), all from Aziz's own Apple Developer account:
+#   APPLE_TEAM_ID        10-character Team ID (developer.apple.com → Membership details)
+#   ASC_KEY_ID           App Store Connect API key ID (Users and Access → Integrations → keys, role Admin)
+#   ASC_ISSUER_ID        the Issuer ID shown above that key list
+#   ASC_KEY_P8_BASE64    the downloaded AuthKey_XXXX.p8, base64-encoded
+#
+# macOS runner minutes count 10x against the private repo's free Actions minutes, so main pushes only build
+# here when IOS_TESTFLIGHT is switched on. GitHub never bills past the free minutes unless a spending limit is set.
+name: iOS
+
+on:
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+      - "capacitor.config.json"
+      - "package.json"
+      - "package-lock.json"
+      - "modules/cloud-store/ios/**"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: ${{ github.event_name != 'push' || vars.IOS_TESTFLIGHT == 'true' }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      HAS_APPLE: ${{ secrets.ASC_KEY_P8_BASE64 != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Pick the newest Xcode (Capacitor 8 needs Xcode 26)
+        run: |
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -z "$x" ] && x=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$x"
+          xcodebuild -version
+      - name: Install Capacitor
+        run: npm ci
+      - name: Check the web build is current
+        run: node build/build.js --check
+      - name: Copy app/ into the iOS project
+        run: npx cap sync ios
+
+      - name: Simulator build (unsigned)
+        working-directory: ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} MARKETING_VERSION=1.0.${{ github.run_number }} build
+          cd build/Build/Products/Debug-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/Mizan-simulator.zip" App.app
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: mizan-ios-simulator
+          retention-days: 3
+          path: Mizan-simulator.zip
+
+      - name: Apple secrets
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          if [ "$HAS_APPLE" != "true" ]; then
+            echo "::notice::No Apple secrets yet: simulator build only. See docs/IOS.md for Aziz's one-time setup."
+          fi
+      - name: Signed archive and upload to TestFlight
+        if: ${{ github.event_name != 'pull_request' && env.HAS_APPLE == 'true' }}
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        working-directory: ios/App
+        run: |
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$key"
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Mizan.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} MARKETING_VERSION=1.0.${{ github.run_number }} \
+            "${auth[@]}" archive
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Mizan.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" "${auth[@]}"
+          rm -f "$key"
+          echo "::notice::Build ${{ github.run_number }} uploaded. It shows in TestFlight on the iPhone after Apple's processing (usually 5–30 minutes)."

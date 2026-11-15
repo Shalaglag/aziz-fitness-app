@@ -6,9 +6,22 @@
     "allowMixedContent": false,
     "backgroundColor": "#F2F4F6"
   },
+  "ios": {
+    "backgroundColor": "#F2F4F6",
+    "contentInset": "never",
+    "scrollEnabled": true,
+    "limitsNavigationsToAppBoundDomains": false
+  },
   "plugins": {
-    "SplashScreen": { "launchShowDuration": 0 },
-    "Keyboard": { "resize": "body", "resizeOnFullScreen": true },
-    "LocalNotifications": { "smallIcon": "ic_stat_notify" }
+    "SplashScreen": {
+      "launchShowDuration": 0
+    },
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_notify"
+    }
   }
 }

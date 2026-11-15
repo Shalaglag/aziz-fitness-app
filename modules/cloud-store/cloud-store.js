@@ -94,6 +94,10 @@ const CloudStore = (() => {
     const c = typeof window !== "undefined" ? window.Capacitor : null;
     try { return !!(c && c.isNativePlatform && c.isNativePlatform()); } catch (e) { return false; }
   }
+  function isIOS() {
+    const c = typeof window !== "undefined" ? window.Capacitor : null;
+    try { return !!(c && c.getPlatform && c.getPlatform() === "ios"); } catch (e) { return false; }
+  }
   function nativeGooglePlugin() {
     const c = typeof window !== "undefined" ? window.Capacitor : null;
     return c && c.Plugins && c.Plugins[GOOGLE_PLUGIN] ? c.Plugins[GOOGLE_PLUGIN] : null;
@@ -103,7 +107,7 @@ const CloudStore = (() => {
   // GoogleSignIn plugin, matched to the app by package name + signing-key SHA-1) and its ID token signs
   // the same Firebase account in, so Firestore and the rules see one uid whether a person used email or
   // Google. On the website Firebase's own Google pop-up does it. Errors carry a code authMessage() knows.
-  //   deps: { auth, fb, native, plugin, clientId } (defaults come from the page; tests inject fakes)
+  //   deps: { auth, fb, native, ios, plugin, clientId } (defaults come from the page; tests inject fakes)
   async function signInWithGoogle(deps) {
     const d = deps || {};
     const fb = d.fb || (typeof window !== "undefined" ? window.firebase : null);
@@ -118,7 +122,9 @@ const CloudStore = (() => {
     }
     const plugin = d.plugin || nativeGooglePlugin();
     const cfg = (typeof window !== "undefined" && window.FITNESS_CLOUD_CONFIG) || {};
-    const clientId = typeof d.clientId === "string" ? d.clientId : (cfg.googleClientId || "");
+    // iPhone (ios/App/App/GoogleSignInPlugin.swift) needs the iOS OAuth client; Android uses the Web client ID.
+    const ios = typeof d.ios === "boolean" ? d.ios : isIOS();
+    const clientId = typeof d.clientId === "string" ? d.clientId : ((ios ? cfg.googleIosClientId : cfg.googleClientId) || "");
     if (!plugin || !clientId.trim()) fail("google/not-set-up");
     let r;
     try { r = await plugin.signIn({ clientId: clientId.trim() }); }
