@@ -8,7 +8,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
@@ -21,9 +20,9 @@ import androidx.core.app.NotificationManagerCompat
  * The "rest is over" sound, played natively so music ducks under it (Aziz, Nov 14 2026: "dim the music a little,
  * sound the notification, then the music comes back on").
  *
- * - `play` asks Android for AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK, so YouTube Music / Spotify drop their volume,
- *   waits a moment for the dip, plays `res/raw/rest_<sound>.wav` on the media stream (same volume and earbuds as
- *   the music), then gives focus back and the music comes back up.
+ * - `play` lowers the media volume to about a third (music keeps playing), plays `res/raw/rest_<sound>.wav` on
+ *   the notification sound, then brings the media volume back. Audio focus "may duck" was tried first (Nov 14) but
+ *   YouTube Music pauses on it instead of dipping.
  * - `arm` sets an exact alarm for the rest's end; RestRingReceiver rings even with the phone locked and the web
  *   view asleep, and posts a quiet "Rest is over" notification (the bell itself comes from `play`, not the channel).
  * - Each rest end rings once (`claim`): whichever of the alarm and the in-app timer gets there first plays it.
@@ -37,6 +36,8 @@ object RestRing {
     private const val DIP_MS = 220L
     private const val GIVE_BACK_MS = 250L
     private const val MAX_MS = 20000L
+    private const val DIM_TO = 0.35
+    private const val RESTORE_STEP_MS = 120L
 
     @Volatile var foreground = false
     @Volatile private var rungEnd = 0L
@@ -113,46 +114,70 @@ object RestRing {
         try { NotificationManagerCompat.from(ctx).notify(OVER_ID, n) } catch (e: SecurityException) { }
     }
 
-    private fun attrs(): AudioAttributes = AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_MEDIA)
+    private fun attrs(usage: Int): AudioAttributes = AudioAttributes.Builder()
+        .setUsage(usage)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
 
-    private fun focus(am: AudioManager): AudioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-        .setAudioAttributes(attrs())
-        .setWillPauseWhenDucked(false)
-        .setOnAudioFocusChangeListener({ }, main)
-        .build()
-
-    /** Dims other audio for `ms` without playing anything (the in-app custom sound plays itself meanwhile). */
-    fun duck(ctx: Context, ms: Long) {
-        val am = ctx.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val req = focus(am)
-        if (am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_FAILED) return
-        main.postDelayed({ am.abandonAudioFocusRequest(req) }, ms.coerceIn(500L, MAX_MS) + GIVE_BACK_MS)
+    /**
+     * Turns the media volume down to about a third and returns a function that brings it back in small steps.
+     * No audio focus is asked for: YouTube Music pauses on a "may duck" focus loss (Aziz, Nov 16 2026: "it's
+     * stopping music then starting it"), so the volume is lowered directly and the music never stops.
+     * The volume is put back only if nobody changed it meanwhile.
+     */
+    private fun dimMusic(am: AudioManager): () -> Unit {
+        if (am.isVolumeFixed) return {}
+        val s = AudioManager.STREAM_MUSIC
+        val before = try { am.getStreamVolume(s) } catch (e: Exception) { return {} }
+        val low = maxOf(1, Math.round(before * DIM_TO).toInt())
+        if (low >= before) return {}
+        try { am.setStreamVolume(s, low, 0) } catch (e: Exception) { return {} }
+        return {
+            val steps = 4
+            for (k in 1..steps) {
+                main.postDelayed({
+                    try {
+                        val now = am.getStreamVolume(s)
+                        val prev = low + (before - low) * (k - 1) / steps
+                        if (now == prev) am.setStreamVolume(s, low + (before - low) * k / steps, 0)
+                    } catch (e: Exception) { }
+                }, RESTORE_STEP_MS * k)
+            }
+        }
     }
 
-    /** Ducks other audio, plays the rest sound, then lets the music come back. `done` runs once, always. */
+    /** The user's own sound plays in the web view on the media stream, so it is not dimmed; nothing to do. */
+    @Suppress("UNUSED_PARAMETER")
+    fun duck(ctx: Context, ms: Long) { }
+
+    /**
+     * Plays the rest sound. With music playing, the bell plays on the notification sound (its own volume) while the
+     * media volume dips, then the music comes back up. On silent / vibrate, or with the notification volume at 0,
+     * it plays on the media stream mixed over the music, undimmed. `done` runs once, always.
+     */
     fun play(ctx: Context, sound: String?, done: () -> Unit = {}): Boolean {
         val app = ctx.applicationContext
         val am = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val req = focus(am)
-        // FAILED means a phone call holds the audio: stay quiet, the notification still shows.
-        if (am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_FAILED) { done(); return false }
+        // A phone call holds the audio: stay quiet, the notification still shows.
+        if (am.mode == AudioManager.MODE_IN_CALL || am.mode == AudioManager.MODE_IN_COMMUNICATION) { done(); return false }
+        val music = am.isMusicActive
+        val overMusic = music && am.ringerMode == AudioManager.RINGER_MODE_NORMAL &&
+            (try { am.getStreamVolume(AudioManager.STREAM_NOTIFICATION) } catch (e: Exception) { 0 }) > 0
+        val usage = if (overMusic) AudioAttributes.USAGE_NOTIFICATION_EVENT else AudioAttributes.USAGE_MEDIA
+        val mp = try { MediaPlayer.create(app, rawId(app, sound), attrs(usage), am.generateAudioSessionId()) } catch (e: Exception) { null }
+        if (mp == null) { done(); return false }
+        val restore = if (overMusic) dimMusic(am) else ({})
         var finished = false
-        var mp: MediaPlayer? = null
         val finish = Runnable {
             if (!finished) {
                 finished = true
-                try { mp?.release() } catch (e: Exception) { }
-                main.postDelayed({ am.abandonAudioFocusRequest(req); done() }, GIVE_BACK_MS)
+                try { mp.release() } catch (e: Exception) { }
+                main.postDelayed({ restore(); main.postDelayed({ done() }, RESTORE_STEP_MS * 5) }, GIVE_BACK_MS)
             }
         }
-        mp = try { MediaPlayer.create(app, rawId(app, sound), attrs(), am.generateAudioSessionId()) } catch (e: Exception) { null }
-        val player = mp ?: run { am.abandonAudioFocusRequest(req); done(); return false }
-        player.setOnCompletionListener { main.post(finish) }
-        player.setOnErrorListener { _, _, _ -> main.post(finish); true }
-        main.postDelayed({ try { if (!finished) player.start() } catch (e: Exception) { finish.run() } }, DIP_MS)
+        mp.setOnCompletionListener { main.post(finish) }
+        mp.setOnErrorListener { _, _, _ -> main.post(finish); true }
+        main.postDelayed({ try { if (!finished) mp.start() } catch (e: Exception) { finish.run() } }, if (overMusic) DIP_MS else 0L)
         main.postDelayed(finish, MAX_MS)
         return true
     }
