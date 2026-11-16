@@ -15,6 +15,7 @@ import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -22,6 +23,8 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.text.DateFormat
 import java.util.Date
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Strong-style workout notification for modules/android-shell/android-shell.js.
@@ -43,6 +46,13 @@ import java.util.Date
  * The rest-over sound (Nov 14 2026): `arm({end, sound, silent})` / `disarm()` set and clear the exact alarm that rings
  * at the rest's end with the phone locked, and `ring({sound, end, ms})` rings now from the in-app timer; both duck the
  * music (RestRing). `ring` with sound "custom" only ducks for `ms` while the web view plays the user's own file.
+ *
+ * Background buttons (Nov 16 2026): the web view does not run while the app is in the background, so a button that
+ * only told the web app waited until the app was opened. Now the buttons act here first. `show` carries
+ * `complete: {rest, sound, body, sub}` (what "Complete set" leads to, from the logger): pressing it switches the
+ * notification to that rest at once, arms the rest-over ring, and queues {at, end} in SharedPreferences. −15 / +15 /
+ * Skip move the native rest (and the queued end) the same way. The web app gets "complete" {queued: true} and on
+ * that event, on resume and at start it calls `takePending()` to tick the set with those times, exactly once.
  * Registered in MainActivity before super.onCreate. The compiled copy lives next to MainActivity;
  * this file is the source of truth and modules/android-shell/android-shell.test.js checks they are identical.
  */
@@ -56,10 +66,17 @@ class RestTimerPlugin : Plugin() {
         const val ACTION_ADD = "com.azizfitness.app.REST_ADD"
         const val ACTION_COMPLETE = "com.azizfitness.app.WORKOUT_COMPLETE"
         const val ACTION_REST = "com.azizfitness.app.WORKOUT_REST"
+        const val PREFS = "rest_timer"
+        const val PENDING = "pending_complete"
     }
 
+    /** What "Complete set" leads to: the rest after it (s, 0 = none) and the workout view's lines for the next set. */
+    private data class After(val rest: Int, val sound: String, val body: String, val sub: String)
+
     private data class Shown(val title: String, val body: String, val sub: String, val look: String,
-                             val workout: Boolean, val start: Long, val end: Long, val total: Int)
+                             val workout: Boolean, val start: Long, val end: Long, val total: Int,
+                             val name: String = "Workout", val sound: String = "restDone", val silent: Boolean = false,
+                             val after: After? = null)
 
     private var receiver: BroadcastReceiver? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -70,9 +87,9 @@ class RestTimerPlugin : Plugin() {
         val r = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 when (intent.action) {
-                    ACTION_SKIP -> notifyListeners("skip", JSObject())
-                    ACTION_ADD -> notifyListeners("adjust", JSObject().put("seconds", intent.getIntExtra("seconds", 15)))
-                    ACTION_COMPLETE -> notifyListeners("complete", JSObject())
+                    ACTION_SKIP -> { skipNative(); notifyListeners("skip", JSObject()) }
+                    ACTION_ADD -> { val d = intent.getIntExtra("seconds", 15); adjustNative(d); notifyListeners("adjust", JSObject().put("seconds", d)) }
+                    ACTION_COMPLETE -> notifyListeners("complete", JSObject().put("queued", completeNative()))
                     ACTION_REST -> notifyListeners("rest", JSObject())
                 }
             }
@@ -107,8 +124,77 @@ class RestTimerPlugin : Plugin() {
         return PendingIntent.getBroadcast(context, code, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
+    private fun prefs() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun pending(): JSONArray = try { JSONArray(prefs().getString(PENDING, "[]")) } catch (e: Exception) { JSONArray() }
+
+    @Synchronized private fun queue(at: Long, end: Long) {
+        val a = pending(); a.put(JSONObject().put("at", at).put("end", end))
+        prefs().edit().putString(PENDING, a.toString()).apply()
+    }
+
+    /** −15 / +15 / Skip after a queued tick: the web app must start that rest with the moved end. */
+    @Synchronized private fun moveQueuedEnd(oldEnd: Long, newEnd: Long) {
+        val a = pending(); if (a.length() == 0) return
+        val last = a.getJSONObject(a.length() - 1)
+        if (last.optLong("end") != oldEnd) return
+        last.put("end", newEnd)
+        prefs().edit().putString(PENDING, a.toString()).apply()
+    }
+
+    /** Sets ticked from the notification that the web app has not applied yet, oldest first; clears the queue. */
+    @PluginMethod
+    @Synchronized
+    fun takePending(call: PluginCall) {
+        val a = pending()
+        prefs().edit().remove(PENDING).apply()
+        val out = JSArray()
+        for (i in 0 until a.length()) out.put(a.getJSONObject(i))
+        call.resolve(JSObject().put("items", out))
+    }
+
+    /** "Complete set": go straight to the rest (or the next set) here. False when the web app has to decide. */
+    private fun completeNative(): Boolean {
+        val cur = current ?: return false
+        val a = cur.after ?: return false
+        val now = System.currentTimeMillis()
+        if (!cur.workout || cur.end > now) return false
+        val end = if (a.rest >= 5) now + a.rest * 1000L else 0L
+        queue(now, end)
+        if (end > 0) {
+            try { RestRing.arm(context, end, a.sound, cur.silent) } catch (e: Exception) { }
+            display(cur.copy(title = "Rest timer", body = a.body, sub = a.sub, end = end, total = a.rest, sound = a.sound, after = null))
+        } else {
+            display(cur.copy(body = a.body, sub = a.sub, end = 0, total = 0, after = null))
+        }
+        return true
+    }
+
+    private fun adjustNative(d: Int) {
+        val cur = current ?: return
+        val now = System.currentTimeMillis()
+        if (cur.end <= now) return
+        val end = maxOf(now, cur.end + d * 1000L)
+        if (end <= now) { skipNative(); return }
+        val left = ((end - now + 999) / 1000).toInt()
+        moveQueuedEnd(cur.end, end)
+        try { RestRing.arm(context, end, cur.sound, cur.silent) } catch (e: Exception) { }
+        display(cur.copy(end = end, total = maxOf(cur.total, left, 1)))
+    }
+
+    private fun skipNative() {
+        val cur = current ?: return
+        val now = System.currentTimeMillis()
+        if (cur.end <= now) return
+        moveQueuedEnd(cur.end, now)
+        try { RestRing.disarm(context); RestRing.cancelOver(context) } catch (e: Exception) { }
+        if (cur.workout) display(cur.copy(title = cur.name, end = 0, total = 0))
+        else { stopTick(); current = null; NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID) }
+    }
+
     @PluginMethod
     fun show(call: PluginCall) {
+        val c = call.getObject("complete")
         val s = Shown(
             title = call.getString("title") ?: "Workout",
             body = call.getString("body") ?: "",
@@ -117,11 +203,24 @@ class RestTimerPlugin : Plugin() {
             workout = call.getBoolean("workout") ?: false,
             start = call.getLong("start") ?: 0L,
             end = call.getLong("end") ?: 0L,
-            total = (call.getInt("total") ?: 0).coerceAtLeast(0)
+            total = (call.getInt("total") ?: 0).coerceAtLeast(0),
+            name = call.getString("name") ?: "Workout",
+            sound = call.getString("sound") ?: "restDone",
+            silent = call.getBoolean("silent") ?: false,
+            after = if (c == null) null else After(
+                rest = c.optInt("rest", 0), sound = c.optString("sound", "restDone"),
+                body = c.optString("body", ""), sub = c.optString("sub", "")
+            )
         )
-        stopTick()
         val now = System.currentTimeMillis()
         if (!s.workout && s.end <= now) { stop(call); return }
+        call.resolve(JSObject().put("shown", display(s)))
+    }
+
+    /** Posts `s` and keeps it current: the bar look ticks, and a rest flips back to the workout view at its end. */
+    private fun display(s: Shown): Boolean {
+        stopTick()
+        val now = System.currentTimeMillis()
         channel()
         current = s
         val shown = post(s)
@@ -132,7 +231,7 @@ class RestTimerPlugin : Plugin() {
                     val cur = current ?: return
                     if (cur.end <= System.currentTimeMillis()) {
                         tick = null
-                        if (cur.workout) { current = cur.copy(end = 0, total = 0, title = if (cur.title == "Rest timer") "Workout" else cur.title); post(current!!) }
+                        if (cur.workout) { current = cur.copy(end = 0, total = 0, title = if (cur.title == "Rest timer") cur.name else cur.title); post(current!!) }
                         return
                     }
                     if (cur.look == "bar") post(cur)
@@ -142,7 +241,7 @@ class RestTimerPlugin : Plugin() {
             tick = t
             handler.postDelayed(t, 1000)
         }
-        call.resolve(JSObject().put("shown", shown))
+        return shown
     }
 
     /** Older name kept for the web side: a bare rest countdown. */
