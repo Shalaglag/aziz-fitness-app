@@ -23,6 +23,13 @@ still runs in a browser and inside Claude.
   bar, plain, endsAt; the logger's `restNotify` setting). Buttons: **Complete set** / **Rest** between rests
   (`lb:workout-complete`, `lb:rest-start`), **−15 s** / **+15 s** / **Skip** during one (`lb:rest-adjust` {d}, `lb:rest-skip`). Its **+15 s** / **Skip** buttons come back as `lb:rest-adjust`
   (`detail: {d}`) / `lb:rest-skip` on `window`.
+- Background buttons (Nov 16 2026): the web view sleeps while the app is in the background, so the plugin acts on
+  the buttons itself first. `show()` carries `complete: {rest, sound, body, sub}` (`AndroidShell.completePlan`, from
+  the logger's `workoutInfo().after`); **Complete set** switches to that rest at once, arms the ring and queues
+  `{at, end}`; −15 / +15 / Skip move the native rest and the queued end. `RestTimer.takePending()` returns and clears the
+  queue; `AndroidShell.takeQueued()` replays it as `lb:workout-complete` `{at, end}` on the button event, on App
+  `resume` and at start. The logger's `completeFromShade(d)` ticks the set with a rest ending at `d.end` (none when it
+  is past or 0), holding it until its data has loaded.
 - Rest-over sound (Nov 14 2026, `android/RestRing.kt` + `android/RestRingReceiver.kt`): `lb:rest` arms an exact native
   alarm (`RestTimer.arm({end, sound, silent})`, `USE_EXACT_ALARM`) instead of the LocalNotifications one, and
   `GymSounds.setNative(AndroidShell.ringRest)` sends every rest sound to `RestTimer.ring({sound, end, ms})`. The native

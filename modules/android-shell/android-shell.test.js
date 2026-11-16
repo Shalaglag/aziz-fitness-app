@@ -158,6 +158,51 @@ test("workout notification: shows the workout, turns into the rest countdown, bu
   delete global.document; delete global.CustomEvent; global.window = {};
 });
 
+test("Complete set works with the app in the background: the plan rides on show(), queued ticks replay once with their times", async () => {
+  delete require.cache[require.resolve("./android-shell.js")];
+  const listeners = {}, rtListeners = {}, appListeners = {}, shown = [], fired = [];
+  let queue = [{ at: 1000, end: 91000 }], takes = 0;
+  const LocalNotifications = { checkPermissions: async () => ({ display: "granted" }), createChannel: async () => {}, schedule: async () => {}, cancel: async () => {} };
+  const RestTimer = { show: async o => { shown.push(o); return { shown: true }; }, stop: async () => {}, addListener: (k, fn) => { rtListeners[k] = fn; },
+    takePending: async () => { takes++; const items = queue; queue = []; return { items }; } };
+  const App = { addListener: (k, fn) => { appListeners[k] = fn; } };
+  global.CustomEvent = class { constructor(name, o) { this.type = name; this.detail = o && o.detail; } };
+  global.window = { Capacitor: { isNativePlatform: () => true, Plugins: { LocalNotifications, RestTimer, App } }, addEventListener: (k, fn) => { listeners[k] = fn; }, dispatchEvent: e => fired.push(e) };
+  global.document = { documentElement: { classList: { add() {} } }, body: {} };
+  const A = require("./android-shell.js");
+  A.init({});
+  await new Promise(r => setTimeout(r, 10));
+  // At start: a tick queued while the app slept is replayed with the phone's times
+  assert.deepEqual(fired.map(e => [e.type, e.detail]), [["lb:workout-complete", { at: 1000, end: 91000 }]]);
+  // The workout view carries what Complete set leads to
+  listeners["lb:workout"]({ detail: { name: "Push A", start: 1, exercise: "Bench Press", set: "Set 2 of 4", next: "Incline Press", done: 3, total: 16,
+    after: { ok: true, rest: 120, sound: "gong", exercise: "Bench Press", set: "Set 3 of 4", next: "Incline Press", done: 4, total: 16 } } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.deepEqual(shown[0].complete, { rest: 120, sound: "gong", body: "Bench Press \u00b7 Set 3 of 4", sub: "Next: Incline Press" });
+  assert.equal(shown[0].name, "Push A");
+  // No numbers to tick: no plan, the web app decides (and says so) when it wakes
+  listeners["lb:workout"]({ detail: { name: "Push A", start: 1, exercise: "Bench Press", set: "Set 2 of 4", after: { ok: false } } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(shown[1].complete, null);
+  // The button: queued → take the queue; not queued → the old event
+  fired.length = 0; queue = [{ at: 5000, end: 0 }];
+  rtListeners.complete({ queued: true });
+  await new Promise(r => setTimeout(r, 10));
+  rtListeners.complete({ queued: false });
+  assert.deepEqual(fired.map(e => [e.type, e.detail]), [["lb:workout-complete", { at: 5000, end: 0 }], ["lb:workout-complete", {}]]);
+  // Reopening the app takes the queue again; an empty queue fires nothing
+  fired.length = 0; const before = takes;
+  appListeners.resume();
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(takes, before + 1); assert.equal(fired.length, 0);
+  delete global.document; delete global.CustomEvent; global.window = {};
+});
+
+test("RestTimerPlugin.kt acts on Complete set / −15 / +15 / Skip itself before telling the web app", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "android", "RestTimerPlugin.kt"), "utf8");
+  for (const k of ["fun takePending", "completeNative()", "adjustNative(d)", "skipNative()", "RestRing.arm(context, end, a.sound", "getObject(\"complete\")"]) assert.ok(src.includes(k), k);
+});
+
 test("RestTimerPlugin.kt and its layout are copied into the Android project unchanged", () => {
   const fs = require("fs"), path = require("path"), root = path.join(__dirname, "..", "..");
   for (const [src, dst] of [["RestTimerPlugin.kt", "android/app/src/main/java/com/azizfitness/app/RestTimerPlugin.kt"], ["RestRing.kt", "android/app/src/main/java/com/azizfitness/app/RestRing.kt"], ["RestRingReceiver.kt", "android/app/src/main/java/com/azizfitness/app/RestRingReceiver.kt"], ["notification_rest.xml", "android/app/src/main/res/layout/notification_rest.xml"], ["notification_rest_clock.xml", "android/app/src/main/res/layout/notification_rest_clock.xml"], ["notification_rest_bar.xml", "android/app/src/main/res/layout/notification_rest_bar.xml"]]) {

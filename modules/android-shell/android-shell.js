@@ -159,11 +159,23 @@ const AndroidShell = (function () {
       title: r ? "Rest timer" : (w.name || "Workout"),
       body: ex || (r ? "Rest " + mmss(r.total || left) : "Workout running"),
       sub: w && w.next ? "Next: " + w.next : (w && w.total ? w.done + " of " + w.total + " sets done" : ""),
-      look, workout: !!w, start: w ? w.start : 0, end: r ? r.end : 0, total: r ? r.total || 0 : 0
+      look, workout: !!w, start: w ? w.start : 0, end: r ? r.end : 0, total: r ? r.total || 0 : 0,
+      name: (w && w.name) || "Workout", sound: (r && r.sound) || "restDone", silent: !soundOn(),
+      complete: completePlan(w)
     };
     return Promise.resolve(rt.show(o)).then(x => !!(x && x.shown), () => false);
   }
-  function liveRest(d) { live.rest = { end: d.end, total: d.total || 0, look: d.look }; return liveShow(); }
+  // What the notification's "Complete set" does on the phone itself, so it works while the app sleeps (the web view
+  // only runs again when the app is opened). From the logger's workoutInfo().after.
+  function completePlan(w) {
+    const a = w && w.after; if (!a || !a.ok) return null;
+    return {
+      rest: a.rest || 0, sound: a.sound || "restDone",
+      body: a.exercise ? a.exercise + (a.set ? " \u00b7 " + a.set : "") : "Workout running",
+      sub: a.next ? "Next: " + a.next : (a.total ? a.done + " of " + a.total + " sets done" : "")
+    };
+  }
+  function liveRest(d) { live.rest = { end: d.end, total: d.total || 0, look: d.look, sound: restSound(d) }; return liveShow(); }
   function liveRestStop() { live.rest = null; if (live.workout) liveShow(); else liveStop(); }
   function liveWorkout(d) { live.workout = d || null; if (live.workout) liveShow(); else if (live.rest) liveShow(); else liveStop(); }
   function liveStop() { const rt = plugin("RestTimer"); if (rt && rt.stop) try { rt.stop(); } catch (e) { } }
@@ -173,9 +185,21 @@ const AndroidShell = (function () {
       rt.addListener("skip", () => fire("lb:rest-skip", {}));
       rt.addListener("adjust", d => fire("lb:rest-adjust", { d: (d && +d.seconds) || 15 }));
       rt.addListener("next", () => fire("lb:workout-next", {}));
-      rt.addListener("complete", () => fire("lb:workout-complete", {}));
+      // queued: the phone already ticked it and started the rest; take the queue (once) and replay it with its times.
+      rt.addListener("complete", d => { if (d && d.queued) takeQueued(); else fire("lb:workout-complete", {}); });
       rt.addListener("rest", () => fire("lb:rest-start", {}));
     } catch (e) { }
+  }
+  let taking = null;
+  function takeQueued() {
+    const rt = plugin("RestTimer"); if (!rt || !rt.takePending) return Promise.resolve(0);
+    if (taking) return taking;
+    taking = Promise.resolve(rt.takePending()).then(r => {
+      const items = (r && r.items) || [];
+      items.forEach(it => fire("lb:workout-complete", { at: +it.at || Date.now(), end: +it.end || 0 }));
+      return items.length;
+    }, () => 0).then(n => { taking = null; return n; });
+    return taking;
   }
   function fire(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch (e) { } }
   function mmss(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
@@ -224,7 +248,11 @@ const AndroidShell = (function () {
     if (!isNative()) return false;
     document.documentElement.classList.add(platform() === "ios" ? "ios-app" : "android-app");
     const app = plugin("App");
-    if (app && app.addListener) app.addListener("backButton", () => backPress(document));
+    if (app && app.addListener) {
+      app.addListener("backButton", () => backPress(document));
+      // Sets ticked from the notification while the app slept.
+      app.addListener("resume", () => takeQueued());
+    }
     syncStatusBar(document);
     try { new MutationObserver(() => syncStatusBar(document)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch (e) { }
     if (window.matchMedia) { try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => syncStatusBar(document)); } catch (e) { } }
@@ -242,10 +270,11 @@ const AndroidShell = (function () {
     window.addEventListener("lb:workout-stop", () => liveWorkout(null));
     liveRestButtons();
     // The logger may have restored a running workout before these listeners existed.
+    takeQueued();
     setTimeout(() => { try { const i = window.WorkoutLogger && WorkoutLogger.workoutInfo && WorkoutLogger.workoutInfo(); if (i && !live.workout) liveWorkout(i); } catch (e) { } }, 2000);
     return true;
   }
 
-  return { isNative, platform, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, ringRest, liveRest, liveRestStop, liveWorkout, LOOKS, _live: live, _handlers: handlers };
+  return { isNative, platform, init, onBack, backPress, visit, notifyAt, cancel, syncStatusBar, REST_CHANNEL, channelFor, ringRest, liveRest, liveRestStop, liveWorkout, completePlan, takeQueued, LOOKS, _live: live, _handlers: handlers };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = AndroidShell;

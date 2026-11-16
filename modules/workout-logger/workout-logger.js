@@ -613,6 +613,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     // No program is loaded for a new person: the Workout tab offers "Load the Push / Pull / Lower program" and New template
     // (ready-made programs). Up next follows whatever templates they add.
     bump(); S.ready = true;
+    if (shadeQueue.length) { const q = shadeQueue; shadeQueue = []; q.forEach(d => { try { completeFromShade(d); } catch (er) { } }); }
     const replayed = replayJournal();
     if (replayed) toast('Saved ' + replayed + ' workout' + (replayed > 1 ? 's' : '') + ' that hadn’t reached your account');
     try { const got = await recoverLocal(); if (got) { bump(); renderMain(); toast('Moved ' + got + ' workout' + (got > 1 ? 's' : '') + ' saved on this phone into your account'); } } catch (e) { }
@@ -1767,9 +1768,9 @@ Power Clean (Barbell)|Other|Barbell|`;
     });
     return n;
   }
-  function prevFor(e) {
-    if (E.mode === 'template') { const s = sessions(e.exId)[0]; return { sets: s ? s.e.sets : [], src: 'last', unit: s ? s.e.unit : e.unit }; }
-    const s = sessions(e.exId, E.doc.id)[0];
+  function prevFor(e, docId) {
+    if (docId == null && E.mode === 'template') { const s = sessions(e.exId)[0]; return { sets: s ? s.e.sets : [], src: 'last', unit: s ? s.e.unit : e.unit }; }
+    const s = sessions(e.exId, docId != null ? docId : E.doc.id)[0];
     if (s) return { sets: s.e.sets, src: 'last', unit: s.e.unit, e: s.e };
     if (e.base) return { sets: e.base, src: 'base', unit: e.unit };
     return { sets: [], src: '' };
@@ -1988,7 +1989,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   });
   // Check off set j of exercise i: blanks take last time's numbers, records are flagged, the rest timer starts.
   // Returns false (and says why) when there's nothing to log.
-  function completeSet(i, j, quiet) {
+  function completeSet(i, j, quiet, restEnd) {
     primeAudio();
     E.doc.focusEx = null; // a ticked set puts the shade's "current exercise" back on the resume point
     const e = E.doc.exercises[i], s = e.sets[j], ex = getEx(e.exId), f = fieldsFor(ex), prev = prevFor(e), p = prevMatch(prev, e, j);
@@ -1999,7 +2000,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     setDoneSound();
     const cel = celebration(e, s);
     if (s.pr.length && !quiet) { if (cel) PRC.fire(cel, { toast, vibrate: !!S.settings.vibrate }); else toast('New record: ' + ex.name + ' · ' + s.pr.join(', ')); }
-    if (ex.cat !== 'Cardio' && restAfter(E.doc.exercises, i, j)) startRest(setRestOf(e, s), [i, j]);
+    if (ex.cat !== 'Cardio' && restAfter(E.doc.exercises, i, j)) startRest(setRestOf(e, s), [i, j], restEnd);
     if (S.settings.vibrate && navigator.vibrate && !(cel && !quiet)) try { navigator.vibrate(15); } catch (er) { }
     return true;
   }
@@ -2398,7 +2399,29 @@ Power Clean (Barbell)|Other|Barbell|`;
       const e = exs[cur[0]]; exercise = getEx(e.exId).name; set = setLabel(e, cur[1]);
       for (let i = cur[0] + 1; i < exs.length; i++) if (exs[i].sets.some(x => !x.done)) { next = getEx(exs[i].exId).name; break; }
     }
-    return { id: w.id, name: w.name, start: w.start, exercise, set, next, done, total, look: restNotify() };
+    return { id: w.id, name: w.name, start: w.start, exercise, set, next, done, total, look: restNotify(), after: cur ? shadeAfter(w, cur) : null };
+  }
+  // What "Complete set" on the notification will do, worked out ahead so the phone can act on it at once while the
+  // app sleeps in the background (RestTimerPlugin.kt): can the set be ticked, how long a rest follows, and what the
+  // notification shows next. The app applies the tick itself when it wakes (completeFromShade with the native times).
+  function shadeAfter(w, cur) {
+    const exs = w.exercises || [], e = exs[cur[0]], s = e.sets[cur[1]], ex = getEx(e.exId), f = fieldsFor(ex);
+    let ok = f.some(k => s[k] !== '' && s[k] != null);
+    if (!ok) { try { const prev = prevFor(e, w.id), p = prevMatch(prev, e, cur[1]); ok = f.some(k => phFor(prev, p, e, k) !== ''); } catch (er) { ok = false; } }
+    if (!ok) return { ok: false };
+    const was = s.done, focus = w.focusEx;
+    try {
+      s.done = true; w.focusEx = null;
+      const rest = ex.cat !== 'Cardio' && restAfter(exs, cur[0], cur[1]) ? setRestOf(e, s) : 0;
+      const nc = shadeCur(w);
+      let exercise = null, set = null, next = null;
+      if (nc) {
+        const ne = exs[nc[0]]; exercise = getEx(ne.exId).name; set = setLabel(ne, nc[1]);
+        for (let i = nc[0] + 1; i < exs.length; i++) if (exs[i].sets.some(x => !x.done)) { next = getEx(exs[i].exId).name; break; }
+      }
+      const total = exs.reduce((n, x) => n + x.sets.length, 0), done = exs.reduce((n, x) => n + x.sets.filter(y => y.done).length, 0);
+      return { ok: true, rest: rest >= 5 ? rest : 0, exercise, set, next, done, total, sound: S.settings.restSound || 'restDone' };
+    } finally { s.done = was; w.focusEx = focus; }
   }
   let workoutCueT = null;
   function workoutCue() {
@@ -2419,11 +2442,14 @@ Power Clean (Barbell)|Other|Barbell|`;
     }
   }
   // "Complete set" on the notification: tick the set the shade shows (opens the workout if it was hidden).
-  function completeFromShade() {
+  // `d` = {at, end} when the phone already ticked it in the background: `end` is the rest it started (0 = none).
+  let shadeQueue = [];
+  function completeFromShade(d) {
+    if (!S.ready) { shadeQueue.push(d || {}); return; }
     const w = S.active; if (!w) return;
     if (!E || E.mode !== 'live' || E.doc !== w) openEditor('live', w);
     const c = shadeCur(w); if (!c) return;
-    if (!completeSet(c[0], c[1])) return; // no weight/reps yet: the toast says so and the notification stays
+    if (!completeSet(c[0], c[1], false, d && d.end > 0 ? d.end : (d && d.at ? d.at : undefined))) return; // no weight/reps yet: the toast says so and the notification stays
     if (E.view === 'gym') { const nx = nextPending(w.exercises, c); if (nx) E.cur = nx; }
     touch(); renderEditor(); renderRest();
   }
@@ -2438,7 +2464,12 @@ Power Clean (Barbell)|Other|Barbell|`;
   // Plates per side, inner to outer; they come off outer first as the rest runs down.
   const REST_PLATES = [['20', 'b', 1], ['15', 'y', .86], ['10', 'g', .72], ['5', 'w', .56], ['2.5', 'r', .44]];
   const REST_BLOCKS = 10;
-  function startRest(sec, at) { if (!sec || sec < 5) return; rest = { end: Date.now() + sec * 1000, total: sec, alerted: false, at: at || null }; persistRest(); renderRest(); startTick(); restCue(); }
+  // `end` (optional): the rest already runs on the phone's notification since then; an end already past means no rest.
+  function startRest(sec, at, end) {
+    if (!sec || sec < 5) return;
+    const now = Date.now(); if (end != null && end <= now + 500) return;
+    rest = { end: end != null ? end : now + sec * 1000, total: sec, alerted: false, at: at || null }; persistRest(); renderRest(); startTick(); restCue();
+  }
   function previewRest(sec) { startRest(sec); }
   function stopRest() { rest = null; persistRest(); renderRest(); try { window.dispatchEvent(new CustomEvent('lb:rest-stop')); } catch (e) { } }
   function persistRest() { try { localStorage.setItem('lb_rest', JSON.stringify(rest)); } catch (e) { } }
@@ -2465,7 +2496,7 @@ Power Clean (Barbell)|Other|Barbell|`;
     window.addEventListener('lb:rest-skip', () => { if (rest) stopRest(); });
     window.addEventListener('lb:rest-adjust', e => restAdjust(+((e.detail || {}).d) || 15));
     window.addEventListener('lb:workout-next', () => nextExercise());
-    window.addEventListener('lb:workout-complete', () => completeFromShade());
+    window.addEventListener('lb:workout-complete', e => completeFromShade(e && e.detail));
     window.addEventListener('lb:rest-start', () => restFromShade());
   } catch (e) { }
   on('restMini', () => { if (!rest) return; rest.mini = true; persistRest(); renderRest(); });
