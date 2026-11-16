@@ -32,11 +32,12 @@ still runs in a browser and inside Claude.
   is past or 0), holding it until its data has loaded.
 - Rest-over sound (Nov 14 2026, `android/RestRing.kt` + `android/RestRingReceiver.kt`): `lb:rest` arms an exact native
   alarm (`RestTimer.arm({end, sound, silent})`, `USE_EXACT_ALARM`) instead of the LocalNotifications one, and
-  `GymSounds.setNative(AndroidShell.ringRest)` sends every rest sound to `RestTimer.ring({sound, end, ms})`. The native
-  player asks for audio focus `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`, so music dips, plays `res/raw/rest_<id>.wav` on the
-  media stream, then gives focus back and the music returns. Each rest end rings once (whichever of the alarm and the
+  `GymSounds.setNative(AndroidShell.ringRest)` sends every rest sound to `RestTimer.ring({sound, end, ms})`. With music
+  playing, the native player lowers the media volume to about a third (no audio focus: YouTube Music pauses on a
+  "may duck" focus loss, Nov 16), plays `res/raw/rest_<id>.wav` on the notification sound, then steps the media
+  volume back up. On silent/vibrate it plays on the media stream, mixed in, undimmed. Each rest end rings once (whichever of the alarm and the
   in-app timer is first); the locked phone also gets a quiet "Rest is over" heads-up (channel `rest_over_v2`, buzz
-  only). Skipping early disarms. The user's own sound: native ducks for `ms`, the web view plays it. "Beep when rest
+  only). Skipping early disarms. The user's own sound plays in the web view, undimmed. "Beep when rest
   ends" off = buzz only. On silent/vibrate with no music, a locked phone only buzzes.
 - `<html class="android-app">` is set inside the app; CSS can use it for native-only tweaks.
 
