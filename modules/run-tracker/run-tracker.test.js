@@ -148,3 +148,82 @@ test("importGPX and progressHTML / summary", () => {
   assert.equal(T.progressHTML({}, {}), "");
   assert.equal(T.importGPX("<gpx/>", ctx), null);
 });
+
+// Android: a fake RunGps plugin standing in for the foreground service (android/RunGpsService.kt).
+function fakeNative() {
+  const st = { running: false, startAt: 0, paused: false, pausedTotal: 0, fixes: [], calls: [] };
+  return {
+    st,
+    async start(o) { st.calls.push("start"); st.running = true; st.startAt = o.startAt; st.fixes = []; return { started: true }; },
+    async read(o) { const f = st.fixes.slice(o.since); return { fixes: f, next: o.since + f.length, running: st.running, gpsOff: false }; },
+    async pause() { st.calls.push("pause"); st.paused = true; },
+    async resume(o) { st.calls.push("resume"); st.paused = false; st.pausedTotal = o.pausedTotal; },
+    async status() { return { running: st.running, startAt: st.startAt, paused: st.paused, pausedTotal: st.pausedTotal, count: st.fixes.length }; },
+    async stop() { st.calls.push("stop"); st.running = false; },
+    record(t0, t, m) { if (!st.paused) st.fixes.push([north(m)[0], START[1], null, 6, t0 + t * 1000]); },
+  };
+}
+
+test("Android: the run records through the background GPS service, survives the screen locking, and finishes with its last fixes", async () => {
+  T._reset();
+  const N = fakeNative(), docs = { runs: {}, cardio: {} };
+  let geoUsed = false;
+  const geo = { watchPosition: () => { geoUsed = true; return 1; }, clearWatch: () => {} };
+  const ctx = { docs, nativeGps: N, geo, noTimer: true, now: () => Date.parse("2026-11-21T05:00:00Z"), toast: () => {}, put: (c, id, d) => { docs[c][id] = d; }, rerender: () => {} };
+  const btn = run => ({ closest: () => ({ dataset: { run } }) });
+  T.handle(btn("start"), ctx);
+  await Promise.resolve();
+  assert.equal(geoUsed, false, "web view geolocation not used on Android");
+  assert.deepEqual(N.st.calls, ["start"]);
+  assert.ok(T.live().native && T.cardHTML("2026-11-21", docs).includes("You can lock the phone"));
+  const t0 = ctx.now();
+  // 10 minutes with the screen locked: the web view reads nothing, the service keeps recording
+  for (let t = 0; t <= 600; t += 5) N.record(t0, t, t * 3);
+  assert.equal(T.live().pts.length, 0);
+  await T.drain(); // the app is opened again
+  assert.equal(T.live().pts.length, 121);
+  assert.ok(Math.abs(require("./run-tracker.js").RunTracker.stats(T.live().pts).km - 1.8) < 0.01);
+  // pause tells the service; fixes while paused are not stored
+  T.handle(btn("pause"), ctx); await Promise.resolve();
+  for (let t = 605; t <= 700; t += 5) N.record(t0, t, t * 3);
+  T.handle(btn("pause"), ctx); await Promise.resolve();
+  assert.deepEqual(N.st.calls, ["start", "pause", "resume"]);
+  for (let t = 705; t <= 1100; t += 5) N.record(t0, t, t * 3);
+  // finish reads what was stored since the last read before saving, then stops the service
+  T.handle(btn("finish"), ctx);
+  await new Promise(r => setTimeout(r, 0));
+  const run = docs.runs["2026-11-21"].runs[0];
+  assert.ok(run.km > 3.2, run.km);
+  assert.equal(docs.cardio["2026-11-21"].sessions[0].kind, "run");
+  assert.equal(N.st.calls[N.st.calls.length - 1], "stop");
+  assert.deepEqual(T.live(), {});
+});
+
+test("Android: a run still recording after the app restarted is picked back up", async () => {
+  T._reset();
+  const N = fakeNative(), t0 = Date.parse("2026-11-21T05:00:00Z");
+  N.st.running = true; N.st.startAt = t0;
+  for (let t = 0; t <= 300; t += 5) N.record(t0, t, t * 3);
+  const msgs = [];
+  assert.equal(await T.recover({ nativeGps: N, noTimer: true, toast: m => msgs.push(m), rerender: () => {} }), true);
+  assert.equal(T.live().startAt, t0);
+  assert.equal(T.live().pts.length, 61);
+  assert.match(msgs[0], /still recording/);
+  assert.equal(await T.recover({ nativeGps: N, noTimer: true }), false, "nothing to do once running");
+  T._reset();
+  assert.equal(await T.recover({ nativeGps: fakeNative(), noTimer: true }), false, "no run in progress");
+  assert.equal(await T.recover({ nativeGps: null }), false, "web: no service");
+});
+
+test("RunGps Kotlin files are copied into the Android project, registered, and declared as a location service", () => {
+  const fs = require("fs"), path = require("path"), root = path.join(__dirname, "..", "..");
+  for (const f of ["RunGpsPlugin.kt", "RunGpsService.kt"])
+    assert.equal(fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app", f), "utf8"), fs.readFileSync(path.join(__dirname, "android", f), "utf8"), "copy modules/run-tracker/android/" + f);
+  assert.ok(fs.readFileSync(path.join(root, "android/app/src/main/java/com/azizfitness/app/MainActivity.java"), "utf8").includes("registerPlugin(RunGpsPlugin.class)"));
+  const man = fs.readFileSync(path.join(root, "android/app/src/main/AndroidManifest.xml"), "utf8");
+  assert.match(man, /android:name="\.RunGpsService"[^>]*foregroundServiceType="location"/);
+  assert.ok(man.includes("android.permission.FOREGROUND_SERVICE_LOCATION"));
+  assert.ok(!man.includes("ACCESS_BACKGROUND_LOCATION"), "no background-location permission needed");
+  const svc = fs.readFileSync(path.join(__dirname, "android", "RunGpsService.kt"), "utf8");
+  assert.ok(svc.includes("FOREGROUND_SERVICE_TYPE_LOCATION") && svc.includes("START_STICKY"));
+});

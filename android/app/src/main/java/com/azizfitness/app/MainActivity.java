@@ -14,6 +14,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SpeechPlugin.class);
         registerPlugin(RestTimerPlugin.class);
         registerPlugin(MediaKeysPlugin.class);
+        registerPlugin(RunGpsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
