@@ -1,17 +1,11 @@
 # Step 2, after the new build is installed over the old one (same as the in-app Update):
-# the app opens without asking to sign in again and the set from step 1 is still in History.
+# the set from step 1 is still in History. (The sign-in sheet comes back on every cold start for
+# "Use without an account" phones, update or not, so first-run.yaml dismisses it again.)
 appId: com.azizfitness.app
 name: New build still has the set
 ---
 - launchApp:
     clearState: false
-- runFlow: wait-ready.yaml
-# Data kept means the account choice was kept too: the sign-in sheet must not come back.
-- extendedWaitUntil:
-    visible: "Use without an account.*"
-    timeout: 15000
-    optional: true
-- assertNotVisible: "Use without an account.*"
 - runFlow: first-run.yaml
 - tapOn: "Train"
 - tapOn: "History"

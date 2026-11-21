@@ -53,8 +53,7 @@ Building locally instead (needs Android Studio or the SDK + JDK 21): `npm instal
 build phones have now (`android-latest` from `Shalaglag/mizan-releases`), and with Maestro picks "Use without an
 account", logs one Bench Press set of 61.5 kg × 7 and sees it in History (`.maestro/update-test/1-old-build-log-set.yaml`).
 It then installs the PR's build over it with `adb install -r` (the same package replace the in-app Update does,
-same signing key, version number one higher) and checks that the app opens without the sign-in sheet and the set is
-still in History (`2-new-build-check-data.yaml`). Driver: `tools/update-test/run.sh`.
+same signing key, version number one higher) and checks that the set is still in History (`2-new-build-check-data.yaml`). Driver: `tools/update-test/run.sh`.
 
 About 15 minutes of free Actions time per run, so it runs only on PRs that touch what decides whether data
 survives an update (`android/`, Capacitor config and packages, `modules/android-shell`, `modules/app-update`,
