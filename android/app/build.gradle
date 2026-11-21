@@ -54,14 +54,14 @@ dependencies {
     implementation project(':capacitor-android')
     // Health Connect (WaterH water sync, modules/health-connect). connect-client needs minSdk 26.
     implementation "androidx.health.connect:connect-client:1.1.0"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
     // Google Health (Fitbit) water: Google sign-in for one read-only scope, no secret (modules/google-health).
     implementation "com.google.android.gms:play-services-auth:21.3.0"
     // Continue with Google on the sign-in sheet (GoogleSignInPlugin, modules/cloud-store): Android's account
     // chooser via Credential Manager; the ID token signs the same Firebase account in. Needs no secret.
     implementation "androidx.credentials:credentials:1.5.0"
     implementation "androidx.credentials:credentials-play-services-auth:1.5.0"
-    implementation "com.google.android.libraries.identity.googleid:googleid:1.1.1"
+    implementation "com.google.android.libraries.identity.googleid:googleid:1.2.1"
     // Google's barcode scanner screen (ML Kit code scanner via Play services; modules/barcode-scanner). Free, on-device,
     // no camera permission needed. Food barcodes on Food > Scan > Barcode.
     implementation "com.google.android.gms:play-services-code-scanner:16.1.0"
