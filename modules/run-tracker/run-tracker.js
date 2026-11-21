@@ -20,6 +20,10 @@
  *   RunTracker.handle(el, ctx)                  -> click handler; buttons carry data-run="start|pause|finish|discard|del|gpx|import"
  *   RunTracker.live()                           -> the current live state ({} when not running)
  *   RunTracker.onPosition(pos) / tick()         -> fed by the host (or by handle via navigator.geolocation)
+ *   RunTracker.recover(ctx) / drain()           -> Android: resume a run the background service kept recording / read its fixes
+ *
+ * On Android the GPS runs in a foreground service (android/RunGpsService.kt, plugin "RunGps"), so a run keeps
+ * recording with the screen locked; the web view reads the stored fixes whenever it runs.
  *
  * Point = [lat, lng, ele|null, tSec]  (tSec since the run started). Stored thinned to ≤ 600 points.
  */
@@ -184,7 +188,42 @@ const RunTracker = (() => {
   /* ---------- live tracking ---------- */
   let L = {};             // {startAt, pts:[], raw:0, paused, lastAcc, err, watchId, timer, wake}
   const live = () => L;
-  function reset() { if (L.watchId != null && L.geo) { try { L.geo.clearWatch(L.watchId); } catch (e) {} } if (L.timer) clearInterval(L.timer); try { L.wake && L.wake.release(); } catch (e) {} L = {}; }
+  function reset() {
+    if (L.watchId != null && L.geo) { try { L.geo.clearWatch(L.watchId); } catch (e) {} }
+    if (L.native) { try { Promise.resolve(L.native.stop()).catch(() => {}); } catch (e) {} }
+    if (L.timer) clearInterval(L.timer); try { L.wake && L.wake.release(); } catch (e) {} L = {};
+  }
+
+  // Android: the RunGps plugin (android/RunGpsService.kt) records in a foreground service, so the run keeps going with
+  // the screen locked. The web view only reads what it stored whenever it runs (every second in the foreground and at
+  // once on resume). Elsewhere (web, iPhone) navigator.geolocation is used as before.
+  function nativeGps(ctx) {
+    if (ctx && ctx.nativeGps !== undefined) return ctx.nativeGps;
+    try {
+      const w = typeof window !== "undefined" ? window : null;
+      const ok = w && w.AndroidShell && w.AndroidShell.isNative() && w.AndroidShell.platform() === "android";
+      return ok && w.Capacitor && w.Capacitor.Plugins && w.Capacitor.Plugins.RunGps || null;
+    } catch (e) { return null; }
+  }
+
+  // Pulls the fixes the service stored since the last read and feeds them through the same filter as live fixes.
+  function drain(again) {
+    const N = L.native;
+    if (!N) return Promise.resolve(false);
+    if (L.readP) return again ? L.readP.then(() => drain()) : Promise.resolve(false);
+    const me = L;
+    return (L.readP = Promise.resolve(N.read({ since: L.nIdx || 0 })).then(r => {
+      me.readP = null;
+      if (me !== L || !r) return false;
+      const wasPaused = L.paused; L.paused = false; // the service already skips fixes while paused
+      for (const f of r.fixes || []) onPosition({ coords: { latitude: f[0], longitude: f[1], altitude: f[2], accuracy: f[3] }, timestamp: f[4] });
+      L.paused = wasPaused;
+      L.nIdx = r.next != null ? r.next : (L.nIdx || 0) + (r.fixes || []).length;
+      L.err = r.gpsOff ? "GPS is off. Turn on Location in the phone's quick settings." : (L.err && /GPS is off/.test(L.err) ? null : L.err);
+      tick();
+      return true;
+    }, e => { me.readP = null; return false; }));
+  }
 
   function onPosition(pos) {
     if (!L.startAt || L.paused) return;
@@ -209,18 +248,43 @@ const RunTracker = (() => {
     const map = el("rt-livemap"); if (map && L.pts.length >= 2 && L.pts.length % 3 === 0) map.innerHTML = svg(L.pts, { w: 320, h: 160 });
   }
 
+  function startTimer(ctx) {
+    if (typeof setInterval !== "undefined" && !ctx.noTimer) L.timer = setInterval(() => { if (L.native) drain(); else tick(); }, 1000);
+  }
+
   function start(ctx) {
+    const N = nativeGps(ctx);
     const geo = ctx.geo || (typeof navigator !== "undefined" ? navigator.geolocation : null);
-    if (!geo) { ctx.toast && ctx.toast("No GPS on this device/browser"); return false; }
+    if (!geo && !N) { ctx.toast && ctx.toast("No GPS on this device/browser"); return false; }
     reset();
     L = { startAt: ctx.now ? ctx.now() : Date.now(), pts: [], raw: 0, paused: false, pausedTotal: 0, geo };
+    if (N) {
+      L.native = N; L.nIdx = 0; L.geo = null;
+      const me = L;
+      Promise.resolve(N.start({ startAt: L.startAt })).then(r => { if (me === L && r && r.gpsOff) { L.err = "GPS is off. Turn on Location in the phone's quick settings."; tick(); } },
+        e => { if (me !== L) return; L.err = (e && e.message) || "Location blocked. Allow Location for Mizan in Android Settings."; L.native = null; tick(); });
+      startTimer(ctx);
+      return true;
+    }
     try {
       L.watchId = geo.watchPosition(onPosition, e => { L.err = e && e.code === 1 ? "Location blocked. Allow it in the browser/site settings, or import a GPX file below." : "GPS error: " + (e && e.message || "unknown"); tick(); },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
     } catch (e) { L.err = "GPS error: " + e.message; }
-    if (typeof setInterval !== "undefined" && !ctx.noTimer) L.timer = setInterval(() => tick(), 1000);
+    startTimer(ctx);
     try { if (typeof navigator !== "undefined" && navigator.wakeLock) navigator.wakeLock.request("screen").then(w => { L.wake = w; }).catch(() => {}); } catch (e) {}
     return true;
+  }
+
+  // Android: if the web view (or the whole app) restarted during a run, pick the run back up from the service.
+  function recover(ctx) {
+    const N = nativeGps(ctx || {});
+    if (!N || L.startAt) return Promise.resolve(false);
+    return Promise.resolve(N.status()).then(st => {
+      if (!st || !st.running || !st.startAt || L.startAt) return false;
+      L = { startAt: st.startAt, pts: [], raw: 0, paused: !!st.paused, pausedAt: st.pausedAt || 0, pausedTotal: st.pausedTotal || 0, native: N, nIdx: 0 };
+      startTimer(ctx || {});
+      return drain().then(() => { ctx && ctx.toast && ctx.toast("Your run is still recording"); ctx && ctx.rerender && ctx.rerender(); return true; });
+    }, () => false);
   }
 
   function finish(ctx) {
@@ -289,7 +353,7 @@ const RunTracker = (() => {
         <div id="rt-livemap">${svg(Lv.pts || [], { w: 320, h: 160 })}</div>
         <p class="muted" id="rt-gps" style="margin:0;font-size:.85rem">${esc(Lv.err || (Lv.lastAcc != null ? `GPS ±${Math.round(Lv.lastAcc)} m · ${Lv.pts.length} points` : "Waiting for GPS…"))}</p>
         <div class="row"><button class="btn" data-run="pause">${Lv.paused ? "Resume" : "Pause"}</button><button class="btn stop" data-run="finish">Finish &amp; save</button><button class="btn ghost" data-run="discard">Discard</button></div>
-        <p class="muted" style="font-size:.8rem;margin:0">Keep the screen on and the app open while you run. The route is drawn as you go; it's saved as a cardio session when you finish.</p>`;
+        <p class="muted" style="font-size:.8rem;margin:0">${Lv.native ? "You can lock the phone: Mizan keeps recording (you'll see it in the notifications)." : "Keep the screen on and the app open while you run."} The route is drawn as you go; it's saved as a cardio session when you finish.</p>`;
     } else {
       body = `<div class="row"><button class="btn go" data-run="start">▶ Start GPS run</button>
           <label class="btn ghost small" style="cursor:pointer">Import GPX<input type="file" id="rtFile" accept=".gpx,application/gpx+xml" hidden></label><button class="btn ghost small" data-run="import" data-date="${esc(date)}">Add file</button></div>
@@ -345,10 +409,21 @@ const RunTracker = (() => {
     if (act === "start") { if (start(ctx)) { ctx.toast && ctx.toast("GPS run started"); ctx.rerender && ctx.rerender(); } }
     else if (act === "pause") {
       if (!L.startAt) return true;
-      if (L.paused) { L.pausedTotal = (L.pausedTotal || 0) + (Date.now() - L.pausedAt); L.paused = false; } else { L.paused = true; L.pausedAt = Date.now(); }
+      const N = L.native;
+      if (L.paused) {
+        L.pausedTotal = (L.pausedTotal || 0) + (Date.now() - L.pausedAt); L.paused = false;
+        if (N) { try { Promise.resolve(N.resume({ pausedTotal: L.pausedTotal })).catch(() => {}); } catch (e) {} }
+      } else {
+        L.paused = true; L.pausedAt = Date.now();
+        if (N) { try { Promise.resolve(N.pause({ at: L.pausedAt })).catch(() => {}); } catch (e) {} }
+      }
       ctx.rerender && ctx.rerender();
     }
-    else if (act === "finish") { finish(ctx); ctx.rerender && ctx.rerender(); }
+    else if (act === "finish") {
+      // Android: read the last fixes the service stored, then save
+      if (L.native) { const done = () => { finish(ctx); ctx.rerender && ctx.rerender(); }; drain(true).then(done, done); return true; }
+      finish(ctx); ctx.rerender && ctx.rerender();
+    }
     else if (act === "discard") { reset(); ctx.toast && ctx.toast("Run discarded"); ctx.rerender && ctx.rerender(); }
     else if (act === "del") {
       const date = b.dataset.date, id = b.dataset.id;
@@ -370,6 +445,6 @@ const RunTracker = (() => {
     return true;
   }
 
-  return { css, MAX_ACC, haversine, accept, stats, thin, svg, mapsLink, gpx, parseGPX, runs, withRun, withoutRun, makeRun, toSession, live, onPosition, tick, start, finish, importGPX, history, cardHTML, progressHTML, summary, handle, _reset: reset };
+  return { css, MAX_ACC, haversine, accept, stats, thin, svg, mapsLink, gpx, parseGPX, runs, withRun, withoutRun, makeRun, toSession, live, onPosition, tick, start, finish, recover, drain, importGPX, history, cardHTML, progressHTML, summary, handle, _reset: reset };
 })();
 if (typeof module !== "undefined") module.exports = { RunTracker };
