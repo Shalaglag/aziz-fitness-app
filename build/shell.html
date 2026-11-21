@@ -2340,7 +2340,7 @@ main.addEventListener("click",e=>{
   if(a==="dd-focus"){ const t=document.getElementById(el.dataset.target); if(t){ const f=t.closest("details"); if(f) f.open=true; t.scrollIntoView({behavior:"smooth",block:t.matches("input,button")?"center":"start"}); t.focus({preventScroll:true}); if(t.classList.contains("card")){ t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash"); } } return; }
   if(a==="backup"){ el.disabled=true; backupNow(); return; }
   // "Use without an account" was picked at first start: sign in now (each account holds only its own data), then reload so the phone's entries go up once.
-  if(a==="cloudsignin"){ el.disabled=true; CloudStore.connect({mount:document.body}).then(db=>{ if(db) location.reload(); else el.disabled=false; }).catch(()=>{ toast("Couldn't reach the server. Try again when online."); el.disabled=false; }); return; }
+  if(a==="cloudsignin"){ el.disabled=true; CloudStore.connect({mount:document.body,prompt:true}).then(db=>{ if(db) location.reload(); else el.disabled=false; }).catch(()=>{ toast("Couldn't reach the server. Try again when online."); el.disabled=false; }); return; }
   if(a==="backupsnooze"){ put("prefs","main",{...clone(S.docs.prefs.main), backupSnoozeUntil:addDays(TODAY,7)}); toast("Okay, I'll ask again in a week."); return; }
   if(a==="gotab"){ view.tab=el.dataset.tab; try{localStorage.setItem("aziz-cut-tab",view.tab)}catch(_){} render(); window.scrollTo(0,0); return; }
   if(a==="ptab"){ view.pTab=el.dataset.k; render(); return; }

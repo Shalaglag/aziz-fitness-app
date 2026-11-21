@@ -177,3 +177,19 @@ test("iOS Google plugin: repo copy matches the module source, registered and in 
   assert.match(pbx, /MainViewController\.swift in Sources/);
   assert.match(fs.readFileSync(path.join(root, "ios/App/App/Base.lproj/Main.storyboard"), "utf8"), /customClass="MainViewController" customModule="App"/);
 });
+
+test("'Use without an account' is remembered, so the sign-in sheet doesn't return on every open", () => {
+  const mem = {};
+  global.localStorage = { getItem: k => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v); }, removeItem: k => { delete mem[k]; } };
+  try {
+    assert.strictEqual(C.localOnly(), false);
+    assert.strictEqual(C.shouldAsk(null, {}), true, "first open: ask");
+    C.setLocalOnly(true);
+    assert.strictEqual(mem[C.LOCAL_ONLY_KEY], "1");
+    assert.strictEqual(C.shouldAsk(null, {}), false, "after picking this-device-only: don't ask on open");
+    assert.strictEqual(C.shouldAsk(null, { prompt: true }), true, "Settings > Sign in still asks");
+    assert.strictEqual(C.shouldAsk({ uid: "u" }, {}), false, "already signed in: never ask");
+    C.setLocalOnly(false);
+    assert.strictEqual(C.shouldAsk(null, {}), true, "signing in clears the choice");
+  } finally { delete global.localStorage; }
+});
