@@ -25,16 +25,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Install Capacitor
         run: npm ci
       - name: Check the web build is current
@@ -75,7 +75,7 @@ jobs:
           '
           cat latest.json
       # The release attachment below is what ships; a full artifact storage quota must not fail the build.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         continue-on-error: true
         with:
           name: aziz-fitness-android
@@ -85,7 +85,7 @@ jobs:
             aziz-fitness.aab
       - name: Attach to the android-latest release
         if: ${{ github.event_name != 'pull_request' }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: android-latest
           name: Mizan for Android (latest)
@@ -116,7 +116,7 @@ jobs:
         if: ${{ github.event_name != 'pull_request' && env.RELEASES_TOKEN != '' }}
         env:
           RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           repository: Shalaglag/mizan-releases
           token: ${{ secrets.RELEASES_TOKEN }}
