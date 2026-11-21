@@ -1,0 +1,17 @@
+# Step 2, after the new build is installed over the old one (same as the in-app Update):
+# the app opens without asking to sign in again and the set from step 1 is still in History.
+appId: com.azizfitness.app
+name: New build still has the set
+---
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: "Train"
+    timeout: 90000
+- assertNotVisible: "Use without an account.*"
+- runFlow: first-run.yaml
+- tapOn: "Train"
+- tapOn: "History"
+- assertVisible: ".*61\\.5 kg × 7.*"
+- assertVisible: ".*Bench Press \\(Barbell\\).*"
+- takeScreenshot: new-build-history

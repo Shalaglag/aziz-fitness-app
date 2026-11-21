@@ -47,6 +47,22 @@ The Android SDK lives on the CI runner; nothing needs installing on the PC.
 Building locally instead (needs Android Studio or the SDK + JDK 21): `npm install`, then `npm run android:apk`
 (APK in `android/app/build/outputs/apk/release/`) or `npm run android:open` for Android Studio.
 
+## Update test (does an update keep the data?)
+
+`.github/workflows/update-test.yml` (check name `update-keeps-data`) boots an Android 14 emulator, installs the
+build phones have now (`android-latest` from `Shalaglag/mizan-releases`), and with Maestro picks "Use without an
+account", logs one Bench Press set of 61.5 kg × 7 and sees it in History (`.maestro/update-test/1-old-build-log-set.yaml`).
+It then installs the PR's build over it with `adb install -r` (the same package replace the in-app Update does,
+same signing key, version number one higher) and checks that the app opens without the sign-in sheet and the set is
+still in History (`2-new-build-check-data.yaml`). Driver: `tools/update-test/run.sh`.
+
+About 15 minutes of free Actions time per run, so it runs only on PRs that touch what decides whether data
+survives an update (`android/`, Capacitor config and packages, `modules/android-shell`, `modules/app-update`,
+`modules/cloud-store`, the flows) or by hand: Actions → Update test → Run workflow. PRs without the signing secret
+(Dependabot, forks) skip it with a notice. It covers on-device (localStorage) data; a signed-in Firestore account is
+not exercised because CI has no test account. On failure the `update-test-output` artifact has Maestro's
+screenshots and a logcat.
+
 ## Signing (one-time setup, needed before the first "update over the old app" works)
 
 Android only installs a new APK over the old one when both are signed with the same key. The key file is not in
