@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(RestTimerPlugin.class);
         registerPlugin(MediaKeysPlugin.class);
         registerPlugin(RunGpsPlugin.class);
+        registerPlugin(BarcodeScanPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

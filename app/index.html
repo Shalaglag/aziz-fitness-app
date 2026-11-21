@@ -48781,7 +48781,10 @@ if (typeof module !== "undefined" && module.exports) module.exports = MacroTarge
  *   BarcodeFood.lookup(code, {fetch, timeoutMs}) -> Promise<{status:"found"|"not_found"|"offline"|"invalid", product?, error?}>
  *   BarcodeFood.parseProduct(json, code)       -> {code, name, brand, per100:{kcal,p,c,f}, serving:{g,label}|null, missing:[...], source:"off"}
  *   BarcodeFood.toFoodItem(product, {grams, slot, eaten}) -> {name, slot, kcal, p, c, f, eaten, est, barcode, grams}
- *   BarcodeFood.canDetect()                    -> true when the browser has BarcodeDetector (Android Chrome does)
+ *   BarcodeFood.canDetect()                    -> true when the app can scan: Google's scanner (Android app) or BarcodeDetector
+ *   BarcodeFood.nativeScan()                   -> true inside the Android app with the BarcodeScan plugin (Google's ML Kit scanner)
+ *   BarcodeFood.fromScan(raw, format)          -> digits to look up; a UPC-E is expanded to its UPC-A when needed
+ *   BarcodeFood.upcEtoA(code)                  -> the 12-digit UPC-A for an 8-digit UPC-E, or null
  *   BarcodeFood.detect(source)                 -> Promise<code|null>; source is an image Blob/File, <img>, <video> or ImageBitmap
  *   BarcodeFood.mount(el, opts)                -> renders the scan card; returns {destroy()}
  *     opts.onAdd(item)       required. item is a food row without id (the app adds id).
@@ -48888,11 +48891,38 @@ window.BarcodeFood = (() => {
     };
   }
 
-  const canDetect = () => typeof window !== "undefined" && "BarcodeDetector" in window;
+  const hasDetector = () => typeof window !== "undefined" && "BarcodeDetector" in window;
+  // Inside the Android app, Google's own scanner screen (android/BarcodeScanPlugin.kt, ML Kit via Play services)
+  // reads food barcodes faster and needs no camera permission. Absent on iOS and the web, so always null-safe.
+  const NATIVE = () => {
+    try {
+      const c = typeof window !== "undefined" && window.Capacitor;
+      return (c && c.isNativePlatform && c.isNativePlatform() && c.Plugins && c.Plugins.BarcodeScan) || null;
+    } catch (_) { return null; }
+  };
+  const nativeScan = () => !!NATIVE();
+  const canDetect = () => nativeScan() || hasDetector();
+
+  function upcEtoA(code) {
+    const c = clean(code);
+    if (c.length !== 8 || !/^[01]/.test(c)) return null;
+    const d = c.slice(1, 7), x = d[5];
+    const m = x <= "2" ? d[0] + d[1] + x + "0000" + d[2] + d[3] + d[4]
+      : x === "3" ? d[0] + d[1] + d[2] + "00000" + d[3] + d[4]
+      : x === "4" ? d[0] + d[1] + d[2] + d[3] + "00000" + d[4]
+      : d.slice(0, 5) + "0000" + x;
+    return c[0] + m + c[7];
+  }
+
+  function fromScan(raw, format) {
+    const c = clean(raw);
+    const a = format === "upc_e" || (!isValid(c) && c.length === 8) ? upcEtoA(c) : null;
+    return a && isValid(a) ? a : c;
+  }
 
   let detector = null;
   async function detect(source) {
-    if (!canDetect()) return null;
+    if (!hasDetector()) return null;
     if (!detector) {
       let formats = FORMATS;
       try { const s = await window.BarcodeDetector.getSupportedFormats(); formats = FORMATS.filter(x => s.includes(x)); } catch (_) {}
@@ -48901,8 +48931,8 @@ window.BarcodeFood = (() => {
     let src = source;
     if (typeof Blob !== "undefined" && source instanceof Blob) src = await createImageBitmap(source);
     const hits = await detector.detect(src);
-    const good = hits.map(h => clean(h.rawValue)).find(isValid);
-    return good || (hits[0] ? clean(hits[0].rawValue) : null);
+    const codes = hits.map(h => fromScan(h.rawValue, h.format));
+    return codes.find(isValid) || codes[0] || null;
   }
 
   function lsLibrary() {
@@ -48934,7 +48964,7 @@ window.BarcodeFood = (() => {
       const scan = canDetect()
         ? `<div class="row bf-row">
              <button type="button" class="btn" data-bf="cam">Scan with camera</button>
-             <label class="btn ghost">Photo of barcode<input type="file" accept="image/*" capture="environment" data-bf="photo" hidden></label>
+             ${hasDetector() ? `<label class="btn ghost">Photo of barcode<input type="file" accept="image/*" capture="environment" data-bf="photo" hidden></label>` : ""}
            </div>`
         : `<p class="muted bf-small">This browser can't read barcodes from the camera (Chrome on Android can). Type the numbers under the barcode instead.</p>`;
       const manual = `<form class="row bf-row" data-bf="manual">
@@ -49010,6 +49040,30 @@ window.BarcodeFood = (() => {
       view();
     }
 
+    // Google's scanner screen: opens over the app, returns one code (or a back-out). If it can't run yet
+    // (module still downloading, Play services missing) the old WebView camera takes over, so nothing is lost.
+    async function scanNative() {
+      st.phase = "idle"; st.msg = "";
+      let r;
+      try { r = await NATIVE().scan(); }
+      catch (e) {
+        if (!alive) return;
+        const downloading = e && e.code === "downloading";
+        if (hasDetector()) {
+          st.phase = "camera";
+          st.msg = downloading ? "Google's scanner is still downloading, so this scan uses the built-in camera." : "";
+        } else {
+          st.phase = "error";
+          st.msg = downloading ? "Google's scanner is still downloading. Try again in a minute, or type the number."
+            : "The scanner isn't available on this phone. Type the number under the barcode instead.";
+        }
+        return view();
+      }
+      if (!alive) return;
+      if (!r || r.cancelled || !r.code) { st.phase = "idle"; return view(); }
+      return go(fromScan(r.code, r.format));
+    }
+
     async function startVideo() {
       const v = el.querySelector('[data-bf="video"]');
       try {
@@ -49037,7 +49091,7 @@ window.BarcodeFood = (() => {
     function onClick(e) {
       const t = e.target.closest("[data-bf]"); if (!t) return;
       const a = t.dataset.bf;
-      if (a === "cam") { st.phase = "camera"; st.msg = ""; view(); }
+      if (a === "cam") { if (nativeScan()) scanNative(); else { st.phase = "camera"; st.msg = ""; view(); } }
       else if (a === "stop" || a === "reset") { stopCam(); st.phase = "idle"; st.product = null; st.msg = ""; st.code = ""; view(); }
       else if (a === "g") { st.grams = t.dataset.g; view(); }
       else if (a === "edit") { st.phase = "manualEntry"; st.msg = ""; view(); }
@@ -49102,7 +49156,7 @@ window.BarcodeFood = (() => {
 .bf-cam{position:relative;border-radius:var(--r,12px);overflow:hidden;background:#000;aspect-ratio:4/3}.bf-cam video{width:100%;height:100%;object-fit:cover;display:block}
 .bf-aim{position:absolute;left:12%;right:12%;top:32%;bottom:32%;border:2px solid var(--accent);border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}`;
 
-  return { clean, isValid, lookup, parseProduct, toFoodItem, canDetect, detect, mount, CSS, OFF_URL: OFF };
+  return { clean, isValid, upcEtoA, fromScan, lookup, parseProduct, toFoodItem, canDetect, nativeScan, detect, mount, CSS, OFF_URL: OFF };
 })();
 if (typeof module !== "undefined") module.exports = BarcodeFood;
 </script>

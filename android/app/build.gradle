@@ -62,6 +62,9 @@ dependencies {
     implementation "androidx.credentials:credentials:1.5.0"
     implementation "androidx.credentials:credentials-play-services-auth:1.5.0"
     implementation "com.google.android.libraries.identity.googleid:googleid:1.1.1"
+    // Google's barcode scanner screen (ML Kit code scanner via Play services; modules/barcode-scanner). Free, on-device,
+    // no camera permission needed. Food barcodes on Food > Scan > Barcode.
+    implementation "com.google.android.gms:play-services-code-scanner:16.1.0"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

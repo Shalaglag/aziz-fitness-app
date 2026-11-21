@@ -10,11 +10,14 @@ Scan a packaged food's barcode, look it up on [Open Food Facts](https://world.op
 
 | Way in | Where it works |
 |---|---|
+| **Scan with camera** in the Android app (Google's ML Kit code scanner, `android/BarcodeScanPlugin.kt`) | The Mizan APK. Opens Google's own full-screen scanner from Play services: faster on small, curved or worn labels, auto-zoom, no camera permission. If it can't run yet (module still downloading, no Play services) the card falls back to the WebView camera below, or to typing. |
 | **Scan with camera** (live video + `BarcodeDetector`) | Chrome on Android. Needs camera permission; may be blocked inside a claude.ai Artifact frame, in which case the card says so. |
 | **Photo of barcode** (`<input type=file capture>` + `BarcodeDetector`) | Chrome on Android, including inside an Artifact: it opens the phone's camera app, no camera permission needed. |
 | **Type the number** | Everywhere, including Chrome on Windows, which has no `BarcodeDetector`. |
 
-Codes are checked (EAN-8, UPC-A, EAN-13, GTIN-14 check digit) before any lookup.
+Codes are checked (EAN-8, UPC-A, EAN-13, GTIN-14 check digit) before any lookup. A UPC-E (short 8-digit US code) is expanded to its UPC-A first (`fromScan`, `upcEtoA`).
+
+The native plugin `BarcodeScan` (`scan()` -> `{code, format}` or `{cancelled:true}`; rejects `downloading`/`unavailable`; `available()`) is copied into `android/app/src/main/java/com/azizfitness/app/` and registered in `MainActivity`; the test checks the copy is identical. Dependency `com.google.android.gms:play-services-code-scanner`; the manifest's `com.google.mlkit.vision.DEPENDENCIES = barcode_ui` makes Play services download the scanner with the app.
 
 ## Lookup and fallbacks
 
