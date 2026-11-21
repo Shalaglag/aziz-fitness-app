@@ -1,0 +1,119 @@
+# Update test: does updating the app keep the person's data?
+# On an Android emulator it installs the build phones have now (the public android-latest release),
+# logs a bench set with Maestro, installs this PR's build over it (what the in-app Update does) and
+# checks the set is still in History. Flows: .maestro/update-test, driver: tools/update-test/run.sh.
+#
+# It costs about 15 minutes of the repo's free Actions time, so it does not run on every PR: only when
+# a PR changes what decides whether data survives an update (the Android project, Capacitor and its
+# plugins, the native glue, the updater, where data is stored), or when started by hand
+# (Actions > Update test > Run workflow). Dependabot PRs get no secrets, so there it skips with a note.
+name: Update test
+
+on:
+  pull_request:
+    paths:
+      - android/**
+      - capacitor.config.json
+      - package.json
+      - package-lock.json
+      - modules/android-shell/**
+      - modules/app-update/**
+      - modules/cloud-store/**
+      - .maestro/update-test/**
+      - tools/update-test/**
+      - .github/workflows/update-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-keeps-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Signing key present?
+        id: key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No signing key secret here (fork or Dependabot PR): a build signed with another key cannot update the real app, so the update test is skipped."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        if: steps.key.outputs.ok == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.key.outputs.ok == 'true'
+      - name: Download the build phones have now
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          base=https://github.com/Shalaglag/mizan-releases/releases/download/android-latest
+          curl -fsSL "$base/latest.json" -o latest.json
+          curl -fsSL "$base/aziz-fitness.apk" -o old.apk
+          cat latest.json
+          echo "OLD_BUILD=$(node -p 'require("./latest.json").build')" >> "$GITHUB_ENV"
+      - name: Build this PR's APK, numbered one above it
+        if: steps.key.outputs.ok == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          npm ci
+          node build/build.js --check
+          npx cap sync android
+          mkdir -p android/keystore
+          echo "$KEYSTORE_B64" | base64 -d > android/keystore/aziz-personal.jks
+          NEW_BUILD=$((OLD_BUILD + 1))
+          cd android && chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease -PversionCode=$NEW_BUILD -PversionName=1.0.$NEW_BUILD-updatetest
+          cp app/build/outputs/apk/release/app-release.apk ../new.apk
+      - name: Install Maestro
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Let the emulator use hardware acceleration
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Old build logs a set, update, set still there
+        if: steps.key.outputs.ok == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash tools/update-test/run.sh
+      - name: Keep screenshots and logs
+        if: always() && steps.key.outputs.ok == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-test-output
+          retention-days: 5
+          path: |
+            maestro-out/
+            *.png
+            ~/.maestro/tests/

@@ -1,0 +1,68 @@
+# Step 1, on the build Aziz's phone has now (downloaded from mizan-releases):
+# a fresh install logs one bench set, 61.5 kg x 7, and sees it in History.
+appId: com.azizfitness.app
+name: Old build logs a set
+---
+- launchApp:
+    clearState: true
+- runFlow: first-run.yaml
+- tapOn: "Train"
+- tapOn: "Start an empty workout"
+- tapOn: "Add exercises"
+# The search box: matched by its HTML id (WebView exposes it as the resource id) or its placeholder.
+- runFlow:
+    when:
+      visible:
+        id: "lb-pkq"
+    commands:
+      - tapOn:
+          id: "lb-pkq"
+      - inputText: "Bench Press"
+      - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Bench Press \\(Barbell\\).*"
+    direction: DOWN
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Bench Press \\(Barbell\\)"
+    commands:
+      - tapOn: "Bench Press \\(Barbell\\)"
+- runFlow:
+    when:
+      notVisible: "Add \\(1\\)"
+    commands:
+      - tapOn:
+          text: "Bench Press \\(Barbell\\).*"
+          index: 0
+- tapOn: "Add \\(1\\)"
+- tapOn:
+    text: "w"
+    index: 0
+- inputText: "61.5"
+- tapOn:
+    text: "r"
+    index: 0
+- inputText: "7"
+- hideKeyboard
+- tapOn:
+    text: "Complete set"
+    index: 0
+- tapOn: "Finish"
+- runFlow:
+    when:
+      visible: "Finish anyway"
+    commands:
+      - tapOn: "Finish anyway"
+- extendedWaitUntil:
+    visible: ".*Workout saved.*|Workout complete"
+    timeout: 15000
+- runFlow:
+    when:
+      visible: "Done"
+    commands:
+      - tapOn: "Done"
+- tapOn: "History"
+- assertVisible: ".*61\\.5 kg × 7.*"
+- takeScreenshot: old-build-history

@@ -1,0 +1,26 @@
+# Shared start: wait for the app, then get past whatever a phone sees on open.
+# Every step here is optional so the same file works on a fresh install and after an update.
+appId: com.azizfitness.app
+---
+- runFlow: wait-ready.yaml
+# A newer build landing on main mid-run would show the forced "Update required" popup.
+- runFlow:
+    when:
+      visible: "Update required"
+    commands:
+      - tapOn: "Close"
+# Fresh install: the sign-in sheet (Firebase) then the goal questionnaire.
+- extendedWaitUntil:
+    visible: "Use without an account.*"
+    timeout: 20000
+    optional: true
+- runFlow:
+    when:
+      visible: "Use without an account.*"
+    commands:
+      - tapOn: "Use without an account.*"
+- runFlow:
+    when:
+      visible: "Skip for now"
+    commands:
+      - tapOn: "Skip for now"

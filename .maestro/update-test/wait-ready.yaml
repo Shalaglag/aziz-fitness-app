@@ -1,0 +1,18 @@
+# Wait until the app shows its bottom bar, getting past "isn't responding" dialogs on a slow emulator.
+appId: com.azizfitness.app
+---
+- repeat:
+    while:
+      notVisible: "Train"
+    times: 20
+    commands:
+      - runFlow:
+          when:
+            visible: ".*isn.t responding.*"
+          commands:
+            - tapOn: "Wait"
+      - extendedWaitUntil:
+          visible: "Train"
+          timeout: 5000
+          optional: true
+- assertVisible: "Train"

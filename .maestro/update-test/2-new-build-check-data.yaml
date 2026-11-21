@@ -1,0 +1,14 @@
+# Step 2, after the new build is installed over the old one (same as the in-app Update):
+# the set from step 1 is still in History. (The sign-in sheet comes back on every cold start for
+# "Use without an account" phones, update or not, so first-run.yaml dismisses it again.)
+appId: com.azizfitness.app
+name: New build still has the set
+---
+- launchApp:
+    clearState: false
+- runFlow: first-run.yaml
+- tapOn: "Train"
+- tapOn: "History"
+- assertVisible: ".*61\\.5 kg × 7.*"
+- assertVisible: ".*Bench Press \\(Barbell\\).*"
+- takeScreenshot: new-build-history

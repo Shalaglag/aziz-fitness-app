@@ -33,12 +33,16 @@ merge is refused by a session safety check (PR #27), ask Aziz with one decision 
      `tests/app-phone.test.js`) or the date in the module test; never skip it.
    - Timezone: tests must pin `TZ` themselves (steps test pins `Asia/Kuwait`).
    - Playwright missing locally: the browser tests print a skip; CI installs Playwright 1.63.
+   - `update-keeps-data` (Update test, emulator + Maestro, only on android/Capacitor/storage PRs): read
+     the `update-test-output` artifact (screenshots, logcat) first. A step not found on the OLD build means
+     the published app's screen changed, not this PR; fix the flow in `.maestro/update-test`. The set
+     missing after the update is a real data-loss bug: do not merge.
    - Actions artifact quota full ("artifact storage quota"): upload step is `continue-on-error`
      since PR #164; the release attachment is what ships. Not a reason to retry or re-run.
 6. **Never** skip, delete or quarantine a test to get green; never push an empty commit or
    close/reopen to kick CI; never force-push someone else's branch.
-7. After the fix: `node build/build.js --check` prints ok, `npm test` green, push, wait for both
-   checks (`test`, `Android`), then merge (standing rule).
+7. After the fix: `node build/build.js --check` prints ok, `npm test` green, push, wait for the
+   checks (`test`, `Android`, and `update-keeps-data` when it runs), then merge (standing rule).
 
 ## Dependabot PRs (since Nov 21 2026)
 `.github/dependabot.yml` opens at most one grouped PR per area each month (app npm, worker npm,
