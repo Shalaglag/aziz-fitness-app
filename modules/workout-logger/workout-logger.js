@@ -1768,9 +1768,26 @@ Power Clean (Barbell)|Other|Barbell|`;
     });
     return n;
   }
-  function prevFor(e, docId) {
-    if (docId == null && E.mode === 'template') { const s = sessions(e.exId)[0]; return { sets: s ? s.e.sets : [], src: 'last', unit: s ? s.e.unit : e.unit }; }
-    const s = sessions(e.exId, docId != null ? docId : E.doc.id)[0];
+  // Which template day a workout belongs to: its template id, else its name without a " · Travel"-style suffix
+  // (Strong imports and older workouts may only carry a name).
+  const dayKeys = w => w ? [w.templateId ? 'id:' + w.templateId : '', (w.templateName || w.name) ? 'n:' + String(w.templateName || w.name).split(' · ')[0].trim().toLowerCase() : ''].filter(Boolean) : [];
+  // Pick last time for an exercise: newest session from the same template day (Lower A only looks at Lower A),
+  // else the newest session anywhere. list is newest first, [{w, e}].
+  function pickPrev(list, doc) {
+    if (!list || !list.length) return null;
+    const keys = dayKeys(doc);
+    if (keys.length) {
+      const byId = keys[0].startsWith('id:') ? list.find(x => x.w && x.w.templateId && 'id:' + x.w.templateId === keys[0]) : null;
+      if (byId) return byId;
+      const nk = keys.find(k => k.startsWith('n:'));
+      const byName = nk ? list.find(x => dayKeys(x.w).includes(nk)) : null;
+      if (byName) return byName;
+    }
+    return list[0];
+  }
+  function prevFor(e, docId, doc) {
+    if (docId == null && E.mode === 'template') { const s = pickPrev(sessions(e.exId), { templateId: E.doc.id, name: E.doc.name }); return { sets: s ? s.e.sets : [], src: 'last', unit: s ? s.e.unit : e.unit }; }
+    const s = pickPrev(sessions(e.exId, docId != null ? docId : E.doc.id), doc || (E && E.doc));
     if (s) return { sets: s.e.sets, src: 'last', unit: s.e.unit, e: s.e };
     if (e.base) return { sets: e.base, src: 'base', unit: e.unit };
     return { sets: [], src: '' };
@@ -2407,7 +2424,7 @@ Power Clean (Barbell)|Other|Barbell|`;
   function shadeAfter(w, cur) {
     const exs = w.exercises || [], e = exs[cur[0]], s = e.sets[cur[1]], ex = getEx(e.exId), f = fieldsFor(ex);
     let ok = f.some(k => s[k] !== '' && s[k] != null);
-    if (!ok) { try { const prev = prevFor(e, w.id), p = prevMatch(prev, e, cur[1]); ok = f.some(k => phFor(prev, p, e, k) !== ''); } catch (er) { ok = false; } }
+    if (!ok) { try { const prev = prevFor(e, w.id, w), p = prevMatch(prev, e, cur[1]); ok = f.some(k => phFor(prev, p, e, k) !== ''); } catch (er) { ok = false; } }
     if (!ok) return { ok: false };
     const was = s.done, focus = w.focusEx;
     try {
@@ -2943,7 +2960,7 @@ html.lb-noscroll,html.lb-noscroll body{overflow:hidden}
   function settings() { return clone(S.settings); }
   function setSettings(patch) { Object.keys(patch || {}).forEach(k => noteSetting(k, patch[k])); if (!E && !sheets.length) renderMain(); return clone(S.settings); }
   const api = { mount, refresh, importStrong, parseStrong, buildProgram, toShellRecord, applyVoice, settings, setSettings, previewRest, restStyles: REST_STYLES, restNotifyLooks: REST_NOTIFY, workoutInfo, library: LIB, rotation: ROTATION, mainLifts: MAIN_LIFTS, show(k) { tab = k; renderMain(); },
-    parseRest, setRestOf, fillRemaining, planNext, freshStart, journalStore, sortTpls,
+    parseRest, setRestOf, fillRemaining, pickPrev, planNext, freshStart, journalStore, sortTpls,
     mergeSettings, gym: { gymOrder, nextPending, resumePoint, restAfter, compareSets, weightStep, bumpVal, snapStep, stepWeight, warmSets, loadableUp, adjustRest },
     swipe: { swipeDecision }, reorder: { dropIndex, moveItem } };
   global.WorkoutLogger = api;
