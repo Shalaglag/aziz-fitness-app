@@ -52,6 +52,7 @@ Rest between sets (Strong-style, v82): in the List view a thin line with the res
 - Settings: "Open workouts in Gym mode" and "Show an RIR column".
 - Body-weight goal reads `opts.targets.goalKg` (AppTargets). With no `targets` passed (standalone preview) it falls back to 80 kg; with `targets.goalKg` null the goal line is hidden.
 - Blank sets checked off take last time's numbers converted to the exercise's current unit (before, a lb value could be copied into a kg exercise unchanged).
+- "Last time" is per template day: an exercise in Lower B shows and fills from the last Lower B session (matched by template id, else by workout name without a " · Travel" suffix), and only falls back to the newest session anywhere when that day has none. Pure helper `WorkoutLogger.pickPrev(list, doc)`; `same-day-prev.test.js` covers it. History, records and charts still use every session.
 
 ## Mount
 ```js
