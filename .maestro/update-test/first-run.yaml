@@ -2,9 +2,7 @@
 # Every step here is optional so the same file works on a fresh install and after an update.
 appId: com.azizfitness.app
 ---
-- extendedWaitUntil:
-    visible: "Train"
-    timeout: 90000
+- runFlow: wait-ready.yaml
 # A newer build landing on main mid-run would show the forced "Update required" popup.
 - runFlow:
     when:

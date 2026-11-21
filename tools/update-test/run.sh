@@ -8,11 +8,14 @@ OUT=${MAESTRO_OUT:-maestro-out}
 mkdir -p "$OUT"
 # On a failed flow, print what Maestro can see (texts, hints, ids) so the next fix needs no guessing.
 dump() { echo "== Screen as Maestro sees it"; maestro hierarchy > "$OUT/hierarchy-$1.json" 2>/dev/null || true
-  node -e 'const h=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const w=n=>{const a=n.attributes||{};const t=[a.text,a["hintText"],a["accessibilityText"],a["resource-id"]].filter(Boolean);if(t.length)console.log(JSON.stringify(t),a.bounds||"");(n.children||[]).forEach(w)};w(h)' "$OUT/hierarchy-$1.json" | head -150 || true; }
+  node -e 'const h=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const w=n=>{const a=n.attributes||{};const t=[a.text,a["hintText"],a["accessibilityText"],a["resource-id"]].filter(Boolean);if(t.length)console.log(JSON.stringify(t),a.bounds||"");(n.children||[]).forEach(w)};w(h)' "$OUT/hierarchy-$1.json" | grep -v "com.android.systemui" | head -250 || true; }
 code() { adb shell dumpsys package "$PKG" | grep -m1 -o 'versionCode=[0-9]*' | cut -d= -f2; }
 
 adb logcat -c || true
 (adb logcat -v time "*:W" > "$OUT/logcat.txt" 2>&1 &)
+
+# Give a freshly booted emulator a moment so the launcher does not show "isn't responding" mid-test.
+sleep 20; adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null || true
 
 echo "== Install the published build"
 adb install -g old.apk

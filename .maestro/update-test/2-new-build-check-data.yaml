@@ -5,9 +5,12 @@ name: New build still has the set
 ---
 - launchApp:
     clearState: false
+- runFlow: wait-ready.yaml
+# Data kept means the account choice was kept too: the sign-in sheet must not come back.
 - extendedWaitUntil:
-    visible: "Train"
-    timeout: 90000
+    visible: "Use without an account.*"
+    timeout: 15000
+    optional: true
 - assertNotVisible: "Use without an account.*"
 - runFlow: first-run.yaml
 - tapOn: "Train"
