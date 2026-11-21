@@ -43,8 +43,8 @@ jobs:
     env:
       HAS_APPLE: ${{ secrets.ASC_KEY_P8_BASE64 != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -69,7 +69,7 @@ jobs:
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} MARKETING_VERSION=1.0.${{ github.run_number }} build
           cd build/Build/Products/Debug-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/Mizan-simulator.zip" App.app
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         continue-on-error: true
         with:
           name: mizan-ios-simulator
