@@ -8,6 +8,8 @@ under `users/{uid}/...`.
 - `CloudStore.connect({mount})` → a db with the same shape the shell already uses
   (`collection(c).doc(id).set/update/delete/get`, `collection(c).onSnapshot/add/get`), or `null`
   when `app/cloud-config.js` is empty or the person picks "Use without an account".
+  That choice is remembered on the device (localStorage `aziz-cut-local-only`), so later opens skip the sheet;
+  `connect({mount, prompt: true})` (Settings › Sign in or create account) shows it anyway, and signing in clears it.
 - Shows a sign-in sheet the first time on each device; after that the session is remembered. Settings →
   Account and sync (and the Friends screen) have **Sign in or create account** (`data-act="cloudsignin"`)
   for people who picked "Use without an account" first.

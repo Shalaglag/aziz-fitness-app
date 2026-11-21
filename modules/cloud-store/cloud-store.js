@@ -189,6 +189,15 @@ const CloudStore = (() => {
     });
   }
 
+  // "Use without an account" is remembered on the device, so the sign-in sheet does not come back on every
+  // open. connect({ prompt: true }) (Settings > Sign in or create account) still shows it; signing in clears it.
+  const LOCAL_ONLY_KEY = "aziz-cut-local-only";
+  function store() { try { return typeof localStorage !== "undefined" ? localStorage : null; } catch (e) { return null; } }
+  function localOnly() { const s = store(); try { return !!(s && s.getItem(LOCAL_ONLY_KEY) === "1"); } catch (e) { return false; } }
+  function setLocalOnly(on) { const s = store(); try { if (!s) return; if (on) s.setItem(LOCAL_ONLY_KEY, "1"); else s.removeItem(LOCAL_ONLY_KEY); } catch (e) { /* storage blocked */ } }
+  // Show the sign-in sheet only when nobody is signed in and the person hasn't chosen this-device-only (or asked to sign in).
+  function shouldAsk(user, opts) { return !user && (!!(opts && opts.prompt) || !localOnly()); }
+
   let state = { auth: null, user: null, fs: null };
   async function connect(opts) {
     if (!configured()) return null;
@@ -203,7 +212,9 @@ const CloudStore = (() => {
     if (em && em.host) { try { fs.useEmulator(em.host, em.firestorePort || 8080); auth.useEmulator("http://" + em.host + ":" + (em.authPort || 9099), { disableWarnings: true }); } catch (e) { /* already set */ } }
     try { await fs.enablePersistence({ synchronizeTabs: true }); } catch (e) { /* private window or another tab owns it: still syncs, just no offline cache */ }
     const user = await new Promise(res => { const off = auth.onAuthStateChanged(u => { off(); res(u); }); });
+    if (!user && !shouldAsk(user, o)) return null;
     const who = user || await signInForm(o.mount || document.body, auth);
+    setLocalOnly(!who);
     if (!who) return null;
     state = { auth, user: who, fs };
     return scoped(fs, who.uid);
@@ -217,7 +228,7 @@ const CloudStore = (() => {
   // access is enforced by firestore.rules. Null before sign-in.
   function raw() { return state.user && state.fs ? { fs: state.fs, uid: state.user.uid, email: state.user.email } : null; }
 
-  return { validConfig, configured, loadConfig, connect, signOut, currentEmail, idToken, raw, authMessage, cancelled, signInWithGoogle, scoped, loadSdk, SDK, LOCAL_SDK, GOOGLE_PLUGIN };
+  return { validConfig, configured, loadConfig, connect, localOnly, setLocalOnly, shouldAsk, LOCAL_ONLY_KEY, signOut, currentEmail, idToken, raw, authMessage, cancelled, signInWithGoogle, scoped, loadSdk, SDK, LOCAL_SDK, GOOGLE_PLUGIN };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = CloudStore;
