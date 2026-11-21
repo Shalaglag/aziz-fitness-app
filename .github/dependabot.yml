@@ -1,0 +1,77 @@
+# Dependabot: keeps Mizan's libraries current, quietly (Aziz approved Nov 21 2026).
+# Monthly, one grouped PR per area, minor and patch updates only. Major versions
+# need code changes (e.g. a new Capacitor), so they are left to a planned thread.
+# Every Dependabot PR runs the normal checks (test, Android); merge it only when
+# both are green. See .claude/skills/pr-conflicts-and-ci/SKILL.md.
+version: 2
+updates:
+  # The app: Capacitor and its plugins (package.json at the repo root).
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+      time: "06:00"
+      timezone: Asia/Kuwait
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # iPhone build was dropped (Nov 16); its pin stays as it is.
+      - dependency-name: "@capacitor/ios"
+    groups:
+      app-libraries:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # The Ask Claude worker (Cloudflare). Updates only land on the phone after a manual redeploy.
+  - package-ecosystem: npm
+    directory: "/worker"
+    schedule:
+      interval: monthly
+      time: "06:00"
+      timezone: Asia/Kuwait
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps(worker)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      worker-libraries:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Android native libraries (Health Connect, Google sign-in, AndroidX).
+  - package-ecosystem: gradle
+    directory: "/android"
+    schedule:
+      interval: monthly
+      time: "06:00"
+      timezone: Asia/Kuwait
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps(android)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      android-libraries:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # The GitHub Actions used by CI (checkout, setup-node, gradle, ...). Majors allowed:
+  # these are CI-only and CI itself proves them.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+      time: "06:00"
+      timezone: Asia/Kuwait
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "ci"
+    groups:
+      ci-actions:
+        patterns: ["*"]

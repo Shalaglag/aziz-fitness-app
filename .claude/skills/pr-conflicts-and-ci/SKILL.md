@@ -44,6 +44,14 @@ merge is refused by a session safety check (PR #27), ask Aziz with one decision 
 7. After the fix: `node build/build.js --check` prints ok, `npm test` green, push, wait for the
    checks (`test`, `Android`, and `update-keeps-data` when it runs), then merge (standing rule).
 
+## Dependabot PRs (since Nov 21 2026)
+`.github/dependabot.yml` opens at most one grouped PR per area each month (app npm, worker npm,
+Android gradle, GitHub Actions), minor/patch only; majors are ignored on purpose. Nobody is
+assigned. Whichever thread or coordinator sees one: wait for `test` and `Android` green, then merge
+(standing rule). If red, fix in the same PR only when the fix is small; otherwise close it with a
+one-line comment and note the library in project memory. A merged app/gradle PR ships a new APK; a
+worker PR needs the manual `npx wrangler deploy` from Aziz's PC before it takes effect.
+
 ## Completion check
 - Both checks green on the PR head; merged; the same failure not reintroduced on main.
 - If the failure was on main too, say so in the thread and fix it in the same PR.
